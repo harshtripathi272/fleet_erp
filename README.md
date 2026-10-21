@@ -1,43 +1,124 @@
-# Fleet ERP backend foundation
+# Marichi Fleet ERP backend
 
-Initialized from the supplied `marichi-code-standard-guide.pdf`. Business requirements are pending; the only application endpoint is a liveness check. No database, authentication, or business modules have been selected or implemented.
+Node.js + Express + MongoDB (Mongoose) + Redis, following the Marichi Backend Development Guide (router → controller → service → schema, typed errors, `ApiResponse`, Pino, Zod).
 
-## Run locally
+It contains:
 
-Requires Node.js 22 or newer and npm.
+- **Authentication**: e-mail and password sign-up, sign-in, refresh-token rotation, sign-out (one device or all), change password, forgot/reset password by e-mail (SMTP), account lockout and rate limits.
+- **Authorization**: roles with per-master permissions (`read`, `create`, `update`, `archive`, `delete`, `sensitive`). Built-in Owner, Admin, Operations, Finance and Viewer roles, plus custom roles. Nobody can grant permissions they do not hold.
+- **51 masters** from the MVP column of the masters specification (MF-SPEC-01), plus users and roles. Every master has the same standard behaviour: versioned updates, archive/restore, delete only when unused, audit history, custom fields, branch scope and validity dates.
+- **Configuration without code**: simple lists, custom fields on any master, and custom masters with their own records.
+- **A test console** at `/console/` for trying every endpoint, browsing every model, and reading the audit log.
 
-```powershell
+## Run it
+
+### With Docker Compose (API + MongoDB + Redis)
+
+```sh
+cp .env.example .env      # then set JWT_SECRET and the SMTP_* credentials
+docker compose up --build
+```
+
+The API listens on http://localhost:3000 and the console is at http://localhost:3000/console/. MongoDB is published on `127.0.0.1:27017`, so **MongoDB Compass** connects to `mongodb://127.0.0.1:27017` with no login and shows the `fleet_erp` database.
+
+### Without Docker
+
+Requires Node.js 22+ and a MongoDB 7 or 8 server. Redis is optional.
+
+```sh
 npm ci
-# Optional: copy .env.example to .env and adjust settings.
-npm run dev
+cp .env.example .env
+npm run dev               # http://127.0.0.1:3000/console/
+npm run seed              # optional: loads the sample operation into MONGODB_URI
 ```
 
-Open http://127.0.0.1:3000/api/v1/health. The response is JSON with `success: true` and `data.status: "ok"`. This checks the running server only, not external dependency readiness. The API binds to loopback by default; set `HOST=0.0.0.0` when deploying in a container.
+On a fresh database, the **first account you create becomes the Owner**. Later sign-ups get the read-only Viewer role, or are refused if the company turns self sign-up off.
 
-```powershell
-npm run check  # Type checking, HTTP integration tests, production compilation
-npm run build
-npm start
+## Test console
+
+Open `/console/` and sign in.
+
+| Page | What it is for |
+| --- | --- |
+| Overview | System status (MongoDB, Redis, SMTP), your roles and permissions, API limits, record counts per master. **Load sample data** creates a realistic Zambia–Tanzania–DRC fuel and copper operation (109 records) through the same validated services. |
+| Each master | **Records**: search, filter, sort and page; open a record to see its JSON, where it is used and its history; create, edit, archive, restore or delete it. **Fields and rules**: every field with type, required, enum, reference and sensitivity, plus indexes and reference checks. **Endpoints**: method, path, permission, rate limit and validation, each with a Try button. **Request schemas**: the JSON Schema of create and update bodies. |
+| Account and sign-in | Profile, change password, signed-in devices, the password-reset flow. |
+| Company | The single company record (legal details, base currency, time zone, fiscal year, modules, self sign-up). |
+| Audit log | Every create, update, archive, restore and delete, with who did it and what changed. |
+| API reference | All 500+ endpoints with permissions and rate limits; error codes. |
+| Request log | Every request the console made, with the body sent and the full response. Passwords and tokens are masked. |
+
+The console is plain HTML/CSS/JS served by the API (`public/console`). It builds everything from `/api/v1/meta/*`, so new masters and fields appear without changes to the console.
+
+## API conventions
+
+- Base path `/api/v1`. Every route except `/health` and `/auth/*` needs `Authorization: Bearer <access token>`.
+- Responses: `{ success: true, data, meta?, message? }` or `{ success: false, error: { code, message, details? }, requestId }`.
+- **Lists** (`GET /api/v1/<master>`): `page`, `limit` (1–100), `search`, `status` (`active`, `inactive`, `archived`, `all`; default hides archived), `sort` (`field` or `-field`), `updatedSince`, and master-specific filters. Unknown parameters are rejected.
+- **Create** (`POST`), **update** (`PATCH /:id`, must include the current `version`; a stale version returns 409; `null` clears optional fields), **archive** / **restore** (`POST /:id/archive`, `/:id/restore`), **delete** (`DELETE /:id`, only when nothing references the record), **usage** (`GET /:id/usage`), **history** (`GET /:id/history`).
+- Money is `{ amountMinor, currencyId }` in minor units (ngwee, cents). Dates are `YYYY-MM-DD` or ISO 8601 with a time zone.
+- Bodies are strict: unknown fields return 422, and keys that start with `$` or contain `.` return 400. Body size is limited to 1 MB.
+
+## Masters
+
+| Area | Masters (URL path) |
+| --- | --- |
+| Organisation and access | `branches`, `numbering-series`, `approval-policies`, `users`, `roles`, plus `/company` |
+| Geography and routes | `countries`, `provinces`, `cities`, `places` (+ `/near`), `border-posts`, `routes`, `units`, `unit-conversions` (+ `/convert`) |
+| Money and tax | `currencies`, `exchange-rates` (+ `/convert`), `payment-methods` |
+| Customers and partners | `parties`, `order-sources` |
+| Vehicles and equipment | `vehicle-makes`, `vehicle-models`, `vehicle-types`, `vehicles`, `trailer-types`, `trailers`, `pairings` (+ pair / end) |
+| Drivers | `licence-classes`, `drivers`, `recovery-rules` |
+| Compliance and documents | `document-types`, `permit-types`, `insurance-types`, `compliance-documents` (+ `/expiring`, `/check`) |
+| Cargo | `product-groups`, `products`, `load-types`, `shortage-policies`, `pod-types` |
+| Trip operations | `trip-types`, `trip-stages`, `stop-types`, `expense-categories`, `expense-items`, `fuel-types`, `fuel-norms`, `trip-budgets` (+ `/estimate`), `advance-policies`, `cancellation-reasons` |
+| Messages and layouts | `message-templates` (+ `/:id/preview`; WhatsApp and SMS through Marichi Talks, e-mail through SMTP), `notification-rules`, `print-layouts` |
+| Configuration | `lists` (+ `/by-code/:code`), `field-definitions`, `custom-masters` (+ `/:masterId/records`) |
+
+## Code layout
+
+```
+src/
+  app.ts, server.ts           Express app; start-up, graceful shutdown
+  config/env.ts               every setting, validated (production refuses unsafe values)
+  core/
+    masters/                  the shared master engine: base fields, registry, reference
+                              checks, custom fields, audit, generic service/controller/router
+    security/                 scrypt password hashing and HS256 tokens (Node's crypto module)
+    rateLimit/                fixed-window limits in Redis, or in memory without Redis
+    mail/, cache/, db/, errors/, logger/, response/
+  middleware/                 authenticate, authorize, validate, CORS, security headers, ...
+  modules/<area>/
+    models/*.model.ts         Mongoose models
+    <area>.schema.ts          Zod request schemas
+    <area>.service.ts         master definitions and business rules
+    <area>.controller.ts      handlers for custom endpoints
+    <area>.router.ts          routes
+public/console/               the test console
+tests/                        node:test + supertest on an in-memory MongoDB
 ```
 
-## Structure and conventions
+The generic engine gives every master the same routes and checks. Each module adds its own model, request schema and business rules (`prepare` hooks), plus any custom endpoints.
 
-- `src/app.ts`: middleware and versioned route mounting; `notFound` and `errorHandler` stay last.
-- `src/server.ts`: listening, SIGINT/SIGTERM request draining, bounded shutdown, and fatal process handlers.
-- `src/config/env.ts`: the sole environment access point, validated by Zod.
-- `src/core/`: Pino logger, typed application errors, response and pagination helpers.
-- `src/middleware/`: UUID request IDs, request logging, validation, 404 and error handling.
-- `src/modules/health/`: minimal example of schema -> router -> controller -> service.
-- `tests/foundation.test.ts`: HTTP behavior and infrastructure contract checks.
+## Checks
 
-For a new feature, create `<feature>.schema.ts`, `<feature>.router.ts`, `<feature>.controller.ts`, and `<feature>.service.ts` under `src/modules/<feature>/`, then mount the router at `/api/v1/<feature>` in `app.ts`. Validate route params as well as body/query. Controllers use `asyncHandler` and `ApiResponse`; services accept data, contain business logic, and throw typed errors. Keep request/response objects out of services. Use the structured logger instead of console calls.
+```sh
+npm run check     # typecheck, all tests, production build
+npm test
+```
 
-Node ESM imports use `.js` extensions in TypeScript source so compiled code runs directly. Development logs are pretty; production logs are JSON. Request logs omit headers, bodies, and query strings. Production responses hide non-operational error details. `.env` and generated output are ignored by Git.
+98 tests run on an in-memory MongoDB, covering:
 
-## Guide compatibility
+- authentication and authorization, including privilege escalation;
+- a contract run against every master;
+- business rules for every area;
+- concurrency races (duplicate codes, numbering, versions, pairings);
+- load, size limits and hostile input;
+- a fuzzer that sends random input to every endpoint and fails on any 500.
 
-Express 5 exposes `req.query` as a getter ([migration guide](https://expressjs.com/en/guide/migrating-5/#req.query)). The validation middleware creates a request-local property after successful parsing so the guide's parsed/coerced `req.body`, `req.query`, and `req.params` contract remains intact. Integration tests exercise it through real Express routing.
+## Production notes
 
-The PDF uses both string and object messages for `ApiResponse.success`; both are supported. Zod 4's `z.flattenError` preserves the documented `fieldErrors`/`formErrors` response shape. Numeric inputs must use coercion plus integer/range checks, rather than unbounded string-to-number transforms.
-
-This repository (`harshtripathi272/fleet_erp`) is a new foundation. The older Fleet ERP prototype described in the context vault is in a different repository and has not been copied or modified.
+- Set `NODE_ENV=production`, a random `JWT_SECRET` of 32+ characters, and the SMTP credentials. The API refuses to start without them, and refuses `EXPOSE_RESET_TOKEN=true`.
+- Set `REDIS_URL` when running more than one API instance, so rate limits are shared.
+- Set `CORS_ORIGINS` to the React app's origin, and `TRUST_PROXY` when behind a reverse proxy.
+- MongoDB runs as an ordinary standalone server; no replica set is needed. Writes are single-document; concurrency is enforced with unique and partial indexes and optimistic versioning.
