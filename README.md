@@ -40,7 +40,7 @@ Open `/console/` and sign in. Models are listed top-down: **Core records** (vehi
 
 | Page | What it is for |
 | --- | --- |
-| Models | Every model in that order, with record counts. Hover a model to draw what it points to and what uses it. On an empty database, **Load sample data** creates a Zambia–Tanzania–DRC fuel and copper operation (109 records) through the same validated services. |
+| Models | Every model in that order, with record counts. Tick **Show links on hover** to draw what a model points to and what uses it. On an empty database, **Load sample data** creates a Zambia–Tanzania–DRC fuel and copper operation (109 records) through the same validated services. |
 | Each model | **Structure**: a diagram of the model with its fields (required first, nested fields indented, standard fields folded), the models it points to and the models that use it, then its rules in plain words. Every field, indexes, list filters and the JSON Schemas are in folded sections. **Records**: search, filter, sort and page; open a record to read it with linked records shown by name, see its JSON, where it is used and its history; create, edit, archive, restore or delete it. **API**: each endpoint of the model, ready to send with real ids filled in. |
 | API testing | All 500+ endpoints grouped by sign-in, company, health and model, with a filter; response format, limits and error codes. |
 | Account | Profile, password, signed-in devices, what your roles allow, the password-reset flow, the access token. |

@@ -12,6 +12,7 @@ const store = {
 const state = {
   token: store.get('fe.token'), refresh: store.get('fe.refresh'),
   me: null, masters: [], overview: null, stats: [], log: [],
+  showLinks: store.get('fe.showLinks') === '1',
   openGroups: new Set(['core']), expanded: new Set(), refCache: new Map(), samples: new Map(),
 };
 const $app = document.getElementById('app');
@@ -412,7 +413,8 @@ function renderModels() {
         <span class="status ${sys.mongo === 'connected' ? 'ok' : 'bad'}"><i></i>MongoDB ${esc(sys.mongo || 'unknown')}</span>
         <span class="muted">Redis ${esc(String(sys.redis || '').split(' (')[0])}</span><span class="muted">E-mail ${esc(String(sys.smtp || '').split(' (')[0])}</span></div>
     </div>
-    <div class="row"><span class="key"><i></i>Points to</span><span class="key"><i class="in"></i>Used by</span></div></div>
+    <div class="row"><span class="row" id="linkKey" ${state.showLinks ? '' : 'hidden'}><span class="key"><i></i>Points to</span><span class="key"><i class="in"></i>Used by</span></span>
+      <label class="check"><input type="checkbox" id="showLinks" ${state.showLinks ? 'checked' : ''}>Show links on hover</label></div></div>
     ${showSample ? `<div class="card"><div class="card-head"><h3>The database is empty</h3><button class="btn btn-primary" type="button" id="loadSample">Load sample data</button></div><div class="card-body muted">A Zambia–Tanzania–DRC fuel and copper operation: 109 records created through the same validated services.</div></div>` : ''}
     <div class="map" id="map">
       <svg class="map-svg" id="mapSvg" aria-hidden="true"></svg>
@@ -480,11 +482,19 @@ function bindMap() {
     }
     svg.innerHTML = out;
   };
+  const focusOn = (key) => { if (!state.showLinks) return; current = key; draw(); };
   map.querySelectorAll('.chip').forEach((c) => {
-    c.addEventListener('mouseenter', () => { current = c.dataset.key; draw(); });
-    c.addEventListener('focus', () => { current = c.dataset.key; draw(); });
+    c.addEventListener('mouseenter', () => focusOn(c.dataset.key));
+    c.addEventListener('focus', () => focusOn(c.dataset.key));
   });
   map.addEventListener('mouseleave', () => { current = null; draw(); });
+  document.getElementById('showLinks').addEventListener('change', (e) => {
+    state.showLinks = e.target.checked;
+    store.set('fe.showLinks', state.showLinks ? '1' : null);
+    document.getElementById('linkKey').hidden = !state.showLinks;
+    current = null;
+    draw();
+  });
   state.redraw = draw;
 }
 

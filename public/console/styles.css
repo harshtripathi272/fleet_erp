@@ -338,3 +338,5 @@ path.e-out.hl, path.e-in.hl { stroke-width: 2.8; }
 .f-row.std .nm { color: var(--ink-3); }
 .f-more > span:first-child { flex: none; }
 .f-more > span:last-child { min-width: 0; }
+.check { display: inline-flex; align-items: center; gap: 8px; color: var(--ink-2); font-size: 13px; cursor: pointer; user-select: none; }
+.check input { width: 16px; height: 16px; margin: 0; accent-color: var(--pine-600); cursor: pointer; }
