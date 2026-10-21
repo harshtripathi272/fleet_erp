@@ -36,16 +36,16 @@ On a fresh database, the **first account you create becomes the Owner**. Later s
 
 ## Test console
 
-Open `/console/` and sign in.
+Open `/console/` and sign in. Models are listed top-down: **Core records** (vehicles, trailers, pairings, drivers, parties, places, routes, products, compliance documents), then **Trip rules**, **Reference lists** and **Company setup**.
 
 | Page | What it is for |
 | --- | --- |
-| Overview | System status (MongoDB, Redis, SMTP), your roles and permissions, API limits, record counts per master. **Load sample data** creates a realistic Zambia–Tanzania–DRC fuel and copper operation (109 records) through the same validated services. |
-| Each master | **Records**: search, filter, sort and page; open a record to see its JSON, where it is used and its history; create, edit, archive, restore or delete it. **Fields and rules**: every field with type, required, enum, reference and sensitivity, plus indexes and reference checks. **Endpoints**: method, path, permission, rate limit and validation, each with a Try button. **Request schemas**: the JSON Schema of create and update bodies. |
-| Account and sign-in | Profile, change password, signed-in devices, the password-reset flow. |
+| Models | Every model in that order, with record counts. Hover a model to draw what it points to and what uses it. On an empty database, **Load sample data** creates a Zambia–Tanzania–DRC fuel and copper operation (109 records) through the same validated services. |
+| Each model | **Structure**: a diagram of the model with its fields (required first, nested fields indented, standard fields folded), the models it points to and the models that use it, then its rules in plain words. Every field, indexes, list filters and the JSON Schemas are in folded sections. **Records**: search, filter, sort and page; open a record to read it with linked records shown by name, see its JSON, where it is used and its history; create, edit, archive, restore or delete it. **API**: each endpoint of the model, ready to send with real ids filled in. |
+| API testing | All 500+ endpoints grouped by sign-in, company, health and model, with a filter; response format, limits and error codes. |
+| Account | Profile, password, signed-in devices, what your roles allow, the password-reset flow, the access token. |
 | Company | The single company record (legal details, base currency, time zone, fiscal year, modules, self sign-up). |
 | Audit log | Every create, update, archive, restore and delete, with who did it and what changed. |
-| API reference | All 500+ endpoints with permissions and rate limits; error codes. |
 | Request log | Every request the console made, with the body sent and the full response. Passwords and tokens are masked. |
 
 The console is plain HTML/CSS/JS served by the API (`public/console`). It builds everything from `/api/v1/meta/*`, so new masters and fields appear without changes to the console.
