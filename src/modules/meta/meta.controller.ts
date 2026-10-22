@@ -13,6 +13,12 @@ export const masters = asyncHandler(async (req, res) => {
   ApiResponse.success(res, await MetaService.describeMasters(req.auth));
 });
 
+/** The same descriptions without the caller's permissions, for the public models reference. */
+export const models = asyncHandler(async (_req, res) => {
+  const list = await MetaService.describeMasters();
+  ApiResponse.success(res, list.map((m) => Object.fromEntries(Object.entries(m).filter(([k]) => k !== 'permissions'))));
+});
+
 export const overview = asyncHandler(async (req, res) => {
   ApiResponse.success(res, {
     system: MetaService.system(),

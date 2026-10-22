@@ -12,7 +12,6 @@ const store = {
 const state = {
   token: store.get('fe.token'), refresh: store.get('fe.refresh'),
   me: null, masters: [], overview: null, stats: [], log: [],
-  showLinks: store.get('fe.showLinks') === '1',
   openGroups: new Set(['core']), expanded: new Set(), refCache: new Map(), samples: new Map(),
 };
 const $app = document.getElementById('app');
@@ -135,7 +134,15 @@ function uniqueFields(m) {
   const set = new Map();
   for (const i of m.indexes || []) {
     const keys = Object.keys(i.fields);
-    if (i.unique && keys.length === 1) set.set(keys[0], i.partial ? 'unique when set' : 'unique');
+    if (!i.unique || keys.length !== 1) continue;
+    let path = keys[0];
+    let how = i.partial ? 'when filled' : 'always';
+    // A hidden "<name>Key" holds <name> without spaces or case, so the visible field is what is unique.
+    const f = m.fields.find((x) => x.path === path);
+    const base = f?.hidden && path.endsWith('Key') ? m.fields.find((x) => !x.hidden && x.group === 'master' && x.path.startsWith(path.slice(0, -3))) : null;
+    if (base) { path = base.path; how = 'normalised'; }
+    if (f?.hidden && !base) continue;
+    set.set(path, how);
   }
   return set;
 }
@@ -201,21 +208,16 @@ function setTokens(d) {
 function signOutLocal() {
   state.token = null; state.refresh = null; state.me = null; state.overview = null;
   store.set('fe.token', null); store.set('fe.refresh', null);
-  renderAuth();
+  route();
 }
 
-/* ---------------- Boot ---------------- */
+/* ---------------- Boot and routing ---------------- */
 
-async function boot() {
-  const resetMatch = location.hash.match(/^#reset=([A-Za-z0-9_-]+)/);
-  if (resetMatch) { renderAuth('reset', resetMatch[1]); return; }
-  if (!state.token) { renderAuth(); return; }
-  const me = await call('GET', '/auth/me', { quiet: true });
-  if (!me.ok) { signOutLocal(); return; }
-  state.me = me.data.data;
-  await loadMeta();
-  renderShell();
-  if (!boot.bound) { window.addEventListener('hashchange', route); window.addEventListener('resize', () => redrawEdges()); boot.bound = true; }
+/** The models reference needs no sign-in; every other page is the signed-in testing console. */
+const isReference = (hash) => !hash || hash === '#' || hash === '#models' || hash.startsWith('#m/');
+
+function boot() {
+  window.addEventListener('hashchange', route);
   route();
 }
 
@@ -231,6 +233,38 @@ async function refreshCounts() {
   document.querySelectorAll('#nav [data-count]').forEach((el) => { el.textContent = countOf(el.dataset.count); });
 }
 
+async function route() {
+  closeOverlays();
+  toggleMenu(false);
+  const hash = location.hash;
+  window.scrollTo(0, 0);
+  if (isReference(hash)) return renderReference(hash);
+  const resetMatch = hash.match(/^#reset=([A-Za-z0-9_-]+)/);
+  if (resetMatch) return renderAuth('reset', resetMatch[1]);
+  if (!state.token) return renderAuth();
+  if (!state.me) {
+    const me = await call('GET', '/auth/me', { quiet: true });
+    if (!me.ok) return signOutLocal();
+    state.me = me.data.data;
+    await loadMeta();
+  }
+  if (!document.getElementById('shell')) renderShell();
+  const [, page, a, b] = hash.match(/^#([a-z]+)\/?([^/]*)\/?(.*)$/) || [];
+  if (page === 'model' && a) {
+    const tier = tierOf(a).key;
+    state.openGroups.add(tier);
+    document.querySelector(`.nav-group[data-group="${tier}"]`)?.classList.add('open');
+  }
+  setActiveNav(page === 'model' ? `#model/${a}` : hash);
+  if (page === 'model' && a) return renderModel(a, b || 'records');
+  if (page === 'custom' && a) return renderCustomRecords(a);
+  if (page === 'account') return renderAccount();
+  if (page === 'company') return renderCompany();
+  if (page === 'audit') return renderAudit();
+  if (page === 'requests') return renderRequests();
+  return renderApiTesting();
+}
+
 /* ---------------- Sign in ---------------- */
 
 function renderAuth(tab = 'login', token = '') {
@@ -244,7 +278,8 @@ function renderAuth(tab = 'login', token = '') {
       <ul><li>The first account on a fresh database becomes the Owner.</li><li>Later sign-ups get the read-only Viewer role.</li><li>Passwords need 8–128 characters with a letter and a digit.</li></ul>
     </section>
     <section class="auth-main">
-      <h1>Fleet ERP models and API</h1>
+      <a href="#models">Back to the models</a>
+      <h1>Sign in to test the API</h1>
       <div class="seg" role="tablist">${tabs.map(([k, l]) => `<button type="button" role="tab" data-tab="${k}" class="${tab === k ? 'on' : ''}">${l}</button>`).join('')}</div>
       <div id="authForm"></div>
     </section>
@@ -269,8 +304,8 @@ function renderAuth(tab = 'login', token = '') {
     if (tab === 'login' || tab === 'register') {
       setTokens(r.data.data);
       if (tab === 'register' && r.data.data.firstOwner) toast('Account created. You are the owner of this workspace.');
-      history.replaceState(null, '', '#models');
-      boot();
+      history.replaceState(null, '', '#api');
+      route();
     } else if (tab === 'forgot') {
       msg.className = 'small';
       msg.textContent = r.data.message;
@@ -313,7 +348,7 @@ function renderShell() {
       <main id="main"></main>
     </div>
   </div>`;
-  document.getElementById('signOut').addEventListener('click', async () => { await call('POST', '/auth/logout', { quiet: true }); signOutLocal(); });
+  document.getElementById('signOut').addEventListener('click', async () => { await call('POST', '/auth/logout', { quiet: true }); location.hash = '#models'; signOutLocal(); });
   document.getElementById('menuBtn').addEventListener('click', () => toggleMenu(true));
   document.querySelectorAll('.nav-group > button').forEach((b) => b.addEventListener('click', () => {
     const g = b.parentElement;
@@ -353,152 +388,142 @@ function setActiveNav(hash) {
 
 const main = () => document.getElementById('main');
 
-function route() {
-  closeOverlays();
-  toggleMenu(false);
-  const hash = location.hash || '#models';
-  const [, page, a, b] = hash.match(/^#([a-z]+)\/?([^/]*)\/?(.*)$/) || [];
-  if (page === 'model' && a) {
-    const tier = tierOf(a).key;
-    if (!state.openGroups.has(tier)) {
-      state.openGroups.add(tier);
-      const g = document.querySelector(`.nav-group[data-group="${tier}"]`);
-      g?.classList.add('open');
-    }
+/* ---------------- Models reference (no sign-in) ---------------- */
+
+async function renderReference(hash) {
+  if (!state.masters.length) {
+    const r = await call('GET', '/meta/models', { auth: false, quiet: true });
+    if (r.ok) state.masters = r.data.data;
   }
-  setActiveNav(page === 'model' ? `#model/${a}` : hash);
-  window.scrollTo(0, 0);
-  state.redraw = null;
-  if (page === 'model' && a) return renderModel(a, b || 'structure');
-  if (page === 'custom' && a) return renderCustomRecords(a);
-  if (page === 'api') return renderApiTesting();
-  if (page === 'account') return renderAccount();
-  if (page === 'company') return renderCompany();
-  if (page === 'audit') return renderAudit();
-  if (page === 'requests') return renderRequests();
-  return renderModels();
-}
-
-function redrawEdges() { if (state.redraw) state.redraw(); }
-
-/* ---------------- Edges (SVG over HTML) ---------------- */
-
-function curve(a, b, sideA, sideB) {
-  const dx = Math.max(36, Math.abs(b.x - a.x) / 2);
-  return `M${a.x},${a.y} C${a.x + sideA * dx},${a.y} ${b.x + sideB * dx},${b.y} ${b.x},${b.y}`;
-}
-/** Connects two boxes from the sides that face each other (or both right sides when stacked). */
-function connect(box, ra, rb) {
-  const ax = ra.left + ra.width / 2; const bx = rb.left + rb.width / 2;
-  const ya = ra.top + ra.height / 2 - box.top; const yb = rb.top + rb.height / 2 - box.top;
-  if (bx > ax + ra.width / 2) return { d: curve({ x: ra.right - box.left, y: ya }, { x: rb.left - box.left, y: yb }, 1, -1), end: { x: rb.left - box.left, y: yb } };
-  if (bx < ax - ra.width / 2) return { d: curve({ x: ra.left - box.left, y: ya }, { x: rb.right - box.left, y: yb }, -1, 1), end: { x: rb.right - box.left, y: yb } };
-  return { d: curve({ x: ra.right - box.left, y: ya }, { x: rb.right - box.left, y: yb }, 1, 1), end: { x: rb.right - box.left, y: yb } };
-}
-
-/* ---------------- Models (home) ---------------- */
-
-function renderModels() {
-  document.title = 'Models · Marichi Fleet API';
-  const sys = state.overview?.system || {};
-  const visible = state.masters.filter((m) => !HIDDEN_MASTERS.has(m.key));
-  const records = state.stats.reduce((t, s) => t + s.total, 0);
-  const showSample = records < 5 && can('company', 'update') && sys.environment !== 'production';
-  const coreTier = TIERS[0];
-  main().innerHTML = `
-  <div class="page">
-    <div class="page-head"><div>
-      <h1>Models</h1>
-      <div class="facts"><span><b>${visible.length}</b> models</span><span><b>${records}</b> records</span>
-        <span class="status ${sys.mongo === 'connected' ? 'ok' : 'bad'}"><i></i>MongoDB ${esc(sys.mongo || 'unknown')}</span>
-        <span class="muted">Redis ${esc(String(sys.redis || '').split(' (')[0])}</span><span class="muted">E-mail ${esc(String(sys.smtp || '').split(' (')[0])}</span></div>
-    </div>
-    <div class="row"><span class="row" id="linkKey" ${state.showLinks ? '' : 'hidden'}><span class="key"><i></i>Points to</span><span class="key"><i class="in"></i>Used by</span></span>
-      <label class="check"><input type="checkbox" id="showLinks" ${state.showLinks ? 'checked' : ''}>Show links on hover</label></div></div>
-    ${showSample ? `<div class="card"><div class="card-head"><h3>The database is empty</h3><button class="btn btn-primary" type="button" id="loadSample">Load sample data</button></div><div class="card-body muted">A Zambia–Tanzania–DRC fuel and copper operation: 109 records created through the same validated services.</div></div>` : ''}
-    <div class="map" id="map">
-      <svg class="map-svg" id="mapSvg" aria-hidden="true"></svg>
-      <section class="tier core-tier">
-        <h2>${esc(coreTier.title)}</h2>
-        <div class="core-grid">${tierModels(coreTier).map((m) => `<a class="chip core" href="#model/${m.key}" data-key="${m.key}">
-          <span class="core-top"><b>${esc(m.label)}</b><span class="n">${countOf(m.key)}</span></span>
-          <span class="core-desc">${esc(firstSentence(m.description))}</span>
-          <span class="core-meta">${plural(m.fields.filter((f) => f.group === 'master' && !f.hidden && !f.path.includes('.')).length, 'field')} · links to ${linksOut(m).length}</span>
-        </a>`).join('')}</div>
-      </section>
-      ${TIERS.slice(1).map((t) => `<section class="tier">
-        <h2>${esc(t.title)}</h2>
-        <div class="area-grid">${areaBlocks(t)}</div>
-      </section>`).join('')}
-    </div>
+  $app.className = '';
+  $app.innerHTML = `
+  <div class="doc">
+    <header class="doc-top"><div class="doc-bar"><a class="doc-brand" href="#models">${logo()}<span><b>Marichi</b> Fleet</span></a><span class="spacer"></span><a class="btn btn-sm" href="#api">Test the API</a></div></header>
+    <main class="doc-main" id="docMain"></main>
   </div>`;
-  const sample = document.getElementById('loadSample');
-  if (sample) sample.addEventListener('click', async () => {
-    sample.disabled = true;
-    const r = await call('POST', '/meta/sample-data');
-    if (r.ok) { toast(`Sample data loaded: ${r.data.data.created} records`); await loadMeta(); renderShell(); route(); } else sample.disabled = false;
-  });
-  bindMap();
+  const box = document.getElementById('docMain');
+  if (!state.masters.length) { box.innerHTML = '<div class="empty"><strong>The models could not be loaded</strong><span>Check that the API is running.</span></div>'; return; }
+  const key = hash.startsWith('#m/') ? decodeURIComponent(hash.slice(3)) : null;
+  return key ? renderModelDoc(box, key) : renderModelList(box);
 }
 
-/** Within a tier, models are boxed by their business area. */
-function areaBlocks(tier) {
-  const models = tierModels(tier);
-  const areas = [...new Set(models.map((m) => m.group))];
-  return areas.map((a) => `<div class="area"><h3>${esc(a)}<span>${models.filter((m) => m.group === a).length}</span></h3>
-    ${models.filter((m) => m.group === a).map((m) => `<a class="chip" href="#model/${m.key}" data-key="${m.key}"><span>${esc(m.label)}</span><span class="n">${countOf(m.key)}</span></a>`).join('')}</div>`).join('');
+const ownTopFields = (m) => m.fields.filter((f) => f.group === 'master' && !f.hidden && !f.path.includes('.'));
+
+function renderModelList(box) {
+  document.title = 'Models · Marichi Fleet';
+  const total = TIERS.reduce((n, t) => n + tierModels(t).length, 0);
+  box.innerHTML = `
+  <div class="page-head"><div><h1>Models</h1><div class="facts"><span>${total} models in ${TIERS.length} groups, most important first</span></div></div>
+    <label class="search">${ICON.search}<input id="mq" placeholder="Find a model" aria-label="Find a model" autocomplete="off"></label></div>
+  ${TIERS.map((t, i) => `<section class="card" data-tier>
+    <div class="card-head"><h2>${i + 1}. ${esc(t.title)}</h2><span class="small muted">${tierModels(t).length} models</span></div>
+    <div class="table-wrap"><table class="table models"><thead><tr><th class="c-name">Model</th><th>What it holds</th><th class="r c-num">Fields</th><th class="c-links">Links to</th></tr></thead><tbody>
+    ${tierModels(t).map((m) => `<tr class="click" data-href="#m/${m.key}" data-q="${esc(`${m.label} ${m.key}`.toLowerCase())}"><td><a href="#m/${m.key}">${esc(m.label)}</a></td><td class="muted">${esc(firstSentence(m.description))}</td><td class="r num">${ownTopFields(m).length}</td><td class="small">${esc(linksOut(m).map((l) => labelOf(l.target)).join(', ')) || '<span class="muted">—</span>'}</td></tr>`).join('')}
+    </tbody></table></div>
+  </section>`).join('')}`;
+  box.querySelectorAll('tr[data-href]').forEach((tr) => tr.addEventListener('click', (e) => { if (!e.target.closest('a')) location.hash = tr.dataset.href; }));
+  document.getElementById('mq').addEventListener('input', (e) => {
+    const q = e.target.value.trim().toLowerCase();
+    box.querySelectorAll('[data-tier]').forEach((sec) => {
+      let any = false;
+      sec.querySelectorAll('tr[data-q]').forEach((tr) => { const hit = !q || tr.dataset.q.includes(q); tr.hidden = !hit; any ||= hit; });
+      sec.hidden = !any;
+    });
+  });
 }
 
-function bindMap() {
-  const map = document.getElementById('map');
-  const svg = document.getElementById('mapSvg');
-  let current = null;
-  const draw = () => {
-    map.querySelectorAll('.chip').forEach((c) => c.classList.remove('src', 'out', 'in'));
-    svg.innerHTML = '';
-    map.classList.toggle('focus', Boolean(current));
-    if (!current) return;
-    const m = masterByKey(current);
-    const box = map.getBoundingClientRect();
-    const el = (k) => map.querySelector(`.chip[data-key="${k}"]`);
-    const src = el(current);
-    if (!src) return;
-    src.classList.add('src');
-    const rs = src.getBoundingClientRect();
-    let out = '';
-    for (const l of linksOut(m)) {
-      const t = el(l.target);
-      if (!t || l.target === current) continue;
-      t.classList.add('out');
-      const c = connect(box, rs, t.getBoundingClientRect());
-      out += `<path class="e-out" d="${c.d}"/><circle class="e-end" cx="${c.end.x}" cy="${c.end.y}" r="3"/>`;
-    }
-    for (const l of linksIn(current)) {
-      const t = el(l.m.key);
-      if (!t) continue;
-      t.classList.add('in');
-      const c = connect(box, t.getBoundingClientRect(), rs);
-      out += `<path class="e-in" d="${c.d}"/><circle class="e-end in" cx="${c.end.x}" cy="${c.end.y}" r="3"/>`;
-    }
-    svg.innerHTML = out;
-  };
-  const focusOn = (key) => { if (!state.showLinks) return; current = key; draw(); };
-  map.querySelectorAll('.chip').forEach((c) => {
-    c.addEventListener('mouseenter', () => focusOn(c.dataset.key));
-    c.addEventListener('focus', () => focusOn(c.dataset.key));
-  });
-  map.addEventListener('mouseleave', () => { current = null; draw(); });
-  document.getElementById('showLinks').addEventListener('change', (e) => {
-    state.showLinks = e.target.checked;
-    store.set('fe.showLinks', state.showLinks ? '1' : null);
-    document.getElementById('linkKey').hidden = !state.showLinks;
-    current = null;
-    draw();
-  });
-  state.redraw = draw;
+const TYPE_WORDS = { string: 'Text', number: 'Number', date: 'Date', boolean: 'Yes or no', object: 'Group', objectid: 'Id', mixed: 'Any' };
+function typeCell(f) {
+  if (f.ref) return `Link to <a href="#m/${esc(f.ref)}">${esc(labelOf(f.ref))}</a>`;
+  if (f.enum) return 'Choice';
+  const word = TYPE_WORDS[f.type] || f.type;
+  if (f.array) return f.type === 'object' ? 'List of groups' : `List of ${word.toLowerCase()}`;
+  return word;
+}
+function notesFor(m, f, uniques) {
+  const notes = [];
+  const how = uniques.get(f.path);
+  if (how) notes.push({ always: 'Unique', 'when filled': 'Unique when filled', normalised: 'Unique, ignoring spaces and letter case' }[how]);
+  const ref = (m.references || []).find((r) => r.path === f.path && r.partyRoles);
+  if (ref) notes.push(`Party with role ${ref.partyRoles.map((x) => x.replace(/_/g, ' ')).join(' or ')}`);
+  if (f.enum) notes.push(f.enum.map((x) => String(x).replace(/_/g, ' ')).join(', '));
+  if (f.default !== undefined && f.default !== null && typeof f.default !== 'object') notes.push(`Default ${String(f.default).replace(/_/g, ' ')}`);
+  if (f.min !== undefined) notes.push(`At least ${f.min}`);
+  if (f.max !== undefined) notes.push(`At most ${f.max}`);
+  if (f.sensitive || m.sensitive.includes(f.path)) notes.push('Sensitive, masked without permission');
+  if (m.immutable.includes(f.path)) notes.push('Cannot change after creation');
+  return esc(notes.join(' · '));
+}
+function fieldRows(m, list, uniques) {
+  return list.map(({ f, depth }) => `<tr${depth ? ' class="sub"' : ''}><td class="mono f-name d${Math.min(depth, 3)}">${esc(f.path.split('.').pop())}</td><td>${typeCell(f)}</td><td class="small muted">${notesFor(m, f, uniques)}</td></tr>`).join('');
 }
 
-/* ---------------- Model page ---------------- */
+function renderModelDoc(box, key) {
+  const m = masterByKey(key);
+  if (!m || HIDDEN_MASTERS.has(key)) { box.innerHTML = '<div class="empty"><strong>No such model</strong><a href="#models">All models</a></div>'; return; }
+  document.title = `${m.label} · Marichi Fleet`;
+  const order = TIERS.flatMap((t) => tierModels(t));
+  const at = order.indexOf(m);
+  const prev = order[at - 1]; const next = order[at + 1];
+  const fields = orderedFields(m);
+  const uniques = uniqueFields(m);
+  const required = fields.filter((x) => x.f.required && !x.depth).length;
+  const top = ownTopFields(m).length;
+  const isRequiredBlock = (x, i) => { for (let j = i; j >= 0; j -= 1) if (!fields[j].depth) return fields[j].f.required; return false; };
+  const req = fields.filter(isRequiredBlock);
+  const opt = fields.filter((x, i) => !isRequiredBlock(x, i));
+  const outs = linksOut(m);
+  const ins = linksIn(m.key);
+  const shared = m.fields.filter((f) => f.group !== 'master').map((f) => ({ f, depth: f.path.split('.').length - 1 }));
+  box.innerHTML = `
+  <div class="page-head"><div>
+    <div class="crumb"><a href="#models">Models</a><span>/</span><span>${esc(tierOf(m.key).title)}</span></div>
+    <h1>${esc(m.label)}</h1>
+    <p>${esc(m.description)}</p>
+    <div class="facts"><span>Collection <span class="mono">${esc(m.collection)}</span></span><span>${top} fields, ${required} required</span><span>API <span class="mono">${esc(m.basePath)}</span></span></div>
+  </div></div>
+  <div class="card"><div class="card-head"><h2>Fields</h2></div>
+    <div class="table-wrap"><table class="table fields"><thead><tr><th class="c-field">Field</th><th class="c-type">Type</th><th>Notes</th></tr></thead><tbody>
+      ${req.length ? `<tr class="group"><td colspan="3">Required</td></tr>${fieldRows(m, req, uniques)}` : ''}
+      ${opt.length ? `<tr class="group"><td colspan="3">Optional</td></tr>${fieldRows(m, opt, uniques)}` : ''}
+    </tbody></table></div></div>
+  <div class="grid-2">
+    <div class="card"><div class="card-head"><h2>Links to</h2></div><div class="card-body">${outs.length ? `<ul class="links">${outs.map(({ target, refs }) => `<li><a href="#m/${esc(target)}">${esc(labelOf(target))}</a><span class="mono">${esc(refs.map((r) => r.path).join(', '))}</span></li>`).join('')}</ul>` : '<p class="muted">No other model.</p>'}</div></div>
+    <div class="card"><div class="card-head"><h2>Used by</h2></div><div class="card-body">${ins.length ? `<ul class="links">${ins.map(({ m: o, refs }) => `<li><a href="#m/${esc(o.key)}">${esc(o.label)}</a><span class="mono">${esc(refs.map((r) => r.path).join(', '))}</span></li>`).join('')}</ul>` : '<p class="muted">No other model.</p>'}</div></div>
+  </div>
+  <div class="card"><div class="card-head"><h2>Rules</h2></div><div class="card-body"><ul class="rules">${rulesInWords(m).map(([k, v]) => `<li><span>${esc(k)}</span><span>${v}</span></li>`).join('')}</ul></div></div>
+  <div class="card">
+    <details class="fold"><summary>${ICON.chev}Fields every model has <span class="muted">${shared.filter((x) => !x.depth).length}</span></summary><div class="table-wrap"><table class="table fields"><tbody>${fieldRows(m, shared, uniques)}</tbody></table></div></details>
+    <details class="fold"><summary>${ICON.chev}Endpoints <span class="muted">${m.endpoints.length}</span></summary><div class="table-wrap"><table class="table"><thead><tr><th>Method</th><th>Path</th><th>Permission</th></tr></thead><tbody>${m.endpoints.map((e) => `<tr><td><span class="m ${e.method}">${e.method}</span></td><td class="mono small">${esc(e.path)}</td><td class="mono small">${esc(e.permission || '')}</td></tr>`).join('')}</tbody></table></div></details>
+    <details class="fold"><summary>${ICON.chev}Indexes <span class="muted">${m.indexes.length}</span></summary><div class="table-wrap"><table class="table"><thead><tr><th>Fields</th><th>Unique</th><th>Only when</th></tr></thead><tbody>${m.indexes.map((i) => `<tr><td class="mono small">${esc(Object.entries(i.fields).map(([k, v]) => (v === 1 ? k : `${k} (${v})`)).join(' + '))}</td><td>${i.unique ? 'Yes' : ''}</td><td class="mono small">${i.partial ? esc(JSON.stringify(i.partial)) : ''}</td></tr>`).join('')}</tbody></table></div></details>
+    ${m.filters.length ? `<details class="fold"><summary>${ICON.chev}List filters <span class="muted">${m.filters.length}</span></summary><div class="table-wrap"><table class="table"><thead><tr><th>Query parameter</th><th>Meaning</th><th>Accepts</th></tr></thead><tbody>${m.filters.map((f) => `<tr><td class="mono small">${esc(f.key)}</td><td>${esc(f.description)}</td><td class="small muted">${esc(schemaText(f.schema))}</td></tr>`).join('')}</tbody></table></div></details>` : ''}
+    <details class="fold"><summary>${ICON.chev}Request body schemas</summary><div class="fold-body"><div class="grid-2"><div class="stack"><b class="small">Create (POST)</b><pre class="json">${jsonHtml(m.createSchema)}</pre></div><div class="stack"><b class="small">Update (PATCH)</b><pre class="json">${jsonHtml(m.updateSchema)}</pre></div></div></div></details>
+  </div>
+  <nav class="doc-pager">${prev ? `<a href="#m/${prev.key}"><span class="muted small">Previous</span>${esc(prev.label)}</a>` : '<span></span>'}${next ? `<a class="next" href="#m/${next.key}"><span class="muted small">Next</span>${esc(next.label)}</a>` : '<span></span>'}</nav>`;
+}
+
+function rulesInWords(m) {
+  const out = [];
+  const singles = [...uniqueFields(m)].map(([path, how]) => `<span class="mono">${esc(path)}</span>${how === 'always' ? '' : how === 'normalised' ? ' (ignoring spaces and letter case)' : ' when filled'}`);
+  const compounds = (m.indexes || []).filter((i) => i.unique && Object.keys(i.fields).length > 1).map((i) => {
+    const keys = Object.keys(i.fields);
+    return `<span class="mono">${esc(keys[0])}</span> within the same <span class="mono">${esc(keys.slice(1).join(' + '))}</span>${i.partial ? ' when filled' : ''}`;
+  });
+  const unique = [...singles, ...compounds];
+  out.push(['Shown and searched by', `<span class="mono">${esc(m.titleField)}</span>; search looks at <span class="mono">${esc(m.searchFields.filter((k) => !m.fields.find((f) => f.path === k)?.hidden).join(', '))}</span>`]);
+  if (unique.length) out.push(['Must be unique', unique.join(', ')]);
+  if (linksOut(m).length) out.push(['Linked records', 'Must exist and be active when the record is saved']);
+  if (m.autoCode) out.push(['Code', 'Generated from the numbering series when left empty']);
+  if (m.immutable.length) out.push(['Fixed after creation', `<span class="mono">${esc(m.immutable.join(', '))}</span>`]);
+  if (m.sensitive.length) out.push(['Sensitive', `<span class="mono">${esc(m.sensitive.join(', '))}</span>, masked unless the role may see sensitive data`]);
+  const managed = Object.keys(m.managed || {});
+  out.push(['Changes', managed.length ? `${esc(managed.join(', '))} go through this model's own endpoints` : 'Every update carries the version it was based on, so two people cannot overwrite each other']);
+  out.push(['Removing', m.managed?.delete ? 'Not deleted; ended or archived instead' : 'Archived while in use; deleted only when nothing refers to it']);
+  out.push(['Custom fields', m.customFieldsAllowed ? (m.customFields.length ? m.customFields.map((f) => `<span class="mono">${esc(f.key)}</span> (${esc(f.type)})`).join(', ') : 'A company can add its own') : 'Not allowed']);
+  return out;
+}
+
+/* ---------------- Model page in the console ---------------- */
 
 const listState = {};
 
@@ -506,142 +531,18 @@ function renderModel(key, tab) {
   const m = masterByKey(key);
   if (!m) { main().innerHTML = '<div class="page"><p class="empty">Unknown model.</p></div>'; return; }
   document.title = `${m.label} · Marichi Fleet API`;
-  const tabs = [['structure', 'Structure', ''], ['records', 'Records', countOf(key)], ['api', 'API', m.endpoints.length]];
+  const tabs = [['records', 'Records', countOf(key)], ['api', 'API', m.endpoints.length]];
   main().innerHTML = `
   <div class="page">
     <div class="page-head"><div>
-      <div class="crumb"><a href="#models">${esc(tierOf(key).title)}</a><span>/</span><span>${esc(m.group)}</span></div>
+      <div class="crumb"><span>${esc(tierOf(key).title)}</span><span>/</span><a href="#m/${esc(key)}">Fields and rules</a></div>
       <h1>${esc(m.label)}</h1>
-      <p>${esc(m.description)}</p>
     </div>
-    <div class="seg" role="tablist">${tabs.map(([k, l, n]) => `<a role="tab" href="#model/${key}/${k}" class="${tab === k ? 'on' : ''}">${l}${n !== '' ? `<span class="count">${n}</span>` : ''}</a>`).join('')}</div></div>
+    <div class="seg" role="tablist">${tabs.map(([k, l, n]) => `<a role="tab" href="#model/${key}/${k}" class="${tab === k ? 'on' : ''}">${l}<span class="count">${n}</span></a>`).join('')}</div></div>
     <div id="tabBody" class="stack"></div>
   </div>`;
-  if (tab === 'records') return renderRecords(m);
   if (tab === 'api') return renderModelApi(m);
-  return renderStructure(m);
-}
-
-/* ----- Structure ----- */
-
-function renderStructure(m) {
-  const body = document.getElementById('tabBody');
-  const outs = linksOut(m);
-  const ins = linksIn(m.key);
-  const fields = orderedFields(m);
-  const uniques = uniqueFields(m);
-  const expanded = state.expanded.has(m.key);
-  const LIMIT = 16;
-  const shown = expanded ? fields : fields.slice(0, Math.max(LIMIT, fields.findIndex((x) => !x.f.required && x.depth === 0)));
-  const hiddenCount = fields.length - shown.length;
-  const std = m.fields.filter((f) => f.group === 'standard' && !f.path.includes('.'));
-  const sys = m.fields.filter((f) => f.group === 'system');
-  const showStd = state.expanded.has(`${m.key}:std`);
-  const row = ({ f, depth }, extra = '') => `<div class="f-row${f.required ? ' req' : ''}${f.ref ? ' ref' : ''} d${Math.min(depth, 3)}${extra}" ${f.ref ? `data-ref="${esc(f.ref)}"` : ''} title="${esc(f.path)}${f.enum ? `: ${esc(f.enum.join(', '))}` : ''}">
-      <span class="mk"></span><span class="nm">${esc(f.path.split('.').pop())}${uniques.has(f.path) ? `<span class="u">${uniques.get(f.path)}</span>` : ''}</span><span class="ty">${esc(typeText(f))}</span></div>`;
-  body.innerHTML = `
-  <div class="erd" id="erd">
-    <svg class="erd-svg" id="erdSvg" aria-hidden="true"></svg>
-    <div class="erd-col in">
-      <h3>Used by</h3>
-      ${ins.length ? ins.map(({ m: o, refs }) => `<a class="node in-node" href="#model/${o.key}" data-key="${o.key}"><b>${esc(o.label)}<span>${countOf(o.key)}</span></b><small>${esc(refs.map((r) => r.path).join(', '))}</small></a>`).join('') : '<p>No other model points here.</p>'}
-    </div>
-    <div class="entity" id="entity">
-      <div class="entity-head"><b>${esc(m.label)}<span>${plural(countOf(m.key), 'record')}</span></b><small>${esc(m.collection)}</small></div>
-      ${shown.map((x) => row(x)).join('')}
-      ${hiddenCount > 0 ? `<button type="button" class="f-more" data-toggle="${m.key}"><span>Show ${plural(hiddenCount, 'more field')}</span><span>${esc(fields.slice(shown.length).filter((x) => !x.depth).map((x) => x.f.path).join(', '))}</span></button>` : expanded && fields.length > LIMIT ? `<button type="button" class="f-more" data-toggle="${m.key}"><span>Show fewer fields</span><span></span></button>` : ''}
-      ${showStd ? std.map((f) => row({ f, depth: 0 }, ' std')).join('') : ''}
-      <button type="button" class="f-more" data-toggle="${m.key}:std"><span>${showStd ? 'Hide' : 'Standard fields'} ${showStd ? '' : `<span class="muted">${std.length}</span>`}</span><span>${showStd ? '' : esc(std.map((f) => f.path).join(', '))}</span></button>
-    </div>
-    <div class="erd-col out">
-      <h3>Points to</h3>
-      ${outs.length ? outs.map(({ target, refs }) => `<a class="node" href="#model/${target}" data-key="${target}"><b>${esc(labelOf(target))}<span>${countOf(target)}</span></b><small>${esc(refs.map((r) => r.path).join(', '))}</small></a>`).join('') : '<p>This model points to no other model.</p>'}
-    </div>
-  </div>
-  <div class="erd-key"><span class="key"><span class="mk req"></span>Required</span><span class="key"><span class="mk"></span>Optional</span><span class="key"><i></i>Points to</span><span class="key"><i class="in"></i>Used by</span></div>
-  <div class="card"><div class="card-head"><h3>Rules</h3></div><div class="card-body"><ul class="rules">${rulesInWords(m, sys).map(([k, v]) => `<li><span>${esc(k)}</span><span>${v}</span></li>`).join('')}</ul></div></div>
-  <div class="card">
-    <details class="fold"><summary>${ICON.chev}Every field <span class="muted">${m.fields.length}</span></summary>${fieldTable(m)}</details>
-    <details class="fold"><summary>${ICON.chev}Indexes <span class="muted">${m.indexes.length}</span></summary><div class="table-wrap"><table class="table"><thead><tr><th>Fields</th><th>Unique</th><th>Only when</th></tr></thead><tbody>${m.indexes.map((i) => `<tr><td class="mono">${esc(Object.entries(i.fields).map(([k, v]) => (v === 1 ? k : `${k} (${v})`)).join(' + '))}</td><td>${i.unique ? 'Yes' : ''}</td><td class="mono small">${i.partial ? esc(JSON.stringify(i.partial)) : ''}</td></tr>`).join('')}</tbody></table></div></details>
-    ${m.filters.length ? `<details class="fold"><summary>${ICON.chev}List filters <span class="muted">${m.filters.length}</span></summary><div class="table-wrap"><table class="table"><thead><tr><th>Query parameter</th><th>Meaning</th><th>Accepts</th></tr></thead><tbody>${m.filters.map((f) => `<tr><td class="mono">${esc(f.key)}</td><td>${esc(f.description)}</td><td class="small muted">${esc(schemaText(f.schema))}</td></tr>`).join('')}</tbody></table></div></details>` : ''}
-    <details class="fold"><summary>${ICON.chev}Request body schemas</summary><div class="fold-body"><div class="grid-2"><div class="stack"><b class="small">Create (POST)</b><pre class="json">${jsonHtml(m.createSchema)}</pre></div><div class="stack"><b class="small">Update (PATCH)</b><pre class="json">${jsonHtml(m.updateSchema)}</pre></div></div></div></details>
-  </div>`;
-  body.querySelectorAll('[data-toggle]').forEach((b) => b.addEventListener('click', () => {
-    const k = b.dataset.toggle;
-    state.expanded.has(k) ? state.expanded.delete(k) : state.expanded.add(k);
-    renderStructure(m);
-  }));
-  bindErd(m);
-}
-
-function bindErd(m) {
-  const erd = document.getElementById('erd');
-  const svg = document.getElementById('erdSvg');
-  const entity = document.getElementById('entity');
-  const draw = () => {
-    if (getComputedStyle(svg).display === 'none') { svg.innerHTML = ''; return; }
-    const box = erd.getBoundingClientRect();
-    const head = entity.querySelector('.entity-head').getBoundingClientRect();
-    const more = entity.querySelector('.f-more');
-    let out = '';
-    erd.querySelectorAll('.erd-col.out .node').forEach((node) => {
-      const target = node.dataset.key;
-      const rows = [...entity.querySelectorAll(`.f-row[data-ref="${CSS.escape(target)}"]`)];
-      const rn = node.getBoundingClientRect();
-      const starts = rows.length ? rows.map((r) => r.getBoundingClientRect()) : [more ? more.getBoundingClientRect() : head];
-      for (const rr of starts) {
-        const a = { x: rr.right - box.left, y: rr.top + rr.height / 2 - box.top };
-        const b = { x: rn.left - box.left, y: rn.top + rn.height / 2 - box.top };
-        out += `<path class="e-out" data-k="${esc(target)}" d="${curve(a, b, 1, -1)}"/><circle class="e-end" cx="${a.x}" cy="${a.y}" r="2.6"/>`;
-      }
-    });
-    erd.querySelectorAll('.erd-col.in .node').forEach((node) => {
-      const rn = node.getBoundingClientRect();
-      const a = { x: rn.right - box.left, y: rn.top + rn.height / 2 - box.top };
-      const b = { x: head.left - box.left, y: head.top + head.height / 2 - box.top };
-      out += `<path class="e-in" data-k="${esc(node.dataset.key)}" d="${curve(a, b, 1, -1)}"/>`;
-    });
-    svg.innerHTML = out;
-  };
-  const hl = (key, on) => {
-    erd.querySelectorAll(`[data-key="${CSS.escape(key)}"], .f-row[data-ref="${CSS.escape(key)}"]`).forEach((el) => el.classList.toggle('hl', on));
-    svg.querySelectorAll(`path[data-k="${CSS.escape(key)}"]`).forEach((p) => p.classList.toggle('hl', on));
-  };
-  erd.querySelectorAll('.node[data-key]').forEach((n) => { n.addEventListener('mouseenter', () => hl(n.dataset.key, true)); n.addEventListener('mouseleave', () => hl(n.dataset.key, false)); });
-  entity.querySelectorAll('.f-row[data-ref]').forEach((r) => { r.addEventListener('mouseenter', () => hl(r.dataset.ref, true)); r.addEventListener('mouseleave', () => hl(r.dataset.ref, false)); });
-  state.redraw = draw;
-  requestAnimationFrame(draw);
-  document.fonts?.ready.then(() => { if (state.redraw === draw) draw(); });
-}
-
-function rulesInWords(m, sys) {
-  const out = [];
-  const unique = (m.indexes || []).filter((i) => i.unique).map((i) => {
-    const keys = Object.keys(i.fields).filter((k) => k !== 'singleton');
-    const name = keys.length > 1 ? `${keys[0]} within ${keys.slice(1).join(' + ')}` : keys[0];
-    return `<span class="mono">${esc(name)}</span>${i.partial ? ' when set' : ''}`;
-  }).filter((x) => !x.startsWith('<span class="mono"></span>'));
-  out.push(['Shown as', `<span class="mono">${esc(m.titleField)}</span>; search covers <span class="mono">${esc(m.searchFields.join(', '))}</span>`]);
-  if (unique.length) out.push(['Must be unique', unique.join(', ')]);
-  const roles = (m.references || []).filter((r) => r.partyRoles);
-  out.push(['Links', outsText(m) + (roles.length ? `. ${roles.map((r) => `<span class="mono">${esc(r.path)}</span> must be a party with role ${esc(r.partyRoles.map((x) => x.replace(/_/g, ' ')).join(' or '))}`).join('; ')}` : '')]);
-  if (m.autoCode) out.push(['Code', 'Generated from the numbering series when left empty']);
-  if (m.immutable.length) out.push(['Fixed after create', `<span class="mono">${esc(m.immutable.join(', '))}</span>`]);
-  if (m.sensitive.length) out.push(['Sensitive', `<span class="mono">${esc(m.sensitive.join(', '))}</span> are masked unless the role has the sensitive permission`]);
-  const managed = Object.keys(m.managed || {});
-  out.push(['Lifecycle', managed.length ? `${esc(managed.join(', '))} go through this model's own endpoints (see API)` : 'Create, update with the current version, archive and restore. Delete works only when nothing refers to the record']);
-  out.push(['Custom fields', m.customFieldsAllowed ? (m.customFields.length ? m.customFields.map((f) => `<span class="mono">${esc(f.key)}</span> (${esc(f.type)}${f.required ? ', required' : ''})`).join(', ') : 'Allowed, none defined yet') : 'Not allowed']);
-  out.push(['On every record', `${esc(sys.map((f) => f.path).join(', '))}, set by the API`]);
-  return out;
-}
-const outsText = (m) => {
-  const outs = linksOut(m);
-  return outs.length ? `Every linked record must exist and be active when saved (${outs.length} ${outs.length === 1 ? 'model' : 'models'})` : 'No links to other models';
-};
-
-function fieldTable(m) {
-  const groups = [['master', 'Own'], ['standard', 'Standard'], ['system', 'System']];
-  return `<div class="table-wrap"><table class="table"><thead><tr><th>Field</th><th>Kind</th><th>Type</th><th>Rules</th></tr></thead><tbody>${groups.map(([g, label]) => m.fields.filter((f) => f.group === g).map((f) => `<tr><td class="mono">${esc(f.path)}</td><td class="muted small">${label}</td><td>${f.ref ? `<a href="#model/${esc(f.ref)}">${esc(typeText(f))}</a>` : esc(typeText(f))}</td><td><div class="tags">${f.required ? '<span class="tag pine">required</span>' : ''}${f.sensitive ? '<span class="tag brass">sensitive</span>' : ''}${f.immutable ? '<span class="tag">fixed</span>' : ''}${f.hidden ? '<span class="tag">internal</span>' : ''}${f.enum ? `<span class="small muted">${esc(f.enum.join(', '))}</span>` : ''}${f.default !== undefined ? `<span class="small muted">default ${esc(JSON.stringify(f.default))}</span>` : ''}${f.min !== undefined ? `<span class="small muted">min ${f.min}</span>` : ''}${f.max !== undefined ? `<span class="small muted">max ${f.max}</span>` : ''}</div></td></tr>`).join('')).join('')}</tbody></table></div>`;
+  return renderRecords(m);
 }
 
 function schemaText(s) {
@@ -742,7 +643,7 @@ async function loadRecords(m) {
     <tbody>${rows.map((row) => `<tr class="click" data-id="${esc(row.id)}">${cols.map((c) => `<td>${cell(row[c], c, m)}</td>`).join('')}<td><span class="status ${esc(row.status)}"><i></i>${esc(row.status)}</span></td><td class="small muted">${fmtDate(row.updatedAt)}</td></tr>`).join('')}</tbody></table></div>
     <div class="pager"><span>${plural(meta.total, 'record')} · page ${meta.page} of ${Math.max(1, meta.totalPages)} · ${r.ms} ms</span>
       <span class="toolbar"><button class="btn btn-sm" type="button" id="prev" ${meta.hasPrevPage ? '' : 'disabled'}>Previous</button><button class="btn btn-sm" type="button" id="next" ${meta.hasNextPage ? '' : 'disabled'}>Next</button></span></div>`
-    : `<div class="empty"><strong>No records match</strong>${can(m.key, 'create') ? '<span>Create one, or load the sample data from Models.</span>' : ''}</div>`;
+    : `<div class="empty"><strong>No records match</strong>${can(m.key, 'create') ? '<span>Create one, or load the sample data from API testing.</span>' : ''}</div>`;
   box.querySelectorAll('tr[data-id]').forEach((tr) => tr.addEventListener('click', () => openRecord(m, tr.dataset.id)));
   document.getElementById('prev')?.addEventListener('click', () => { s.page -= 1; loadRecords(m); });
   document.getElementById('next')?.addEventListener('click', () => { s.page += 1; loadRecords(m); });
@@ -1135,10 +1036,13 @@ function renderApiTesting() {
   ].filter((g) => g.items.length);
   const total = groups.reduce((n, g) => n + g.items.length, 0);
   const limits = state.overview?.limits || {};
+  const records = state.stats.filter((s) => !['users', 'roles'].includes(s.key)).reduce((t, s) => t + s.total, 0);
+  const showSample = records < 5 && can('company', 'update') && state.overview?.system?.environment !== 'production';
   main().innerHTML = `
   <div class="page">
     <div class="page-head"><div><h1>API testing</h1>
-      <div class="facts"><span><b>${total}</b> endpoints</span><span>Base <span class="mono">${API}</span></span><span>Bearer token sent for you</span></div></div></div>
+      <div class="facts"><span><b>${total}</b> endpoints</span><span>Base <span class="mono">${API}</span></span><span>Bearer token sent for you</span></div></div>
+      ${showSample ? '<button class="btn btn-primary" type="button" id="loadSample">Load sample data</button>' : ''}</div>
     <div id="bench"></div>
     <div class="card">
       <details class="fold"><summary>${ICON.chev}Response format</summary><div class="fold-body"><pre class="json">${jsonHtml({ success: true, data: '…', meta: { page: 1, limit: 20, total: 0 }, message: 'optional' })}</pre><pre class="json">${jsonHtml({ success: false, error: { code: 'VALIDATION_ERROR', message: '…', details: '[…]' }, requestId: '…' })}</pre></div></details>
@@ -1149,6 +1053,12 @@ function renderApiTesting() {
     </div>
   </div>`;
   apiWorkbench(document.getElementById('bench'), groups, { filter: true });
+  const sample = document.getElementById('loadSample');
+  if (sample) sample.addEventListener('click', async () => {
+    sample.disabled = true;
+    const r = await call('POST', '/meta/sample-data');
+    if (r.ok) { toast(`Sample data loaded: ${r.data.data.created} records`); await loadMeta(); renderShell(); route(); } else sample.disabled = false;
+  });
 }
 
 /* ---------------- Custom master records ---------------- */

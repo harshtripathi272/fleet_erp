@@ -12,6 +12,19 @@ beforeEach(async () => {
   await loadSample(owner);
 });
 
+describe('signed-out access', () => {
+  test('the models reference is readable without signing in and carries no records or permissions', async () => {
+    const r = await api().get('/api/v1/meta/models').expect(200);
+    const vehicles = r.body.data.find((m: { key: string }) => m.key === 'vehicles');
+    assert.ok(vehicles.fields.some((f: { path: string }) => f.path === 'registrationNumber'));
+    assert.equal(vehicles.permissions, undefined);
+    assert.equal(JSON.stringify(r.body).includes('ALC 4821'), false);
+    await api().get('/api/v1/meta/masters').expect(401);
+    await api().get('/api/v1/meta/stats').expect(401);
+    await api().get('/api/v1/vehicles').expect(401);
+  });
+});
+
 describe('role permissions', () => {
   test('viewer reads everything but cannot change anything', async () => {
     const viewer = await userWithRole(owner, 'viewer');

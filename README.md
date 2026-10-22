@@ -36,13 +36,14 @@ On a fresh database, the **first account you create becomes the Owner**. Later s
 
 ## Test console
 
-Open `/console/` and sign in. Models are listed top-down: **Core records** (vehicles, trailers, pairings, drivers, parties, places, routes, products, compliance documents), then **Trip rules**, **Reference lists** and **Company setup**.
+`/console/` opens on the **models reference**, which needs no sign-in. It lists every model in four groups, most important first: **Core records** (vehicles, trailers, pairings, drivers, parties, places, routes, products, compliance documents), **Trip rules**, **Reference lists** and **Company setup**. Each model page shows its fields (required first, nested fields indented), what it links to, what uses it, and its rules in plain words; endpoints, indexes, list filters and JSON Schemas are folded underneath. The reference reads `GET /api/v1/meta/models`, which returns structure only (no records) and exists only while `CONSOLE_ENABLED` is on.
+
+**Test the API** leads to sign-in and the testing console:
 
 | Page | What it is for |
 | --- | --- |
-| Models | Every model in that order, with record counts. Tick **Show links on hover** to draw what a model points to and what uses it. On an empty database, **Load sample data** creates a Zambia–Tanzania–DRC fuel and copper operation (109 records) through the same validated services. |
-| Each model | **Structure**: a diagram of the model with its fields (required first, nested fields indented, standard fields folded), the models it points to and the models that use it, then its rules in plain words. Every field, indexes, list filters and the JSON Schemas are in folded sections. **Records**: search, filter, sort and page; open a record to read it with linked records shown by name, see its JSON, where it is used and its history; create, edit, archive, restore or delete it. **API**: each endpoint of the model, ready to send with real ids filled in. |
-| API testing | All 500+ endpoints grouped by sign-in, company, health and model, with a filter; response format, limits and error codes. |
+| API testing | All 500+ endpoints grouped by sign-in, company, health and model, each ready to send with real ids filled in; response format, limits and error codes. On an empty database, **Load sample data** creates a Zambia–Tanzania–DRC fuel and copper operation (109 records) through the same validated services. |
+| Each model | **Records**: search, filter, sort and page; open a record to read it with linked records shown by name, see its JSON, where it is used and its history; create, edit, archive, restore or delete it. **API**: the model's endpoints. |
 | Account | Profile, password, signed-in devices, what your roles allow, the password-reset flow, the access token. |
 | Company | The single company record (legal details, base currency, time zone, fiscal year, modules, self sign-up). |
 | Audit log | Every create, update, archive, restore and delete, with who did it and what changed. |
@@ -107,7 +108,7 @@ npm run check     # typecheck, all tests, production build
 npm test
 ```
 
-98 tests run on an in-memory MongoDB, covering:
+99 tests run on an in-memory MongoDB, covering:
 
 - authentication and authorization, including privilege escalation;
 - a contract run against every master;
