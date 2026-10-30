@@ -1,6 +1,6 @@
 # Building the React app against this API
 
-The agreed frontend stack is **React + TanStack (Query, Router, Table, Form) + shadcn/ui**. The frontend lives in its own repository or folder; this repository is the API. While you build, run this API locally ([Windows setup](SETUP-WINDOWS.md)) and point the app at it.
+The agreed frontend stack is **React + TanStack (Query, Router, Table, Form) + shadcn/ui**. This repository ([harshtripathi272/fleet_erp](https://github.com/harshtripathi272/fleet_erp)) is the API. The screens to build already exist as a clickable mock in [laksh-ya/fleet-erp → `trip-flow/`](https://github.com/laksh-ya/fleet-erp/tree/main/trip-flow); turning that mock into the real, connected frontend is the current priority, tracked with full context in [issue #2](https://github.com/harshtripathi272/fleet_erp/issues/2), including where the frontend code should live. While you build, run this API locally ([Windows setup](SETUP-WINDOWS.md)) and point the app at it.
 
 The API's behaviour (sections 3 and 4) is how the backend works today. The rest (proxy setup, code sketch, folder and library choices inside the stack) are suggestions; organise the app however works best.
 
@@ -111,4 +111,4 @@ Add the 401 → refresh → retry step inside `api()`, as in section 3.
 
 ## 6. Look and feel
 
-The clickable mock (trip-flow, in the separate `laksh-ya/fleet-erp` repository) sets the visual language: paper-coloured canvas, dark pine-green sidebar, Instrument Sans, quiet tables. The console in `public/console` uses the same materials. See the UI guidance in [Project context](PROJECT-CONTEXT.md#ui-guidance) for what has worked and what was rejected so far.
+The clickable mock ([`trip-flow/`](https://github.com/laksh-ya/fleet-erp/tree/main/trip-flow) in `laksh-ya/fleet-erp`) sets the visual language: paper-coloured canvas, dark pine-green sidebar, Instrument Sans, quiet tables. The console in `public/console` uses the same materials. See the UI guidance in [Project context](PROJECT-CONTEXT.md#ui-guidance) for what has worked and what was rejected so far.

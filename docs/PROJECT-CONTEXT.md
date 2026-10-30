@@ -12,12 +12,12 @@ Work so far:
 
 | Piece | Where | State |
 | --- | --- | --- |
-| Clickable mock of the trip flow (Owner, Operations, Finance and Driver desks) | `trip-flow/` in the separate repository `laksh-ya/fleet-erp` | Done; it is the reference for screens and flow |
+| Clickable mock of the trip flow (Owner, Operations, Finance and Driver desks) | [laksh-ya/fleet-erp → `trip-flow/`](https://github.com/laksh-ya/fleet-erp/tree/main/trip-flow) | Done; the reference for screens and flow |
+| Client material (PRD, master sheets, meeting notes) | [laksh-ya/fleet-erp → `reference/`](https://github.com/laksh-ya/fleet-erp/tree/main/reference) | Reference |
 | Masters specification (MF-SPEC-01) | Shared page; ask Lakshya for access | Done; this backend implements its MVP column |
-| **This repository: the backend for the masters** | `feature/mvp-masters-backend`, pull request #1 | Done and tested; under review, not merged yet |
-| Models reference page (the console's model list, as a shareable page) | Shared page; ask Lakshya for access | Snapshot of 22 Oct 2026 |
-| Trips and money transactions (trip, advance, fuel, loading and offloading, settlement) | Not started | Next, after the models are agreed |
-| React frontend | Not started | See [Building the React app](FRONTEND.md) |
+| **Backend: auth, roles, every MVP master, console** | [harshtripathi272/fleet_erp](https://github.com/harshtripathi272/fleet_erp) (this repository) | Done, tested, on `main` |
+| **The real frontend, connected to the API** | [Issue #2](https://github.com/harshtripathi272/fleet_erp/issues/2) | **Current priority** |
+| Trips and money transactions (nominations, trips, advances, fuel, loading and offloading, expenses, settlement) | Part of issue #2 | Not started |
 
 The legacy system screenshots (GoFleet: trip, waypoints, advance request, disbursement, loading and offloading, fuel shortage, driver settlement, trip sheet) and the master catalogue spreadsheet are with Lakshya, outside the repositories.
 

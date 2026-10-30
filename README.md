@@ -2,6 +2,15 @@
 
 The API for Marichi Fleet, a transport ERP for a fuel and cargo haulier working across Zambia, Tanzania and the DRC. Node.js + Express + MongoDB (Mongoose) + Redis, following the Marichi Backend Development Guide (router → controller → service → schema, typed errors, `ApiResponse`, Pino, Zod).
 
+## Repositories
+
+| Repository | What it holds |
+| --- | --- |
+| [harshtripathi272/fleet_erp](https://github.com/harshtripathi272/fleet_erp) (this one) | The backend API, its tests and the console |
+| [laksh-ya/fleet-erp](https://github.com/laksh-ya/fleet-erp) | The clickable frontend mock in [`trip-flow/`](https://github.com/laksh-ya/fleet-erp/tree/main/trip-flow), and the client's material in [`reference/`](https://github.com/laksh-ya/fleet-erp/tree/main/reference) |
+
+Both are private; ask Lakshya for access. **Current priority:** turn the mock into the real frontend, connected to this API: [issue #2](https://github.com/harshtripathi272/fleet_erp/issues/2).
+
 ## Contents
 
 **Guides**
@@ -13,6 +22,7 @@ The API for Marichi Fleet, a transport ERP for a fuel and cargo haulier working 
 
 **This page**
 
+- [Repositories](#repositories)
 - [What is in it](#what-is-in-it)
 - [Run it](#run-it)
 - [Environment variables](#environment-variables)

@@ -45,18 +45,29 @@ Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
 
 ## 2. Get the code
 
-The repository is private. The repository owner must first add your GitHub account as a collaborator: **Settings → Collaborators → Add people** on [github.com/harshtripathi272/fleet_erp](https://github.com/harshtripathi272/fleet_erp). Then:
+There are two repositories, both private. Ask Lakshya to add your GitHub account to each (**Settings → Collaborators → Add people**):
+
+| Repository | What it holds |
+| --- | --- |
+| [harshtripathi272/fleet_erp](https://github.com/harshtripathi272/fleet_erp) | The backend API: this guide sets it up |
+| [laksh-ya/fleet-erp](https://github.com/laksh-ya/fleet-erp) | The frontend mock in `trip-flow/`, and the client's material in `reference/` |
 
 ```powershell
 cd $HOME\Documents
 git clone https://github.com/harshtripathi272/fleet_erp.git
+git clone https://github.com/laksh-ya/fleet-erp.git
 cd fleet_erp
-git checkout feature/mvp-masters-backend
 ```
 
-Git asks you to sign in to GitHub in a browser the first time.
+Git asks you to sign in to GitHub in a browser the first time. The two folder names differ only by `_` and `-`: `fleet_erp` is the backend, `fleet-erp` the mock.
 
-The `git checkout` line is needed until pull request #1 is merged into `main`. After the merge, `main` has everything and you can skip it.
+To run the mock on its own (it keeps demo data in the browser and does not need the API yet):
+
+```powershell
+cd $HOME\Documents\fleet-erp\trip-flow
+npm install
+npm run dev
+```
 
 ## 3. Install and configure
 
