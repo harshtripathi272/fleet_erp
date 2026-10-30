@@ -36,18 +36,18 @@ The legacy system screenshots (GoFleet: trip, waypoints, advance request, disbur
 
 Inside that, the backend uses TypeScript, Zod for validation, Pino for logs and Node's built-in test runner.
 
-Ground rules about the stack:
+How the stack has been used so far, and why:
 
-- **Do not add libraries, services or patterns outside this list without asking first.**
-- Keep it a **traditional MERN setup**. MongoDB runs as a plain standalone server: no replica set, no multi-document transactions. Duplicates and races are prevented with unique indexes and a `version` on every record instead.
-- Sign-in is our own e-mail and password (scrypt hashes, signed tokens from Node's crypto module), not a third-party auth service.
+- **Agreed as a set.** If something new seems needed (a library, a service, a pattern), it is worth proposing and discussing first, so the team keeps one shared picture.
+- **A traditional MERN setup.** MongoDB runs as a plain standalone server, without a replica set or multi-document transactions, to keep hosting simple. Duplicates and races are prevented with unique indexes and a `version` on every record instead.
+- **Sign-in is our own** e-mail and password (scrypt hashes, signed tokens from Node's crypto module), so there is no third-party auth dependency for now.
 
 ## How we work
 
-- **Never push to `main`.** Every change goes on a branch and into a pull request.
-- Run `npm run check` (type-check, all tests, build) before every push.
+- Changes go on a branch and into a pull request, so they can be reviewed; `main` is not pushed to directly.
+- `npm run check` (type-check, tests, build) passes before a push.
 - Secrets live only in `.env`, which is never committed. `.env.example` lists every setting.
-- Ask before anything unusual. If a task seems to need something outside the stack, raise it first.
+- When something is unclear or seems to need a different approach, ask. These notes describe where we are, not everything that is allowed.
 
 ## Decisions from the owner (meeting of 20 September 2026)
 
@@ -87,14 +87,18 @@ Rules every model follows:
 
 What earlier rounds of feedback on the mock and the console liked and rejected. Treat it as guidance; when a screen needs something different, discuss it.
 
-- **No** small all-caps labels above headings.
-- **No** explanatory subtitles or developer notes in the interface.
-- **Never two controls for the same thing** on one screen.
-- **No** "live" badges, pulsing dots, emojis, decorative illustrations or generic AI-looking components.
-- **Nothing that only appears on hover** to show off (link lines, animations). If a visual helps, make it a plain toggle.
-- **Present the important things first.** Top-down: core models and required fields at the top, supporting items lower, tools and documentation on their own pages.
-- Looks formal and premium: paper-coloured canvas, pine-green sidebar, Instrument Sans, framed tables. Realistic where it matters (printed documents, receipts, the WhatsApp phone).
-- Phones work: test at 375 px wide; no icon-only buttons without labels.
+Liked so far:
+
+- Important things first: core models and required fields at the top, supporting items lower, tools and documentation on their own pages.
+- A formal, calm look: paper-coloured canvas, pine-green sidebar, Instrument Sans, framed tables. Realistic where it matters (printed documents, receipts, the WhatsApp phone).
+- Screens that also work on a phone, with labelled buttons.
+
+Rejected so far, usually as cluttered or "AI-looking":
+
+- Small all-caps labels above headings; explanatory subtitles or developer notes in the interface.
+- Two controls for the same thing on one screen.
+- "Live" badges, pulsing dots, emojis, decorative illustrations.
+- Effects that only appear on hover, such as link lines drawn on hover. A plain toggle went down better.
 
 ## Words used in this project
 

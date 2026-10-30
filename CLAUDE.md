@@ -1,8 +1,11 @@
 # Notes for AI assistants
 
-Read [docs/PROJECT-CONTEXT.md](docs/PROJECT-CONTEXT.md) first: the agreed stack, how we work, the owner's decisions and the UI guidance. Setup is in [docs/SETUP-WINDOWS.md](docs/SETUP-WINDOWS.md) and the README; the API contract for the frontend is in [docs/FRONTEND.md](docs/FRONTEND.md).
+[docs/PROJECT-CONTEXT.md](docs/PROJECT-CONTEXT.md) explains what this project is, what has been decided so far and why. Use it as background, not as a specification: it records the current thinking, and parts of it are open for discussion. When a task is not covered there, or something in it looks wrong for the task, ask rather than assume.
 
-- Use only the agreed stack. Ask before adding a library, service or pattern outside it.
-- Keep a traditional MERN setup: standalone MongoDB, no transactions; Models → Route → Controller → Service.
-- Never push to `main`; work on a branch and open a pull request.
-- Run `npm run check` before pushing.
+Setup is in the README and [docs/SETUP-WINDOWS.md](docs/SETUP-WINDOWS.md); how the API behaves for a frontend is in [docs/FRONTEND.md](docs/FRONTEND.md).
+
+Things the team has agreed and would want to be asked about before changing:
+
+- The stack (listed in the context doc). If a task seems to need a library, service or pattern outside it, propose it and explain why.
+- Changes go on a branch and into a pull request, not straight to `main`.
+- `npm run check` passes before pushing.
