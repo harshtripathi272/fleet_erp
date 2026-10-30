@@ -1,38 +1,92 @@
 # Marichi Fleet ERP backend
 
-Node.js + Express + MongoDB (Mongoose) + Redis, following the Marichi Backend Development Guide (router → controller → service → schema, typed errors, `ApiResponse`, Pino, Zod).
+The API for Marichi Fleet, a transport ERP for a fuel and cargo haulier working across Zambia, Tanzania and the DRC. Node.js + Express + MongoDB (Mongoose) + Redis, following the Marichi Backend Development Guide (router → controller → service → schema, typed errors, `ApiResponse`, Pino, Zod).
 
-It contains:
+## Contents
+
+**Guides**
+
+- [Setting up on Windows](docs/SETUP-WINDOWS.md): Node, MongoDB, the code, sample data and the console, step by step.
+- [Building the React app against this API](docs/FRONTEND.md): connecting a Vite app, sign-in and token refresh, lists, saving, errors.
+- [Project context](docs/PROJECT-CONTEXT.md): what we are building, the agreed stack, how we work, the owner's decisions, how the models are organised, UI guidance.
+- [Notes for AI assistants](CLAUDE.md): the short version of the rules, for coding assistants working in this repository.
+
+**This page**
+
+- [What is in it](#what-is-in-it)
+- [Run it](#run-it)
+- [Environment variables](#environment-variables)
+- [Sample data](#sample-data)
+- [Test console](#test-console)
+- [API conventions](#api-conventions)
+- [Masters](#masters)
+- [Code layout](#code-layout)
+- [Checks](#checks)
+- [Production notes](#production-notes)
+
+## What is in it
 
 - **Authentication**: e-mail and password sign-up, sign-in, refresh-token rotation, sign-out (one device or all), change password, forgot/reset password by e-mail (SMTP), account lockout and rate limits.
 - **Authorization**: roles with per-master permissions (`read`, `create`, `update`, `archive`, `delete`, `sensitive`). Built-in Owner, Admin, Operations, Finance and Viewer roles, plus custom roles. Nobody can grant permissions they do not hold.
-- **51 masters** from the MVP column of the masters specification (MF-SPEC-01), plus users and roles. Every master has the same standard behaviour: versioned updates, archive/restore, delete only when unused, audit history, custom fields, branch scope and validity dates.
+- **The masters** from the MVP column of the masters specification (MF-SPEC-01), plus users and roles. Every master has the same standard behaviour: versioned updates, archive/restore, delete only when unused, audit history, custom fields, branch scope and validity dates.
 - **Configuration without code**: simple lists, custom fields on any master, and custom masters with their own records.
-- **A test console** at `/console/` for trying every endpoint, browsing every model, and reading the audit log.
+- **A console** at `/console/`: a models reference anyone can read, and a signed-in tool for trying every endpoint, browsing records and reading the audit log.
 
 ## Run it
+
+Needs Node.js 22 or newer and MongoDB 7 or newer. Redis is optional. On Windows, follow [Setting up on Windows](docs/SETUP-WINDOWS.md); the steps below are the short version.
+
+### Without Docker
+
+Start MongoDB on `127.0.0.1:27017`, then:
+
+```sh
+npm ci
+cp .env.example .env      # PowerShell: Copy-Item .env.example .env
+npm run seed              # optional: loads the sample data
+npm run dev               # http://127.0.0.1:3000/console/
+```
 
 ### With Docker Compose (API + MongoDB + Redis)
 
 ```sh
-cp .env.example .env      # then set JWT_SECRET and the SMTP_* credentials
+cp .env.example .env
 docker compose up --build
 ```
 
-The API listens on http://localhost:3000 and the console is at http://localhost:3000/console/. MongoDB is published on `127.0.0.1:27017`, so **MongoDB Compass** connects to `mongodb://127.0.0.1:27017` with no login and shows the `fleet_erp` database.
-
-### Without Docker
-
-Requires Node.js 22+ and a MongoDB 7 or 8 server. Redis is optional.
-
-```sh
-npm ci
-cp .env.example .env
-npm run dev               # http://127.0.0.1:3000/console/
-npm run seed              # optional: loads the sample operation into MONGODB_URI
-```
+Either way, the API listens on http://127.0.0.1:3000 and the console is at http://127.0.0.1:3000/console/. **MongoDB Compass** connects to `mongodb://127.0.0.1:27017` with no login and shows the `fleet_erp` database.
 
 On a fresh database, the **first account you create becomes the Owner**. Later sign-ups get the read-only Viewer role, or are refused if the company turns self sign-up off.
+
+## Environment variables
+
+**For local development, nothing has to be set.** Copy `.env.example` to `.env` and the defaults work: MongoDB on `127.0.0.1:27017`, the API on port 3000, a development sign-in secret, and e-mails written to the log instead of sent. `.env` is git-ignored; `.env.example` lists and explains every setting.
+
+Settings you may change locally:
+
+| Setting | Default | Change it to |
+| --- | --- | --- |
+| `MONGODB_URI` | `mongodb://127.0.0.1:27017/fleet_erp` | Use another database, or MongoDB Atlas |
+| `PORT` | `3000` | Run on another port |
+| `CORS_ORIGINS` | empty | A browser app's address, e.g. `http://localhost:5173`, when it calls the API directly |
+| `EXPOSE_RESET_TOKEN` | `false` | `true` to test "Forgot password" without e-mail (refused in production) |
+| `REDIS_URL` | empty | A Redis address, to keep rate limits in Redis instead of memory |
+| `SMTP_HOST`, `SMTP_USER`, `SMTP_PASS` | empty | Real SMTP credentials, to actually send e-mail |
+
+In production the API refuses to start unless `NODE_ENV=production`, a unique `JWT_SECRET` of 32+ characters and `SMTP_HOST` are set; see [Production notes](#production-notes).
+
+## Sample data
+
+`npm run seed`, or **Load sample data** in the console, creates a small, made-up operation through the same validation as the API. Nothing in it is real or confidential:
+
+- Zambia, Tanzania and DR Congo with provinces and cities; places such as the Lusaka fuel depot, Dar es Salaam port, the Ndola yard and the Nakonde and Kasumbalesa borders; a route from Dar es Salaam port to the Lusaka depot.
+- Kwacha, US dollar and Tanzanian shilling with exchange rates; cash and mobile-money payment methods.
+- A Lusaka head office and an Ndola branch; numbering series for drivers, parties and trips.
+- Customers and partners such as Zambezi Energy Ltd and Copperbelt Minerals plc, a leasing financier and a clearing agent.
+- A Scania and a Volvo truck, two trailers (a tanker and a flatbed) and a pairing; two drivers; compliance documents.
+- Fuel and copper products, trip types and stages, budgets, fuel norms, advance, shortage and recovery rules, message templates and a print layout.
+
+It loads once into an empty database. To start again, delete the `fleet_erp` database in Compass and seed again.
 
 ## Test console
 
@@ -42,7 +96,7 @@ On a fresh database, the **first account you create becomes the Owner**. Later s
 
 | Page | What it is for |
 | --- | --- |
-| API testing | All 500+ endpoints grouped by sign-in, company, health and model, each ready to send with real ids filled in; response format, limits and error codes. On an empty database, **Load sample data** creates a Zambia–Tanzania–DRC fuel and copper operation (109 records) through the same validated services. |
+| API testing | Every endpoint, grouped by sign-in, company, health and model, each ready to send with real ids filled in; response format, limits and error codes. On an empty database, **Load sample data** loads the [sample data](#sample-data). |
 | Each model | **Records**: search, filter, sort and page; open a record to read it with linked records shown by name, see its JSON, where it is used and its history; create, edit, archive, restore or delete it. **API**: the model's endpoints. |
 | Account | Profile, password, signed-in devices, what your roles allow, the password-reset flow, the access token. |
 | Company | The single company record (legal details, base currency, time zone, fiscal year, modules, self sign-up). |
@@ -108,7 +162,7 @@ npm run check     # typecheck, all tests, production build
 npm test
 ```
 
-99 tests run on an in-memory MongoDB, covering:
+The tests run on their own temporary MongoDB (not your `fleet_erp` database) and cover:
 
 - authentication and authorization, including privilege escalation;
 - a contract run against every master;
