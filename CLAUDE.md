@@ -1,11 +1,5 @@
 # Notes for AI assistants
 
-[docs/PROJECT-CONTEXT.md](docs/PROJECT-CONTEXT.md) explains what this project is, what has been decided so far and why. Use it as background, not as a specification: it records the current thinking, and parts of it are open for discussion. When a task is not covered there, or something in it looks wrong for the task, ask rather than assume.
+Everything about this project is in [README.md](README.md): where things stand, the context behind decisions, setup, the console, how the API behaves, and the code layout. The next piece of work is [issue #2](https://github.com/harshtripathi272/fleet_erp/issues/2).
 
-Setup is in the README and [docs/SETUP-WINDOWS.md](docs/SETUP-WINDOWS.md); how the API behaves for a frontend is in [docs/FRONTEND.md](docs/FRONTEND.md).
-
-Things the team has agreed and would want to be asked about before changing:
-
-- The stack (listed in the context doc). If a task seems to need a library, service or pattern outside it, propose it and explain why.
-- Changes go on a branch and into a pull request, not straight to `main`.
-- `npm run check` passes before pushing.
+The README separates what is settled (the stack, the owner's decisions, how we work) from what is open (model grouping, screen layouts, UI guidance, code suggestions). Treat the open parts as current thinking, not a specification. When a task is not covered, or something looks wrong for the task, ask rather than assume. If a task seems to need a library, service or pattern outside the agreed stack, propose it first.
