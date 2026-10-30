@@ -36,6 +36,11 @@ export class TooManyRequestsError extends AppError {
     super(message, HTTP_STATUS.TOO_MANY_REQUESTS, ERROR_CODES.TOO_MANY_REQUESTS, details);
   }
 }
+export class ServiceUnavailableError extends AppError {
+  constructor(message = 'Service unavailable', details?: unknown) {
+    super(message, HTTP_STATUS.SERVICE_UNAVAILABLE, ERROR_CODES.SERVICE_UNAVAILABLE, details);
+  }
+}
 export class InternalServerError extends AppError {
   constructor(message = 'Internal server error', cause?: unknown) {
     super(message, HTTP_STATUS.INTERNAL_SERVER_ERROR, ERROR_CODES.INTERNAL_SERVER_ERROR, undefined, false, cause);

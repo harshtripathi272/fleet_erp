@@ -1,9 +1,18 @@
 import { app } from './app.js';
 import { env } from './config/env.js';
+import { connectRedis, disconnectRedis } from './core/cache/redis.js';
+import { connectMongo, disconnectMongo, syncIndexes } from './core/db/mongo.js';
 import { logger } from './core/logger/index.js';
+import { ensureSystemRoles } from './modules/roles/roles.service.js';
+
+await connectMongo();
+await syncIndexes();
+await ensureSystemRoles();
+await connectRedis();
 
 const server = app.listen(env.PORT, env.HOST, () => {
   logger.info({ host: env.HOST, port: env.PORT, environment: env.NODE_ENV }, 'Server started');
+  if (env.CONSOLE_ENABLED) logger.info({ url: `http://${env.HOST}:${env.PORT}/console/` }, 'API test console available');
 });
 
 let stopping = false;
@@ -18,9 +27,10 @@ function shutdown(reason: string, exitCode: number) {
     process.exit(1);
   }, env.SHUTDOWN_TIMEOUT_MS);
   timer.unref();
-  server.close((err) => {
+  server.close(async (err) => {
     clearTimeout(timer);
     if (err) { logger.error({ err }, 'Shutdown failed'); process.exitCode = 1; }
+    await Promise.allSettled([disconnectMongo(), disconnectRedis()]);
     logger.info({}, 'Server stopped');
     logger.flush();
   });

@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { ValidationError } from '../core/errors/index.js';
 
 type Target = 'body' | 'query' | 'params';
-export const validate = (schemas: Partial<Record<Target, z.ZodType>>): RequestHandler => async (req, _res, next) => {
+export const validate = (schemas: Partial<Record<Target, z.ZodType>>): RequestHandler => Object.assign<RequestHandler, { meta: object }>(async (req, _res, next) => {
   const parsed: Partial<Record<Target, unknown>> = {};
   const errors: Partial<Record<Target, unknown>> = {};
   for (const target of ['body', 'query', 'params'] as const) {
@@ -19,4 +19,4 @@ export const validate = (schemas: Partial<Record<Target, z.ZodType>>): RequestHa
     Object.defineProperty(req, target, { value: parsed[target], writable: true, configurable: true, enumerable: true });
   }
   next();
-};
+}, { meta: { schemas } });
