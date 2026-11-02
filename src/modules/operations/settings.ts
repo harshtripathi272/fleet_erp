@@ -15,10 +15,10 @@ export async function companySettings(): Promise<{ modules: string[]; operations
 
 export const operationsSettings = async () => (await companySettings()).operations;
 
-const MODULE_NAMES: Record<string, string> = { trips: 'Trips', finance: 'Finance', tracking: 'Tracking' };
+const MODULE_NAMES: Record<string, string> = { trips: 'Trips', finance: 'Finance', tracking: 'Tracking', 'driver-app': 'Driver app' };
 
 /** Refuses requests to an area whose module the company has switched off (company `modules`). */
-export const requireModule = (module: 'trips' | 'finance' | 'tracking'): RequestHandler => Object.assign<RequestHandler, { meta: object }>(async (_req, _res, next) => {
+export const requireModule = (module: 'trips' | 'finance' | 'tracking' | 'driver-app'): RequestHandler => Object.assign<RequestHandler, { meta: object }>(async (_req, _res, next) => {
   const { modules } = await companySettings();
   if (!modules.includes(module)) throw new ForbiddenError(`The ${MODULE_NAMES[module]} module is switched off for this company`);
   next();

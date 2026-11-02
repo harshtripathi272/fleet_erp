@@ -11,3 +11,4 @@ coverage
 .claude
 tests
 *.log
+data

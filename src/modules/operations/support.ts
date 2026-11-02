@@ -27,8 +27,12 @@ export interface OpsContext {
   can: (resource: string, action: Action) => boolean;
   /** Role keys, for approval levels that name a role. */
   roles: string[];
-  /** Driver messages arrive over WhatsApp, either real (Marichi Talks) or simulated in the app. */
+  /** Driver messages arrive from the driver app, over WhatsApp (Marichi Talks), or from the simulated phone. */
   asDriver?: boolean;
+  /** The driver's own account (driver app): it may act only on that driver's work. */
+  driverId?: string;
+  /** Sent from a simulator, so records say they are not real. */
+  simulated?: boolean;
 }
 
 /** Owner and Admin work at the owner's desk; otherwise the first operational role decides. */

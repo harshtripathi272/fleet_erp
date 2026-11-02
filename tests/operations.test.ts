@@ -88,7 +88,7 @@ describe('a fuel trip from plan to settlement', () => {
     assert.equal(onRoad.openingFuelL, 200, 'opening fuel excludes fuel issued for this trip');
 
     // The truck can't pass the loading point before the load is recorded.
-    const held = ok(await as(ops).post(`/trips/${trip.id}/position`, { km: 2500, speed: 70 }));
+    const held = ok(await as(ops).post(`/trips/${trip.id}/position`, { km: 2500, speed: 70, source: 'simulator' }));
     assert.equal(held.tracking.km, 1961);
     assert.ok(held.stops[1].arrivedAt, 'loading point stamped');
 
@@ -107,13 +107,13 @@ describe('a fuel trip from plan to settlement', () => {
     assert.equal(ok(await as(ops).get(`/driver-documents/${loadingDoc.id}`)).status, 'recorded');
     await as(ops).post('/consignments', { tripId: trip.id, productId: ids.diesel, invoiceNo: 'X', qty: 10, tempC: 20, density: 835 }).expect(409);
 
-    ok(await as(ops).post(`/trips/${trip.id}/position`, { km: 3000, speed: 70 }));
-    const atOffload = ok(await as(ops).post(`/trips/${trip.id}/position`, { km: 9999, speed: 70 }));
+    ok(await as(ops).post(`/trips/${trip.id}/position`, { km: 3000, speed: 70, source: 'simulator' }));
+    const atOffload = ok(await as(ops).post(`/trips/${trip.id}/position`, { km: 9999, speed: 70, source: 'simulator' }));
     assert.equal(atOffload.tracking.km, 1961 + 934 + 1027, 'held at offloading until delivery');
 
     // Delivered 0.5 % less at 20 °C than loaded: 0.2 % beyond the 0.3 % allowance.
     const delivered20 = Math.round(load.load.std20L * 0.995);
-    ok(await driverSends('d1', { kind: 'delivery', file: { name: 'pod.jpg', mime: 'image/jpeg' }, reading: { docNo: 'POD-55120', qty: 37800, ambientL: 37800, tempC: 20, density: 835, certStd20L: delivered20 } }), 201);
+    ok(await driverSends('d1', { kind: 'delivery', file: { name: 'pod.jpg', mime: 'image/jpeg', sampleId: 'delivery:1:0' }, reading: { docNo: 'POD-55120', qty: 37800, ambientL: 37800, tempC: 20, density: 835, certStd20L: delivered20 } }), 201);
     const delivery = ok(await as(ops).post(`/consignments/${load.id}/delivery`, { podNo: 'POD-55120', qty: 37800, ambientL: 37800, tempC: 20, density: 835, certStd20L: delivered20 }));
     const s = delivery.shortage;
     assert.equal(s.lossL, load.load.std20L - delivered20);
@@ -124,7 +124,7 @@ describe('a fuel trip from plan to settlement', () => {
     await as(ops).post(`/consignments/${load.id}/shortage-decision`, { charge: true }).expect(403);
     ok(await as(fin).post(`/consignments/${load.id}/shortage-decision`, { charge: true }));
 
-    const receipt = ok(await driverSends('d1', { kind: 'expense', file: { name: 'toll.jpg', mime: 'image/jpeg' }, reading: { docNo: 'R12345', amount: 250, currencyCode: 'ZMW', categoryId: ids.ecRoad } }), 201);
+    const receipt = ok(await driverSends('d1', { kind: 'expense', file: { name: 'toll.jpg', mime: 'image/jpeg', sampleId: 'expense:1:toll' }, reading: { docNo: 'R12345', amount: 250, currencyCode: 'ZMW', categoryId: ids.ecRoad } }), 201);
     const finInbox = ok(await as(fin).get('/messages', { thread: 'queue:expense-approvals' }));
     assert.equal(finInbox.find((m: { refId?: string }) => m.refId === receipt.id).buttons[0].action.type, 'expense.record');
     const expense = ok(await as(fin).post('/expenses', { driverId: ids.d1, tripId: trip.id, categoryId: ids.ecRoad, amount: { amountMinor: 250_00, currencyId: ids.ZMW }, receiptNo: 'R12345', docId: receipt.id }), 201);
@@ -314,7 +314,7 @@ describe('documents, expenses and settlement rules', () => {
     assert.equal(ok(await as(ops).get(`/consignments/${c.id}`)).shortage.status, 'none');
     const pending = ok(await as(ops).post('/expenses', { driverId: ids.d1, tripId: trip.id, categoryId: ids.ecRoad, amount: { amountMinor: 100_00, currencyId: ids.ZMW } }), 201);
     assert.equal(pending.status, 'pending', 'Operations records, Finance approves');
-    ok(await driverSends('d1', { kind: 'expense', file: { name: 'r.jpg', mime: 'image/jpeg' } }), 201);
+    ok(await driverSends('d1', { kind: 'expense', file: { name: 'r.jpg', mime: 'image/jpeg', sampleId: 'expense:1:meals' } }), 201);
     ok(await as(ops).post(`/trips/${trip.id}/end`, { closingFuelL: 100 }));
     assert.match((await as(fin).post('/settlements', { driverId: ids.d1, tripIds: [trip.id], cashMinor: 0 })).body.error.message, /Decide the expenses/);
     await as(ops).post(`/expenses/${pending.id}/decide`, { approve: true }).expect(403);
@@ -410,7 +410,7 @@ describe('configuration, not code', () => {
     assert.match((await as(ops).post('/fund-requests', { tripId: trip.id, kind: 'fuel', litres: 10 })).body.error.message, /Finance module is switched off/);
     await as(ops).get('/driver-accounts').expect(403);
     ok(await as(ops).post(`/trips/${trip.id}/dispatch`));
-    await as(ops).post(`/trips/${trip.id}/position`, { km: 10, speed: 50 }).expect(403);
+    await as(ops).post(`/trips/${trip.id}/position`, { km: 10, speed: 50, source: 'simulator' }).expect(403);
     await setCompany({ modules: ['masters'] });
     await as(ops).get('/trips').expect(403);
   });

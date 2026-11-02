@@ -39,11 +39,23 @@ export const envSchema = z.object({
   /** Folder of the built web app; defaults to web/dist next to the API. The app is served only when it has been built. */
   WEB_DIR: z.string().trim().min(1).optional(),
 
+  /** Where uploaded files (document photos, PDFs) are kept: a folder on the server, or a Google Cloud Storage bucket. */
+  FILE_STORAGE: z.enum(['local', 'gcs']).default('local'),
+  /** Folder for `FILE_STORAGE=local`, relative to where the API starts. On Cloud Run use `gcs`: its disk is wiped on restart. */
+  FILE_STORAGE_DIR: z.string().trim().min(1).default('data/files'),
+  /** Bucket for `FILE_STORAGE=gcs`. Credentials come from the environment (the service account on GCP). */
+  GCS_BUCKET: optionalText,
+  /** Largest file one upload may carry. */
+  UPLOAD_MAX_MB: z.coerce.number().min(1).max(100).default(15),
+
   /** Shared secret Marichi Talks sends in `X-Webhook-Secret`; the inbound WhatsApp webhook is off without it. */
   MARICHI_TALKS_WEBHOOK_SECRET: z.string().trim().min(16, 'Use at least 16 characters').optional(),
   /** Lets signed-in staff act as a driver's WhatsApp from the app (the simulated phone). On by default outside production; refused in production. */
   DRIVER_PHONE_SIMULATOR: z.enum(['true', 'false']).optional(),
 }).superRefine((value, ctx) => {
+  if (value.FILE_STORAGE === 'gcs' && !value.GCS_BUCKET) {
+    ctx.addIssue({ code: 'custom', path: ['GCS_BUCKET'], message: 'Set GCS_BUCKET when FILE_STORAGE is gcs' });
+  }
   if (value.NODE_ENV !== 'production') return;
   if (value.JWT_SECRET.startsWith('development-only')) {
     ctx.addIssue({ code: 'custom', path: ['JWT_SECRET'], message: 'Set a unique JWT_SECRET in production' });

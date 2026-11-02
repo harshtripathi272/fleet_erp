@@ -24,7 +24,7 @@ import { carriedIn, driverBalance } from './ledger.js';
 import { Consignment } from './models/cargo.model.js';
 import { FundRequest, OPEN_REQUEST, VehicleState } from './models/funding.model.js';
 import { Nomination } from './models/money.model.js';
-import { Trip } from './models/trip.model.js';
+import { Trip, type ArrivalSource } from './models/trip.model.js';
 import {
   activeDriver, activeRecord, baseCurrency, conflict, customerParty, driverThread, firstName, formatMoney, litres, log,
   need, nextNumber, post, present, queue, refuse, resolve, save, toBase, type OpsContext,
@@ -410,10 +410,11 @@ export async function dispatchTrip(id: string, ctx: OpsContext) {
 }
 
 /** Messages when a truck reaches a loading point, an offloading point or the end. */
-async function announceArrival(trip: Plain, index: number, at: Date, ctx: OpsContext) {
+async function announceArrival(trip: Plain, index: number, at: Date, ctx: OpsContext, via: ArrivalSource) {
   const stops = trip.stops as Array<{ kind: string; placeId: unknown }>;
   const stop = stops[index]!;
-  const place = await placeName(stop.placeId);
+  // A demo drive says so wherever its arrivals show up, so nobody acts on them as real.
+  const place = `${await placeName(stop.placeId)}${via === 'simulator' ? ' (simulated)' : ''}`;
   const driver = trip.driverId ? await driverName(trip.driverId) : '';
   if (stop.kind === 'load' || stop.kind === 'offload') {
     const loading = stop.kind === 'load';
@@ -445,10 +446,13 @@ async function announceArrival(trip: Plain, index: number, at: Date, ctx: OpsCon
 }
 
 /** Stamps arrival at a stop (and the stops passed before it) and sends the messages for it. */
-export async function arriveAt(trip: HydratedDocument<any>, index: number, at: Date, ctx: OpsContext, quiet = false) {
-  const stamped = stampArrival(trip.get('stops'), index, at);
-  if (stamped && trip.get('stops')[index]?.kind === 'offload') recordEvent(trip, 'arrived_offloading', at, ctx.actorId);
-  if (stamped && !quiet) await announceArrival(trip.toObject() as Plain, index, at, ctx);
+export async function arriveAt(trip: HydratedDocument<any>, index: number, at: Date, ctx: OpsContext, via: ArrivalSource, quiet = false) {
+  const stops = trip.get('stops') as Array<{ legKm: number; arrivedAt?: Date; leftAt?: Date; arrivedVia?: ArrivalSource; kind: string }>;
+  const stamped = stampArrival(stops, index, at);
+  if (!stamped) return;
+  for (const stop of stops.slice(0, index + 1)) if (stop.arrivedAt && !stop.arrivedVia) stop.arrivedVia = via;
+  if (stops[index]?.kind === 'offload') recordEvent(trip, 'arrived_offloading', at, ctx.actorId);
+  if (!quiet) await announceArrival(trip.toObject() as Plain, index, at, ctx, via);
 }
 
 /** A position report: kilometres along the route. The truck can't pass loading before the load is recorded, or offloading before delivery. */
@@ -474,7 +478,7 @@ export async function reportPosition(id: string, input: S.PositionInput, ctx: Op
     if (index > offloadIndex && !delivered) return;
     if (index > 0 && !stop.arrivedAt && km >= cum[index]! - 0.01) arrivals.push(index);
   });
-  for (const index of arrivals) await arriveAt(trip, index, at, ctx);
+  for (const index of arrivals) await arriveAt(trip, index, at, ctx, input.source);
   stops.forEach((stop, index) => {
     if (stop.arrivedAt && !stop.leftAt && km > cum[index]! + 0.5) {
       const back = input.speed > 0 ? ((km - cum[index]!) / input.speed) * 36e5 : 0;
@@ -482,7 +486,7 @@ export async function reportPosition(id: string, input: S.PositionInput, ctx: Op
     }
   });
   const parked = stops.some((s, i) => s.kind !== 'via' && s.kind !== 'border' && s.kind !== 'start' && s.arrivedAt && !s.leftAt && Math.abs(cum[i]! - km) < 0.5);
-  trip.set('tracking', { km, speed: km > previous && !held && !parked ? input.speed : 0, heading: km > previous ? input.heading ?? 0 : Number(trip.get('tracking')?.heading ?? 0), at });
+  trip.set('tracking', { km, speed: km > previous && !held && !parked ? input.speed : 0, heading: km > previous ? input.heading ?? 0 : Number(trip.get('tracking')?.heading ?? 0), at, source: input.source });
   trip.markModified('stops');
   await save(trip);
   return presentTrip(trip.toObject());
@@ -498,8 +502,9 @@ export async function arriveAtStop(id: string, stopId: string, ctx: OpsContext) 
   if (index < 0) throw new NotFoundError('Stop not found');
   const loadIndex = stops.findIndex((s) => s.kind === 'load');
   if (index > loadIndex && !(await Consignment.exists({ tripId: trip._id }))) throw refuse('Record the loading first.');
-  trip.set('tracking', { ...(trip.get('tracking')?.toObject?.() ?? { heading: 0 }), km: cumulativeKm(stops)[index], speed: 0, at });
-  await arriveAt(trip, index, at, ctx);
+  const via = ctx.asDriver ? 'driver' : 'office';
+  trip.set('tracking', { ...(trip.get('tracking')?.toObject?.() ?? { heading: 0 }), km: cumulativeKm(stops)[index], speed: 0, at, source: via });
+  await arriveAt(trip, index, at, ctx, via);
   trip.markModified('stops');
   await save(trip);
   return presentTrip(trip.toObject());

@@ -25,10 +25,14 @@ const readingSchema = new Schema({
 const fileSchema = new Schema({
   name: { type: String, required: true },
   mime: { type: String, required: true },
-  /** A built-in sample photo used by the simulated phone. */
+  /** An uploaded file (`/files/:id`). */
+  fileId: { type: ObjectId, ref: 'StoredFile' },
+  size: Number,
+  /** A built-in sample picture from the simulated phone: not a real document. */
   sampleId: String,
-  /** Small images inline until file storage is chosen. */
+  /** Inline images from before file storage existed; new documents use `fileId`. */
   dataUrl: String,
+  /** A file held by the messaging provider (Marichi Talks). */
   url: String,
 }, { _id: false, strict: 'throw' });
 
@@ -41,6 +45,8 @@ const driverDocumentSchema = new Schema<any>({
   note: String,
   file: { type: fileSchema, default: undefined },
   reading: { type: readingSchema, default: undefined },
+  /** Sent from a simulator: a sample picture with generated figures, not a real document. */
+  simulated: { type: Boolean, default: false },
   status: { type: String, enum: ['new', 'recorded', 'returned'], default: 'new' },
   recordRef: String,
   returnReason: String,
@@ -51,6 +57,7 @@ const driverDocumentSchema = new Schema<any>({
 driverDocumentSchema.index({ tripId: 1, status: 1 });
 driverDocumentSchema.index({ driverId: 1, at: -1 });
 driverDocumentSchema.index({ updatedAt: 1 });
+driverDocumentSchema.index({ 'file.fileId': 1 }, { sparse: true });
 
 export const DriverDocument = opsModel('DriverDocument', driverDocumentSchema);
 

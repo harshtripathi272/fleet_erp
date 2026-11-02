@@ -29,7 +29,7 @@ async function openTripOf(driverId: unknown) {
 export async function simulate(input: S.SimulateInput, ctx: OpsContext) {
   if (!env.DRIVER_PHONE_SIMULATOR) throw new ForbiddenError('The simulated driver phone is switched off');
   const tripId = input.tripId ?? (await openTripOf(input.driverId));
-  return sendDocument({ driverId: input.driverId, tripId, kind: input.kind ?? 'other', note: input.text, file: input.file, reading: input.reading, channel: 'whatsapp' }, { ...ctx, asDriver: true });
+  return sendDocument({ driverId: input.driverId, tripId, kind: input.kind ?? 'other', note: input.text, file: input.file, reading: input.reading, channel: 'whatsapp' }, { ...ctx, asDriver: true, simulated: true });
 }
 
 /** A system context for a driver's own WhatsApp message: it may only file the driver's documents. */

@@ -70,6 +70,8 @@ export const positionSchema = z.strictObject({
   km: z.number().min(0).max(100000),
   speed: z.number().min(0).max(200),
   heading: z.number().min(-360).max(360).optional(),
+  /** `simulator` for the demo drive; `gps` for a tracker. Required, so a demo position is never taken for a real one. */
+  source: z.enum(['simulator', 'gps']),
 });
 export type PositionInput = z.infer<typeof positionSchema>;
 
@@ -119,13 +121,10 @@ export const documentListQuery = z.strictObject({
 });
 export type DocumentListQuery = z.infer<typeof documentListQuery>;
 
-const fileSchema = z.strictObject({
-  name: text(200),
-  mime: z.string().trim().regex(/^[\w.+-]+\/[\w.+-]+$/, 'A media type such as image/jpeg').max(100),
-  sampleId: text(80).optional(),
-  dataUrl: z.string().max(700_000).regex(/^data:[\w.+-]+\/[\w.+-]+;base64,[A-Za-z0-9+/=]+$/, 'A base64 data URL').optional(),
-  url: z.string().trim().max(2000).refine((v) => /^https?:\/\//.test(v), 'Must be an http(s) URL').optional(),
-});
+/** A real document: a file uploaded first (`POST /files`), referred to by its id. */
+const uploadedFile = z.strictObject({ fileId: objectId });
+/** A sample picture from the simulated phone. */
+const sampleFile = z.strictObject({ name: text(200), mime: z.string().trim().regex(/^[\w.+-]+\/[\w.+-]+$/).max(100), sampleId: text(80) });
 
 export const readingSchema = z.strictObject({
   docNo: text(60).optional(),
@@ -148,7 +147,8 @@ export const sendDocumentSchema = z.strictObject({
   tripId: objectId.optional(),
   kind: z.enum(DOC_KINDS),
   note: text(1000).optional(),
-  file: fileSchema.optional(),
+  file: uploadedFile.optional(),
+  /** Figures typed by whoever files it. A person checks them before they are recorded. */
   reading: readingSchema.optional(),
   channel: z.enum(DOC_CHANNELS).default('operations'),
 });
@@ -260,12 +260,13 @@ export const activityListQuery = z.strictObject({ tripId: objectId.optional(), s
 export type ActivityListQuery = z.infer<typeof activityListQuery>;
 export const syncQuery = z.strictObject({ since: sinceQuery });
 
+/** The simulated driver phone: a sample picture with generated figures, or a real upload, sent as if on WhatsApp. */
 export const simulateSchema = z.strictObject({
   driverId: objectId,
   tripId: objectId.optional(),
   kind: z.enum(DOC_KINDS).optional(),
   text: text(1000).optional(),
-  file: fileSchema.optional(),
+  file: z.union([uploadedFile, sampleFile]).optional(),
   reading: readingSchema.optional(),
 }).refine((v) => v.text || v.file, 'Attach a photo or write a message');
 export type SimulateInput = z.infer<typeof simulateSchema>;
@@ -275,8 +276,26 @@ export const inboundSchema = z.strictObject({
   from: z.string().trim().regex(/^\+?[1-9]\d{6,14}$/, 'International number'),
   text: text(1000).optional(),
   kind: z.enum(DOC_KINDS).optional(),
-  media: fileSchema.optional(),
+  /** A photo held by Marichi Talks, linked by URL until its media format is known. */
+  media: z.strictObject({
+    name: text(200),
+    mime: z.string().trim().regex(/^[\w.+-]+\/[\w.+-]+$/).max(100),
+    url: z.string().trim().max(2000).refine((v) => /^https:\/\//.test(v), 'Must be an https URL'),
+  }).optional(),
   /** The one-time token of the button the person tapped, as sent with the message. */
   buttonToken: z.string().trim().regex(/^[A-Za-z0-9_-]{20,64}$/, 'A button token').optional(),
 });
 export type InboundInput = z.infer<typeof inboundSchema>;
+
+/* ---------- Driver app ---------- */
+
+/** What a driver sends from the driver app: an uploaded file, a message, or both. */
+export const driverSendSchema = z.strictObject({
+  kind: z.enum(DOC_KINDS),
+  fileId: objectId.optional(),
+  note: text(1000).optional(),
+  reading: readingSchema.optional(),
+}).refine((v) => v.fileId || v.note, 'Attach a photo or write a message');
+export type DriverSendInput = z.infer<typeof driverSendSchema>;
+export const driverMessagesQuery = z.strictObject({ since: z.iso.datetime().optional() });
+export const driverStopParams = z.strictObject({ stopId: objectId });

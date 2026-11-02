@@ -191,7 +191,7 @@ export async function loadSampleData(actorId?: string) {
   created += 1;
 
   if (!(await Company.exists({}))) {
-    await saveCompany(saveCompanySchema.parse({ legalName: 'Marichi Connect Logistics Ltd', tradingName: 'Marichi Fleet', countryId: ids.ZM, baseCurrencyId: ids.ZMW, timezone: 'Africa/Lusaka', fiscalYearStartMonth: 1, modules: ['masters', 'trips', 'finance', 'tracking'], phone: '+260211123456', email: 'ops@marichi.example', allowSelfRegistration: true }), actorId);
+    await saveCompany(saveCompanySchema.parse({ legalName: 'Marichi Connect Logistics Ltd', tradingName: 'Marichi Fleet', countryId: ids.ZM, baseCurrencyId: ids.ZMW, timezone: 'Africa/Lusaka', fiscalYearStartMonth: 1, modules: ['masters', 'trips', 'finance', 'tracking', 'driver-app'], phone: '+260211123456', email: 'ops@marichi.example', allowSelfRegistration: true }), actorId);
     created += 1;
   }
   logger.info({ created }, 'Sample data loaded');

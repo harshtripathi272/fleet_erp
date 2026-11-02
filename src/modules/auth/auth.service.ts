@@ -86,8 +86,16 @@ export async function register(input: RegisterInput, client: ClientInfo) {
   }
 }
 
+/** The account for an e-mail, or for a phone number held by exactly one account. */
+async function findForLogin(input: LoginInput) {
+  if (input.email) return User.findOne({ email: input.email }).select('+passwordHash').lean();
+  const digits = input.phone!.replace(/^\+/, '');
+  const matches = await User.find({ phone: { $in: [digits, `+${digits}`] } }).select('+passwordHash').limit(2).lean();
+  return matches.length === 1 ? matches[0]! : null;
+}
+
 export async function login(input: LoginInput, client: ClientInfo) {
-  const user = await User.findOne({ email: input.email }).select('+passwordHash').lean();
+  const user = await findForLogin(input);
   if (!user) {
     await verifyPassword(input.password, await dummyPasswordHash());
     throw new UnauthorizedError(INVALID_LOGIN);
@@ -176,7 +184,7 @@ export async function issuePasswordReset(emailAddress: string, purpose: 'reset' 
   });
   const link = `${env.APP_URL}/console/#reset=${token}`;
   const sent = await sendMail({
-    to: user.email,
+    to: user.email!,
     subject: purpose === 'invite' ? 'You have been invited to Marichi Fleet' : 'Reset your Marichi Fleet password',
     text: purpose === 'invite'
       ? `Hello ${user.name},\n\nAn account was created for you. Set your password here (valid for 72 hours):\n${link}\n`

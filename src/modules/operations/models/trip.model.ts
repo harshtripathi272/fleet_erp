@@ -2,6 +2,10 @@ import { Schema } from 'mongoose';
 import { opsModel } from './model.js';
 import { ObjectId, moneySchema, schemaOptions } from '../../../core/masters/schema.js';
 
+/** Where an arrival or a position came from. */
+export const ARRIVAL_SOURCES = ['office', 'driver', 'simulator', 'gps'] as const;
+export type ArrivalSource = (typeof ARRIVAL_SOURCES)[number];
+
 export const STOP_KINDS = ['start', 'load', 'via', 'border', 'offload', 'end'] as const;
 
 const stopSchema = new Schema({
@@ -10,6 +14,8 @@ const stopSchema = new Schema({
   legKm: { type: Number, min: 0, required: true },
   legHours: { type: Number, min: 0, required: true },
   arrivedAt: Date,
+  /** Who reported the arrival. `simulator` marks a demo drive, never a real one. */
+  arrivedVia: { type: String, enum: ARRIVAL_SOURCES },
   leftAt: Date,
 }, { strict: 'throw' });
 
@@ -53,7 +59,8 @@ const tripSchema = new Schema<any>({
   closingFuelL: { type: Number, min: 0 },
   cancelledAt: Date,
   cancelReason: String,
-  tracking: { type: new Schema({ km: Number, speed: Number, heading: Number, at: Date }, { _id: false }), default: undefined },
+  /** The latest position. `source` says where it came from; `simulator` positions are a demo, not the truck. */
+  tracking: { type: new Schema({ km: Number, speed: Number, heading: Number, at: Date, source: { type: String, enum: ARRIVAL_SOURCES } }, { _id: false }), default: undefined },
   settlementId: { type: ObjectId, ref: 'Settlement' },
   active: { type: Boolean, default: true },
   createdBy: { type: ObjectId, ref: 'User' },

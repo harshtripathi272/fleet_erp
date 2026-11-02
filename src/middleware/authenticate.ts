@@ -14,7 +14,7 @@ export const authenticate: RequestHandler = Object.assign<RequestHandler, { meta
   if (!claims) throw new UnauthorizedError('Session expired or invalid. Sign in again.');
   if (!/^[0-9a-f]{24}$/.test(claims.sub) || !/^[0-9a-f]{24}$/.test(claims.sid)) throw new UnauthorizedError('Session expired or invalid. Sign in again.');
   const [user, session] = await Promise.all([
-    User.findById(claims.sub).select('status tokenVersion email name roleIds').lean(),
+    User.findById(claims.sub).select('status tokenVersion email name roleIds driverId').lean(),
     Session.exists({ _id: claims.sid, userId: claims.sub, revokedAt: null, expiresAt: { $gt: new Date() } }),
   ]);
   if (!user || user.status !== 'active' || user.tokenVersion !== claims.tv || !session) {
@@ -26,6 +26,7 @@ export const authenticate: RequestHandler = Object.assign<RequestHandler, { meta
     userId: claims.sub,
     sessionId: claims.sid,
     email: user.email,
+    driverId: user.driverId ? String(user.driverId) : undefined,
     name: user.name,
     roles: roles.map((r) => r.key),
     permissions,

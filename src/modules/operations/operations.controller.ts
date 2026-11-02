@@ -3,6 +3,7 @@ import { ApiResponse, buildPaginationMeta } from '../../core/response/index.js';
 import { asyncHandler } from '../../utils/asyncHandler.js';
 import * as Cargo from './cargo.service.js';
 import * as Dashboards from './dashboards.service.js';
+import * as DriverApp from './driverApp.service.js';
 import * as Expenses from './expenses.service.js';
 import * as Funding from './funding.service.js';
 import * as Messages from './messages.service.js';
@@ -91,3 +92,10 @@ export const financeDashboard = asyncHandler(async (_req, res) => ApiResponse.su
 export const sync = asyncHandler(async (req, res) => ApiResponse.success(res, await Dashboards.sync(query<{ since?: Date }>(req).since, viewer(req))));
 export const simulate = asyncHandler(async (req, res) => ApiResponse.created(res, await WhatsApp.simulate(req.body, opsContext(req)), 'Sent from the driver\'s phone'));
 export const inbound = asyncHandler(async (req, res) => ApiResponse.success(res, await WhatsApp.inbound(req.get('x-webhook-secret'), req.body)));
+
+/* Driver app: the signed-in driver's own work */
+const driverActor = (req: Request): DriverApp.DriverActor => ({ userId: req.auth!.userId, driverId: req.auth!.driverId!, name: req.auth!.name });
+export const driverHome = asyncHandler(async (req, res) => ApiResponse.success(res, await DriverApp.home(driverActor(req))));
+export const driverMessages = asyncHandler(async (req, res) => ApiResponse.success(res, await DriverApp.messages(driverActor(req), query<{ since?: string }>(req).since)));
+export const driverSend = asyncHandler(async (req, res) => ApiResponse.created(res, await DriverApp.send(driverActor(req), req.body), 'Sent to the office'));
+export const driverArrive = asyncHandler(async (req, res) => ApiResponse.success(res, await DriverApp.arrive(driverActor(req), param(req, 'stopId')), 'Arrival recorded'));

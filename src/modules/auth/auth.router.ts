@@ -11,13 +11,15 @@ import { z } from 'zod';
 const MINUTE = 60000;
 const HOUR = 60 * MINUTE;
 const emailKey = (req: { body?: { email?: unknown } }) => String(req.body?.email ?? '').trim().toLowerCase().slice(0, 254);
+/** The account a sign-in is for: its e-mail, or its phone number without spaces. */
+const loginKey = (req: { body?: { email?: unknown; phone?: unknown } }) => emailKey(req) || String(req.body?.phone ?? '').replace(/[^\d+]/g, '').slice(0, 20);
 const empty = z.strictObject({});
 
 const router = Router();
 router.post('/register', rateLimit({ name: 'register', limit: 10, windowMs: HOUR }), validate({ body: registerSchema }), AuthController.register);
 router.post('/login',
   rateLimit({ name: 'login-ip', limit: 30, windowMs: MINUTE }),
-  rateLimit({ name: 'login-account', limit: 10, windowMs: 15 * MINUTE, key: (req) => `${clientIp(req)}:${emailKey(req)}` }),
+  rateLimit({ name: 'login-account', limit: 10, windowMs: 15 * MINUTE, key: (req) => `${clientIp(req)}:${loginKey(req)}` }),
   validate({ body: loginSchema }), AuthController.login);
 router.post('/refresh', rateLimit({ name: 'refresh', limit: 60, windowMs: MINUTE }), validate({ body: refreshSchema }), AuthController.refresh);
 router.post('/forgot-password',

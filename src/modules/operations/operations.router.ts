@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { ForbiddenError } from '../../core/errors/index.js';
 import { idParams } from '../../core/masters/zod.js';
 import { authenticate } from '../../middleware/authenticate.js';
 import { authorize } from '../../middleware/authorize.js';
@@ -19,12 +20,17 @@ const id = { params: idParams };
 /** Mounted ahead of the masters without a blanket `authenticate`, so it signs in only its own paths. */
 export const OPERATIONS_PATHS = [
   '/operations', '/dashboards', '/trips', '/vehicle-states', '/fund-requests', '/driver-documents', '/consignments', '/expenses',
-  '/driver-accounts', '/settlements', '/nominations', '/messages', '/activity', '/whatsapp/simulate',
+  '/driver-accounts', '/settlements', '/nominations', '/messages', '/activity', '/whatsapp/simulate', '/driver-app',
 ];
 router.use(OPERATIONS_PATHS, authenticate, requireModule('trips'));
 /** Money areas need the company's Finance module as well; position reports need Tracking. */
 router.use(['/fund-requests', '/expenses', '/settlements', '/driver-accounts', '/dashboards/finance'], requireModule('finance'));
 const finance = requireModule('finance');
+/** The driver app is only for accounts linked to a driver, and only when the company uses it. */
+router.use('/driver-app', requireModule('driver-app'), (req, _res, next) => {
+  if (!req.auth?.driverId) throw new ForbiddenError('The driver app is for driver accounts');
+  next();
+});
 const tracking = requireModule('tracking');
 
 router.get('/operations/sync', authorize('trips', 'read'), validate({ query: S.syncQuery }), C.sync);
@@ -93,6 +99,11 @@ router.get('/messages/threads', authorize('messages', 'read'), C.listThreads);
 router.post('/messages', authorize('messages', 'create'), validate({ body: S.chatSchema }), C.sendChat);
 router.post('/messages/read', authorize('messages', 'read'), validate({ body: S.readSchema }), C.markRead);
 router.get('/activity', authorize('activity', 'read'), validate({ query: S.activityListQuery }), C.listActivity);
+
+router.get('/driver-app/home', C.driverHome);
+router.get('/driver-app/messages', validate({ query: S.driverMessagesQuery }), C.driverMessages);
+router.post('/driver-app/send', validate({ body: S.driverSendSchema }), C.driverSend);
+router.post('/driver-app/stops/:stopId/arrive', validate({ params: S.driverStopParams }), C.driverArrive);
 
 router.post('/whatsapp/simulate', authorize('driver-documents', 'create'), validate({ body: S.simulateSchema }), C.simulate);
 

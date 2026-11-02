@@ -15,6 +15,7 @@ import auditRouter from './modules/audit/audit.router.js';
 import authRouter from './modules/auth/auth.router.js';
 import cargoRouter from './modules/cargo/cargo.router.js';
 import companyRouter from './modules/company/company.router.js';
+import filesRouter from './modules/files/files.router.js';
 import complianceRouter from './modules/compliance/compliance.router.js';
 import configurationRouter from './modules/configuration/configuration.router.js';
 import driversRouter from './modules/drivers/drivers.router.js';
@@ -53,6 +54,7 @@ app.use('/api/v1/company', authenticate, companyRouter);
 app.use('/api/v1/audit-logs', authenticate, auditRouter);
 app.use('/api/v1/users', authenticate, usersRouter);
 app.use('/api/v1/roles', authenticate, rolesRouter);
+app.use('/api/v1/files', authenticate, filesRouter);
 app.use('/api/v1/whatsapp', webhookRouter);
 // Trips and money; signs in only its own paths, so it adds nothing to master requests.
 app.use('/api/v1', operationsRouter);

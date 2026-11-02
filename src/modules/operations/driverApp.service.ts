@@ -1,0 +1,140 @@
+import { ForbiddenError, NotFoundError } from '../../core/errors/index.js';
+import type { Plain } from '../../core/masters/types.js';
+import { Product } from '../cargo/models/product.model.js';
+import { Driver } from '../drivers/models/driver.model.js';
+import { ExpenseCategory } from '../trips/models/expense.model.js';
+import { sendDocument } from './cargo.service.js';
+import { driverLedger } from './ledger.js';
+import { Consignment, DriverDocument } from './models/cargo.model.js';
+import { FundRequest } from './models/funding.model.js';
+import { Message } from './models/message.model.js';
+import { Settlement } from './models/money.model.js';
+import { Trip } from './models/trip.model.js';
+import type * as S from './operations.schema.js';
+import { baseCurrency, currencyInfo, driverThread, formatMoney, type OpsContext } from './support.js';
+import { arriveAtStop, partyName, placeName, plateOf, trailerPlate } from './trips.service.js';
+
+/**
+ * The driver app: a driver signed in with their own account (a user linked to their driver record).
+ * Every function here works only on that driver's own trip, documents, messages and account.
+ */
+export interface DriverActor {
+  userId: string;
+  driverId: string;
+  name: string;
+}
+
+/** A driver may file their own documents and mark their own arrivals; nothing else. */
+export const driverContext = (actor: DriverActor): OpsContext => ({
+  actorId: actor.userId,
+  name: actor.name,
+  desk: 'driver',
+  asDriver: true,
+  driverId: actor.driverId,
+  roles: [],
+  can: (resource, action) => (resource === 'driver-documents' && action === 'create') || (resource === 'trips' && action === 'update'),
+});
+
+const iso = (d: unknown) => (d instanceof Date ? d.toISOString() : d ? String(d) : undefined);
+
+async function ownTrip(driverId: string) {
+  return (await Trip.findOne({ driverId, active: true }).sort({ createdAt: -1 }).lean()) as Plain | null;
+}
+
+/** What the driver has to send next on the trip, if anything. */
+function nextUpload(trip: Plain, consignments: Plain[], docs: Plain[]): 'loading' | 'delivery' | undefined {
+  if (!trip.dispatchedAt) return undefined;
+  const stops = trip.stops as Plain[];
+  const waiting = (kind: string) => docs.some((d) => d.kind === kind && d.status === 'new');
+  const load = stops.find((s) => s.kind === 'load');
+  const offload = stops.find((s) => s.kind === 'offload');
+  if (!consignments.length) return load?.arrivedAt && !waiting('loading') ? 'loading' : undefined;
+  if (consignments.some((c) => !c.delivered)) return offload?.arrivedAt && !waiting('delivery') ? 'delivery' : undefined;
+  return undefined;
+}
+
+export async function home(actor: DriverActor) {
+  const driver = await Driver.findById(actor.driverId).select('name code phone whatsapp status').lean();
+  if (!driver || driver.status !== 'active') throw new ForbiddenError('Your driver record is not active. Contact the office.');
+  const base = await baseCurrency();
+  const trip = await ownTrip(actor.driverId);
+  let current: Plain | null = null;
+  if (trip) {
+    const [consignments, docs, requests, product, stops] = await Promise.all([
+      Consignment.find({ tripId: trip._id }).lean(),
+      DriverDocument.find({ tripId: trip._id }).select('-file.dataUrl').sort({ at: -1 }).lean(),
+      FundRequest.find({ tripId: trip._id, status: 'issued' }).lean(),
+      trip.productId ? Product.findById(trip.productId).select('name').lean() : null,
+      Promise.all((trip.stops as Plain[]).map(async (s) => ({
+        id: String(s._id), kind: s.kind, place: await placeName(s.placeId), legKm: s.legKm,
+        arrivedAt: iso(s.arrivedAt), arrivedVia: s.arrivedVia, leftAt: iso(s.leftAt),
+      }))),
+    ]);
+    const issued = await Promise.all(requests.map(async (r) => ({
+      id: String(r._id), number: r.number, kind: r.kind,
+      text: r.kind === 'fuel' ? `${Number(r.litres ?? 0).toLocaleString('en-GB')} L` : r.amount ? formatMoney(r.amount.amountMinor, await currencyInfo(r.amount.currencyId)) : '',
+      at: iso(r.issuedAt),
+    })));
+    current = {
+      id: String(trip._id), number: trip.number,
+      truck: await plateOf(trip.vehicleId), trailer: await trailerPlate(trip.trailerId),
+      customer: await partyName(trip.customerId), product: product?.name ?? '',
+      dispatchedAt: iso(trip.dispatchedAt), stops,
+      next: nextUpload(trip, consignments, docs),
+      loaded: consignments.length > 0, delivered: consignments.length > 0 && consignments.every((c) => c.delivered),
+      issued,
+      documents: docs.map((d) => ({
+        id: String(d._id), kind: d.kind, status: d.status, at: iso(d.at), note: d.note, returnReason: d.returnReason,
+        simulated: Boolean(d.simulated), file: d.file ? { fileId: d.file.fileId ? String(d.file.fileId) : undefined, name: d.file.name, mime: d.file.mime, sampleId: d.file.sampleId } : undefined,
+      })),
+    };
+  }
+  const entries = await driverLedger(actor.driverId);
+  const balanceMinor = entries.reduce((sum, e) => sum + e.amountMinor, 0);
+  const [settlements, categories] = await Promise.all([
+    Settlement.find({ driverId: actor.driverId }).sort({ postedAt: -1, _id: -1 }).limit(10).lean(),
+    ExpenseCategory.find({ status: 'active' }).select('name').sort({ name: 1 }).lean(),
+  ]);
+  return {
+    driver: { id: String(driver._id), name: driver.name, code: driver.code },
+    trip: current,
+    account: {
+      currency: base,
+      balanceMinor,
+      balance: formatMoney(Math.abs(balanceMinor), base),
+      /** Positive: the driver holds company money. Negative: the company owes the driver. */
+      direction: balanceMinor > 0 ? 'holds' : balanceMinor < 0 ? 'owed' : 'even',
+      entries: entries.slice(-30).reverse().map((e) => ({ ...e, text: formatMoney(Math.abs(e.amountMinor), base) })),
+      settlements: settlements.map((s) => ({ id: String(s._id), number: s.number, at: iso(s.postedAt ?? s.createdAt) })),
+    },
+    expenseCategories: categories.map((c) => ({ id: String(c._id), name: c.name })),
+  };
+}
+
+export async function messages(actor: DriverActor, since?: string) {
+  const filter: Plain = { thread: driverThread(actor.driverId) };
+  if (since) filter.at = { $gt: new Date(since) };
+  const rows = await Message.find(filter).sort({ at: -1 }).limit(100).lean();
+  return rows.reverse().map((m) => ({
+    id: String(m._id), at: iso(m.at), from: m.from, title: m.title, text: m.text, rows: m.rows, resolved: m.resolved,
+    attachment: m.attachment,
+    // Buttons in the driver's thread ask for a document; the app turns them into an upload.
+    upload: m.resolved ? undefined : (m.buttons as Plain[] | undefined)?.find((b) => b.attach)?.attach,
+  }));
+}
+
+/** A photo, a PDF or a message from the driver, filed on the open trip. */
+export async function send(actor: DriverActor, input: S.DriverSendInput) {
+  const trip = await ownTrip(actor.driverId);
+  return sendDocument({
+    driverId: actor.driverId, tripId: trip ? String(trip._id) : undefined, kind: input.kind, note: input.note,
+    file: input.fileId ? { fileId: input.fileId } : undefined, reading: input.reading, channel: 'app',
+  }, driverContext(actor));
+}
+
+/** The driver says they have reached a stop on their own trip. */
+export async function arrive(actor: DriverActor, stopId: string) {
+  const trip = await ownTrip(actor.driverId);
+  if (!trip) throw new NotFoundError('You have no trip on the road');
+  return arriveAtStop(String(trip._id), stopId, driverContext(actor));
+}

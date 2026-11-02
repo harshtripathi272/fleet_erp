@@ -12,6 +12,8 @@ export async function connectMongo(uri: string = env.MONGODB_URI): Promise<typeo
 
 /** Builds every declared index so unique constraints exist before requests arrive. */
 export async function syncIndexes(): Promise<void> {
+  const { migrateUserIndexes } = await import('../../modules/users/user.model.js');
+  await migrateUserIndexes();
   await Promise.all(Object.values(mongoose.models).map((model) => model.init()));
 }
 

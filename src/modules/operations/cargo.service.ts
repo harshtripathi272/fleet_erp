@@ -17,6 +17,7 @@ import {
 } from './support.js';
 import { arriveAt, driverName, partyName, placeName, plateOf, truckFacts } from './trips.service.js';
 import type * as S from './operations.schema.js';
+import { attachable } from '../files/files.service.js';
 import { operationsSettings } from './settings.js';
 
 const LABEL: Record<string, string> = { loading: 'loading invoice', delivery: 'delivery note', expense: 'receipt', fuel: 'fuel slip', other: 'message' };
@@ -50,24 +51,39 @@ export async function getDocument(id: string) {
  * A photo or message from a driver: over WhatsApp (Marichi Talks or the simulated phone), or filed by
  * the office. The office is told and offered the next step built from the figures read off the photo.
  */
-export async function sendDocument(input: S.SendDocumentInput, ctx: OpsContext) {
+/** A document as filed: an uploaded file, a WhatsApp photo by URL, or the simulated phone's sample picture. */
+export type DocumentInput = Omit<S.SendDocumentInput, 'file'> & {
+  file?: { fileId: string } | { name: string; mime: string; sampleId?: string; url?: string };
+};
+
+export async function sendDocument(input: DocumentInput, ctx: OpsContext) {
   need(ctx, 'driver-documents', 'create');
   const at = new Date();
   const driver = await activeDriver(input.driverId);
+  if (ctx.driverId && ctx.driverId !== String(driver._id)) throw new ForbiddenError('You can only send your own documents');
   const trip = input.tripId ? ((await Trip.findById(input.tripId).lean()) as Plain | null) : null;
   if (input.tripId && !trip) throw new NotFoundError('Trip not found');
   if (trip && String(trip.driverId) !== String(driver._id)) throw refuse('This trip belongs to another driver.');
   if (!input.file && !input.note) throw refuse('Attach a photo or write a message.');
   const reading = input.reading;
   if (reading?.categoryId) await activeRecord(ExpenseCategory, reading.categoryId, 'expense type');
+  const simulated = Boolean(ctx.simulated);
+  let file: Plain | undefined;
+  if (input.file && 'fileId' in input.file && input.file.fileId) {
+    const stored = await attachable(input.file.fileId, { userId: ctx.actorId ?? '', driverId: ctx.driverId, can: ctx.can });
+    file = { fileId: stored.id, name: stored.name, mime: stored.mime, size: stored.size };
+  } else if (input.file) {
+    if ('sampleId' in input.file && input.file.sampleId && !simulated) throw refuse('Sample pictures can only be sent from the simulated phone.');
+    file = input.file as Plain;
+  }
   const doc = new DriverDocument({
-    driverId: driver._id, tripId: trip?._id, kind: input.kind, channel: input.channel, note: input.note, file: input.file,
-    reading, status: 'new', at, createdBy: ctx.actorId, updatedBy: ctx.actorId,
+    driverId: driver._id, tripId: trip?._id, kind: input.kind, channel: input.channel, note: input.note, file,
+    reading, simulated, status: 'new', at, createdBy: ctx.actorId, updatedBy: ctx.actorId,
   });
   await save(doc);
   const id = String(doc._id);
   const label = LABEL[input.kind]!;
-  if (input.channel === 'whatsapp') await post(driverThread(driver._id), at, { from: 'me', text: input.note ?? '', attachment: input.file }, ctx);
+  if (input.channel !== 'operations') await post(driverThread(driver._id), at, { from: 'me', text: input.note ?? '', attachment: file }, ctx);
   if (trip) await resolve(`${trip._id}-${input.kind}`, 'Sent');
   if (input.channel !== 'operations') {
     const amount = reading?.amount ? ` for ${reading.amount.toLocaleString('en-GB', { maximumFractionDigits: 2 })} ${reading.currencyCode ?? ''}`.trimEnd() : '';
@@ -75,6 +91,10 @@ export async function sendDocument(input: S.SendDocumentInput, ctx: OpsContext) 
       text: input.kind === 'expense' || input.kind === 'fuel' ? `Got your ${label}${amount}. Finance will check it.` : `Got your ${label}${reading?.docNo ? ` ${reading.docNo}` : ''}. Operations will confirm it.`,
     }, ctx);
   }
+  // Say where the figures came from: a simulator invents them; otherwise the sender typed them, or nobody has yet.
+  const source = simulated
+    ? 'Simulated: a sample picture with generated figures, not a real document.'
+    : reading ? `Figures as typed by ${input.channel === 'operations' ? ctx.name : driver.name}. Check them against the photo.` : '';
   const rows: Array<[string, string]> = [['Trip', trip ? `${trip.number} · ${await plateOf(trip.vehicleId)}` : 'No trip']];
   if (reading?.docNo) rows.push(['Document', reading.docNo]);
   if (reading?.ambientL) rows.push(['Observed', `${litres(reading.ambientL)} at ${reading.tempC} °C · ${reading.density} kg/m³`]);
@@ -95,7 +115,7 @@ export async function sendDocument(input: S.SendDocumentInput, ctx: OpsContext) 
     // The receipt goes to whoever approves an expense of this amount, or to anyone who records expenses.
     const currency = reading?.amount && reading.currencyCode ? await Currency.findOne({ code: reading.currencyCode, status: 'active' }).select('_id minorUnits').lean() : null;
     const thread = currency ? waitingOn(await routeApproval('expense', { amountMinor: Math.round(reading!.amount! * 10 ** Number(currency.minorUnits ?? 2)), currencyId: String(currency._id) }))!.thread : queue('expenses');
-    await post(thread, at, { title: `Receipt from ${driver.name}`, text: 'Read from the photo. Check it matches before approving.', rows, attachment: input.file, buttons, refId: id }, ctx);
+    await post(thread, at, { title: `${simulated ? 'Simulated receipt' : 'Receipt'} from ${driver.name}`, text: source || 'Enter the amount and type from the photo to approve it.', rows, attachment: file, buttons, refId: id }, ctx);
   } else {
     let confirm: MessageButton | undefined;
     if (trip && reading && input.kind === 'loading' && reading.productId && reading.docNo) {
@@ -117,9 +137,9 @@ export async function sendDocument(input: S.SendDocumentInput, ctx: OpsContext) 
       }
     }
     await post(queue('consignments'), at, {
-      title: `${label[0]!.toUpperCase()}${label.slice(1)} from ${driver.name}`,
-      text: reading ? 'Read from the photo. Check the figures, then confirm.' : input.note ?? '',
-      rows, attachment: input.file,
+      title: `${simulated ? `Simulated ${label}` : `${label[0]!.toUpperCase()}${label.slice(1)}`} from ${driver.name}`,
+      text: [source || (input.file ? 'Type the figures from the photo on the trip, then confirm.' : ''), input.note].filter(Boolean).join(' '),
+      rows, attachment: file,
       buttons: [...(confirm ? [confirm] : []), { label: 'Return', tone: 'danger', action: { type: 'doc.return', docId: id, reason: '' } }, { label: 'Open trip', nav: { tripId: trip ? String(trip._id) : undefined, docId: id } }],
       refId: id,
     }, ctx);
@@ -200,7 +220,7 @@ export async function recordLoading(input: S.LoadingInput, ctx: OpsContext) {
   } else if (unit === 't' && truck.capacityT && input.qty > truck.capacityT) throw refuse(`${truck.plate} carries ${truck.capacityT} t.`);
   const stops = trip.get('stops') as Array<{ kind: string; legKm: number }>;
   const index = stops.findIndex((s) => s.kind === 'load');
-  await arriveAt(trip, index, at, ctx);
+  await arriveAt(trip, index, at, ctx, 'office');
   const load = measure({ volumeCorrected, unit }, { qty: input.qty, ambientL: input.ambientL ?? (volumeCorrected ? input.qty : undefined), tempC: input.tempC, density: input.density, certStd20L: input.certStd20L });
   const customer = await partyName(trip.get('customerId'));
   const consignment = new Consignment({
@@ -265,7 +285,7 @@ export async function recordDelivery(id: string, input: S.DeliveryInput, ctx: Op
   if (input.qty > Number(load.ambientL ?? load.qty) * (1 + deliveredOverLoadedPercent / 100)) throw refuse('Delivered is more than loaded. Check the figures.');
   const stops = trip.get('stops') as Array<{ kind: string; legKm: number }>;
   const index = stops.findIndex((s) => s.kind === 'offload');
-  await arriveAt(trip, index, at, ctx);
+  await arriveAt(trip, index, at, ctx, 'office');
   const measured = measure({ volumeCorrected, unit }, { qty: input.qty, ambientL: input.ambientL ?? (volumeCorrected ? input.qty : undefined), tempC: input.tempC, density: input.density, certStd20L: input.certStd20L });
   consignment.set({ delivered: { ...measured, at, podNo: input.podNo, docId: input.docId }, inTransit: false });
   const shortage = volumeCorrected ? await shortageFor(consignment.toObject() as Plain, measured) : undefined;
@@ -274,7 +294,7 @@ export async function recordDelivery(id: string, input: S.DeliveryInput, ctx: Op
   await save(consignment, 'Already delivered.');
   if (!(await Consignment.exists({ tripId: trip._id, delivered: { $exists: false } }))) {
     const cum = cumulativeKm(stops);
-    for (let i = index + 1; i < stops.length; i += 1) if (cum[i]! <= cum[index]! + 0.01) await arriveAt(trip, i, at, ctx);
+    for (let i = index + 1; i < stops.length; i += 1) if (cum[i]! <= cum[index]! + 0.01) await arriveAt(trip, i, at, ctx, 'office');
   }
   const tracking = trip.get('tracking');
   if (tracking) trip.set('tracking.km', Math.max(Number(tracking.km ?? 0), cumulativeKm(stops)[index]!));
