@@ -6,7 +6,7 @@ This README is the one place for setup, context and the API. **The next piece of
 
 ## The founding principle: configurable without limits
 
-Marichi Fleet is built for **one company at a time**: each installation runs one company, with its own database. It is not a system for managing several companies at once. But it is meant to be sold to many transport companies, each working differently, and we do not know in advance how any of them works. So this codebase is a **base** that becomes whatever a company needs, mostly through configuration and, where needed, easy additions on top:
+Marichi Fleet is built for **one company at a time**: each installation runs one company, with its own database. It is not a system for managing several companies at once. It is multi-tenant only in that sense: many customer companies, each with its own separate copy and database, never sharing one. But it is meant to be sold to many transport companies, each working differently, and we do not know in advance how any of them works. So this codebase is a **base** that becomes whatever a company needs, mostly through configuration and, where needed, easy additions on top:
 
 - **Everything a company might do differently is configuration, not code.** Approvals, policies, workflows, trip steps, fields, lists, record types, roles, numbering, messages, documents, notifications, and whatever comes up next. Each has sensible defaults and no limit on what a company can add or change.
 - **A client's rules are that client's settings.** The first client's decisions (below) ship as defaults; another company can change every one of them.
