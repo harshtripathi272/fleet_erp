@@ -125,3 +125,36 @@ describe('built-in role permissions on every master', () => {
     }
   });
 });
+
+describe('sensitive fields', () => {
+  test('a role without "sensitive" cannot set, change or clear them, but can edit the rest', async () => {
+    const ops = await userWithRole(owner, 'operations', 'Sensitive check');
+    const found = (await api().get('/api/v1/drivers').query({ search: 'Joseph' }).set(bearer(owner)).expect(200)).body.data[0];
+    const driver = (await api().patch(`/api/v1/drivers/${found.id}`).set(bearer(owner)).send({ version: found.version, religion: 'Christian' }).expect(200)).body.data;
+    const country = driver.nationalId.countryId;
+    const refused = async (body: Record<string, unknown>) => {
+      const res = await api().patch(`/api/v1/drivers/${driver.id}`).set(bearer(ops)).send({ version: driver.version, ...body });
+      assert.equal(res.status, 403, `${JSON.stringify(body)}: ${JSON.stringify(res.body)}`);
+      assert.ok(res.body.error.details.sensitive.length);
+    };
+    await refused({ religion: '••••tian' });
+    await refused({ religion: null });
+    await refused({ nationalId: { countryId: country, number: '654321/10/1' } });
+    await refused({ nationalId: null });
+    await refused({ taxIds: null });
+    const masked = (await api().get(`/api/v1/drivers/${driver.id}`).set(bearer(ops)).expect(200)).body.data;
+    const props = Object.keys(masters.find((m) => m.key === 'drivers')!.createSchema.properties);
+    const form = Object.fromEntries(props.filter((k) => masked[k] !== undefined).map((k) => [k, masked[k]]));
+    // Request validation may reject the masked values first; either way nothing is written.
+    const formSave = await api().patch(`/api/v1/drivers/${driver.id}`).set(bearer(ops)).send({ ...form, version: driver.version });
+    assert.ok([403, 422].includes(formSave.status), `masked form saved: ${formSave.status}`);
+    const edited = await api().patch(`/api/v1/drivers/${driver.id}`).set(bearer(ops)).send({ version: driver.version, landmark: 'Near the market' });
+    assert.equal(edited.status, 200, JSON.stringify(edited.body));
+    const after = (await api().get(`/api/v1/drivers/${driver.id}`).set(bearer(owner)).expect(200)).body.data;
+    assert.equal(after.nationalId.number, driver.nationalId.number, 'the real value is untouched');
+    const created = await api().post('/api/v1/drivers').set(bearer(ops)).send({ firstName: 'New', lastName: 'Driver', phone: '+260970000001', religion: 'Any' });
+    assert.equal(created.status, 403);
+    const ok = await api().patch(`/api/v1/drivers/${driver.id}`).set(bearer(owner)).send({ version: edited.body.data.version, religion: 'Catholic' });
+    assert.equal(ok.status, 200, 'a role holding "sensitive" may write it');
+  });
+});

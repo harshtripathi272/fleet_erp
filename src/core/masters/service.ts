@@ -1,10 +1,10 @@
 import { Types } from 'mongoose';
-import { ConflictError, NotFoundError, ValidationError } from '../errors/index.js';
+import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from '../errors/index.js';
 import { logger } from '../logger/index.js';
 import { AuditLog } from './audit.model.js';
 import { audit, comparable, diff } from './audit.js';
 import { validateDynamicValues, type DynamicField } from './dynamicFields.js';
-import { assertReferences, usageOf, type Usage } from './references.js';
+import { assertReferences, usageOf, valuesAt, type Usage } from './references.js';
 import type { MasterContext, MasterDefinition, Plain } from './types.js';
 
 /* ---------- Pluggable providers (set by the configuration module) ---------- */
@@ -92,6 +92,22 @@ async function validateCustom(def: MasterDefinition, input: Plain | undefined, b
   return validateDynamicValues(fields, input ?? {}, base ?? {});
 }
 
+/**
+ * A role without the "sensitive" permission sees masked values, so it may not write them either:
+ * setting, changing or clearing a sensitive field is refused. Internal callers (no request) are not limited.
+ */
+function assertSensitiveWritable(def: MasterDefinition, input: Plain, before: Plain | undefined, ctx: ServiceContext) {
+  if (ctx.canSeeSensitive !== false || !def.sensitive?.length) return;
+  const touched = def.sensitive.filter((path) => {
+    const top = path.split('.')[0]!;
+    if (!(top in input)) return false;
+    if (valuesAt(input, path).length) return true;
+    // Clearing the field (or its parent object) removes a value the caller cannot see.
+    return Boolean(before && valuesAt(before, path).length && JSON.stringify(comparable(valuesAt(input, path))) !== JSON.stringify(comparable(valuesAt(before, path))));
+  });
+  if (touched.length) throw new ForbiddenError('Your role cannot change sensitive fields', { sensitive: touched });
+}
+
 /* ---------- Queries ---------- */
 
 export interface ListQuery {
@@ -155,6 +171,7 @@ export async function create(def: MasterDefinition, input: Plain, ctx: ServiceCo
     if (!generated) throw new ValidationError('Code is required', { code: ['Required, or set up a numbering series for this master'] });
     data.code = generated;
   }
+  assertSensitiveWritable(def, data, undefined, ctx);
   assertValidity(data);
   await assertReferences(def, data);
   data.custom = await validateCustom(def, data.custom as Plain | undefined, undefined);
@@ -173,6 +190,7 @@ export async function update(def: MasterDefinition, id: string, input: Plain, ct
   const before = doc.toObject() as Plain;
   if (before.status === 'archived') throw new ConflictError(`Restore this ${def.singular.toLowerCase()} before editing it`);
   const { version, ...changes } = input;
+  assertSensitiveWritable(def, changes, before, ctx);
   if (version !== before.version) {
     throw new ConflictError('This record was changed by someone else. Reload it and try again.', { currentVersion: before.version });
   }
