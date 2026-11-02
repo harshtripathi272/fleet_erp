@@ -1,20 +1,31 @@
 # Marichi Fleet
 
-Marichi Fleet is a transport ERP for Marichi Connect Logistics, a haulier running fuel and cargo trucks across Zambia, Tanzania and the DRC. This repository is its **backend API**: Node.js, Express, MongoDB (Mongoose) and Redis.
+Marichi Fleet is a configurable transport ERP for haulage companies. Its first client is Marichi Connect Logistics, which runs fuel and cargo trucks across Zambia, Tanzania and the DRC. This repository is its **backend API**: Node.js, Express, MongoDB (Mongoose) and Redis.
 
 This README is the one place for setup, context and the API. **The next piece of work is described in [issue #2](https://github.com/harshtripathi272/fleet_erp/issues/2).**
 
+## The founding principle: configurable without limits
+
+Marichi Fleet is a product for **many transport companies**, and each one works differently. We do not know in advance how any of them works. So the product has to be able to become whatever a company needs:
+
+- **Everything a company might do differently is configuration, not code.** Approvals, policies, workflows, trip steps, fields, lists, record types, roles, numbering, messages, documents, notifications, and whatever comes up next. Each has sensible defaults and no limit on what a company can add or change.
+- **A client's rules are that client's settings.** The first client's decisions (below) ship as defaults; another company can change every one of them.
+- **It scales without a ceiling:** any number of companies, branches, records, fields and options.
+
+When building anything, ask: *could another company want this differently?* If yes, make it a setting with a sensible default rather than a value in the code.
+
 ## Contents
 
-1. [Where things stand](#where-things-stand)
-2. [Project context](#project-context)
-3. [Set up and run](#set-up-and-run)
-4. [The console](#the-console)
-5. [Using the API from a frontend](#using-the-api-from-a-frontend)
-6. [Masters and their endpoints](#masters-and-their-endpoints)
-7. [Code layout](#code-layout)
-8. [Tests and checks](#tests-and-checks)
-9. [Production notes](#production-notes)
+1. [The founding principle](#the-founding-principle-configurable-without-limits)
+2. [Where things stand](#where-things-stand)
+3. [Project context](#project-context)
+4. [Set up and run](#set-up-and-run)
+5. [The console](#the-console)
+6. [Using the API from a frontend](#using-the-api-from-a-frontend)
+7. [Masters and their endpoints](#masters-and-their-endpoints)
+8. [Code layout](#code-layout)
+9. [Tests and checks](#tests-and-checks)
+10. [Production notes](#production-notes)
 
 ## Where things stand
 
@@ -45,7 +56,7 @@ What the backend does today:
 
 ## Project context
 
-**What is settled:** the stack, the owner's decisions and how we work, below. **What is open:** everything else here (how models are grouped, screen layouts, UI guidance, code suggestions) is the current thinking, to be discussed and improved. When something is unclear, or a task seems to need a different approach, ask.
+**What is settled:** the founding principle above, the stack and how we work. **What is open:** everything else here (how models are grouped, screen layouts, UI guidance, code suggestions) is the current thinking, to be discussed and improved. When something is unclear, or a task seems to need a different approach, ask.
 
 ### The stack
 
@@ -72,7 +83,9 @@ How the stack has been used so far, and why:
 - The next requirements are tracked in issues; [issue #2](https://github.com/harshtripathi272/fleet_erp/issues/2) is the current one.
 - Secrets live only in `.env`, which is never committed. `.env.example` lists every setting.
 
-### The owner's decisions (meeting of 20 September 2026)
+### The first client's settings (owner meeting of 20 September 2026)
+
+These are how the first client works. They ship as **defaults**, and every one of them is configurable for other companies.
 
 1. **Trips start from the truck.** Choose the truck first; its trailer and driver follow.
 2. **Driver settlement is periodic**, across several trips, not per trip.
