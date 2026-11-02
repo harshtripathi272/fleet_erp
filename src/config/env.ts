@@ -36,6 +36,9 @@ export const envSchema = z.object({
   SMTP_PASS: optionalText,
   SMTP_FROM: z.string().trim().min(3).default('Marichi Fleet <no-reply@marichi.local>'),
 
+  /** Folder of the built web app; defaults to web/dist next to the API. The app is served only when it has been built. */
+  WEB_DIR: z.string().trim().min(1).optional(),
+
   /** Shared secret Marichi Talks sends in `X-Webhook-Secret`; the inbound WhatsApp webhook is off without it. */
   MARICHI_TALKS_WEBHOOK_SECRET: z.string().trim().min(16, 'Use at least 16 characters').optional(),
   /** Lets signed-in staff act as a driver's WhatsApp from the app (the simulated phone). On by default outside production; refused in production. */

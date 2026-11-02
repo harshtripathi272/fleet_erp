@@ -45,8 +45,6 @@ export function NewTrip({ open, onClose, onCreated }: { open: boolean; onClose: 
     const r = byId(data.routes, id);
     if (r && truck) {
       setStops(stopsFromTruck(r.stops, truck));
-      const product = r.stops.some((s) => ["IND", "BEI", "DAR"].includes(s.placeId) && s.kind === "load") ? "P1" : "";
-      if (product) setProductId(product);
     }
   };
   const problem = validateStops(stops);

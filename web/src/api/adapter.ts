@@ -2,6 +2,7 @@ import type {
   ActivityEvent, AppData, Consignment, Customer, Decision, Driver, DriverDoc, Expense, ExpenseCategory, FundRequest, Message, MsgButton,
   Nomination, Pairing, Place, Product, RouteTemplate, Settlement, Trailer, Trip, Truck, Unit,
 } from "../domain/types";
+import { setBaseCurrencyCode } from "../ui/format";
 
 /**
  * Maps API records onto the shape the desks were built against (`AppData` from the trip-flow mock), so
@@ -75,6 +76,7 @@ const DEPOT_TYPES = new Set(["depot", "terminal", "refinery", "port", "fuel_stat
 export function toAppData(ref: Reference, ops: Operations): AppData {
   const currencies = index(ref.currencies);
   const base = currencies.get(String(ref.company?.baseCurrencyId)) ?? ref.currencies.find((c) => c.code === "ZMW") ?? { id: "", code: "ZMW", minorUnits: 2 };
+  setBaseCurrencyCode(base.code);
   const baseUnits = 10 ** Number(base.minorUnits ?? 2);
   const toMajor = (minor: number | undefined, currencyId?: string) => (minor ?? 0) / 10 ** Number(currencies.get(String(currencyId ?? base.id))?.minorUnits ?? 2);
   const baseMajor = (minor: number | undefined) => (minor ?? 0) / baseUnits;

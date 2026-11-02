@@ -7,7 +7,13 @@ export const num = (value: number | undefined | null, digits = 0) =>
     ? "—"
     : value.toLocaleString("en-GB", { minimumFractionDigits: digits, maximumFractionDigits: digits });
 
-export const zmw = (value: number | undefined | null) => (value == null ? "—" : `${num(Math.round(value))} ZMW`);
+/** The company's base currency code, set when the company loads; every base-currency amount shows in it. */
+let baseCode = "ZMW";
+export const setBaseCurrencyCode = (code: string | undefined) => { if (code) baseCode = code; };
+export const baseCurrencyCode = () => baseCode;
+
+/** An amount in the company's base currency (named after the first client's kwacha). */
+export const zmw = (value: number | undefined | null) => (value == null ? "—" : `${num(Math.round(value))} ${baseCode}`);
 export const L = (value: number | undefined | null) => (value == null ? "—" : `${num(Math.round(value))} L`);
 export const km = (value: number | undefined | null) => (value == null ? "—" : `${num(Math.round(value))} km`);
 export const cash = (value: number, currency: string) =>

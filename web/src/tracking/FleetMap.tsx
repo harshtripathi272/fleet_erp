@@ -43,7 +43,7 @@ export function FleetMap({ onTrip }: { onTrip: (id: string) => void }) {
         return (
           <g key={p.id} transform={`translate(${x} ${y})`} className={`fm-place fm-${p.kind}`}>
             <circle r={p.kind === "border" ? 2.5 : 3.2} />
-            {p.kind !== "border" && p.id !== "LUD" && p.id !== "IND" && (
+            {p.kind !== "border" && (
               <text y={-8} textAnchor="middle">
                 {p.name.replace(/ (fuel terminal|fuel depot|copper yard|refinery|port)$/i, "")}
               </text>

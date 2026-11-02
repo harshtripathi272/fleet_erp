@@ -4,13 +4,18 @@ import { useApp } from "../store";
 import { byId, leg } from "../domain/calc";
 import { activeTrip, placeName } from "../domain/helpers";
 import { nextStep } from "../domain/turn";
-import type { Nomination } from "../domain/types";
+import type { AppData, Nomination } from "../domain/types";
 import { Avatar, Button, Drawer, Empty, Field, Modal, Segmented, Status } from "../ui/kit";
 import { ago, day, hoursText, km, localDate } from "../ui/format";
 import { Turn } from "./Trips";
 
 const STEPS = ["draft", "sent", "accepted", "converted"] as const;
 const STEP_LABEL = { draft: "Draft", sent: "With customer", accepted: "Accepted", converted: "Trips created" };
+
+/** The default "Loading at": the first place a truck can load at (not a border). */
+const firstLoadingPlace = (data: AppData) => data.places.find((p) => p.kind !== "border")?.id ?? "";
+/** The default order source: the company's first one. */
+const firstSource = (data: AppData) => data.orderSources?.[0]?.name ?? "Direct";
 
 export function Nominations() {
   const { data, role } = useApp();
@@ -172,9 +177,10 @@ function NominationForm({ open, editing, onClose }: { open: boolean; editing?: N
   const { data, run } = useApp();
   const now = new Date(Date.now() + data.settings.clockOffsetMs).toISOString();
   const [customerId, setCustomerId] = useState(editing?.customerId ?? data.customers[0].id);
-  const [source, setSource] = useState<Nomination["source"]>(editing?.source ?? "Direct");
+  const [source, setSource] = useState<Nomination["source"]>(editing?.source ?? firstSource(data));
   const [reference, setReference] = useState(editing?.reference ?? "");
-  const [loadingPlaceId, setLoading] = useState(editing?.loadingPlaceId ?? "IND");
+  const referenceNeeded = Boolean(data.orderSources?.find((o) => o.name === source)?.referenceRequired);
+  const [loadingPlaceId, setLoading] = useState(editing?.loadingPlaceId ?? firstLoadingPlace(data));
   const [productId, setProductId] = useState(editing?.productId ?? "");
   const [qty, setQty] = useState(editing?.qtyPerTruck ? String(editing.qtyPerTruck) : "");
   const [date, setDate] = useState(editing?.requiredDate ?? localDate(new Date(Date.parse(now) + 864e5).toISOString()));
@@ -185,9 +191,9 @@ function NominationForm({ open, editing, onClose }: { open: boolean; editing?: N
   if (key !== lastKey) {
     setLastKey(key);
     setCustomerId(editing?.customerId ?? data.customers[0].id);
-    setSource(editing?.source ?? "Direct");
+    setSource(editing?.source ?? firstSource(data));
     setReference(editing?.reference ?? "");
-    setLoading(editing?.loadingPlaceId ?? "IND");
+    setLoading(editing?.loadingPlaceId ?? firstLoadingPlace(data));
     setProductId(editing?.productId ?? "");
     setQty(editing?.qtyPerTruck ? String(editing.qtyPerTruck) : "");
     setDate(editing?.requiredDate ?? localDate(new Date(Date.parse(now) + 864e5).toISOString()));
@@ -259,15 +265,11 @@ function NominationForm({ open, editing, onClose }: { open: boolean; editing?: N
               label="Order source"
               value={source}
               onChange={setSource}
-              options={[
-                { value: "Direct", label: "Direct" },
-                { value: "Broker", label: "Broker" },
-                { value: "Sales", label: "Sales" },
-              ]}
+              options={(data.orderSources ?? []).map((o) => ({ value: o.name, label: o.name }))}
             />
           </Field>
-          <Field label={source === "Broker" ? "Broker reference" : "Customer order no."}>
-            <input value={reference} onChange={(e) => setReference(e.target.value)} placeholder={source === "Broker" ? "BRK-2291 · Kasonde Freight" : "PO-7731"} />
+          <Field label={referenceNeeded ? "Reference (required)" : "Customer order no."}>
+            <input value={reference} onChange={(e) => setReference(e.target.value)} placeholder="PO-7731" />
           </Field>
           <Field label="Loading at">
             <select value={loadingPlaceId} onChange={(e) => setLoading(e.target.value)}>

@@ -1,4 +1,6 @@
 import express from 'express';
+import { existsSync } from 'node:fs';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { env } from './config/env.js';
 import { authenticate } from './middleware/authenticate.js';
@@ -66,6 +68,18 @@ app.use('/api/v1', authenticate, cargoRouter);
 app.use('/api/v1', authenticate, tripsRouter);
 app.use('/api/v1', authenticate, messagingRouter);
 app.use('/api/v1', authenticate, configurationRouter);
+
+// The web app (web/dist), when built: hashed assets cached for a year, the page itself never,
+// and any other GET outside the API answered with the page so the app's own routes work.
+const webDir = env.WEB_DIR ?? fileURLToPath(new URL('../web/dist', import.meta.url));
+if (existsSync(join(webDir, 'index.html'))) {
+  app.use('/assets', express.static(join(webDir, 'assets'), { immutable: true, maxAge: '1y', fallthrough: false }));
+  app.use(express.static(webDir, { index: false, maxAge: '1h' }));
+  app.get(/^\/(?!api\/|api$|console(\/|$)).*/, (_req, res) => {
+    res.setHeader('Cache-Control', 'no-cache');
+    res.sendFile(join(webDir, 'index.html'));
+  });
+}
 
 app.use(notFound);
 app.use(errorHandler);

@@ -456,7 +456,7 @@ function FundingPanel({ trip, step }: { trip: Trip; step: NextStep }) {
         <FundCard
           icon={<CircleDollarSign size={18} />}
           title="Driver cash"
-          unit="ZMW"
+          unit={data.baseCurrency?.code ?? "ZMW"}
           budget={f.cash.budget}
           rows={[
             ["Budget", zmw(f.cash.budget)],
@@ -518,7 +518,7 @@ function FundCard({
 }) {
   const { data, run } = useApp();
   const [amount, setAmount] = useState(String(suggested || ""));
-  const [currency, setCurrency] = useState<Currency>("ZMW");
+  const [currency, setCurrency] = useState<Currency>((data.baseCurrency?.code ?? "ZMW") as Currency);
   const [reason, setReason] = useState("");
   const [extra, setExtra] = useState(false);
   useEffect(() => {
@@ -1423,7 +1423,7 @@ export function ReceiptReview({ doc }: { doc: DriverDoc }) {
   const read = doc.read ?? {};
   const [categoryId, setCategoryId] = useState(read.categoryId ?? data.categories[0].id);
   const [amount, setAmount] = useState(String(read.amount ?? ""));
-  const [currency, setCurrency] = useState<Currency>(read.currency ?? "ZMW");
+  const [currency, setCurrency] = useState<Currency>(read.currency ?? ((data.baseCurrency?.code ?? "ZMW") as Currency));
   const finance = role === "finance" || role === "owner";
   const driver = byId(data.drivers, doc.driverId);
   return (
