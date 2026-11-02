@@ -9,6 +9,7 @@ import { GROUPS } from '../../core/masters/groups.js';
 import { listMasters as registered, refsOf } from '../../core/masters/registry.js';
 import { ACTIONS, type MasterDefinition, type Plain } from '../../core/masters/types.js';
 import type { AuthContext } from '../../types/express.js';
+import { withChoices } from '../configuration/configuration.service.js';
 import { FieldDefinition } from '../configuration/models/configuration.model.js';
 
 const GROUP_ORDER: string[] = Object.values(GROUPS);
@@ -112,7 +113,7 @@ function permissionsFor(def: MasterDefinition, auth?: AuthContext) {
 
 export async function describeMasters(auth?: AuthContext) {
   const keys = modelKeyMap();
-  const customFields = await FieldDefinition.find({ status: 'active' }).sort({ order: 1 }).lean();
+  const customFields = await withChoices(await FieldDefinition.find({ status: 'active' }).sort({ order: 1 }).lean() as Plain[]);
   return listMasters().map((def) => ({
     key: def.key,
     label: def.label,
@@ -133,7 +134,10 @@ export async function describeMasters(auth?: AuthContext) {
     filters: Object.entries(def.filters ?? {}).map(([key, f]) => ({ key, description: f.description, schema: toJson(f.schema) })),
     references: refsOf(def).map((r) => ({ path: r.path, target: r.target, ...(r.partyRoles ? { partyRoles: r.partyRoles } : {}), ...(r.usageOnly ? { usageOnly: true } : {}) })),
     fields: describeSchema(def.model.schema, def, keys),
-    customFields: customFields.filter((f) => f.entity === def.key).map((f) => ({ key: f.key, label: f.label, type: f.type, required: f.required })),
+    customFields: customFields.filter((f) => f.entity === def.key).map((f) => ({
+      key: f.key, label: f.label, type: f.type, required: f.required,
+      ...(f.choices ? { choices: f.choices } : {}), ...(f.referenceMaster ? { referenceMaster: f.referenceMaster } : {}), ...(f.helpText ? { helpText: f.helpText } : {}),
+    })),
     indexes: def.model.schema.indexes().map(([fields, options]) => ({ fields, unique: Boolean(options.unique), partial: options.partialFilterExpression ?? null })),
     createSchema: toJson(def.createSchema),
     updateSchema: toJson(def.updateSchema),

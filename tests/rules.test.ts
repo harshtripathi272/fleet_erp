@@ -500,4 +500,27 @@ describe('messages and configuration', () => {
     assert.equal(retype.status, 409);
     assert.equal((await post(`/custom-masters/${ids.healthCards}/archive`, {})).status, 409);
   });
+
+  test('forms get select choices from a field\'s options or its list', async () => {
+    const masters = await get('/meta/masters').expect(200);
+    const drivers = masters.body.data.find((m: { key: string }) => m.key === 'drivers');
+    const union = drivers.customFields.find((f: { key: string }) => f.key === 'union');
+    assert.deepEqual(union.choices.map((c: { value: string }) => c.value), ['ztu', 'none']);
+    assert.ok(union.choices.every((c: { label: string }) => c.label));
+
+    const cm = await post('/custom-masters', {
+      code: 'inspections', name: 'Inspections', titleField: 'ref',
+      fields: [
+        { key: 'ref', label: 'Ref', type: 'text', required: true },
+        { key: 'grade', label: 'Grade', type: 'select', options: ['A', 'B'] },
+        { key: 'union', label: 'Union', type: 'select', listId: ids.listUnions },
+      ],
+    }).expect(201);
+    const fields = await get(`/custom-masters/${cm.body.data.id}/fields`).expect(200);
+    const by = (key: string) => fields.body.data.find((f: { key: string }) => f.key === key);
+    assert.deepEqual(by('grade').choices, [{ value: 'A', label: 'A' }, { value: 'B', label: 'B' }]);
+    assert.deepEqual(by('union').choices.map((c: { value: string }) => c.value), ['ztu', 'none']);
+    assert.equal(by('ref').choices, undefined);
+    await get('/custom-masters/0123456789abcdef01234567/fields').expect(404);
+  });
 });

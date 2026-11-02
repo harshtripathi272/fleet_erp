@@ -88,6 +88,8 @@ export interface ExpenseCategory {
 export interface Settings {
   company: string;
   office: string;
+  /** The head office's address, printed on documents. */
+  officeAddress?: string;
   fxZmwPerUsd: number;
   clockOffsetMs: number;
   seq: Record<string, number>;

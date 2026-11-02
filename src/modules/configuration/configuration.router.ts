@@ -16,6 +16,7 @@ router.use('/lists', createMasterRouter(C.listDefinition, (r) => {
 }));
 router.use('/field-definitions', createMasterRouter(C.fieldDefinitionDefinition));
 router.use('/custom-masters', createMasterRouter(C.customMasterDefinition, (r) => {
+  r.get('/:masterId/fields', authorize('custom-records', 'read'), validate({ params: recordParams }), ConfigurationController.recordFields);
   r.get('/:masterId/records', authorize('custom-records', 'read'), validate({ params: recordParams, query: recordQuery }), ConfigurationController.listRecords);
   r.post('/:masterId/records', authorize('custom-records', 'create'), validate({ params: recordParams, body: createCustomRecordSchema }), ConfigurationController.createRecord);
   r.get('/:masterId/records/:id', authorize('custom-records', 'read'), validate({ params: recordIdParams }), ConfigurationController.getRecord);

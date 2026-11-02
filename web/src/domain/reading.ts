@@ -13,21 +13,12 @@ export function seeded(key: string) {
   };
 }
 
-const CONSIGNORS: Record<string, string> = {
-  BEI: "Beira Oil Terminal Ltda",
-  IND: "Indeni Petroleum Refinery",
-  DAR: "Kurasini Oil Jetty Terminal",
-  CHN: "Nchanga Copper Mines",
-  LUN: "Kafue Foods Warehouse",
-  LUD: "Lusaka Fuel Depot",
-};
-
 export const EXPENSE_SAMPLES = [
-  { variant: "toll", title: "Toll receipt", categoryId: "CAT1", amount: 250, currency: "ZMW" as const, issuer: "Road Development Agency" },
-  { variant: "border", title: "Border fee", categoryId: "CAT2", amount: 60, currency: "USD" as const, issuer: "ZIMRA Customs" },
-  { variant: "meals", title: "Meals receipt", categoryId: "CAT4", amount: 185, currency: "ZMW" as const, issuer: "Mama Tasty Kitchen" },
-  { variant: "parking", title: "Parking ticket", categoryId: "CAT3", amount: 100, currency: "ZMW" as const, issuer: "Truck Stop Parking" },
-  { variant: "repair", title: "Tyre repair", categoryId: "CAT5", amount: 1450, currency: "ZMW" as const, issuer: "Highway Tyre Centre" },
+  { variant: "toll", title: "Toll receipt", amount: 250, currency: "ZMW" as const, issuer: "Road Development Agency" },
+  { variant: "border", title: "Border fee", amount: 60, currency: "USD" as const, issuer: "ZIMRA Customs" },
+  { variant: "meals", title: "Meals receipt", amount: 185, currency: "ZMW" as const, issuer: "Mama Tasty Kitchen" },
+  { variant: "parking", title: "Parking ticket", amount: 100, currency: "ZMW" as const, issuer: "Truck Stop Parking" },
+  { variant: "repair", title: "Tyre repair", amount: 1450, currency: "ZMW" as const, issuer: "Highway Tyre Centre" },
 ];
 
 export function readDocument(
@@ -65,7 +56,7 @@ export function readDocument(
         docNo: `DN-${n(20000, 89999)}`,
         productId: product.id,
         qty: trip.plannedQty ?? Math.max(1, truck.capacityT - 2),
-        consignor: CONSIGNORS[load?.placeId ?? ""] ?? "Shipper",
+        consignor: byId(data.places, load?.placeId)?.name ?? "Shipper",
         consignee: byId(data.customers, trip.customerId)?.name,
       };
     }
@@ -79,7 +70,7 @@ export function readDocument(
       ambientL: ambient,
       tempC: n(23, 31, 1),
       density: petrol ? n(736, 748, 1) : n(829, 841, 1),
-      consignor: CONSIGNORS[load?.placeId ?? ""] ?? "Fuel terminal",
+      consignor: byId(data.places, load?.placeId)?.name ?? "Fuel terminal",
       consignee: byId(data.customers, trip.customerId)?.name,
     };
   }

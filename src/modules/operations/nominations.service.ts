@@ -16,6 +16,8 @@ import { createTrip, driverName, placeName, stopsFromTruck, truckFacts } from '.
 import type * as S from './operations.schema.js';
 import { operationsSettings } from './settings.js';
 
+const count = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
+
 export async function listNominations(query: S.NominationListQuery) {
   const filter: Plain = {};
   if (query.status) filter.status = query.status;
@@ -56,7 +58,7 @@ export async function createNomination(input: S.NominationInput, ctx: OpsContext
   const customer = await checkNomination(input);
   const nomination = new Nomination({ ...input, number: await nextNumber('nominations', 'NOM', at), status: 'draft', createdBy: ctx.actorId, updatedBy: ctx.actorId });
   await save(nomination);
-  await log(ctx, at, `${nomination.get('number')} for ${customer.name}: ${input.trucks.length} trucks`, { entity: 'nominations', entityId: nomination._id });
+  await log(ctx, at, `${nomination.get('number')} for ${customer.name}: ${count(input.trucks.length, 'truck')}`, { entity: 'nominations', entityId: nomination._id });
   return present(nomination.toObject());
 }
 
@@ -70,7 +72,7 @@ export async function updateNomination(id: string, input: S.NominationUpdateInpu
   const customer = await checkNomination({ ...(nomination.toObject() as S.NominationInput), ...changes } as S.NominationInput);
   nomination.set({ ...changes, updatedBy: ctx.actorId });
   await save(nomination);
-  await log(ctx, at, `${nomination.get('number')} for ${customer.name}: ${nomination.get('trucks').length} trucks`, { entity: 'nominations', entityId: nomination._id });
+  await log(ctx, at, `${nomination.get('number')} for ${customer.name}: ${count(nomination.get('trucks').length, 'truck')}`, { entity: 'nominations', entityId: nomination._id });
   return present(nomination.toObject());
 }
 
@@ -92,7 +94,7 @@ export async function sendNomination(id: string, ctx: OpsContext) {
   }
   await post(customerThread(customer._id), at, {
     from: 'me', title: `Nomination ${n.number}`,
-    text: `${rows.length} trucks for loading at ${await placeName(n.loadingPlaceId)} on ${shortDate(n.requiredDate as Date)}. Tracking links go live at dispatch.`,
+    text: `${count(rows.length, 'truck')} for loading at ${await placeName(n.loadingPlaceId)} on ${shortDate(n.requiredDate as Date)}. Tracking links go live at dispatch.`,
     rows, refId: String(n._id),
   }, ctx);
   await log(ctx, at, `${n.number} sent to ${customer.name}`, { entity: 'nominations', entityId: n._id });
@@ -110,9 +112,9 @@ export async function acceptNomination(id: string, input: S.AcceptInput, ctx: Op
   const n = nomination.toObject() as Plain;
   const customer = await customerParty(n.customerId);
   const trucks = (n.trucks as unknown[]).length;
-  if (input.customerReply) await post(customerThread(customer._id), at, { from: 'contact', text: `Accepted, thank you. Please proceed with all ${trucks} trucks.` }, ctx);
+  if (input.customerReply) await post(customerThread(customer._id), at, { from: 'contact', text: trucks === 1 ? 'Accepted, thank you. Please proceed.' : `Accepted, thank you. Please proceed with all ${trucks} trucks.` }, ctx);
   await post(queue('nominations'), at, {
-    title: `${customer.name} accepted ${n.number}`, text: `Create the ${trucks} trips.`,
+    title: `${customer.name} accepted ${n.number}`, text: trucks === 1 ? 'Create the trip.' : `Create the ${trucks} trips.`,
     buttons: [{ label: 'Create trips', tone: 'primary', nav: { view: 'nominations' } }], refId: `${n._id}-accepted`,
   }, ctx);
   await log(ctx, at, `${customer.name} accepted ${n.number}`, { entity: 'nominations', entityId: n._id });

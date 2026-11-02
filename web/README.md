@@ -26,3 +26,19 @@ Notes:
 ```sh
 npm run build      # type-check and build to dist/
 ```
+
+## The flow
+
+Every trip shows one next step and names whose turn it is. The trip's type decides its stages (`trip-stages` in Masters).
+
+1. **Plan.** Operations starts from a truck, or converts an accepted nomination. The truck's trailer, driver and place fill in, and a route or the stop editor sets the road distances.
+2. **Funding.** The route's budget sets the fuel and cash. The suggestion is the budget minus fuel in the tank and cash the driver already holds. Requests go through the company's approval policies, level by level; each level can approve in the app or from WhatsApp.
+3. **Loading.** The driver sends a photo of the loading invoice, or Operations enters it. Fuel cargo is corrected to 20 °C from temperature and density.
+4. **Transit.** Dispatch and follow the truck on the map. Stops are stamped as the truck passes them, or marked by hand.
+5. **Offloading.** The delivery note gives the delivered volume; the shortage beyond the shortage policy's allowance is priced, and Finance charges or waives it.
+6. **Close.** Operations records the fuel left and frees the truck. Receipts sent on the way go to Finance.
+7. **Settle.** Finance settles a driver across closed trips from **Driver accounts** and prints a statement. Every trip also prints a one-page trip sheet.
+
+Document reading, GPS positions, the road camera and the phones are still simulations; the records they produce are real API records.
+
+See [ARCHITECTURE.md](./ARCHITECTURE.md) for how the code is organised.

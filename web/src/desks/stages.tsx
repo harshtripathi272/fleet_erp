@@ -451,7 +451,7 @@ function FundingPanel({ trip, step }: { trip: Trip; step: NextStep }) {
           canRequest={canRequest}
           kind="fuel"
           trip={trip}
-          max={f.fuel.room}
+          max={Number.isFinite(f.fuel.room) ? f.fuel.room : undefined}
         />
         <FundCard
           icon={<CircleDollarSign size={18} />}

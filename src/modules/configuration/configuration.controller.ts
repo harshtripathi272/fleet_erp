@@ -12,6 +12,9 @@ const ctx = (req: Request) => contextOf(req, 'custom-records');
 export const listValues = asyncHandler(async (req, res) => {
   ApiResponse.success(res, await ConfigurationService.listValues((req.params as { code: string }).code));
 });
+export const recordFields = asyncHandler(async (req, res) => {
+  ApiResponse.success(res, await ConfigurationService.recordFields(params(req).masterId));
+});
 export const listRecords = asyncHandler(async (req, res) => {
   const result = await ConfigurationService.listRecords(params(req).masterId, req.query as unknown as ListQuery, ctx(req));
   ApiResponse.paginated(res, result.data, buildPaginationMeta(result.total, result.page, result.limit));

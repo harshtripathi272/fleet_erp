@@ -46,15 +46,15 @@ When building anything, ask: *could another company want this differently?* If y
 | Backend: sign-in, roles, every MVP master, console | This repository, branch `main` | Done and tested |
 | Clickable mock of the whole trip flow (Owner, Operations and Finance desks, and the driver's WhatsApp) | [laksh-ya/fleet-erp](https://github.com/laksh-ya/fleet-erp), folder [`trip-flow/`](https://github.com/laksh-ya/fleet-erp/tree/main/trip-flow) | Done; the reference for screens and flow |
 | Client material: PRD, master sheets, meeting notes with the owner's answers, competitor decks | [laksh-ya/fleet-erp](https://github.com/laksh-ya/fleet-erp), folder [`reference/`](https://github.com/laksh-ya/fleet-erp/tree/main/reference) | Reference |
-| **Next: the real frontend, connected to this API, starting with the masters** | [Issue #2](https://github.com/harshtripathi272/fleet_erp/issues/2) | **Current priority** |
-| Trips and money (nominations, trips, advances, fuel, loading and offloading, expenses, settlement) | Part of issue #2 | Not started |
+| **The real frontend (`web/`), connected to this API: sign-in, a generic masters screen, the desks** | This repository, folder `web/`; [issue #2](https://github.com/harshtripathi272/fleet_erp/issues/2), [PR #3](https://github.com/harshtripathi272/fleet_erp/pull/3) | **In review** |
+| Trips and money (nominations, trips, advances, fuel, loading and offloading, expenses, settlement) | Part of issue #2, same PR | Built and tested; in review |
 
 Repositories:
 
 | Repository | What it holds |
 | --- | --- |
-| [harshtripathi272/fleet_erp](https://github.com/harshtripathi272/fleet_erp) (this one) | The backend API, its tests and the console |
-| [laksh-ya/fleet-erp](https://github.com/laksh-ya/fleet-erp) | The frontend mock (`trip-flow/`) and the client's material (`reference/`) |
+| [harshtripathi272/fleet_erp](https://github.com/harshtripathi272/fleet_erp) (this one) | The backend API, its tests, the console and the frontend (`web/`) |
+| [laksh-ya/fleet-erp](https://github.com/laksh-ya/fleet-erp) | The original frontend mock (`trip-flow/`) and the client's material (`reference/`) |
 
 Both are private; ask Lakshya for access. The folder names differ only by `_` and `-`: `fleet_erp` is this backend, `fleet-erp` the mock.
 
@@ -183,6 +183,8 @@ npm run seed              # optional: loads the sample data
 npm run dev
 ```
 
+The frontend, in a second terminal: `cd web`, `npm ci`, `npm run dev`, then open **http://localhost:5173** (details in step 8 below).
+
 Open **http://127.0.0.1:3000/console/**. In the console, **Test the API → Create account**. On a fresh database the **first account becomes the Owner**. Later sign-ups get the read-only Viewer role, or are refused if the company turns self sign-up off.
 
 Or run the API, MongoDB and Redis together with Docker Compose:
@@ -246,13 +248,21 @@ Leave that window open; the API restarts when you save a file. Open **http://127
 
 **7. Run the checks:** `npm run check`. The tests use their own temporary MongoDB, not `fleet_erp`; the first run downloads it (about 100 MB).
 
-**Run the mock as well** (it keeps demo data in the browser and does not use the API yet):
+**8. Run the frontend** in a second PowerShell, with the API still running:
 
 ```powershell
-cd $HOME\Documents\fleet-erp\trip-flow
-npm install
+cd $HOME\Documents\fleet_erp\web
+npm ci
 npm run dev
 ```
+
+Open **http://localhost:5173** and sign in with an account made in the console. Vite forwards `/api` to the API on `127.0.0.1:3000`, so no CORS setting is needed; to use an API elsewhere, set `API_URL` before `npm run dev`. The desks offered follow the person's roles: Owner, Operations and Finance, plus the driver's phone for anyone who may file driver documents. The simulated driver phone is on outside production (`DRIVER_PHONE_SIMULATOR` in `.env`).
+
+Money requests, expenses and settlement belong to the `finance` module, and position reports to `tracking`. The sample data switches both on. A company record created any other way starts with `modules: ['masters', 'trips']`, so those screens stay empty until the modules are switched on in **Masters → Company**.
+
+Once the frontend is built (`npm run build:web`, which `npm run check` also runs), the API serves it too, at **http://127.0.0.1:3000/**; `WEB_DIR` points at another build.
+
+The old mock in [laksh-ya/fleet-erp](https://github.com/laksh-ya/fleet-erp) `trip-flow/` still runs on its own (`npm install`, `npm run dev`, port 5173 unless taken) and keeps its demo data in the browser; `web/` replaced it.
 
 ### Environment variables
 
@@ -463,6 +473,10 @@ src/
 scripts/seed.ts               npm run seed
 public/console/               the console
 tests/                        node:test + supertest on a temporary in-memory MongoDB
+web/                          the frontend (React, Vite, TanStack Query); see web/ARCHITECTURE.md
+  src/api/                    API client (token refresh), the adapter from API records to
+                              screen data, and the command for each action a screen takes
+  src/desks/, src/masters/    the desks, and the generic masters screen built from /meta/masters
 ```
 
 The generic engine gives every master the same routes and checks. A new master is a Mongoose model, a Zod schema and a master definition in its module's service, mounted with `createMasterRouter` in the module's router. It then appears in the API, the console and `/meta/models` without other changes.
@@ -474,7 +488,8 @@ The generic engine gives every master the same routes and checks. A new master i
 | `npm run dev` | Runs the API on port 3000 and restarts on save |
 | `npm run seed` | Loads the sample data into the database in `MONGODB_URI` |
 | `npm test` | Runs the tests |
-| `npm run check` | Type-check, tests and production build; run before every push |
+| `npm run build:web` | Installs and builds the frontend into `web/dist`, which the API then serves |
+| `npm run check` | Type-check, tests, the API's production build and the frontend build; run before every push |
 
 The tests run on their own temporary MongoDB and cover:
 

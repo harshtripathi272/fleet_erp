@@ -37,9 +37,7 @@ export function TripSheet({ tripId }: { tripId: string }) {
           <BrandMark size={34} />
           <div>
             <strong>{data.settings.company}</strong>
-            <span>
-              {data.settings.office} office · Plot 4471, Mungwi Road
-            </span>
+            <span>{[data.settings.office, data.settings.officeAddress].filter(Boolean).join(" · ")}</span>
           </div>
         </div>
         <div className="sheet-title">

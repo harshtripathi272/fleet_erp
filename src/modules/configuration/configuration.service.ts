@@ -63,6 +63,22 @@ async function resolveOptions(fields: Plain[]): Promise<DynamicField[]> {
   }).sort((a, b) => (a.order ?? 100) - (b.order ?? 100));
 }
 
+/** Fields as a form needs them: each select carries its choices, from its own options or its list's active values. */
+export async function withChoices(fields: Plain[]) {
+  const listIds = fields.map((f) => f.listId).filter(Boolean);
+  const lists = listIds.length ? await List.find({ _id: { $in: listIds } }).lean() : [];
+  return fields.map((f) => {
+    const list = f.listId ? lists.find((l) => String(l._id) === String(f.listId)) : undefined;
+    const choices = list
+      ? (list.values as Array<{ value: string; label: string; order?: number; active?: boolean }>)
+        .filter((v) => v.active !== false)
+        .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+        .map((v) => ({ value: v.value, label: v.label }))
+      : (f.options as string[] | undefined)?.map((value) => ({ value, label: value }));
+    return choices ? { ...f, choices } : f;
+  });
+}
+
 /* ---------- Custom fields on built-in masters ---------- */
 
 export const fieldDefinitionDefinition = defineMaster({
@@ -145,6 +161,12 @@ async function loadCustomMaster(masterId: string, mustBeActive = false) {
   if (!master) throw new NotFoundError('Custom master not found');
   if (mustBeActive && master.status !== 'active') throw new ConflictError('This custom master is not active');
   return master;
+}
+
+/** A custom master's fields for its record form, with select choices filled in. */
+export async function recordFields(masterId: string) {
+  const master = await loadCustomMaster(masterId);
+  return withChoices(master.fields as Plain[]);
 }
 
 /** A per-master definition whose prepare validates `data` against that master's fields. */

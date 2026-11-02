@@ -5,14 +5,14 @@
 .masters-nav section { display: grid; gap: 1px; }
 .masters-nav button { border: 0; background: transparent; text-align: left; padding: 6px 10px; border-radius: 8px; color: var(--ink-2); font-size: 14px; }
 .masters-nav button:hover { background: var(--surface); }
-.masters-nav button.on { background: var(--surface); color: var(--ink); font-weight: 560; box-shadow: inset 2px 0 0 var(--pine, #1f4d3f); }
+.masters-nav button.on { background: var(--surface); color: var(--ink); font-weight: 560; box-shadow: inset 2px 0 0 var(--pine-700); }
 .masters-main { min-width: 0; }
 .masters-head { display: flex; gap: 16px; align-items: flex-start; justify-content: space-between; margin-bottom: 12px; }
 .masters-head h2 { margin: 0 0 4px; }
 .masters-head p { margin: 0; max-width: 70ch; }
 .table-frame { overflow-x: auto; border: 1px solid var(--line-2); border-radius: 10px; background: var(--surface); }
 .table-frame .table { width: 100%; border-collapse: collapse; }
-.table-frame th, .table-frame td { padding: 9px 12px; border-bottom: 1px solid var(--line, #e7e2d6); text-align: left; font-size: 14px; }
+.table-frame th, .table-frame td { padding: 9px 12px; border-bottom: 1px solid var(--line); text-align: left; font-size: 14px; }
 .table-frame tr.clickable { cursor: pointer; }
 .table-frame tr.clickable:hover td { background: rgba(31, 77, 63, 0.04); }
 .pager { display: flex; gap: 12px; align-items: center; justify-content: flex-end; margin-top: 10px; }
@@ -27,7 +27,7 @@ details.form-group summary { cursor: pointer; }
 .checks { display: flex; flex-wrap: wrap; gap: 8px 14px; }
 .seg-tabs { display: flex; gap: 4px; margin-bottom: 14px; border-bottom: 1px solid var(--line-2); }
 .seg-tabs button { border: 0; border-bottom: 2px solid transparent; background: transparent; padding: 8px 12px; margin-bottom: -1px; color: var(--ink-3); border-bottom: 2px solid transparent; }
-.seg-tabs button.on { color: var(--ink); border-bottom-color: var(--pine, #1f4d3f); font-weight: 560; }
+.seg-tabs button.on { color: var(--ink); border-bottom-color: var(--pine-700); font-weight: 560; }
 .extra { margin-bottom: 14px; }
 .preview { white-space: pre-wrap; font-size: 12px; }
 .history { display: grid; gap: 12px; padding-left: 18px; }
@@ -35,7 +35,7 @@ details.form-group summary { cursor: pointer; }
 .plain { padding-left: 18px; }
 .signin { display: grid; gap: 14px; max-width: 380px; }
 .signin-actions { display: flex; gap: 10px; flex-wrap: wrap; }
-.signin-error { color: var(--bad, #a3361f); margin: 0; }
+.signin-error { color: var(--rust); margin: 0; }
 .picker-signout { margin-top: 28px; }
 @media (max-width: 760px) {
   .masters { grid-template-columns: 1fr; }
@@ -45,7 +45,7 @@ details.form-group summary { cursor: pointer; }
 /* Company settings */
 .company-form { border: 0; padding: 0; margin: 0; min-width: 0; display: grid; gap: 16px; }
 .check-line { display: flex; align-items: center; gap: 8px; color: var(--ink-2); }
-.check-line input { width: 16px; height: 16px; accent-color: var(--pine, #1f4d3f); }
+.check-line input { width: 16px; height: 16px; accent-color: var(--pine-700); }
 .unit-input { display: flex; align-items: center; gap: 8px; }
 .unit-input input { flex: 1; min-width: 0; }
 .unit-input .muted { white-space: nowrap; font-size: 13px; }

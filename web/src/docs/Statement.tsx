@@ -19,7 +19,7 @@ export function Statement({ id }: { id: string }) {
           <BrandMark size={34} />
           <div>
             <strong>{data.settings.company}</strong>
-            <span>{data.settings.office} office</span>
+            <span>{[data.settings.office, data.settings.officeAddress].filter(Boolean).join(" · ")}</span>
           </div>
         </div>
         <div className="sheet-title">

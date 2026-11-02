@@ -23,7 +23,8 @@ test('health endpoint returns the standard envelope and a fresh request ID', asy
 });
 
 test('unknown routes use a correlated 404 error envelope', async () => {
-  const result = await request(app).get('/missing').expect(404);
+  // An API path: other paths are the web app's own routes once web/dist is built.
+  const result = await request(app).get('/api/missing').expect(404);
   assert.equal(result.body.success, false);
   assert.equal(result.body.error.code, 'NOT_FOUND');
   assert.equal(result.body.requestId, result.headers['x-request-id']);

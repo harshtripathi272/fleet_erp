@@ -307,7 +307,9 @@ function CustomRecords({ master, defs }: { master: Rec; defs: Def[] }) {
   const rows = useQuery({ queryKey: ["custom-records", master.id], queryFn: () => api<Rec[]>(`/custom-masters/${master.id}/records`, { query: { limit: 100, status: "all" } }) });
   const [open, setOpen] = useState<Rec | "new" | null>(null);
   const [draft, setDraft] = useState<Rec>({});
-  const fields = (master.fields ?? []) as Rec[];
+  // Fields with select choices resolved by the API (lists may be beyond this person's reach).
+  const described = useQuery({ queryKey: ["custom-fields-of", master.id], queryFn: () => api<Rec[]>(`/custom-masters/${master.id}/fields`) });
+  const fields = (described.data ?? master.fields ?? []) as Rec[];
   const save = async () => {
     try {
       if (open === "new") await api(`/custom-masters/${master.id}/records`, { method: "POST", body: { data: clean(draft) } });
@@ -345,7 +347,7 @@ function CustomRecords({ master, defs }: { master: Rec; defs: Def[] }) {
               <Field key={f.key} label={`${f.label}${f.required ? " *" : ""}`}>
                 {f.type === "reference"
                   ? <RefSelect target={f.referenceMaster} defs={defs} value={draft[f.key] ?? ""} onChange={(v) => setDraft({ ...draft, [f.key]: v })} />
-                  : <ScalarInput type={f.type} value={draft[f.key]} onChange={(v) => setDraft({ ...draft, [f.key]: v })} />}
+                  : <ScalarInput type={f.type} choices={f.choices} value={draft[f.key]} onChange={(v) => setDraft({ ...draft, [f.key]: v })} />}
               </Field>
             ))}
           </div>
@@ -395,7 +397,9 @@ function SchemaForm({ schema, def, defs, value, onChange, readOnly, canSensitive
           <div className="grid-2">
             {(def.customFields as Rec[]).map((f) => (
               <Field key={f.key} label={`${f.label}${f.required ? " *" : ""}`}>
-                <ScalarInput type={f.type} value={(value.custom ?? {})[f.key]} disabled={readOnly} onChange={(v) => set("custom", { ...(value.custom ?? {}), [f.key]: v })} />
+                {f.type === "reference"
+                  ? <RefSelect target={f.referenceMaster} defs={defs} disabled={readOnly} value={(value.custom ?? {})[f.key] ?? ""} onChange={(v) => set("custom", { ...(value.custom ?? {}), [f.key]: v })} />
+                  : <ScalarInput type={f.type} choices={f.choices} value={(value.custom ?? {})[f.key]} disabled={readOnly} onChange={(v) => set("custom", { ...(value.custom ?? {}), [f.key]: v })} />}
               </Field>
             ))}
           </div>
@@ -460,11 +464,29 @@ function FieldInput({ name, path, schema, required, def, defs, value, onChange, 
   return <Field label={title} wide={type === "longtext"}><ScalarInput type={type} value={value} onChange={onChange} disabled={readOnly} /></Field>;
 }
 
-function ScalarInput({ type, value, onChange, disabled }: { type: string; value: unknown; onChange: (v: unknown) => void; disabled?: boolean }) {
+type Choice = { value: string; label: string };
+
+function ScalarInput({ type, value, onChange, disabled, choices }: { type: string; value: unknown; onChange: (v: unknown) => void; disabled?: boolean; choices?: Choice[] }) {
+  if (type === "select")
+    return (
+      <select disabled={disabled} value={(value as string) ?? ""} onChange={(e) => onChange(e.target.value || undefined)}>
+        <option value="">—</option>
+        {(choices ?? []).map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
+      </select>
+    );
+  if (type === "multi_select") {
+    const picked = new Set((value as string[] | undefined) ?? []);
+    const toggle = (v: string) => { const next = new Set(picked); if (next.has(v)) next.delete(v); else next.add(v); onChange(next.size ? [...next] : undefined); };
+    return (
+      <span className="checks">
+        {(choices ?? []).map((c) => <label key={c.value}><input type="checkbox" disabled={disabled} checked={picked.has(c.value)} onChange={() => toggle(c.value)} /> {c.label}</label>)}
+      </span>
+    );
+  }
   if (type === "boolean") return <input type="checkbox" disabled={disabled} checked={Boolean(value)} onChange={(e) => onChange(e.target.checked)} />;
   if (type === "number") return <input type="number" disabled={disabled} value={value === undefined || value === null ? "" : String(value)} onChange={(e) => onChange(e.target.value === "" ? undefined : Number(e.target.value))} />;
   if (type === "date") return <input type="date" disabled={disabled} value={value ? String(value).slice(0, 10) : ""} onChange={(e) => onChange(e.target.value || undefined)} />;
-  if (type === "longtext") return <textarea disabled={disabled} value={(value as string) ?? ""} onChange={(e) => onChange(e.target.value || undefined)} />;
+  if (type === "long_text") return <textarea disabled={disabled} value={(value as string) ?? ""} onChange={(e) => onChange(e.target.value || undefined)} />;
   return <input disabled={disabled} value={(value as string) ?? ""} onChange={(e) => onChange(e.target.value === "" ? undefined : e.target.value)} />;
 }
 
