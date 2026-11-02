@@ -21,9 +21,6 @@ export function haversineKm(a: LatLng, b: LatLng) {
   return 2 * r * Math.asin(Math.sqrt(h));
 }
 
-export const ROAD_FACTOR = 1.28;
-export const AVERAGE_KMH = 62;
-
 export function validateStops(stops: StopPlan[]): string | null {
   if (stops.length < 2) return 'Add the stops for this trip.';
   if (stops[0]!.kind !== 'start') return 'The first stop is the start.';

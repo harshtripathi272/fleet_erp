@@ -1,11 +1,13 @@
-import { NotFoundError } from '../../core/errors/index.js';
+import { ForbiddenError, NotFoundError } from '../../core/errors/index.js';
 import type { Plain } from '../../core/masters/types.js';
 import { PaymentMethod } from '../finance/models/paymentMethod.model.js';
+import { approveAs, highestEligible, notifyLevel, routeApproval, waitingOn, type Approval } from './approvals.js';
 import { FundRequest, OPEN_REQUEST } from './models/funding.model.js';
 import { Trip } from './models/trip.model.js';
+import { assertStageAllows, fireEvent } from './stages.js';
 import {
-  DESK_NAME, activeRecord, baseCurrency, conflict, currencyInfo, driverThread, formatMoney, litres, loadOr404, log, need, nextNumber,
-  post, present, refuse, resolve, save, toBase, type MessageButton, type OpsContext, type Via,
+  activeRecord, baseCurrency, conflict, currencyInfo, driverThread, formatMoney, litres, loadOr404, log, need, nextNumber,
+  post, present, queue, refuse, resolve, save, toBase, type MessageButton, type OpsContext, type Via,
 } from './support.js';
 import { activeTrip, driverName, fundingFor, plateOf, routeLabel, setVehicleState, truckFacts } from './trips.service.js';
 import type * as S from './operations.schema.js';
@@ -53,6 +55,25 @@ async function requestRows(trip: Plain, amount: string, extra: Array<[string, st
 
 const trailEntry = (ctx: OpsContext, what: string, at: Date, via: Via = 'app', note?: string) => ({ desk: ctx.desk, userId: ctx.actorId, name: ctx.name, what, at, note, via });
 
+/** Asks the level now waiting to decide, with what it needs to see. */
+async function askLevel(request: Plain, trip: Plain, ctx: OpsContext, at: Date) {
+  const approval = request.approval as Approval;
+  const level = waitingOn(approval)!;
+  const amount = await requestAmount(request);
+  const base = await baseCurrency();
+  const extra: Array<[string, string]> = [];
+  if (approval.levels.length > 1) extra.push(['Approval', `Level ${approval.current + 1} of ${approval.levels.length}`]);
+  extra.push(['Suggested', request.kind === 'fuel' ? litres(Number(request.suggested)) : formatMoney(Number(request.suggested), base)]);
+  if (request.reason) extra.push(['Reason', String(request.reason)]);
+  await notifyLevel(level, at, {
+    title: `${request.kind === 'fuel' ? 'Fuel' : 'Advance'} request ${request.number}`,
+    text: request.overBudget ? 'Above the trip budget.' : 'Within the trip budget.',
+    rows: await requestRows(trip, amount, extra),
+    buttons: requestButtons(request),
+    refId: String(request._id),
+  }, ctx);
+}
+
 /* ---------- Reading ---------- */
 
 export async function listRequests(query: S.RequestListQuery) {
@@ -75,6 +96,11 @@ export async function getRequest(id: string) {
 
 /* ---------- Request ---------- */
 
+/**
+ * Operations asks for fuel or cash for a trip. The company's approval policy for fuel requests or cash
+ * advances decides who approves, level by level; above the trip's suggestion a reason may be required
+ * and every level may have to approve.
+ */
 export async function createRequest(input: S.CreateRequestInput, ctx: OpsContext) {
   need(ctx, 'fund-requests', 'create');
   const at = new Date();
@@ -83,97 +109,79 @@ export async function createRequest(input: S.CreateRequestInput, ctx: OpsContext
   if (!activeTrip(trip)) throw conflict('This trip is closed.');
   if (!trip.driverId) throw refuse('Assign the driver first.');
   if (!(trip.stops as unknown[]).length) throw refuse('Set the route first.');
+  assertStageAllows(trip, 'funding_requested');
   const f = await fundingFor(trip);
-  const base = await baseCurrency();
-  let suggested: number, over: boolean, amountText: string;
-  const extra: Array<[string, string]> = [];
+  let suggested: number, over: boolean;
   if (input.kind === 'fuel') {
     if (!input.litres) throw refuse('Enter the litres.');
     if (f.fuel.room !== null && input.litres > f.fuel.room) throw refuse(`${await plateOf(trip.vehicleId)} can take ${litres(f.fuel.room)} more.`);
     suggested = f.fuel.suggested;
     over = input.litres > suggested * 1.001;
-    amountText = litres(input.litres);
-    extra.push(['Budget', `${litres(f.fuel.budget)} · ${litres(f.fuel.onTruck)} in the tank`]);
   } else {
     if (!input.amount?.amountMinor) throw refuse('Enter an amount.');
-    const currency = await currencyInfo(input.amount.currencyId);
+    await currencyInfo(input.amount.currencyId);
     suggested = f.cash.suggestedMinor;
     over = (await toBase(input.amount.amountMinor, input.amount.currencyId)).baseMinor > suggested * 1.001;
-    amountText = formatMoney(input.amount.amountMinor, currency);
-    extra.push(['Budget', formatMoney(f.cash.budgetMinor, base)], ['Driver holds', formatMoney(Math.max(0, f.cash.holdsMinor), base)]);
   }
-  if (over && !input.reason) throw refuse("Say why it's above the budget.");
-  if (over) extra.push(['Above plan', input.reason ?? '']);
+  const approval = await routeApproval(input.kind === 'fuel' ? 'fuel_request' : 'cash_advance', input.kind === 'fuel' ? { litres: input.litres! } : input.amount!, over);
+  if (over && approval.requireReasonAboveBudget && !input.reason) throw refuse("Say why it's above the budget.");
   const request = new FundRequest({
     number: await nextNumber('fund-requests', input.kind === 'fuel' ? 'FUEL' : 'ADV', at),
     tripId: trip._id, kind: input.kind, ...(input.kind === 'fuel' ? { litres: input.litres } : { amount: input.amount }),
-    suggested, overBudget: over, reason: input.reason, status: 'pending',
+    suggested, overBudget: over, reason: input.reason, status: 'pending', approval,
     trail: [trailEntry(ctx, 'requested', at, 'app', input.reason)], createdBy: ctx.actorId, updatedBy: ctx.actorId,
   });
   await save(request);
   const plain = request.toObject() as Plain;
-  await post('finance', at, {
-    title: `${input.kind === 'fuel' ? 'Fuel' : 'Advance'} request ${plain.number}`,
-    text: over ? 'Above the trip budget. Goes to the owner after you.' : 'Within the trip budget.',
-    rows: await requestRows(trip, amountText, extra),
-    buttons: requestButtons(plain),
-    refId: String(plain._id),
-  }, ctx);
-  await log(ctx, at, `Requested ${amountText} ${input.kind === 'fuel' ? 'fuel' : 'advance'} (${plain.number})`, { tripId: trip._id });
+  await askLevel(plain, trip, ctx, at);
+  await fireEvent(trip._id, 'funding_requested', at, ctx.actorId);
+  await log(ctx, at, `Requested ${await requestAmount(plain)} ${input.kind === 'fuel' ? 'fuel' : 'advance'} (${plain.number})`, { tripId: trip._id });
   return present(plain);
 }
 
 /* ---------- Decide ---------- */
 
+/** The waiting level (or anyone senior to it in the policy) approves or rejects. */
 export async function decideRequest(id: string, input: S.DecideInput, ctx: OpsContext) {
   const at = new Date();
   const via: Via = input.via ?? 'app';
   const request = await loadOr404(FundRequest, id, 'Request');
-  const status = request.get('status');
-  if (status === 'pending') need(ctx, 'fund-approvals', 'create', 'Finance approves requests.');
-  else if (status === 'owner') need(ctx, 'owner-approvals', 'create', 'The owner approves requests above the budget.');
-  else throw conflict(`${request.get('number')} is already ${status === 'issued' ? 'paid' : status}.`);
+  if (request.get('status') !== 'pending') throw conflict(`${request.get('number')} is already ${request.get('status') === 'issued' ? 'paid' : request.get('status')}.`);
+  const approval = request.get('approval') ? (request.toObject().approval as Approval) : await routeApproval(request.get('kind') === 'fuel' ? 'fuel_request' : 'cash_advance', request.get('kind') === 'fuel' ? { litres: Number(request.get('litres')) } : { amountMinor: request.get('amount').amountMinor, currencyId: String(request.get('amount').currencyId) }, Boolean(request.get('overBudget')));
+  const upTo = highestEligible(ctx, approval);
+  if (upTo < 0) throw new ForbiddenError(`Waiting for ${waitingOn(approval)?.label ?? 'the approver'} to decide ${request.get('number')}.`);
   const trip = (await Trip.findById(request.get('tripId')).lean()) as Plain;
   const plain = request.toObject() as Plain;
   const amount = await requestAmount(plain);
   if (!input.approve) {
     if (!input.note) throw refuse('Give a reason for rejecting.');
-    request.set('status', 'rejected');
+    request.set({ status: 'rejected', updatedBy: ctx.actorId });
     request.get('trail').push(trailEntry(ctx, 'rejected', at, via, input.note));
-    request.set('updatedBy', ctx.actorId);
     await save(request);
-    await resolve(id, `Rejected by ${DESK_NAME[ctx.desk]}`);
-    await post('operations', at, {
-      title: `${plain.number} rejected`, text: `${DESK_NAME[ctx.desk]}: ${input.note}`,
+    await resolve(id, `Rejected by ${ctx.name}`);
+    await post(queue('fund-requests'), at, {
+      title: `${plain.number} rejected`, text: `${ctx.name}: ${input.note}`,
       rows: [['Trip', String(trip.number)], ['Amount', amount]],
       buttons: [{ label: 'Open trip', nav: { tripId: String(trip._id), view: 'funding' } }],
     }, ctx);
     await log(ctx, at, `Rejected ${plain.number}: ${input.note}`, { tripId: trip._id });
     return present(request.toObject());
   }
-  if (status === 'pending' && plain.overBudget && !ctx.can('owner-approvals', 'create')) {
-    request.set('status', 'owner');
-    request.get('trail').push(trailEntry(ctx, 'sent to owner', at, via, input.note));
-    request.set('updatedBy', ctx.actorId);
-    await save(request);
-    await resolve(id, 'Approved · sent to the owner');
-    const base = await baseCurrency();
-    await post('owner', at, {
-      title: `Approve ${plain.number} above budget`,
-      text: 'Finance approved. Needs you because it\'s above the trip budget.',
-      rows: await requestRows(trip, amount, [['Suggested', plain.kind === 'fuel' ? litres(Number(plain.suggested)) : formatMoney(Number(plain.suggested), base)], ['Reason', String(plain.reason ?? '—')]]),
-      buttons: requestButtons(plain),
-      refId: id,
-    }, ctx);
-    await log(ctx, at, `Approved ${plain.number}; sent to the owner`, { tripId: trip._id });
+  const levels = approval.levels.length;
+  const from = approval.current;
+  approveAs(ctx, approval, upTo, at);
+  request.set({ approval, updatedBy: ctx.actorId });
+  const done = approval.current >= levels;
+  if (done) request.set('status', 'approved');
+  request.get('trail').push(trailEntry(ctx, done ? 'approved' : 'sent to owner', at, via, [levels > 1 ? `Level ${from + 1}${upTo > from ? `–${upTo + 1}` : ''} of ${levels}` : '', input.note].filter(Boolean).join(' · ') || undefined));
+  await save(request);
+  await resolve(id, done ? `Approved by ${ctx.name}` : `Approved by ${ctx.name} · next: ${waitingOn(approval)!.label}`);
+  if (!done) {
+    await askLevel(request.toObject() as Plain, trip, ctx, at);
+    await log(ctx, at, `Approved ${plain.number}; now with ${waitingOn(approval)!.label}`, { tripId: trip._id });
     return present(request.toObject());
   }
-  request.set('status', 'approved');
-  request.get('trail').push(trailEntry(ctx, 'approved', at, via, input.note));
-  request.set('updatedBy', ctx.actorId);
-  await save(request);
-  await resolve(id, `Approved by ${DESK_NAME[ctx.desk]}`);
-  await post('finance', at, {
+  await post(queue('payments'), at, {
     title: `Pay ${plain.number}`,
     text: plain.kind === 'fuel' ? `Issue ${amount} to ${await plateOf(trip.vehicleId)}. How?` : `Pay ${amount} to ${await driverName(trip.driverId)}. How?`,
     buttons: await issueButtons(plain),
@@ -186,7 +194,7 @@ export async function decideRequest(id: string, input: S.DecideInput, ctx: OpsCo
 /* ---------- Pay out ---------- */
 
 export async function issueRequest(id: string, input: S.IssueInput, ctx: OpsContext) {
-  need(ctx, 'payments', 'create', 'Finance pays out requests.');
+  need(ctx, 'payments', 'create', 'Your role does not pay out requests.');
   const at = new Date();
   const request = await loadOr404(FundRequest, id, 'Request');
   if (request.get('status') !== 'approved') throw conflict(`${request.get('number')} isn't approved yet.`);
@@ -228,13 +236,16 @@ export async function issueRequest(id: string, input: S.IssueInput, ctx: OpsCont
     }, ctx);
   }
   const stillOpen = await FundRequest.exists({ tripId: trip._id, status: { $in: OPEN_REQUEST } });
-  if (!stillOpen && !trip.dispatchedAt) {
-    await post('operations', at, {
-      title: `${trip.number} is funded`,
-      text: `${amount} ${kind === 'fuel' ? 'issued' : 'paid'}. The truck can leave.`,
-      buttons: [{ label: 'Dispatch', tone: 'primary', action: { type: 'trip.dispatch', tripId: String(trip._id) } }, { label: 'Open trip', nav: { tripId: String(trip._id) } }],
-      refId: `${trip._id}-dispatch`,
-    }, ctx);
+  if (!stillOpen) {
+    await fireEvent(trip._id, 'funded', at, ctx.actorId);
+    if (!trip.dispatchedAt) {
+      await post(queue('trips'), at, {
+        title: `${trip.number} is funded`,
+        text: `${amount} ${kind === 'fuel' ? 'issued' : 'paid'}. The truck can leave.`,
+        buttons: [{ label: 'Dispatch', tone: 'primary', action: { type: 'trip.dispatch', tripId: String(trip._id) } }, { label: 'Open trip', nav: { tripId: String(trip._id) } }],
+        refId: `${trip._id}-dispatch`,
+      }, ctx);
+    }
   }
   await log(ctx, at, `${kind === 'fuel' ? 'Issued' : 'Paid'} ${amount} · ${[medium, input.reference].filter(Boolean).join(' ')}`, { tripId: trip._id });
   return present(plain);
@@ -248,8 +259,8 @@ export async function cancelRequest(id: string, ctx: OpsContext) {
   request.set({ status: 'cancelled', updatedBy: ctx.actorId });
   request.get('trail').push(trailEntry(ctx, 'cancelled', at));
   await save(request);
-  await resolve(id, `Cancelled by ${DESK_NAME[ctx.desk]}`);
-  await resolve(`${id}-issue`, `Cancelled by ${DESK_NAME[ctx.desk]}`);
+  await resolve(id, `Cancelled by ${ctx.name}`);
+  await resolve(`${id}-issue`, `Cancelled by ${ctx.name}`);
   await log(ctx, at, `Cancelled ${request.get('number')}`, { tripId: request.get('tripId') });
   return present(request.toObject());
 }

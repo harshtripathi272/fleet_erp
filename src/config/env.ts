@@ -38,8 +38,8 @@ export const envSchema = z.object({
 
   /** Shared secret Marichi Talks sends in `X-Webhook-Secret`; the inbound WhatsApp webhook is off without it. */
   MARICHI_TALKS_WEBHOOK_SECRET: z.string().trim().min(16, 'Use at least 16 characters').optional(),
-  /** Lets signed-in staff act as a driver's WhatsApp from the app (the simulated phone). */
-  DRIVER_PHONE_SIMULATOR: flag('true'),
+  /** Lets signed-in staff act as a driver's WhatsApp from the app (the simulated phone). On by default outside production; refused in production. */
+  DRIVER_PHONE_SIMULATOR: z.enum(['true', 'false']).optional(),
 }).superRefine((value, ctx) => {
   if (value.NODE_ENV !== 'production') return;
   if (value.JWT_SECRET.startsWith('development-only')) {
@@ -48,10 +48,13 @@ export const envSchema = z.object({
   if (value.EXPOSE_RESET_TOKEN) {
     ctx.addIssue({ code: 'custom', path: ['EXPOSE_RESET_TOKEN'], message: 'Reset tokens can never be exposed in production' });
   }
+  if (value.DRIVER_PHONE_SIMULATOR === 'true') {
+    ctx.addIssue({ code: 'custom', path: ['DRIVER_PHONE_SIMULATOR'], message: 'The simulated driver phone cannot run in production' });
+  }
   if (!value.SMTP_HOST) {
     ctx.addIssue({ code: 'custom', path: ['SMTP_HOST'], message: 'SMTP is required in production for password resets' });
   }
-});
+}).transform((value) => ({ ...value, DRIVER_PHONE_SIMULATOR: (value.DRIVER_PHONE_SIMULATOR ?? (value.NODE_ENV === 'production' ? 'false' : 'true')) === 'true' }));
 
 export const env = envSchema.parse(process.env);
 export type Env = typeof env;

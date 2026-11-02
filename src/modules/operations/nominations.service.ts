@@ -9,11 +9,12 @@ import { OrderSource } from '../parties/models/orderSource.model.js';
 import { Nomination } from './models/money.model.js';
 import { Trip } from './models/trip.model.js';
 import {
-  activeDriver, activeRecord, conflict, customerParty, customerThread, loadOr404, log, need, nextNumber, post, present, refuse, resolve,
+  activeDriver, activeRecord, conflict, customerParty, customerThread, loadOr404, log, need, nextNumber, post, present, queue, refuse, resolve,
   save, shortDate, type OpsContext,
 } from './support.js';
 import { createTrip, driverName, placeName, stopsFromTruck, truckFacts } from './trips.service.js';
 import type * as S from './operations.schema.js';
+import { operationsSettings } from './settings.js';
 
 export async function listNominations(query: S.NominationListQuery) {
   const filter: Plain = {};
@@ -110,7 +111,7 @@ export async function acceptNomination(id: string, input: S.AcceptInput, ctx: Op
   const customer = await customerParty(n.customerId);
   const trucks = (n.trucks as unknown[]).length;
   if (input.customerReply) await post(customerThread(customer._id), at, { from: 'contact', text: `Accepted, thank you. Please proceed with all ${trucks} trucks.` }, ctx);
-  await post('operations', at, {
+  await post(queue('nominations'), at, {
     title: `${customer.name} accepted ${n.number}`, text: `Create the ${trucks} trips.`,
     buttons: [{ label: 'Create trips', tone: 'primary', nav: { view: 'nominations' } }], refId: `${n._id}-accepted`,
   }, ctx);
@@ -129,6 +130,7 @@ export async function convertNomination(id: string, input: S.ConvertInput, ctx: 
   if (input.offloadPlaceId) await activeRecord(Place, input.offloadPlaceId, 'offloading point');
   const n = nomination.toObject() as Plain;
   const trucks = n.trucks as Array<{ vehicleId: unknown; driverId?: unknown }>;
+  const { tripStartsFromTruck } = await operationsSettings();
   // Check every truck before creating any trip, so a busy truck doesn't leave half the nomination converted.
   const plans = [];
   for (const item of trucks) {
@@ -138,11 +140,12 @@ export async function convertNomination(id: string, input: S.ConvertInput, ctx: 
     if (await Trip.exists({ vehicleId: item.vehicleId, active: true })) throw conflict(`${truck.plate} is already on a trip.`);
     if (driverId && (await Trip.exists({ driverId, active: true }))) throw conflict(`${await driverName(driverId)} is already on a trip.`);
     if (trailerId && (await Trip.exists({ trailerId, active: true }))) throw conflict(`The trailer of ${truck.plate} is already on a trip.`);
-    if (!truck.placeId) throw refuse(`Set where ${truck.plate} is before creating its trip.`);
+    if (tripStartsFromTruck && !truck.placeId) throw refuse(`Set where ${truck.plate} is before creating its trip.`);
+    const start = (tripStartsFromTruck ? truck.placeId : undefined) ?? String(n.loadingPlaceId);
     const base = route
       ? (route.stops as Array<{ placeId: unknown; kind: string }>).map((s) => ({ placeId: s.kind === 'load' ? String(n.loadingPlaceId) : String(s.placeId), kind: s.kind }))
-      : [{ placeId: truck.placeId, kind: 'start' }, { placeId: String(n.loadingPlaceId), kind: 'load' }, { placeId: input.offloadPlaceId!, kind: 'offload' }, { placeId: input.offloadPlaceId!, kind: 'end' }];
-    plans.push({ vehicleId: String(item.vehicleId), driverId: driverId ? String(driverId) : undefined, trailerId: trailerId ? String(trailerId) : undefined, stops: stopsFromTruck(base, truck.placeId) });
+      : [{ placeId: start, kind: 'start' }, { placeId: String(n.loadingPlaceId), kind: 'load' }, { placeId: input.offloadPlaceId!, kind: 'offload' }, { placeId: input.offloadPlaceId!, kind: 'end' }];
+    plans.push({ vehicleId: String(item.vehicleId), driverId: driverId ? String(driverId) : undefined, trailerId: trailerId ? String(trailerId) : undefined, stops: tripStartsFromTruck ? stopsFromTruck(base, truck.placeId) : base });
   }
   const tripIds = [];
   for (const plan of plans) {

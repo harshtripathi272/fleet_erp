@@ -5,12 +5,13 @@ import { authorize } from '../../middleware/authorize.js';
 import { validate } from '../../middleware/validate.js';
 import * as C from './operations.controller.js';
 import * as S from './operations.schema.js';
+import { requireModule } from './settings.js';
 
 /**
  * Trips and money: nominations, trips, money requests, driver documents, loading and delivery,
  * expenses, settlement, messages and dashboards. Mounted at /api/v1.
- * Routes check the area's permission; services check the rules, including permissions that
- * depend on a record's state (a request above budget needs the owner).
+ * Routes check the area's permission; services check the rules, including who may approve, which
+ * comes from the company's approval policies.
  */
 const router = Router();
 const id = { params: idParams };
@@ -20,7 +21,11 @@ export const OPERATIONS_PATHS = [
   '/operations', '/dashboards', '/trips', '/vehicle-states', '/fund-requests', '/driver-documents', '/consignments', '/expenses',
   '/driver-accounts', '/settlements', '/nominations', '/messages', '/activity', '/whatsapp/simulate',
 ];
-router.use(OPERATIONS_PATHS, authenticate);
+router.use(OPERATIONS_PATHS, authenticate, requireModule('trips'));
+/** Money areas need the company's Finance module as well; position reports need Tracking. */
+router.use(['/fund-requests', '/expenses', '/settlements', '/driver-accounts', '/dashboards/finance'], requireModule('finance'));
+const finance = requireModule('finance');
+const tracking = requireModule('tracking');
 
 router.get('/operations/sync', authorize('trips', 'read'), validate({ query: S.syncQuery }), C.sync);
 router.get('/dashboards/owner', authorize('trips', 'read'), C.ownerDashboard);
@@ -30,14 +35,15 @@ router.get('/trips', authorize('trips', 'read'), validate({ query: S.tripListQue
 router.post('/trips', authorize('trips', 'create'), validate({ body: S.createTripSchema }), C.createTrip);
 router.get('/trips/:id', authorize('trips', 'read'), validate(id), C.getTrip);
 router.patch('/trips/:id', authorize('trips', 'update'), validate({ ...id, body: S.updateTripSchema }), C.updateTrip);
-router.get('/trips/:id/funding', authorize('trips', 'read'), validate(id), C.funding);
+router.get('/trips/:id/funding', finance, authorize('trips', 'read'), validate(id), C.funding);
 router.get('/trips/:id/sheet', authorize('trips', 'read'), validate(id), C.tripSheet);
 router.post('/trips/:id/cancel', authorize('trips', 'update'), validate({ ...id, body: S.reasonSchema }), C.cancelTrip);
 router.post('/trips/:id/dispatch', authorize('trips', 'update'), validate(id), C.dispatchTrip);
-router.post('/trips/:id/position', authorize('trips', 'update'), validate({ ...id, body: S.positionSchema }), C.reportPosition);
+router.post('/trips/:id/position', tracking, authorize('trips', 'update'), validate({ ...id, body: S.positionSchema }), C.reportPosition);
 router.post('/trips/:id/stops/:stopId/arrive', authorize('trips', 'update'), validate({ params: S.tripStopParams }), C.arriveAtStop);
 router.post('/trips/:id/remind', authorize('messages', 'create'), validate(id), C.remind);
 router.post('/trips/:id/end', authorize('trips', 'update'), validate({ ...id, body: S.endTripSchema }), C.endTrip);
+router.post('/trips/:id/stages/complete', authorize('trips', 'read'), validate(id), C.completeStage);
 
 router.get('/vehicle-states', authorize('vehicle-states', 'read'), C.listVehicleStates);
 router.put('/vehicle-states/:vehicleId', authorize('vehicle-states', 'update'), validate({ params: S.vehicleParams, body: S.vehicleStateSchema }), C.correctVehicleState);
@@ -58,12 +64,12 @@ router.get('/consignments', authorize('consignments', 'read'), validate({ query:
 router.post('/consignments', authorize('consignments', 'create'), validate({ body: S.loadingSchema }), C.recordLoading);
 router.get('/consignments/:id', authorize('consignments', 'read'), validate(id), C.getConsignment);
 router.post('/consignments/:id/delivery', authorize('consignments', 'update'), validate({ ...id, body: S.deliverySchema }), C.recordDelivery);
-router.post('/consignments/:id/shortage-decision', authorize('shortage-decisions', 'create'), validate({ ...id, body: S.shortageDecisionSchema }), C.decideShortage);
+router.post('/consignments/:id/shortage-decision', finance, authorize('consignments', 'read'), validate({ ...id, body: S.shortageDecisionSchema }), C.decideShortage);
 
 router.get('/expenses', authorize('expenses', 'read'), validate({ query: S.expenseListQuery }), C.listExpenses);
 router.post('/expenses', authorize('expenses', 'create'), validate({ body: S.expenseSchema }), C.recordExpense);
 router.get('/expenses/:id', authorize('expenses', 'read'), validate(id), C.getExpense);
-router.post('/expenses/:id/decide', authorize('expense-approvals', 'create'), validate({ ...id, body: S.expenseDecisionSchema }), C.decideExpense);
+router.post('/expenses/:id/decide', authorize('expenses', 'read'), validate({ ...id, body: S.expenseDecisionSchema }), C.decideExpense);
 
 router.get('/driver-accounts', authorize('settlements', 'read'), C.listAccounts);
 router.get('/driver-accounts/:driverId', authorize('settlements', 'read'), validate({ params: S.driverParams }), C.getAccount);

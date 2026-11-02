@@ -8,6 +8,7 @@ import * as Funding from './funding.service.js';
 import * as Messages from './messages.service.js';
 import * as Nominations from './nominations.service.js';
 import * as Settlements from './settlements.service.js';
+import * as Stages from './stages.js';
 import { opsContext } from './support.js';
 import * as Trips from './trips.service.js';
 import * as WhatsApp from './whatsapp.service.js';
@@ -28,6 +29,7 @@ export const reportPosition = asyncHandler(async (req, res) => ApiResponse.succe
 export const arriveAtStop = asyncHandler(async (req, res) => ApiResponse.success(res, await Trips.arriveAtStop(param(req), param(req, 'stopId'), opsContext(req))));
 export const remind = asyncHandler(async (req, res) => ApiResponse.success(res, await Trips.remind(param(req), opsContext(req)), 'Reminder sent'));
 export const endTrip = asyncHandler(async (req, res) => ApiResponse.success(res, await Trips.endTrip(param(req), req.body, opsContext(req)), 'Trip ended'));
+export const completeStage = asyncHandler(async (req, res) => ApiResponse.success(res, Trips.presentTrip((await Stages.completeStage(param(req), opsContext(req))).toObject()), 'Stage complete'));
 export const funding = asyncHandler(async (req, res) => ApiResponse.success(res, await Trips.getFunding(param(req))));
 export const tripSheet = asyncHandler(async (req, res) => ApiResponse.success(res, await Dashboards.tripSheet(param(req))));
 export const listVehicleStates = asyncHandler(async (_req, res) => ApiResponse.success(res, await Trips.listVehicleStates()));
@@ -78,13 +80,14 @@ export const convertNomination = asyncHandler(async (req, res) => ApiResponse.su
 export const cancelNomination = asyncHandler(async (req, res) => ApiResponse.success(res, await Nominations.cancelNomination(param(req), opsContext(req)), 'Nomination cancelled'));
 
 /* Messages, activity, dashboards, WhatsApp */
-export const listMessages = asyncHandler(async (req, res) => ApiResponse.success(res, await Messages.listMessages(query(req))));
-export const listThreads = asyncHandler(async (req, res) => ApiResponse.success(res, await Messages.listThreads(req.auth!.userId)));
+const viewer = (req: Request): Messages.Viewer => ({ userId: req.auth!.userId, roles: req.auth!.roles, can: req.auth!.can });
+export const listMessages = asyncHandler(async (req, res) => ApiResponse.success(res, await Messages.listMessages(query(req), viewer(req))));
+export const listThreads = asyncHandler(async (req, res) => ApiResponse.success(res, await Messages.listThreads(viewer(req))));
 export const sendChat = asyncHandler(async (req, res) => ApiResponse.created(res, await Messages.sendChat(req.body, opsContext(req))));
 export const markRead = asyncHandler(async (req, res) => ApiResponse.success(res, await Messages.markRead(req.body, req.auth!.userId)));
 export const listActivity = asyncHandler(async (req, res) => ApiResponse.success(res, await Messages.listActivity(query(req))));
 export const ownerDashboard = asyncHandler(async (_req, res) => ApiResponse.success(res, await Dashboards.ownerDashboard()));
 export const financeDashboard = asyncHandler(async (_req, res) => ApiResponse.success(res, await Dashboards.financeDashboard()));
-export const sync = asyncHandler(async (req, res) => ApiResponse.success(res, await Dashboards.sync(query<{ since?: Date }>(req).since, req.auth!.userId, req.auth!.can)));
+export const sync = asyncHandler(async (req, res) => ApiResponse.success(res, await Dashboards.sync(query<{ since?: Date }>(req).since, viewer(req))));
 export const simulate = asyncHandler(async (req, res) => ApiResponse.created(res, await WhatsApp.simulate(req.body, opsContext(req)), 'Sent from the driver\'s phone'));
 export const inbound = asyncHandler(async (req, res) => ApiResponse.success(res, await WhatsApp.inbound(req.get('x-webhook-secret'), req.body)));

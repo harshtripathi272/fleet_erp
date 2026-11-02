@@ -7,6 +7,27 @@ export const VIA = ['app', 'whatsapp'] as const;
 export const REQUEST_STATUSES = ['pending', 'owner', 'approved', 'issued', 'rejected', 'cancelled'] as const;
 export const OPEN_REQUEST = ['pending', 'owner', 'approved'];
 
+const approvalLevelSchema = new Schema({
+  level: Number,
+  thread: String,
+  label: String,
+  approverRoleKey: String,
+  approverUserId: { type: ObjectId, ref: 'User' },
+  fallbackResource: String,
+  channels: [String],
+  decidedBy: { type: ObjectId, ref: 'User' },
+  decidedByName: String,
+  decidedAt: Date,
+}, { _id: false });
+
+/** Who must approve, from the company's approval policy at the time the item was raised. */
+export const approvalSchema = new Schema({
+  policyId: { type: ObjectId, ref: 'ApprovalPolicy' },
+  levels: { type: [approvalLevelSchema], default: [] },
+  current: { type: Number, default: 0 },
+  requireReasonAboveBudget: Boolean,
+}, { _id: false });
+
 const decisionSchema = new Schema({
   desk: { type: String, enum: DESKS, required: true },
   userId: { type: ObjectId, ref: 'User' },
@@ -33,6 +54,7 @@ const fundRequestSchema = new Schema<any>({
   overBudget: { type: Boolean, default: false },
   reason: String,
   status: { type: String, enum: REQUEST_STATUSES, default: 'pending' },
+  approval: { type: approvalSchema, default: undefined },
   trail: { type: [decisionSchema], default: [] },
   paymentMethodId: { type: ObjectId, ref: 'PaymentMethod' },
   medium: String,

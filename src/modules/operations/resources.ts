@@ -7,10 +7,8 @@ export const OPERATIONS_RESOURCES = [
   'trips',
   'vehicle-states',
   'fund-requests',
-  /** Finance approval of a money request. */
+  /** Approving money requests when the company has no approval policy for them. */
   'fund-approvals',
-  /** Second approval when a request is above the trip budget (Owner and Admin by default). */
-  'owner-approvals',
   /** Paying out or issuing an approved request. */
   'payments',
   'driver-documents',

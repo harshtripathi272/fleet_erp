@@ -11,7 +11,7 @@ import { DriverAccount, Expense, Nomination, Settlement } from './models/money.m
 import { Trip } from './models/trip.model.js';
 import { baseCurrency, present } from './support.js';
 import { presentTrip } from './trips.service.js';
-import type { Action } from '../../core/masters/types.js';
+import { threadFilter, type Viewer } from './messages.service.js';
 
 /** Drivers holding company cash (positive balance) or owed by the company (negative). */
 async function balances() {
@@ -94,9 +94,10 @@ export async function tripSheet(id: string) {
 /**
  * The working set for the desks in one read: every trip-side record changed since `since`
  * (everything when omitted), plus the caller's read marks. Records are never deleted, so a client
- * merges by id. Only areas the caller may read are included.
+ * merges by id. Only areas the caller may read are included, and only the threads they see.
  */
-export async function sync(since: Date | undefined, userId: string, can: (resource: string, action: Action) => boolean) {
+export async function sync(since: Date | undefined, viewer: Viewer) {
+  const { userId, can } = viewer;
   const serverTime = new Date();
   const changed = since ? { updatedAt: { $gt: since } } : {};
   const read = async (resource: string, run: () => Promise<unknown[]>) => (can(resource, 'read') ? run() : []);
@@ -110,7 +111,7 @@ export async function sync(since: Date | undefined, userId: string, can: (resour
     read('nominations', async () => (await Nomination.find(changed).lean()).map(present)),
     read('vehicle-states', async () => (await VehicleState.find(changed).lean()).map(present)),
     read('settlements', async () => (await DriverAccount.find(changed).lean()).map(present)),
-    read('messages', async () => (await Message.find(changed).sort({ at: 1 }).limit(since ? 2000 : 1000).lean()).map(present)),
+    read('messages', async () => (await Message.find({ ...changed, ...threadFilter(viewer) }).sort({ at: 1 }).limit(since ? 2000 : 1000).lean()).map(present)),
     read('activity', async () => (await Activity.find(changed).sort({ at: -1 }).limit(since ? 2000 : 500).lean()).map(present)),
   ]);
   const reads = (await ThreadRead.find({ userId }).lean()).map((r) => ({ thread: r.thread, at: r.at }));

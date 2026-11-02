@@ -1,6 +1,7 @@
-import { NotFoundError } from '../../core/errors/index.js';
+import { ForbiddenError, NotFoundError } from '../../core/errors/index.js';
 import type { Plain } from '../../core/masters/types.js';
 import { ExpenseCategory } from '../trips/models/expense.model.js';
+import { approveAs, highestEligible, notifyLevel, routeApproval, waitingOn, type Approval } from './approvals.js';
 import { DriverDocument } from './models/cargo.model.js';
 import { Expense } from './models/money.model.js';
 import { Trip } from './models/trip.model.js';
@@ -26,7 +27,10 @@ export async function getExpense(id: string) {
   return present(doc);
 }
 
-/** A trip cost against a driver. Recorded by someone who may approve expenses, it is approved at once. */
+/**
+ * A trip cost against a driver, approved through the company's expense approval policy. Whoever records
+ * it approves the levels they are entitled to; the rest go to the next approver.
+ */
 export async function recordExpense(input: S.ExpenseInput, ctx: OpsContext) {
   need(ctx, 'expenses', 'create');
   const at = new Date();
@@ -41,11 +45,14 @@ export async function recordExpense(input: S.ExpenseInput, ctx: OpsContext) {
   const doc = input.docId ? await DriverDocument.findById(input.docId) : null;
   if (input.docId && !doc) throw refuse('The receipt was not found.');
   if (doc && doc.get('status') !== 'new') throw conflict('That receipt was already handled.');
-  const approved = ctx.can('expense-approvals', 'create');
+  const approval = await routeApproval('expense', input.amount);
+  const upTo = highestEligible(ctx, approval);
+  if (upTo >= 0) approveAs(ctx, approval, upTo, at);
+  const approved = approval.current >= approval.levels.length;
   const expense = new Expense({
     number: await nextNumber('expenses', 'EXP', at), tripId: trip?._id, driverId: driver._id, categoryId: category._id,
     amount: input.amount, baseAmountMinor: baseMinor, rate, receiptNo: input.receiptNo, docId: input.docId, note: input.note,
-    status: approved ? 'approved' : 'pending', recordedByDesk: ctx.desk, decidedAt: approved ? at : undefined, decidedBy: approved ? ctx.actorId : undefined,
+    status: approved ? 'approved' : 'pending', approval, recordedByDesk: ctx.desk, decidedAt: approved ? at : undefined, decidedBy: approved ? ctx.actorId : undefined,
     at, createdBy: ctx.actorId, updatedBy: ctx.actorId,
   });
   await save(expense);
@@ -59,8 +66,8 @@ export async function recordExpense(input: S.ExpenseInput, ctx: OpsContext) {
   if (approved) {
     await post(driverThread(driver._id), at, { title: 'Expense approved', text: `${category.name} ${amount}${trip ? ` on ${trip.number}` : ''}. It's off your balance.` }, ctx);
   } else {
-    await post('finance', at, {
-      title: `Expense ${number}`, text: `Operations recorded this for ${driver.name}.`,
+    await notifyLevel(waitingOn(approval)!, at, {
+      title: `Expense ${number}`, text: `${ctx.name} recorded this for ${driver.name}.`,
       rows: [['Type', String(category.name)], ['Amount', amount], ['Trip', String(trip?.number ?? '—')]],
       buttons: [
         { label: 'Approve', tone: 'primary', action: { type: 'expense.decide', id: String(expense._id), approve: true, via: 'whatsapp' } },
@@ -74,14 +81,29 @@ export async function recordExpense(input: S.ExpenseInput, ctx: OpsContext) {
 }
 
 export async function decideExpense(id: string, input: S.ExpenseDecisionInput, ctx: OpsContext) {
-  need(ctx, 'expense-approvals', 'create', 'Finance approves expenses.');
   const at = new Date();
   const expense = await loadOr404(Expense, id, 'Expense');
   if (expense.get('status') !== 'pending') throw conflict('Already decided.');
+  const approval = expense.get('approval') ? (expense.toObject().approval as Approval) : await routeApproval('expense', { amountMinor: expense.get('amount').amountMinor, currencyId: String(expense.get('amount').currencyId) });
+  const upTo = highestEligible(ctx, approval);
+  if (upTo < 0) throw new ForbiddenError(`Waiting for ${waitingOn(approval)?.label ?? 'the approver'} to decide ${expense.get('number')}.`);
   if (!input.approve && !input.reason) throw refuse('Give a reason.');
-  expense.set({ status: input.approve ? 'approved' : 'rejected', decidedAt: at, decidedBy: ctx.actorId, reason: input.reason, updatedBy: ctx.actorId });
+  if (input.approve) approveAs(ctx, approval, upTo, at);
+  const done = !input.approve || approval.current >= approval.levels.length;
+  expense.set({ approval, updatedBy: ctx.actorId, ...(done ? { status: input.approve ? 'approved' : 'rejected', decidedAt: at, decidedBy: ctx.actorId, reason: input.reason } : {}) });
   await save(expense);
-  await resolve(id, input.approve ? 'Approved' : 'Rejected');
+  await resolve(id, input.approve ? (done ? 'Approved' : `Approved · next: ${waitingOn(approval)!.label}`) : 'Rejected');
+  if (!done) {
+    await notifyLevel(waitingOn(approval)!, at, {
+      title: `Expense ${expense.get('number')}`, text: `Level ${approval.current + 1} of ${approval.levels.length}.`,
+      buttons: [
+        { label: 'Approve', tone: 'primary', action: { type: 'expense.decide', id, approve: true, via: 'whatsapp' } },
+        { label: 'Reject', tone: 'danger', action: { type: 'expense.decide', id, approve: false, via: 'whatsapp' } },
+      ],
+      refId: id,
+    }, ctx);
+    return present(expense.toObject());
+  }
   const category = String((await ExpenseCategory.findById(expense.get('categoryId')).select('name').lean())?.name ?? 'Expense');
   const amount = formatMoney(expense.get('amount').amountMinor, await currencyInfo(expense.get('amount').currencyId));
   await post(driverThread(expense.get('driverId')), at, {

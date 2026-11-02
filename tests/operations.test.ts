@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { after, before, beforeEach, describe, test } from 'node:test';
 import { env } from '../src/config/env.js';
+import { setWhatsAppTransport, type OutboundWhatsApp } from '../src/modules/operations/marichiTalks.js';
 import { api, bearer, errorCode, find, loadSample, resetDatabase, signUp, startDatabase, stopDatabase, userWithRole, type Session } from './helpers.js';
 
 /**
@@ -96,7 +97,7 @@ describe('a fuel trip from plan to settlement', () => {
       reading: { docNo: 'INV-41234', productId: ids.diesel, qty: 38000, ambientL: 38000, tempC: 28, density: 835, consignor: 'Kurasini Oil Jetty Terminal' },
     }), 201);
     assert.equal(loadingDoc.channel, 'whatsapp');
-    const opsInbox = ok(await as(ops).get('/messages', { thread: 'operations' }));
+    const opsInbox = ok(await as(ops).get('/messages', { thread: 'queue:consignments' }));
     const prompt = opsInbox.find((m: { refId?: string }) => m.refId === loadingDoc.id);
     assert.equal(prompt.buttons[0].action.type, 'load.record', 'Operations is offered the loading from the photo');
 
@@ -124,7 +125,7 @@ describe('a fuel trip from plan to settlement', () => {
     ok(await as(fin).post(`/consignments/${load.id}/shortage-decision`, { charge: true }));
 
     const receipt = ok(await driverSends('d1', { kind: 'expense', file: { name: 'toll.jpg', mime: 'image/jpeg' }, reading: { docNo: 'R12345', amount: 250, currencyCode: 'ZMW', categoryId: ids.ecRoad } }), 201);
-    const finInbox = ok(await as(fin).get('/messages', { thread: 'finance' }));
+    const finInbox = ok(await as(fin).get('/messages', { thread: 'queue:expense-approvals' }));
     assert.equal(finInbox.find((m: { refId?: string }) => m.refId === receipt.id).buttons[0].action.type, 'expense.record');
     const expense = ok(await as(fin).post('/expenses', { driverId: ids.d1, tripId: trip.id, categoryId: ids.ecRoad, amount: { amountMinor: 250_00, currencyId: ids.ZMW }, receiptNo: 'R12345', docId: receipt.id }), 201);
     assert.equal(expense.status, 'approved', 'Finance approves what it records');
@@ -166,7 +167,7 @@ describe('a fuel trip from plan to settlement', () => {
 });
 
 describe('money requests', () => {
-  test('above the suggestion needs a reason, Finance, then the owner', async () => {
+  test('above the suggestion: a reason, then every level of the approval policy (Finance, then the owner)', async () => {
     const trip = await newTrip();
     const f = ok(await as(ops).get(`/trips/${trip.id}/funding`));
     const amount = { amountMinor: f.cash.suggestedMinor + 1000_00, currencyId: ids.ZMW };
@@ -174,12 +175,15 @@ describe('money requests', () => {
     const request = ok(await as(ops).post('/fund-requests', { tripId: trip.id, kind: 'cash', amount, reason: 'Extra border fees' }), 201);
     assert.equal(request.overBudget, true);
     await as(ops).post(`/fund-requests/${request.id}/decide`, { approve: true }).expect(403);
-    assert.equal(ok(await as(fin).post(`/fund-requests/${request.id}/decide`, { approve: true })).status, 'owner');
+    assert.deepEqual(request.approval.levels.map((l: { thread: string }) => l.thread), ['role:finance', 'role:owner'], 'above budget every level approves');
+    const afterFinance = ok(await as(fin).post(`/fund-requests/${request.id}/decide`, { approve: true }));
+    assert.deepEqual([afterFinance.status, afterFinance.approval.current], ['pending', 1]);
     await as(fin).post(`/fund-requests/${request.id}/decide`, { approve: true }).expect(403);
-    const ownerInbox = ok(await as(owner).get('/messages', { thread: 'owner' }));
+    await as(fin).get('/messages', { thread: 'role:owner' }).expect(403);
+    const ownerInbox = ok(await as(owner).get('/messages', { thread: 'role:owner' }));
     assert.ok(ownerInbox.some((m: { refId?: string; buttons?: unknown[] }) => m.refId === request.id && m.buttons?.length));
     assert.equal(ok(await as(owner).post(`/fund-requests/${request.id}/decide`, { approve: true })).status, 'approved');
-    assert.equal(ok(await as(owner).get('/messages', { thread: 'owner' })).find((m: { refId?: string }) => m.refId === request.id).resolved, 'Approved by Owner');
+    assert.equal(ok(await as(owner).get('/messages', { thread: 'role:owner' })).find((m: { refId?: string }) => m.refId === request.id).resolved, 'Approved by Owner');
     assert.deepEqual(ok(await as(fin).get(`/fund-requests/${request.id}`)).trail.map((t: { what: string }) => t.what), ['requested', 'sent to owner', 'approved']);
   });
 
@@ -332,14 +336,14 @@ describe('desks, sync and WhatsApp', () => {
     const ownerView = ok(await as(owner).get('/dashboards/owner'));
     assert.deepEqual([ownerView.fleet.trucks, ownerView.fleet.onTrip, ownerView.trips.planned], [2, 1, 1]);
     const threads = ok(await as(fin).get('/messages/threads'));
-    assert.ok(threads.find((t: { thread: string }) => t.thread === 'finance').unread >= 1);
-    ok(await as(fin).post('/messages/read', { thread: 'finance' }));
-    assert.equal(ok(await as(fin).get('/messages/threads')).find((t: { thread: string }) => t.thread === 'finance').unread, 0);
-    const reply = ok(await as(fin).post('/messages', { thread: 'finance', text: 'What is waiting?' }), 201);
-    assert.equal(reply.at(-1).buttons.length, 1, 'the desk WhatsApp lists the open request');
+    assert.ok(threads.find((t: { thread: string }) => t.thread === 'role:finance').unread >= 1);
+    ok(await as(fin).post('/messages/read', { thread: 'role:finance' }));
+    assert.equal(ok(await as(fin).get('/messages/threads')).find((t: { thread: string }) => t.thread === 'role:finance').unread, 0);
+    const reply = ok(await as(fin).post('/messages', { thread: 'role:finance', text: 'What is waiting?' }), 201);
+    assert.equal(reply.at(-1).buttons.length, 1, 'the approval thread lists the open request');
   });
 
-  test('the webhook files driver photos and runs staff button answers with their permissions', async () => {
+  test('the webhook files driver photos and runs only buttons it sent, once, as the person it sent them to', async () => {
     const secret = 'test-webhook-secret-0123456789';
     await api().post('/api/v1/whatsapp/inbound').send({ from: '+260971234567', text: 'hello' }).expect(503);
     env.MARICHI_TALKS_WEBHOOK_SECRET = secret;
@@ -349,15 +353,93 @@ describe('desks, sync and WhatsApp', () => {
       const filed = ok(await api().post('/api/v1/whatsapp/inbound').set('X-Webhook-Secret', secret).send({ from: '+260971234567', text: 'Arrived at the port' }));
       assert.equal(filed.handled, 'driver-document');
       assert.equal(ok(await as(ops).get(`/driver-documents/${filed.id}`)).tripId, trip.id);
+      const sent: OutboundWhatsApp[] = [];
+      setWhatsAppTransport(async (m) => { sent.push(m); return { channel: 'whatsapp', to: m.to, status: 'logged' }; });
+      ok(await as(fin).patch('/auth/me', { phone: '+260966000111' }));
       const request = ok(await as(ops).post('/fund-requests', { tripId: trip.id, kind: 'fuel', litres: 100 }), 201);
-      ok(await as(owner).patch('/auth/me', { phone: '+260966000111' }));
-      const command = { type: 'request.decide', id: request.id, approve: true };
-      const answered = ok(await api().post('/api/v1/whatsapp/inbound').set('X-Webhook-Secret', secret).send({ from: '+260966000111', command }));
+      const toFinance = sent.find((m) => m.to === '+260966000111')!;
+      assert.deepEqual(toFinance.buttons, ['Approve', 'Reject'], 'the policy level sends approvals on WhatsApp');
+      const approve = toFinance.tokens![0]!;
+      const inbound = (body: object) => api().post('/api/v1/whatsapp/inbound').set('X-Webhook-Secret', secret).send(body);
+      await inbound({ from: '+260971234567', buttonToken: approve }).expect(422);
+      await inbound({ from: '+260955000000', buttonToken: approve }).expect(403);
+      await inbound({ from: '+260966000111', buttonToken: 'x'.repeat(32) }).expect(403);
+      const answered = ok(await inbound({ from: '+260966000111', buttonToken: approve }));
       assert.equal(answered.result.status, 'approved');
+      await inbound({ from: '+260966000111', buttonToken: approve }).expect(403);
       assert.equal(ok(await as(fin).get(`/fund-requests/${request.id}`)).trail.at(-1).via, 'whatsapp');
       assert.equal(ok(await api().post('/api/v1/whatsapp/inbound').set('X-Webhook-Secret', secret).send({ from: '+19995550000', text: '?' })).handled, 'ignored');
     } finally {
       env.MARICHI_TALKS_WEBHOOK_SECRET = undefined;
+      setWhatsAppTransport(async (m) => ({ channel: 'whatsapp', to: m.to, status: 'logged' }));
     }
+  });
+});
+
+describe('configuration, not code', () => {
+  const company = async () => ok(await as(owner).get('/company'));
+  const setCompany = async (change: Record<string, unknown>) => ok(await as(owner).put('/company', { ...change, version: (await company()).version }));
+
+  test('a trip follows its type\'s stages; a manual stage holds it until its actor completes it', async () => {
+    const fuelType = (await find(owner, 'trip-types', 'FUEL')).id;
+    const plan = (await as(owner).get('/trip-stages', { tripTypeId: fuelType, sort: 'order' })).body.data;
+    // The company adds an inspection, done by Operations, between funding and loading.
+    const loading = plan.find((s: { code: string }) => s.code === 'LOADING');
+    const later = plan.filter((s: { order: number }) => s.order >= loading.order).sort((a: { order: number }, b: { order: number }) => b.order - a.order);
+    for (const s of later) ok(await as(owner).patch(`/trip-stages/${s.id}`, { version: s.version, order: s.order + 1 }));
+    const opsRole = (await as(owner).get('/roles', { search: 'operations' })).body.data.find((r: { key: string }) => r.key === 'operations');
+    ok(await as(owner).post('/trip-stages', { tripTypeId: fuelType, code: 'INSPECT', name: 'Tanker inspection', order: loading.order, actorRoleId: opsRole.id, completesOn: 'manual' }), 201);
+
+    const trip = await newTrip();
+    assert.deepEqual(trip.stages.map((s: { code: string }) => s.code), ['PLAN', 'FUNDING', 'INSPECT', 'LOADING', 'TRANSIT', 'OFFLOAD', 'CLOSE']);
+    assert.equal(trip.stage.code, 'PLAN');
+    await fundAndDispatch(trip);
+    const atInspection = ok(await as(ops).get(`/trips/${trip.id}`));
+    assert.equal(atInspection.stage.code, 'INSPECT', 'funding and dispatch completed PLAN and FUNDING');
+    const load = { tripId: trip.id, productId: ids.diesel, invoiceNo: 'INV-1', qty: 30000, tempC: 25, density: 835 };
+    assert.match((await as(ops).post('/consignments', load)).body.error.message, /Complete "Tanker inspection" first/);
+    await as(fin).post(`/trips/${trip.id}/stages/complete`).expect(422);
+    assert.equal(ok(await as(ops).post(`/trips/${trip.id}/stages/complete`)).stage.code, 'LOADING');
+    ok(await as(ops).post('/consignments', load), 201);
+    assert.equal(ok(await as(ops).get(`/trips/${trip.id}`)).stage.code, 'TRANSIT');
+  });
+
+  test('a company that switches a module off loses that area', async () => {
+    const trip = await newTrip();
+    await setCompany({ modules: ['masters', 'trips'] });
+    assert.match((await as(ops).post('/fund-requests', { tripId: trip.id, kind: 'fuel', litres: 10 })).body.error.message, /Finance module is switched off/);
+    await as(ops).get('/driver-accounts').expect(403);
+    ok(await as(ops).post(`/trips/${trip.id}/dispatch`));
+    await as(ops).post(`/trips/${trip.id}/position`, { km: 10, speed: 50 }).expect(403);
+    await setCompany({ modules: ['masters'] });
+    await as(ops).get('/trips').expect(403);
+  });
+
+  test('trip settings: a company whose trips need not start from the truck', async () => {
+    ok(await as(ops).put(`/vehicle-states/${ids.v2}`, { placeId: ids.ndola }));
+    const stops = [{ placeId: ids.depot, kind: 'start' }, { placeId: ids.darPort, kind: 'load' }, { placeId: ids.depot, kind: 'offload' }, { placeId: ids.depot, kind: 'end' }];
+    const body = { customerId: ids.zambezi, vehicleId: ids.v2, stops, plannedStart: '2026-11-03T06:00:00.000Z' };
+    await as(ops).post('/trips', body).expect(422);
+    const saved = await setCompany({ operations: { tripStartsFromTruck: false, roadDistanceFactor: 1.5 } });
+    assert.equal(saved.operations.averageSpeedKmh, 62, 'saving some settings keeps the others');
+    ok(await as(ops).post('/trips', body), 201);
+  });
+
+  test('approval levels can count litres, and a custom role sees only the work its permissions allow', async () => {
+    const policy = await find(owner, 'approval-policies', 'FUEL-L');
+    assert.equal(policy.levels[0].measure, 'litres');
+    const trip = await newTrip();
+    const big = ok(await as(ops).post('/fund-requests', { tripId: trip.id, kind: 'fuel', litres: 600 }), 201);
+    assert.equal(big.approval.levels.length, 1, '600 L is under the owner\'s 5,000 L level');
+
+    const role = ok(await as(owner).post('/roles', { key: 'dispatcher', name: 'Dispatcher', permissions: [{ resource: '*', actions: ['read'] }, { resource: 'trips', actions: ['create', 'update'] }, { resource: 'messages', actions: ['create'] }] }), 201);
+    const email = `dispatcher.${Date.now()}@example.test`;
+    ok(await as(owner).post('/users', { name: 'Dina Dispatcher', email, password: 'Passw0rd!', roleIds: [role.id] }), 201);
+    const login = await api().post('/api/v1/auth/login').send({ email, password: 'Passw0rd!' });
+    const dispatcher = { token: login.body.data.accessToken } as Session;
+    const seen = ok(await as(dispatcher).get('/operations/sync')).messages.map((m: { thread: string }) => m.thread);
+    assert.ok(seen.every((t: string) => t === 'queue:trips' || /^(driver|customer):/.test(t)), `dispatcher saw ${[...new Set(seen)].join(', ')}`);
+    await as(dispatcher).get('/messages', { thread: 'role:finance' }).expect(403);
+    await as(dispatcher).post(`/fund-requests/${big.id}/decide`, { approve: true }).expect(403);
   });
 });

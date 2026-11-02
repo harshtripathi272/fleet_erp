@@ -73,6 +73,11 @@ export async function loadSampleData(actorId?: string) {
     levels: [{ level: 1, minAmountMinor: 0, approverRoleId: String(financeRole!._id), channels: ['app', 'whatsapp'] }, { level: 2, minAmountMinor: 1_000_000, approverRoleId: String(ownerRole!._id), escalateAfterHours: 4, channels: ['whatsapp'] }],
   });
 
+  await make('approval-policies', 'fuelApproval', {
+    code: 'FUEL-L', name: 'Fuel requests', subject: 'fuel_request', currencyId: ids.ZMW,
+    levels: [{ level: 1, minAmountMinor: 0, measure: 'litres', approverRoleId: String(financeRole!._id), channels: ['app', 'whatsapp'] }, { level: 2, minAmountMinor: 5000, measure: 'litres', approverRoleId: String(ownerRole!._id), channels: ['whatsapp'] }],
+  });
+
   // Parties
   await make('order-sources', 'direct', { code: 'DIRECT', name: 'Direct from customer' });
   await make('order-sources', 'broker', { code: 'BROKER', name: 'Through a broker', referenceRequired: true });
@@ -138,10 +143,10 @@ export async function loadSampleData(actorId?: string) {
   // Trip operations
   await make('trip-types', 'ttFuel', { code: 'FUEL', name: 'Fuel haulage', cargoKind: 'liquid_bulk', loadTypeId: ids.ltBulk, requiredDocumentTypeIds: [ids.dtRoadTax], printLayoutId: ids.plTripSheet, isDefault: true });
   await make('trip-types', 'ttGeneral', { code: 'GENERAL', name: 'General cargo', cargoKind: 'general', loadTypeId: ids.ltFull });
-  const stages = [['PLAN', 'Plan', 'operations'], ['FUNDING', 'Funding', 'finance'], ['LOADING', 'Loading', 'operations'], ['TRANSIT', 'Transit', 'operations'], ['OFFLOAD', 'Offloading', 'operations'], ['CLOSE', 'Close', 'finance']] as const;
-  for (const [i, [code, name, role]] of stages.entries()) {
+  const stages = [['PLAN', 'Plan', 'operations', 'funding_requested'], ['FUNDING', 'Funding', 'finance', 'dispatched'], ['LOADING', 'Loading', 'operations', 'loaded'], ['TRANSIT', 'Transit', 'operations', 'arrived_offloading'], ['OFFLOAD', 'Offloading', 'operations', 'delivered'], ['CLOSE', 'Close', 'finance', 'ended']] as const;
+  for (const [i, [code, name, role, completesOn]] of stages.entries()) {
     const roleId = String((await Role.findOne({ key: role }).lean())!._id);
-    await make('trip-stages', `stage${code}`, { tripTypeId: ids.ttFuel, code, name, order: i + 1, actorRoleId: roleId, isFinal: code === 'CLOSE', ...(code === 'FUNDING' ? { notifyTemplateId: ids.mtApproval } : {}), ...(code === 'LOADING' ? { requiredDocumentTypeIds: [ids.dtCalibration], reopenable: true } : {}) });
+    await make('trip-stages', `stage${code}`, { tripTypeId: ids.ttFuel, code, name, order: i + 1, actorRoleId: roleId, isFinal: code === 'CLOSE', completesOn, ...(code === 'FUNDING' ? { notifyTemplateId: ids.mtApproval } : {}), ...(code === 'LOADING' ? { requiredDocumentTypeIds: [ids.dtCalibration], reopenable: true } : {}) });
   }
   await make('stop-types', 'stBorder', { code: 'BORDER', name: 'Border crossing', waitingCountsAs: 'border' });
   await make('stop-types', 'stLoad', { code: 'LOAD', name: 'Loading', waitingCountsAs: 'loading' });
@@ -186,7 +191,7 @@ export async function loadSampleData(actorId?: string) {
   created += 1;
 
   if (!(await Company.exists({}))) {
-    await saveCompany(saveCompanySchema.parse({ legalName: 'Marichi Connect Logistics Ltd', tradingName: 'Marichi Fleet', countryId: ids.ZM, baseCurrencyId: ids.ZMW, timezone: 'Africa/Lusaka', fiscalYearStartMonth: 1, phone: '+260211123456', email: 'ops@marichi.example', allowSelfRegistration: true }), actorId);
+    await saveCompany(saveCompanySchema.parse({ legalName: 'Marichi Connect Logistics Ltd', tradingName: 'Marichi Fleet', countryId: ids.ZM, baseCurrencyId: ids.ZMW, timezone: 'Africa/Lusaka', fiscalYearStartMonth: 1, modules: ['masters', 'trips', 'finance', 'tracking'], phone: '+260211123456', email: 'ops@marichi.example', allowSelfRegistration: true }), actorId);
     created += 1;
   }
   logger.info({ created }, 'Sample data loaded');

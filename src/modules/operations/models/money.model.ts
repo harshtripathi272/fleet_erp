@@ -1,7 +1,7 @@
 import { Schema } from 'mongoose';
 import { opsModel } from './model.js';
 import { ObjectId, moneySchema, schemaOptions } from '../../../core/masters/schema.js';
-import { DESKS } from './funding.model.js';
+import { DESKS, approvalSchema } from './funding.model.js';
 
 /** A trip cost with its receipt, recorded against a driver and approved or rejected by Finance. */
 const expenseSchema = new Schema<any>({
@@ -16,6 +16,7 @@ const expenseSchema = new Schema<any>({
   docId: { type: ObjectId, ref: 'DriverDocument' },
   note: String,
   status: { type: String, enum: ['pending', 'approved', 'rejected'], default: 'pending' },
+  approval: { type: approvalSchema, default: undefined },
   recordedByDesk: { type: String, enum: DESKS },
   decidedAt: Date,
   decidedBy: { type: ObjectId, ref: 'User' },

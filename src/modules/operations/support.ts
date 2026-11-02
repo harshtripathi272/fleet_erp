@@ -25,6 +25,8 @@ export interface OpsContext {
   /** The desk the actor works at, for trails, messages and the activity feed. */
   desk: Desk;
   can: (resource: string, action: Action) => boolean;
+  /** Role keys, for approval levels that name a role. */
+  roles: string[];
   /** Driver messages arrive over WhatsApp, either real (Marichi Talks) or simulated in the app. */
   asDriver?: boolean;
 }
@@ -39,7 +41,7 @@ export function deskOf(roles: string[]): Desk {
 
 export function opsContext(req: Request): OpsContext {
   const auth = req.auth!;
-  return { actorId: auth.userId, requestId: req.requestId, name: auth.name, desk: deskOf(auth.roles), can: auth.can };
+  return { actorId: auth.userId, requestId: req.requestId, name: auth.name, desk: deskOf(auth.roles), can: auth.can, roles: auth.roles };
 }
 
 export const DESK_NAME: Record<Desk, string> = { owner: 'Owner', operations: 'Operations', finance: 'Finance', driver: 'Driver', viewer: 'Viewer' };
@@ -143,6 +145,17 @@ export async function toBase(amountMinor: number, currencyId: unknown, date = ne
   }
 }
 
+/** Converts minor units between two currencies at the latest rate on or before `date`. */
+export async function convertTo(amountMinor: number, fromCurrencyId: unknown, toCurrencyId: unknown, date = new Date()) {
+  if (String(fromCurrencyId) === String(toCurrencyId)) return amountMinor;
+  try {
+    return (await convertMoney({ amountMinor, fromCurrencyId: String(fromCurrencyId), toCurrencyId: String(toCurrencyId), date })).resultMinor;
+  } catch (err) {
+    if (err instanceof NotFoundError) throw refuse(`${err.message}. Add the rate under Exchange rates.`);
+    throw err;
+  }
+}
+
 /** "1,250.50 ZMW" for messages. */
 export function formatMoney(amountMinor: number, currency: { code: string; minorUnits: number }) {
   const value = amountMinor / 10 ** currency.minorUnits;
@@ -172,10 +185,13 @@ export interface Post {
 }
 
 /**
+ * Threads: work queues (queue:<permission>), approval levels (role:<key> or user:<id>), and per contact.
  * A driver's thread is the driver's own WhatsApp: "me" is the driver and "bot" is Marichi.
  * A customer's thread is seen from the office: "me" is Operations and "contact" the customer.
  */
 export const driverThread = (driverId: unknown) => `driver:${String(driverId)}`;
+/** Work for anyone who may `create` on a permission resource, e.g. queue:payments. */
+export const queue = (resource: string) => `queue:${resource}`;
 export const customerThread = (partyId: unknown) => `customer:${String(partyId)}`;
 
 /** Adds a message to a thread. Messages to a driver or customer also go out on WhatsApp. */

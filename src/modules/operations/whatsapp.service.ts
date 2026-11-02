@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { createHash, timingSafeEqual } from 'node:crypto';
 import { env } from '../../config/env.js';
 import { ForbiddenError, ServiceUnavailableError, ValidationError } from '../../core/errors/index.js';
 import { logger } from '../../core/logger/index.js';
@@ -8,6 +9,7 @@ import { Driver } from '../drivers/models/driver.model.js';
 import { Currency } from '../finance/models/currency.model.js';
 import { Role } from '../roles/role.model.js';
 import { User } from '../users/user.model.js';
+import { redeem } from './actionTokens.js';
 import { decideShortage, recordDelivery, recordLoading, returnDocument, sendDocument } from './cargo.service.js';
 import { decideExpense, recordExpense } from './expenses.service.js';
 import { decideRequest, issueRequest } from './funding.service.js';
@@ -31,38 +33,43 @@ export async function simulate(input: S.SimulateInput, ctx: OpsContext) {
 }
 
 /** A system context for a driver's own WhatsApp message: it may only file the driver's documents. */
-const driverContext = (name: string): OpsContext => ({ name, desk: 'driver', asDriver: true, can: (resource, action) => resource === 'driver-documents' && action === 'create' });
+const driverContext = (name: string): OpsContext => ({ name, desk: 'driver', asDriver: true, roles: [], can: (resource, action) => resource === 'driver-documents' && action === 'create' });
 
 async function staffContext(userId: unknown): Promise<OpsContext | null> {
   const user = await User.findById(userId).select('name status roleIds').lean();
   if (!user || user.status !== 'active') return null;
   const roles = await Role.find({ _id: { $in: user.roleIds ?? [] }, status: 'active' }).select('key permissions').lean();
   const permissions = roles.flatMap((r) => (r.permissions ?? []).map((p) => ({ resource: p.resource, actions: [...p.actions] })));
-  return { actorId: String(user._id), name: user.name, desk: deskOf(roles.map((r) => r.key)), can: permissionChecker(permissions) };
+  return { actorId: String(user._id), name: user.name, desk: deskOf(roles.map((r) => r.key)), can: permissionChecker(permissions), roles: roles.map((r) => String(r.key)) };
 }
 
 const phoneVariants = (phone: string) => [phone, phone.replace(/^\+/, ''), `+${phone.replace(/^\+/, '')}`];
 
+/** Compares secrets in constant time (hashing first so different lengths compare safely). */
+const sameSecret = (a: string, b: string) => timingSafeEqual(createHash('sha256').update(a).digest(), createHash('sha256').update(b).digest());
+
 /**
- * A message from Marichi Talks. From a driver: filed as a document on the open trip. From a member of
- * staff answering a button: the button's command runs with that person's permissions.
+ * A message from Marichi Talks. From a driver: filed as a document on the open trip. A tapped button:
+ * its one-time token runs the command it was sent with, as the person it was sent to.
  * The body format is provisional until the Marichi Talks webhook format is known.
  */
 export async function inbound(secret: string | undefined, body: S.InboundInput) {
   if (!env.MARICHI_TALKS_WEBHOOK_SECRET) throw new ServiceUnavailableError('The WhatsApp webhook is not configured');
-  if (secret !== env.MARICHI_TALKS_WEBHOOK_SECRET) throw new ForbiddenError('Wrong webhook secret');
+  if (!sameSecret(secret ?? '', env.MARICHI_TALKS_WEBHOOK_SECRET)) throw new ForbiddenError('Wrong webhook secret');
   const phones = phoneVariants(body.from);
   const driver = await Driver.findOne({ status: 'active', $or: [{ whatsapp: { $in: phones } }, { phone: { $in: phones } }] }).select('_id name').lean();
   if (driver) {
-    if (body.command) throw refuse('Drivers answer with a photo or a message.');
+    if (body.buttonToken) throw refuse('Drivers answer with a photo or a message.');
     const tripId = await openTripOf(driver._id);
     const doc = await sendDocument({ driverId: String(driver._id), tripId, kind: body.kind ?? 'other', note: body.text, file: body.media, channel: 'whatsapp' }, driverContext(String(driver.name)));
     return { handled: 'driver-document', id: doc.id };
   }
-  const user = await User.findOne({ phone: { $in: phones }, status: 'active' }).select('_id').lean();
-  const ctx = user ? await staffContext(user._id) : null;
-  if (ctx && body.command) {
-    return { handled: 'command', result: await executeCommand(body.command, ctx) };
+  if (body.buttonToken) {
+    // Only a button the server sent to this number, unused and unexpired, runs, as the person it was sent to.
+    const offered = await redeem(body.buttonToken, phones);
+    const ctx = offered ? await staffContext(offered.userId) : null;
+    if (!offered || !ctx) throw new ForbiddenError('This button is not valid for this number, or was already used');
+    return { handled: 'command', result: await executeCommand(offered.command, ctx) };
   }
   logger.warn({ from: body.from }, 'WhatsApp message from an unknown number ignored');
   return { handled: 'ignored' };

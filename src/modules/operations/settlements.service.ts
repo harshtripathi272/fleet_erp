@@ -1,5 +1,6 @@
 import { Types } from 'mongoose';
-import { NotFoundError } from '../../core/errors/index.js';
+import { ForbiddenError, NotFoundError } from '../../core/errors/index.js';
+import { mayDecideAll, routeApproval } from './approvals.js';
 import type { Plain } from '../../core/masters/types.js';
 import { Company } from '../company/company.model.js';
 import { Driver } from '../drivers/models/driver.model.js';
@@ -9,7 +10,7 @@ import { FundRequest } from './models/funding.model.js';
 import { DriverAccount, Expense, Settlement } from './models/money.model.js';
 import { Trip } from './models/trip.model.js';
 import {
-  activeDriver, baseCurrency, conflict, driverThread, formatMoney, log, need, nextNumber, post, present, refuse, resolve, type OpsContext,
+  activeDriver, baseCurrency, conflict, driverThread, formatMoney, log, need, nextNumber, post, present, queue, refuse, resolve, type OpsContext,
 } from './support.js';
 import type * as S from './operations.schema.js';
 
@@ -55,7 +56,7 @@ export async function requestSettlement(driverId: string, ctx: OpsContext) {
   await DriverAccount.updateOne({ driverId: driver._id }, { $set: { settleRequestedAt: at, settleRequestedByDesk: ctx.desk, settleRequestedBy: ctx.actorId }, $inc: { version: 1 } }, { upsert: true });
   const trips = await Trip.countDocuments({ driverId: driver._id, endedAt: { $exists: true }, settlementId: { $exists: false } });
   const base = await baseCurrency();
-  await post('finance', at, {
+  await post(queue('settlements'), at, {
     title: `Settle ${driver.name}`,
     text: `${ctx.name} asks for a settlement: ${trips} closed trip${trips === 1 ? '' : 's'}, balance ${formatMoney(sumOf(await driverLedger(driver._id)), base)}.`,
     buttons: [{ label: 'Open statement', tone: 'primary', nav: { view: 'settle', driverId } }],
@@ -111,6 +112,9 @@ export async function postSettlement(input: S.SettlementInput, ctx: OpsContext) 
   const before = opening + selectedSum;
   if (input.cashMinor > 0 && input.cashMinor > Math.max(0, before)) throw refuse(`${driver.name} holds ${formatMoney(Math.max(0, before), base)}. Not more can be returned.`);
   if (input.cashMinor < 0 && -input.cashMinor > Math.max(0, -before)) throw refuse(`The company owes ${formatMoney(Math.max(0, -before), base)}. Don't pay more.`);
+  // With a settlement policy, posting is an approval: the poster must be its final approver for this amount.
+  const approval = await routeApproval('settlement', { amountMinor: Math.abs(input.cashMinor), currencyId: base.id });
+  if (!mayDecideAll(ctx, approval)) throw new ForbiddenError(`Posting this settlement needs ${approval.levels.at(-1)!.label}.`);
   const sumKind = (kind: string) => sumOf(selected.filter((e) => e.kind === kind));
   const starts = trips.map((t) => (t.dispatchedAt ?? t.createdAt) as Date).sort((a, b) => a.getTime() - b.getTime());
   const ends = trips.map((t) => t.endedAt as Date).sort((a, b) => a.getTime() - b.getTime());
@@ -141,7 +145,7 @@ export async function postSettlement(input: S.SettlementInput, ctx: OpsContext) 
     ],
     buttons: [{ label: 'View statement', nav: { view: 'statement', driverId: String(driver._id) } }],
   }, ctx);
-  await post('operations', at, { title: `${driver.name} settled`, text: `${s.number} covers ${trips.length} trip${trips.length === 1 ? '' : 's'}. Trip sheets are final.` }, ctx);
+  await post(queue('trips'), at, { title: `${driver.name} settled`, text: `${s.number} covers ${trips.length} trip${trips.length === 1 ? '' : 's'}. Trip sheets are final.` }, ctx);
   await log(ctx, at, `Settled ${driver.name}: ${s.number}, ${trips.length} trips, carry forward ${money(closing)}`, { entity: 'settlements', entityId: settlement._id });
   for (const t of trips) await log(ctx, at, `Settled in ${s.number}`, { tripId: t._id });
   return present(s);

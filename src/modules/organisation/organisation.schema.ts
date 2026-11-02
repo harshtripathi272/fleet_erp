@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { address, baseShape, code, email, integer, money, name, objectId, phone, text, toUpdateSchema } from '../../core/masters/zod.js';
-import { APPROVAL_SUBJECTS, CHANNELS } from './models/approvalPolicy.model.js';
+import { APPROVAL_SUBJECTS, CHANNELS, MEASURES } from './models/approvalPolicy.model.js';
 import { BRANCH_TYPES } from './models/branch.model.js';
 import { RESET_POLICIES } from './models/numberingSeries.model.js';
 
@@ -32,6 +32,8 @@ export const numberingSeriesShape = {
 const level = z.strictObject({
   level: integer(1, 10),
   minAmountMinor: z.number().int().min(0).max(1e13),
+  /** "litres": minAmountMinor is read as whole litres (fuel requests). */
+  measure: z.enum(MEASURES).optional(),
   approverRoleId: objectId.optional(),
   approverUserId: objectId.optional(),
   escalateAfterHours: integer(1, 720).optional(),
@@ -44,6 +46,7 @@ export const approvalPolicyShape = {
   currencyId: objectId,
   levels: z.array(level).min(1).max(10),
   requireReasonAboveBudget: z.boolean().optional(),
+  escalateAboveBudget: z.boolean().optional(),
   ...baseShape,
 };
 

@@ -14,10 +14,12 @@ import { Party } from '../parties/models/party.model.js';
 import { FuelNorm } from '../trips/models/fuel.model.js';
 import { TripBudget } from '../trips/models/tripBudget.model.js';
 import {
-  AVERAGE_KMH, ROAD_FACTOR, cumulativeKm, fuelEstimate, haversineKm, round, stampArrival, tripKm, validateStops,
+  cumulativeKm, fuelEstimate, haversineKm, round, stampArrival, tripKm, validateStops,
   type StopLeg, type StopPlan,
 } from './calc.js';
+import { waitingOn, type Approval } from './approvals.js';
 import { issueButtons, requestAmount, requestButtons } from './funding.service.js';
+import { assertStageAllows, currentStage, recordEvent, stageSnapshot, tripTypeFor } from './stages.js';
 import { carriedIn, driverBalance } from './ledger.js';
 import { Consignment } from './models/cargo.model.js';
 import { FundRequest, OPEN_REQUEST, VehicleState } from './models/funding.model.js';
@@ -25,9 +27,10 @@ import { Nomination } from './models/money.model.js';
 import { Trip } from './models/trip.model.js';
 import {
   activeDriver, activeRecord, baseCurrency, conflict, customerParty, driverThread, firstName, formatMoney, litres, log,
-  need, nextNumber, post, present, refuse, resolve, save, toBase, type OpsContext,
+  need, nextNumber, post, present, queue, refuse, resolve, save, toBase, type OpsContext,
 } from './support.js';
 import type * as S from './operations.schema.js';
+import { operationsSettings } from './settings.js';
 
 /* ---------- Names for messages ---------- */
 
@@ -77,7 +80,7 @@ export async function truckFacts(vehicleId: unknown, mustBeActive = true): Promi
     tankL: num(vehicle.tankCapacityL, model?.tankCapacityL),
     kmPerLLoaded: num(vehicle.kmPerLLoaded, model?.kmPerLLoaded, norm?.kmPerLLoaded),
     kmPerLEmpty: num(vehicle.kmPerLEmpty, model?.kmPerLEmpty, norm?.kmPerLEmpty),
-    reservePercent: typeof norm?.reservePercent === 'number' ? Number(norm.reservePercent) : 6,
+    reservePercent: typeof norm?.reservePercent === 'number' ? Number(norm.reservePercent) : (await operationsSettings()).defaultFuelReservePercent,
     capacityT: num(vehicle.payloadKg) ? Number(vehicle.payloadKg) / 1000 : undefined,
     placeId,
     fuelL: Number(state?.fuelL ?? 0),
@@ -109,8 +112,12 @@ export async function correctVehicleState(vehicleId: string, input: S.VehicleSta
 
 /* ---------- Stops and budgets ---------- */
 
-/** Road kilometres from route masters where a route has the leg; otherwise 1.28 × straight-line. Border posts add their usual wait. */
+/**
+ * Road kilometres from route masters where a route has the leg; otherwise straight-line × the company's
+ * road distance factor. Driving hours use its average speed; border posts add their usual wait.
+ */
 export async function buildStops(plan: StopPlan[]): Promise<Array<StopLeg & { _id: Types.ObjectId }>> {
+  const { roadDistanceFactor, averageSpeedKmh } = await operationsSettings();
   const problem = validateStops(plan);
   if (problem) throw refuse(problem);
   const ids = [...new Set(plan.map((s) => s.placeId))];
@@ -133,10 +140,10 @@ export async function buildStops(plan: StopPlan[]): Promise<Array<StopLeg & { _i
     if (prev && prev.placeId !== stop.placeId) {
       const a = byId.get(prev.placeId)?.location as { lat: number; lng: number } | undefined;
       const b = byId.get(stop.placeId)?.location as { lat: number; lng: number } | undefined;
-      km = known.get(`${prev.placeId}-${stop.placeId}`) ?? (a && b ? Math.round(haversineKm(a, b) * ROAD_FACTOR) : 0);
+      km = known.get(`${prev.placeId}-${stop.placeId}`) ?? (a && b ? Math.round(haversineKm(a, b) * roadDistanceFactor) : 0);
     }
     const wait = byId.get(stop.placeId)?.type === 'border' ? waits.get(stop.placeId) ?? 0 : 0;
-    return { _id: new Types.ObjectId(), placeId: stop.placeId, kind: stop.kind, legKm: km, legHours: round(km / AVERAGE_KMH + (index ? wait : 0), 1) };
+    return { _id: new Types.ObjectId(), placeId: stop.placeId, kind: stop.kind, legKm: km, legHours: round(km / averageSpeedKmh + (index ? wait : 0), 1) };
   });
 }
 
@@ -175,7 +182,7 @@ export function tripState(trip: Plain) {
 
 export const presentTrip = (doc: Plain): Plain => {
   const out = present(doc);
-  return { ...out, state: tripState(doc), totalKm: tripKm((doc.stops ?? []) as StopLeg[]) };
+  return { ...out, state: tripState(doc), totalKm: tripKm((doc.stops ?? []) as StopLeg[]), stage: currentStage(doc) };
 };
 
 export async function listTrips(query: S.TripListQuery) {
@@ -230,9 +237,11 @@ export async function createTrip(input: S.CreateTripInput, ctx: OpsContext, extr
   if (trailer) await assertFree('trailerId', input.trailerId, String(trailer.registrationNumber));
   const route = input.routeId ? await activeRecord(Route, input.routeId, 'route') : null;
   if (input.productId) await activeRecord(Product, input.productId, 'product');
+  const tripType = await tripTypeFor(input.tripTypeId);
+  const { tripStartsFromTruck } = await operationsSettings();
   const routePlan = route ? (route.stops as Array<{ placeId: unknown; kind: string }>).map((s) => ({ placeId: String(s.placeId), kind: s.kind })) : [];
-  const plan = input.stops ?? stopsFromTruck(routePlan, truck.placeId);
-  if (plan[0] && truck.placeId && plan[0].placeId !== truck.placeId) throw refuse(`${truck.plate} is at ${await placeName(truck.placeId)}. The trip starts there.`);
+  const plan = input.stops ?? (tripStartsFromTruck ? stopsFromTruck(routePlan, truck.placeId) : routePlan);
+  if (tripStartsFromTruck && plan[0] && truck.placeId && plan[0].placeId !== truck.placeId) throw refuse(`${truck.plate} is at ${await placeName(truck.placeId)}. The trip starts there.`);
   const stops = plan.length ? await buildStops(plan) : [];
   const draft: Plain = {
     customerId: customer._id, vehicleId: truck.vehicle._id, driverId: driver?._id, trailerId: trailer?._id, routeId: route?._id,
@@ -240,10 +249,11 @@ export async function createTrip(input: S.CreateTripInput, ctx: OpsContext, extr
   };
   const trip = new Trip({
     ...draft, ...(await budgets(draft, truck)), number: await nextNumber('trips', 'TRIP', at),
-    openingFuelL: truck.fuelL, createdBy: ctx.actorId, updatedBy: ctx.actorId,
+    openingFuelL: truck.fuelL, tripTypeId: tripType?._id, stages: await stageSnapshot(tripType?._id), createdBy: ctx.actorId, updatedBy: ctx.actorId,
   });
+  recordEvent(trip, 'created', at, ctx.actorId);
   await save(trip, `${truck.plate}, its driver or its trailer is already on a trip.`);
-  if (!truck.placeId && plan[0]) await setVehicleState(truck.vehicle._id, { placeId: plan[0].placeId }, ctx.actorId);
+  if (tripStartsFromTruck && !truck.placeId && plan[0]) await setVehicleState(truck.vehicle._id, { placeId: plan[0].placeId }, ctx.actorId);
   if (driver) {
     await post(driverThread(driver._id), at, {
       title: `New trip ${trip.get('number')}`,
@@ -290,7 +300,7 @@ export async function updateTrip(id: string, input: S.UpdateTripInput, ctx: OpsC
     trip.set('routeId', input.routeId ?? undefined);
   }
   if (input.stops) {
-    if (truck.placeId && input.stops[0]?.placeId !== truck.placeId) throw refuse(`${truck.plate} is at ${await placeName(truck.placeId)}. The trip starts there.`);
+    if ((await operationsSettings()).tripStartsFromTruck && truck.placeId && input.stops[0]?.placeId !== truck.placeId) throw refuse(`${truck.plate} is at ${await placeName(truck.placeId)}. The trip starts there.`);
     trip.set('stops', await buildStops(input.stops));
   }
   if (input.stops || input.routeId !== undefined) trip.set(await budgets(trip.toObject(), truck));
@@ -368,13 +378,15 @@ export async function dispatchTrip(id: string, ctx: OpsContext) {
   if (!activeTrip(trip.toObject())) throw conflict('This trip is closed.');
   if (!trip.get('driverId')) throw refuse('Assign the driver first.');
   if (!trip.get('stops').length) throw refuse('Set the route first.');
+  assertStageAllows(trip.toObject(), 'dispatched');
   const open = await FundRequest.findOne({ tripId: trip._id, status: { $in: OPEN_REQUEST } }).lean();
-  if (open) throw conflict(`${open.status === 'owner' ? 'The owner' : 'Finance'} still has to ${open.status === 'approved' ? 'pay' : 'approve'} ${open.number}.`);
+  if (open) throw conflict(open.status === 'approved' ? `${open.number} still has to be paid.` : `${waitingOn(open.approval as Approval)?.label ?? 'The approver'} still has to approve ${open.number}.`);
   const truck = await truckFacts(trip.get('vehicleId'), false);
   const issued = (await FundRequest.find({ tripId: trip._id, kind: 'fuel', status: 'issued' }).lean()).reduce((s, r) => s + Number(r.litres ?? 0), 0);
   const stops = trip.get('stops');
   stops[0].arrivedAt ??= at;
   stops[0].leftAt = at;
+  recordEvent(trip, 'dispatched', at, ctx.actorId);
   trip.set({ dispatchedAt: at, openingFuelL: Math.max(0, round(truck.fuelL - issued, 0)), tracking: { km: 0, speed: 0, heading: 0, at }, updatedBy: ctx.actorId });
   await save(trip);
   await resolve(`${trip._id}-dispatch`, 'Dispatched');
@@ -412,7 +424,7 @@ async function announceArrival(trip: Plain, index: number, at: Date, ctx: OpsCon
         refId: `${trip._id}-${loading ? 'loading' : 'delivery'}`,
       }, ctx);
     }
-    await post('operations', at, {
+    await post(queue('consignments'), at, {
       title: `${trip.number} reached ${place}`,
       text: `${firstName(driver)} will send the ${loading ? 'loading invoice' : 'delivery note'}.`,
       buttons: [{ label: 'Open trip', nav: { tripId: String(trip._id) } }],
@@ -421,7 +433,7 @@ async function announceArrival(trip: Plain, index: number, at: Date, ctx: OpsCon
     await log(ctx, at, `Passed ${place}`, { tripId: trip._id });
   } else if (stop.kind === 'end') {
     await log(ctx, at, `Arrived at ${place}`, { tripId: trip._id });
-    await post('operations', at, {
+    await post(queue('trips'), at, {
       title: `${trip.number} is at ${place}`,
       text: 'Record the fuel left in the tank to end the trip and free the truck.',
       buttons: [{ label: 'End trip', tone: 'primary', nav: { tripId: String(trip._id), view: 'close' } }],
@@ -433,6 +445,7 @@ async function announceArrival(trip: Plain, index: number, at: Date, ctx: OpsCon
 /** Stamps arrival at a stop (and the stops passed before it) and sends the messages for it. */
 export async function arriveAt(trip: HydratedDocument<any>, index: number, at: Date, ctx: OpsContext, quiet = false) {
   const stamped = stampArrival(trip.get('stops'), index, at);
+  if (stamped && trip.get('stops')[index]?.kind === 'offload') recordEvent(trip, 'arrived_offloading', at, ctx.actorId);
   if (stamped && !quiet) await announceArrival(trip.toObject() as Plain, index, at, ctx);
 }
 
@@ -498,15 +511,16 @@ export async function remind(id: string, ctx: OpsContext) {
   if (!trip) throw new NotFoundError('Trip not found');
   const open = await FundRequest.findOne({ tripId: trip._id, status: { $in: OPEN_REQUEST } }).lean();
   if (open) {
-    const desk = open.status === 'owner' ? 'owner' : 'finance';
-    await post(desk, at, {
+    const thread = open.status === 'approved' ? queue('payments') : waitingOn(open.approval as Approval)?.thread ?? queue('fund-approvals');
+    const who = open.status === 'approved' ? 'payments' : waitingOn(open.approval as Approval)?.label ?? 'the approver';
+    await post(thread, at, {
       title: `Reminder from ${ctx.name}`,
       text: `${trip.number} is waiting for you to ${open.status === 'approved' ? 'pay' : 'approve'} ${open.number} (${await requestAmount(open as Plain)}).`,
       buttons: open.status === 'approved' ? await issueButtons(open as Plain) : requestButtons(open as Plain),
       refId: open.status === 'approved' ? `${open._id}-issue` : String(open._id),
     }, ctx);
-    await log(ctx, at, `Reminded ${desk === 'owner' ? 'the owner' : 'Finance'} about ${open.number}`, { tripId: trip._id });
-    return { reminded: desk };
+    await log(ctx, at, `Reminded ${who} about ${open.number}`, { tripId: trip._id });
+    return { reminded: thread };
   }
   if (!trip.driverId) throw refuse('Nobody to remind: no open request and no driver.');
   const loaded = await Consignment.exists({ tripId: trip._id });
@@ -526,6 +540,7 @@ export async function endTrip(id: string, input: S.EndTripInput, ctx: OpsContext
   const at = new Date();
   const trip = await tripDoc(id);
   if (!trip.get('dispatchedAt') || !activeTrip(trip.toObject())) throw conflict("This trip isn't on the road.");
+  assertStageAllows(trip.toObject(), 'ended');
   const consignments = await Consignment.find({ tripId: trip._id }).select('delivered').lean();
   if (!consignments.length) throw refuse('Nothing was loaded on this trip.');
   if (consignments.some((c) => !c.delivered)) throw refuse('Record the delivery first.');
@@ -535,6 +550,7 @@ export async function endTrip(id: string, input: S.EndTripInput, ctx: OpsContext
   for (let i = 0; i < stops.length; i += 1) stampArrival(stops, i, at);
   stops.at(-1)!.leftAt = undefined;
   const endPlace = stops.at(-1)!.placeId;
+  recordEvent(trip, 'ended', at, ctx.actorId);
   trip.set({ endedAt: at, closingFuelL: input.closingFuelL, active: false, tracking: { ...(trip.get('tracking')?.toObject?.() ?? { heading: 0 }), km: tripKm(stops), speed: 0, at }, updatedBy: ctx.actorId });
   trip.markModified('stops');
   await save(trip);
@@ -547,15 +563,14 @@ export async function endTrip(id: string, input: S.EndTripInput, ctx: OpsContext
     const unsettled = await Trip.countDocuments({ driverId: plain.driverId, endedAt: { $exists: true }, settlementId: { $exists: false } });
     const base = await baseCurrency();
     await post(driverThread(plain.driverId), at, { title: `${plain.number} closed`, text: `Truck parked at ${place} with ${litres(input.closingFuelL)}. Thank you.` }, ctx);
-    await post('finance', at, {
+    await post(queue('settlements'), at, {
       title: `${plain.number} ended`,
       text: `${name} has ${unsettled} trip${unsettled > 1 ? 's' : ''} to settle. Balance ${formatMoney(await driverBalance(plain.driverId), base)}.`,
       buttons: [{ label: 'Open statement', tone: 'primary', nav: { view: 'settle', driverId: String(plain.driverId) } }],
     }, ctx);
   }
   const label = await routeLabel(plain as never);
-  await post('owner', at, { title: `Trip sheet ready · ${plain.number}`, text: `${label}, ${Math.round(tripKm(stops)).toLocaleString('en-GB')} km.`, buttons: [{ label: 'View trip sheet', nav: { tripId: String(plain._id), view: 'sheet' } }] }, ctx);
-  await post('operations', at, { title: `Trip sheet ready · ${plain.number}`, text: `${truck.plate} is free at ${place}.`, buttons: [{ label: 'View trip sheet', nav: { tripId: String(plain._id), view: 'sheet' } }] }, ctx);
+  await post(queue('trips'), at, { title: `Trip sheet ready · ${plain.number}`, text: `${label}, ${Math.round(tripKm(stops)).toLocaleString('en-GB')} km. ${truck.plate} is free at ${place}.`, buttons: [{ label: 'View trip sheet', nav: { tripId: String(plain._id), view: 'sheet' } }] }, ctx);
   await log(ctx, at, `Ended at ${place} · ${litres(input.closingFuelL)} in the tank`, { tripId: trip._id });
   return presentTrip(plain);
 }

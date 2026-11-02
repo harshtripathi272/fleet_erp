@@ -1,19 +1,23 @@
-import { NotFoundError } from '../../core/errors/index.js';
+import { ForbiddenError, NotFoundError } from '../../core/errors/index.js';
+import { Currency } from '../finance/models/currency.model.js';
 import type { Plain } from '../../core/masters/types.js';
 import { Product } from '../cargo/models/product.model.js';
 import { ShortagePolicy } from '../cargo/models/shortagePolicy.model.js';
 import { Trailer } from '../fleet/models/trailer.model.js';
 import { Unit } from '../geography/models/unit.model.js';
 import { ExpenseCategory } from '../trips/models/expense.model.js';
+import { mayDecideAll, routeApproval, waitingOn } from './approvals.js';
+import { assertStageAllows, recordEvent } from './stages.js';
 import { cumulativeKm, measure, round, shortageLitres, volume20, type Measure } from './calc.js';
 import { Consignment, DriverDocument } from './models/cargo.model.js';
 import { Trip } from './models/trip.model.js';
 import {
   activeDriver, activeRecord, baseCurrency, conflict, currencyInfo, driverThread, formatMoney, litres, loadOr404, log, need, nextNumber,
-  post, present, refuse, resolve, save, toBase, type MessageButton, type OpsContext,
+  post, present, queue, refuse, resolve, save, toBase, type MessageButton, type OpsContext,
 } from './support.js';
 import { arriveAt, driverName, partyName, placeName, plateOf, truckFacts } from './trips.service.js';
 import type * as S from './operations.schema.js';
+import { operationsSettings } from './settings.js';
 
 const LABEL: Record<string, string> = { loading: 'loading invoice', delivery: 'delivery note', expense: 'receipt', fuel: 'fuel slip', other: 'message' };
 
@@ -88,7 +92,10 @@ export async function sendDocument(input: S.SendDocumentInput, ctx: OpsContext) 
         { label: 'Open', nav: { view: 'finance', docId: id } },
       ]
       : [{ label: 'Open', nav: { view: 'finance', docId: id } }];
-    await post('finance', at, { title: `Receipt from ${driver.name}`, text: 'Read from the photo. Check it matches before approving.', rows, attachment: input.file, buttons, refId: id }, ctx);
+    // The receipt goes to whoever approves an expense of this amount, or to anyone who records expenses.
+    const currency = reading?.amount && reading.currencyCode ? await Currency.findOne({ code: reading.currencyCode, status: 'active' }).select('_id minorUnits').lean() : null;
+    const thread = currency ? waitingOn(await routeApproval('expense', { amountMinor: Math.round(reading!.amount! * 10 ** Number(currency.minorUnits ?? 2)), currencyId: String(currency._id) }))!.thread : queue('expenses');
+    await post(thread, at, { title: `Receipt from ${driver.name}`, text: 'Read from the photo. Check it matches before approving.', rows, attachment: input.file, buttons, refId: id }, ctx);
   } else {
     let confirm: MessageButton | undefined;
     if (trip && reading && input.kind === 'loading' && reading.productId && reading.docNo) {
@@ -109,7 +116,7 @@ export async function sendDocument(input: S.SendDocumentInput, ctx: OpsContext) 
         };
       }
     }
-    await post('operations', at, {
+    await post(queue('consignments'), at, {
       title: `${label[0]!.toUpperCase()}${label.slice(1)} from ${driver.name}`,
       text: reading ? 'Read from the photo. Check the figures, then confirm.' : input.note ?? '',
       rows, attachment: input.file,
@@ -169,9 +176,10 @@ export async function getConsignment(id: string) {
   return present(doc);
 }
 
-function fuelChecks(input: { tempC?: number; density?: number }, stage: string) {
+async function fuelChecks(input: { tempC?: number; density?: number }, stage: string) {
   if (input.tempC == null || input.density == null) throw refuse(`Fuel needs temperature and density${stage}.`);
-  if (input.density < 600 || input.density > 1000) throw refuse('Density looks wrong. Diesel is around 830 kg/m³.');
+  const { densityMinKgM3, densityMaxKgM3 } = await operationsSettings();
+  if (input.density < densityMinKgM3 || input.density > densityMaxKgM3) throw refuse(`Density looks wrong: expected ${densityMinKgM3}–${densityMaxKgM3} kg/m³.`);
 }
 
 export async function recordLoading(input: S.LoadingInput, ctx: OpsContext) {
@@ -182,11 +190,12 @@ export async function recordLoading(input: S.LoadingInput, ctx: OpsContext) {
   if (!trip.get('dispatchedAt')) throw conflict('Dispatch the truck first.');
   if (!trip.get('active')) throw conflict('This trip is closed.');
   if (await Consignment.exists({ tripId: trip._id, delivered: { $exists: false } })) throw conflict('This truck is already loaded.');
+  assertStageAllows(trip.toObject(), 'loaded');
   const { product, unit, volumeCorrected } = await productFacts(input.productId);
   const truck = await truckFacts(trip.get('vehicleId'), false);
   const trailer = trip.get('trailerId') ? await Trailer.findById(trip.get('trailerId')).select('registrationNumber capacityL').lean() : null;
   if (volumeCorrected) {
-    fuelChecks(input, '');
+    await fuelChecks(input, '');
     if (trailer?.capacityL && (input.ambientL ?? input.qty) > Number(trailer.capacityL)) throw refuse(`${trailer.registrationNumber} holds ${litres(Number(trailer.capacityL))}.`);
   } else if (unit === 't' && truck.capacityT && input.qty > truck.capacityT) throw refuse(`${truck.plate} carries ${truck.capacityT} t.`);
   const stops = trip.get('stops') as Array<{ kind: string; legKm: number }>;
@@ -203,6 +212,7 @@ export async function recordLoading(input: S.LoadingInput, ctx: OpsContext) {
   const tracking = trip.get('tracking');
   if (tracking) trip.set('tracking.km', Math.max(Number(tracking.km ?? 0), cumulativeKm(stops)[index]!));
   trip.markModified('stops');
+  recordEvent(trip, 'loaded', at, ctx.actorId);
   await save(trip);
   await markRecorded(input.docId, trip._id, consignment.get('number'), `Loading confirmed · ${consignment.get('number')}`);
   const qty = volumeCorrected ? `${litres(load.qty)} ${String(product.name).toLowerCase()} · ${litres(volume20(load) ?? load.qty)} at 20 °C` : `${load.qty} ${unit} ${String(product.name).toLowerCase()}`;
@@ -216,7 +226,7 @@ export async function recordLoading(input: S.LoadingInput, ctx: OpsContext) {
 
 /* ---------- Delivery and shortage ---------- */
 
-/** Shortage beyond the allowance, priced per litre: the product's shortage policy first, then the product itself. */
+/** Shortage beyond the allowance, priced per litre: the product's shortage policy first, then the product, then the company default. */
 async function shortageFor(consignment: Plain, delivered: Measure) {
   const loaded20 = volume20(consignment.load as Measure);
   const delivered20 = volume20(delivered);
@@ -225,7 +235,7 @@ async function shortageFor(consignment: Plain, delivered: Measure) {
   const policy = (await ShortagePolicy.findOne({ status: 'active', $or: [{ productId: product._id }, { productGroupId: product.groupId }] }).sort({ productId: -1 }).lean()) as Plain | null;
   const percent = policy
     ? policy.allowanceKind === 'absolute' ? round((Number(policy.allowanceValue) / loaded20) * 100, 4) : Number(policy.allowanceValue)
-    : Number(product.shortageAllowancePercent ?? 0.3);
+    : Number(product.shortageAllowancePercent ?? (await operationsSettings()).defaultShortageAllowancePercent);
   const figures = shortageLitres(loaded20, delivered20, percent);
   const price = (policy?.pricePerUnit ?? product.shortagePricePerUnit) as { amountMinor: number; currencyId: unknown } | undefined;
   const share = policy?.bearer === 'company' ? 0 : policy?.bearer === 'shared' ? Number(policy.driverSharePercent ?? 50) / 100 : 1;
@@ -247,10 +257,12 @@ export async function recordDelivery(id: string, input: S.DeliveryInput, ctx: Op
   const trip = await Trip.findById(consignment.get('tripId'));
   if (!trip) throw new NotFoundError('Trip not found');
   if (!trip.get('active')) throw conflict('This trip is closed.');
+  assertStageAllows(trip.toObject(), 'delivered');
   const { product, unit, volumeCorrected } = await productFacts(consignment.get('productId'));
-  if (volumeCorrected) fuelChecks(input, ' at offloading');
+  if (volumeCorrected) await fuelChecks(input, ' at offloading');
   const load = consignment.get('load');
-  if (input.qty > Number(load.ambientL ?? load.qty) * 1.02) throw refuse('Delivered is more than loaded. Check the figures.');
+  const { deliveredOverLoadedPercent } = await operationsSettings();
+  if (input.qty > Number(load.ambientL ?? load.qty) * (1 + deliveredOverLoadedPercent / 100)) throw refuse('Delivered is more than loaded. Check the figures.');
   const stops = trip.get('stops') as Array<{ kind: string; legKm: number }>;
   const index = stops.findIndex((s) => s.kind === 'offload');
   await arriveAt(trip, index, at, ctx);
@@ -267,6 +279,7 @@ export async function recordDelivery(id: string, input: S.DeliveryInput, ctx: Op
   const tracking = trip.get('tracking');
   if (tracking) trip.set('tracking.km', Math.max(Number(tracking.km ?? 0), cumulativeKm(stops)[index]!));
   trip.markModified('stops');
+  recordEvent(trip, 'delivered', at, ctx.actorId);
   await save(trip);
   await markRecorded(input.docId, trip._id, consignment.get('number'), `Delivery confirmed · ${consignment.get('number')}`);
   const number = String(trip.get('number'));
@@ -282,7 +295,7 @@ export async function recordDelivery(id: string, input: S.DeliveryInput, ctx: Op
   if (shortage?.status === 'pending') {
     const charge = formatMoney(shortage.baseAmountMinor, await baseCurrency());
     const price = shortage.pricePerL ? formatMoney(shortage.pricePerL.amountMinor, await currencyInfo(shortage.pricePerL.currencyId)) : '—';
-    await post('finance', at, {
+    await post(queue('shortage-decisions'), at, {
       title: `Fuel shortage on ${number}`,
       text: `${litres(shortage.netShortL)} beyond the ${shortage.allowancePercent}% allowance.`,
       rows: [
@@ -301,15 +314,23 @@ export async function recordDelivery(id: string, input: S.DeliveryInput, ctx: Op
   return present(consignment.toObject());
 }
 
+/**
+ * Charging a shortage needs the shortage-decisions permission. Waiving it is an approval: the person
+ * must be the final approver for that amount under the company's shortage-waiver policy.
+ */
 export async function decideShortage(id: string, input: S.ShortageDecisionInput, ctx: OpsContext) {
-  need(ctx, 'shortage-decisions', 'create', 'Finance decides shortages.');
   const at = new Date();
   const consignment = await loadOr404(Consignment, id, 'Consignment');
   const shortage = consignment.get('shortage');
   if (!shortage || shortage.status !== 'pending') throw conflict('Nothing to decide here.');
   const trip = (await Trip.findById(consignment.get('tripId')).lean()) as Plain;
   if (trip.settlementId) throw conflict('The trip is already settled.');
-  if (!input.charge && !input.note) throw refuse("Say why it's waived.");
+  if (input.charge) need(ctx, 'shortage-decisions', 'create', 'Your role does not decide shortages.');
+  else {
+    if (!input.note) throw refuse("Say why it's waived.");
+    const approval = await routeApproval('shortage_waiver', { amountMinor: Number(shortage.baseAmountMinor), currencyId: (await baseCurrency()).id });
+    if (!mayDecideAll(ctx, approval)) throw new ForbiddenError(`Waiving this needs ${approval.levels.at(-1)!.label}.`);
+  }
   consignment.set({ 'shortage.status': input.charge ? 'charged' : 'waived', 'shortage.decidedAt': at, 'shortage.decidedBy': ctx.actorId, 'shortage.note': input.note, updatedBy: ctx.actorId });
   await save(consignment);
   const charge = formatMoney(Number(shortage.baseAmountMinor), await baseCurrency());

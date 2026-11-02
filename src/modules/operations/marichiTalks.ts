@@ -10,6 +10,8 @@ export interface OutboundWhatsApp {
   text: string;
   title?: string;
   buttons?: string[];
+  /** One-time answer tokens, one per button, returned by the webhook when tapped. */
+  tokens?: string[];
 }
 
 export interface Delivery { channel: 'whatsapp'; to: string; status: 'logged' | 'sent' | 'failed'; providerRef?: string; error?: string }

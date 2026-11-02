@@ -35,7 +35,11 @@ export async function saveCompany(input: Plain, actorId?: string, requestId?: st
   if (version === undefined) throw new ValidationError('Send the version you edited', { version: ['Required when updating'] });
   if (version !== existing.version) throw new ConflictError('Company details were changed by someone else. Reload and try again.', { currentVersion: existing.version });
   const before = existing.toObject() as Plain;
-  for (const [key, value] of Object.entries(changes)) existing.set(key, value === null ? undefined : value);
+  for (const [key, value] of Object.entries(changes)) {
+    // Operations settings merge, so saving one setting doesn't reset the others.
+    if (key === 'operations' && value) existing.set(key, { ...((before.operations as Plain | undefined) ?? {}), ...(value as Plain) });
+    else existing.set(key, value === null ? undefined : value);
+  }
   if (!existing.isModified()) return present(before);
   existing.set('updatedBy', actorId);
   await existing.save();

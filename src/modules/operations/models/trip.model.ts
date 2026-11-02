@@ -13,6 +13,17 @@ const stopSchema = new Schema({
   leftAt: Date,
 }, { strict: 'throw' });
 
+const stageStepSchema = new Schema({
+  stageId: { type: ObjectId, ref: 'TripStage', required: true },
+  code: { type: String, required: true },
+  name: { type: String, required: true },
+  completesOn: { type: String, required: true },
+  actorRoleKey: String,
+  isFinal: Boolean,
+  completedAt: Date,
+  completedBy: { type: ObjectId, ref: 'User' },
+}, { _id: false, strict: 'throw' });
+
 /**
  * One run of one truck: the plan (customer, truck, trailer, driver, stops, budgets) and what happened
  * (dispatch, stop times, end). `active` is true until the trip ends or is cancelled, and unique
@@ -21,6 +32,10 @@ const stopSchema = new Schema({
 const tripSchema = new Schema<any>({
   number: { type: String, required: true },
   nominationId: { type: ObjectId, ref: 'Nomination' },
+  /** The trip type and its stages as they were when the trip was created; the trip moves through them. */
+  tripTypeId: { type: ObjectId, ref: 'TripType' },
+  stages: { type: [stageStepSchema], default: [] },
+  events: { type: [String], default: [] },
   customerId: { type: ObjectId, ref: 'Party', required: true },
   vehicleId: { type: ObjectId, ref: 'Vehicle', required: true },
   trailerId: { type: ObjectId, ref: 'Trailer' },

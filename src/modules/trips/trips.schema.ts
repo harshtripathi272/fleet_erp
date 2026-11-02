@@ -4,6 +4,7 @@ import { CARGO_KINDS } from '../fleet/models/trailerType.model.js';
 import { EXPENSE_PER } from './models/expense.model.js';
 import { ADVANCE_BASES, CANCEL_APPLIES } from './models/policies.model.js';
 import { WAITING_COUNTS_AS } from './models/stopType.model.js';
+import { STAGE_EVENTS } from './models/tripStage.model.js';
 
 const kmPerL = z.number().positive().max(15);
 
@@ -26,6 +27,7 @@ export const tripStageShape = {
   notifyTemplateId: objectId.optional(),
   reopenable: z.boolean().optional(),
   isFinal: z.boolean().optional(),
+  completesOn: z.enum(STAGE_EVENTS).optional(),
   ...baseShape,
 };
 

@@ -38,6 +38,8 @@ export type TripListQuery = z.infer<typeof tripListQuery>;
 
 export const createTripSchema = z.strictObject({
   customerId: objectId,
+  /** The trip type whose stages the trip follows; the company's default type when omitted. */
+  tripTypeId: objectId.optional(),
   vehicleId: objectId,
   driverId: objectId.optional(),
   trailerId: objectId.optional(),
@@ -247,7 +249,7 @@ export type ConvertInput = z.infer<typeof convertSchema>;
 
 /* ---------- Messages, activity, WhatsApp ---------- */
 
-const thread = z.string().trim().regex(/^(owner|operations|finance)$|^(driver|customer):[0-9a-f]{24}$/, 'A desk, driver:<id> or customer:<id>');
+const thread = z.string().trim().regex(/^(queue:[a-z][a-z-]{1,39}|role:[a-z][a-z0-9_-]{0,39}|(user|driver|customer):[0-9a-f]{24})$/, 'queue:<permission>, role:<key>, user:<id>, driver:<id> or customer:<id>');
 export const messageListQuery = z.strictObject({ thread: thread.optional(), since: sinceQuery, limit: z.coerce.number().int().min(1).max(500).default(100) });
 export type MessageListQuery = z.infer<typeof messageListQuery>;
 export const chatSchema = z.strictObject({ thread, text: text(2000) });
@@ -274,7 +276,7 @@ export const inboundSchema = z.strictObject({
   text: text(1000).optional(),
   kind: z.enum(DOC_KINDS).optional(),
   media: fileSchema.optional(),
-  /** The command of the button the person tapped. */
-  command: z.record(z.string(), z.unknown()).refine((c) => typeof c.type === 'string', 'A command has a type').optional(),
+  /** The one-time token of the button the person tapped, as sent with the message. */
+  buttonToken: z.string().trim().regex(/^[A-Za-z0-9_-]{20,64}$/, 'A button token').optional(),
 });
 export type InboundInput = z.infer<typeof inboundSchema>;
