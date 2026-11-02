@@ -158,7 +158,8 @@ export async function convertTo(amountMinor: number, fromCurrencyId: unknown, to
 
 /** "1,250.50 ZMW" for messages. */
 export function formatMoney(amountMinor: number, currency: { code: string; minorUnits: number }) {
-  const value = amountMinor / 10 ** currency.minorUnits;
+  // `|| 0` turns -0 (e.g. no expenses, negated) into 0, so it never shows as "-0".
+  const value = amountMinor / 10 ** currency.minorUnits || 0;
   return `${value.toLocaleString('en-GB', { maximumFractionDigits: currency.minorUnits })} ${currency.code}`;
 }
 export const litres = (value: number) => `${Math.round(value).toLocaleString('en-GB')} L`;

@@ -576,7 +576,7 @@ function FundCard({
             <AnimatePresence>
               {over && value > 0 && (
                 <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="over">
-                  <input className="input" value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Why more than the budget? The owner approves this." />
+                  <input className="input" value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Why more than the budget?" />
                 </motion.div>
               )}
             </AnimatePresence>
@@ -646,7 +646,7 @@ function RequestRow({ request }: { request: FundRequest }) {
         <div className="req-actions">
           {canDecide && !mode && (
             <>
-              <Button tone="primary" size="sm" onClick={() => run({ type: "request.decide", id: request.id, approve: true }, request.status === "pending" && request.amount > request.suggested && role === "finance" ? "Approved. Sent to the owner." : "Approved.")}>
+              <Button tone="primary" size="sm" onClick={() => run({ type: "request.decide", id: request.id, approve: true }, request.level && request.level.current < request.level.of ? "Approved. Sent for the next approval." : "Approved.")}>
                 <Check /> Approve
               </Button>
               <Button tone="danger" size="sm" onClick={() => setMode("reject")}>

@@ -41,3 +41,11 @@ details.form-group summary { cursor: pointer; }
   .masters { grid-template-columns: 1fr; }
   .masters-nav { position: static; max-height: 220px; }
 }
+
+/* Company settings */
+.company-form { border: 0; padding: 0; margin: 0; min-width: 0; display: grid; gap: 16px; }
+.check-line { display: flex; align-items: center; gap: 8px; color: var(--ink-2); }
+.check-line input { width: 16px; height: 16px; accent-color: var(--pine, #1f4d3f); }
+.unit-input { display: flex; align-items: center; gap: 8px; }
+.unit-input input { flex: 1; min-width: 0; }
+.unit-input .muted { white-space: nowrap; font-size: 13px; }

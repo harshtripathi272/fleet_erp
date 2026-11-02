@@ -7,6 +7,7 @@ import type { Rec } from "../api/adapter";
 import { can } from "../api/session";
 import { useApp } from "../store";
 import { Button, Drawer, Empty, Field, Status } from "../ui/kit";
+import { CompanyPanel } from "./CompanyPanel";
 
 /**
  * One screen for every master, built from GET /meta/masters: groups, fields, links, choices and the
@@ -22,6 +23,7 @@ const OBJECT_ID = "^[0-9a-fA-F]{24}$";
 const BASE_KEYS = new Set(["status", "validFrom", "validTo", "branchIds", "tags", "notes", "externalRefs", "attachments", "custom"]);
 
 export function MastersScreen({ initialEntity }: { initialEntity?: string }) {
+  const { me } = useApp();
   const masters = useMasters();
   const customMasters = useQuery({ queryKey: ["custom-masters"], queryFn: () => api<Rec[]>("/custom-masters", { query: { limit: 100 } }) });
   const [selected, setSelected] = useState<string>(initialEntity && !initialEntity.includes(":") ? initialEntity : "vehicles");
@@ -43,6 +45,12 @@ export function MastersScreen({ initialEntity }: { initialEntity?: string }) {
           <Search size={15} />
           <input value={filter} onChange={(e) => setFilter(e.target.value)} placeholder="Find a master" />
         </label>
+        {can(me, "company", "read") && (!filter || "company".includes(filter.toLowerCase())) && (
+          <section>
+            <h3>Organisation</h3>
+            <button className={selected === "company" ? "on" : ""} onClick={() => setSelected("company")}>Company</button>
+          </section>
+        )}
         {groups.map(([group, list]) => (
           <section key={group}>
             <h3>{group}</h3>
@@ -61,7 +69,7 @@ export function MastersScreen({ initialEntity }: { initialEntity?: string }) {
         )}
       </aside>
       <section className="masters-main">
-        {custom ? <CustomRecords master={custom} defs={defs} /> : def ? <Records key={def.key} def={def} defs={defs} /> : null}
+        {selected === "company" ? <CompanyPanel /> : custom ? <CustomRecords master={custom} defs={defs} /> : def ? <Records key={def.key} def={def} defs={defs} /> : null}
       </section>
     </div>
   );
