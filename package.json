@@ -15,7 +15,7 @@
     "test": "tsx --test --import ./tests/setup.ts tests/*.test.ts",
     "check": "npm run typecheck && npm test && npm run build && npm run build:web",
     "seed": "tsx scripts/seed.ts",
-    "build:web": "npm --prefix web install --no-audit --no-fund && npm --prefix web run build"
+    "build:web": "cd web && npm install --no-audit --no-fund && npm run build"
   },
   "dependencies": {
     "dotenv": "^18.0.7",
