@@ -6,6 +6,7 @@ import auditRouter from '../audit/audit.router.js';
 import authRouter from '../auth/auth.router.js';
 import companyRouter from '../company/company.router.js';
 import healthRouter from '../health/health.router.js';
+import operationsRouter, { webhookRouter } from '../operations/operations.router.js';
 import * as MetaService from './meta.service.js';
 import { loadSampleData } from './sampleData.js';
 
@@ -29,6 +30,8 @@ export const overview = asyncHandler(async (req, res) => {
       ...MetaService.endpointsOf(authRouter, '/api/v1/auth', false),
       ...MetaService.endpointsOf(companyRouter, '/api/v1/company', true),
       ...MetaService.endpointsOf(auditRouter, '/api/v1/audit-logs', true),
+      ...MetaService.endpointsOf(operationsRouter, '/api/v1', true),
+      ...MetaService.endpointsOf(webhookRouter, '/api/v1/whatsapp', false),
     ],
   });
 });

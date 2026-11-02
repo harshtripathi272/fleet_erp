@@ -22,6 +22,7 @@ import geographyRouter from './modules/geography/geography.router.js';
 import healthRouter from './modules/health/health.router.js';
 import messagingRouter from './modules/messaging/messaging.router.js';
 import metaRouter, { publicMetaRouter } from './modules/meta/meta.router.js';
+import operationsRouter, { webhookRouter } from './modules/operations/operations.router.js';
 import organisationRouter from './modules/organisation/organisation.router.js';
 import partiesRouter from './modules/parties/parties.router.js';
 import rolesRouter from './modules/roles/roles.router.js';
@@ -50,6 +51,9 @@ app.use('/api/v1/company', authenticate, companyRouter);
 app.use('/api/v1/audit-logs', authenticate, auditRouter);
 app.use('/api/v1/users', authenticate, usersRouter);
 app.use('/api/v1/roles', authenticate, rolesRouter);
+app.use('/api/v1/whatsapp', webhookRouter);
+// Trips and money; signs in only its own paths, so it adds nothing to master requests.
+app.use('/api/v1', operationsRouter);
 // Masters, grouped by area (MF-SPEC-01 section 8). Every route below requires a signed-in user.
 app.use('/api/v1', authenticate, organisationRouter);
 app.use('/api/v1', authenticate, geographyRouter);

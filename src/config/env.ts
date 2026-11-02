@@ -35,6 +35,11 @@ export const envSchema = z.object({
   SMTP_USER: optionalText,
   SMTP_PASS: optionalText,
   SMTP_FROM: z.string().trim().min(3).default('Marichi Fleet <no-reply@marichi.local>'),
+
+  /** Shared secret Marichi Talks sends in `X-Webhook-Secret`; the inbound WhatsApp webhook is off without it. */
+  MARICHI_TALKS_WEBHOOK_SECRET: z.string().trim().min(16, 'Use at least 16 characters').optional(),
+  /** Lets signed-in staff act as a driver's WhatsApp from the app (the simulated phone). */
+  DRIVER_PHONE_SIMULATOR: flag('true'),
 }).superRefine((value, ctx) => {
   if (value.NODE_ENV !== 'production') return;
   if (value.JWT_SECRET.startsWith('development-only')) {
