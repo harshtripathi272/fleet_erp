@@ -1,0 +1,43 @@
+/* Generic masters screen and sign-in, in the desks' calm framed style. */
+.masters { display: grid; grid-template-columns: 240px minmax(0, 1fr); gap: 20px; align-items: start; }
+.masters-nav { position: sticky; top: 0; max-height: calc(100vh - 120px); overflow: auto; display: grid; gap: 14px; padding-right: 6px; }
+.masters-nav h3 { margin: 0 0 4px; font-size: 12.5px; color: var(--ink-3); font-weight: 560; }
+.masters-nav section { display: grid; gap: 1px; }
+.masters-nav button { text-align: left; padding: 6px 10px; border-radius: 8px; color: var(--ink-2); font-size: 14px; }
+.masters-nav button:hover { background: var(--surface); }
+.masters-nav button.on { background: var(--surface); color: var(--ink); font-weight: 560; box-shadow: inset 2px 0 0 var(--pine, #1f4d3f); }
+.masters-main { min-width: 0; }
+.masters-head { display: flex; gap: 16px; align-items: flex-start; justify-content: space-between; margin-bottom: 12px; }
+.masters-head h2 { margin: 0 0 4px; }
+.masters-head p { margin: 0; max-width: 70ch; }
+.table-frame { overflow-x: auto; border: 1px solid var(--line-2); border-radius: 10px; background: var(--surface); }
+.table-frame .table { width: 100%; border-collapse: collapse; }
+.table-frame th, .table-frame td { padding: 9px 12px; border-bottom: 1px solid var(--line, #e7e2d6); text-align: left; font-size: 14px; }
+.table-frame tr.clickable { cursor: pointer; }
+.table-frame tr.clickable:hover td { background: rgba(31, 77, 63, 0.04); }
+.pager { display: flex; gap: 12px; align-items: center; justify-content: flex-end; margin-top: 10px; }
+.schema-form { display: grid; gap: 14px; }
+.form-group { border: 1px solid var(--line-2); border-radius: 10px; padding: 10px 12px 12px; display: grid; gap: 10px; }
+.form-group legend, .form-group summary { font-weight: 560; color: var(--ink-2); padding: 0 4px; cursor: default; }
+details.form-group summary { cursor: pointer; }
+.array-row { display: grid; gap: 8px; padding-bottom: 10px; border-bottom: 1px dashed var(--line-2); }
+.money-input { display: grid; grid-template-columns: 1fr 90px; gap: 6px; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.chips .chip button { margin-left: 4px; color: var(--ink-3); }
+.checks { display: flex; flex-wrap: wrap; gap: 8px 14px; }
+.seg-tabs { display: flex; gap: 4px; margin-bottom: 14px; border-bottom: 1px solid var(--line-2); }
+.seg-tabs button { padding: 8px 12px; color: var(--ink-3); border-bottom: 2px solid transparent; }
+.seg-tabs button.on { color: var(--ink); border-bottom-color: var(--pine, #1f4d3f); font-weight: 560; }
+.extra { margin-bottom: 14px; }
+.preview { white-space: pre-wrap; font-size: 12px; }
+.history { display: grid; gap: 12px; padding-left: 18px; }
+.small { font-size: 12px; }
+.plain { padding-left: 18px; }
+.signin { display: grid; gap: 14px; max-width: 380px; }
+.signin-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+.signin-error { color: var(--bad, #a3361f); margin: 0; }
+.picker-signout { margin-top: 28px; }
+@media (max-width: 760px) {
+  .masters { grid-template-columns: 1fr; }
+  .masters-nav { position: static; max-height: 220px; }
+}

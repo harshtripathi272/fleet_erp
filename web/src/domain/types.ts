@@ -1,0 +1,485 @@
+export type Role = "owner" | "operations" | "finance" | "driver";
+export type Desk = Exclude<Role, "driver">;
+/** An ISO currency code. The base currency comes from the company settings (ZMW in the sample). */
+export type Currency = string;
+export type StopKind = "start" | "load" | "via" | "border" | "offload" | "end";
+export type Unit = "L" | "t" | "bags" | "pallets";
+
+export interface Place {
+  id: string;
+  name: string;
+  country: string;
+  lat: number;
+  lng: number;
+  kind: "city" | "depot" | "border";
+  haltHours: number;
+}
+export interface Customer {
+  id: string;
+  name: string;
+  contact: string;
+  phone: string;
+}
+export interface Driver {
+  id: string;
+  name: string;
+  phone: string;
+  licence: string;
+  /** Balance carried in from before the system went live. Positive: driver holds company cash. */
+  openingBalanceZmw: number;
+  settleRequestedAt?: string;
+  settleRequestedBy?: Role;
+}
+export interface Truck {
+  id: string;
+  plate: string;
+  model: string;
+  placeId: string;
+  fuelL: number;
+  tankL: number;
+  emptyKmpl: number;
+  loadedKmpl: number;
+  capacityT: number;
+  driverId?: string;
+  trailerId?: string;
+}
+export interface Trailer {
+  id: string;
+  plate: string;
+  /** The trailer type's name, e.g. "Fuel tanker". */
+  type: string;
+  capacity: number;
+  unit: "L" | "t";
+}
+export interface Pairing {
+  id: string;
+  truckId: string;
+  trailerId: string;
+  from: string;
+  to?: string;
+}
+export interface RouteStop {
+  placeId: string;
+  kind: StopKind;
+}
+export interface RouteTemplate {
+  id: string;
+  name: string;
+  stops: RouteStop[];
+  cashBudgetZmw: number;
+  /** Fixed fuel for the route. When empty the budget comes from distance and truck consumption. */
+  fuelBudgetL?: number;
+}
+export interface Product {
+  id: string;
+  name: string;
+  kind: "fuel" | "general";
+  unit: Unit;
+  fuelGroup?: "diesel" | "petrol" | "jet";
+  /** Allowed transit loss in percent of the 20 °C loaded volume. */
+  shortagePct?: number;
+  /** Charge per litre of shortage beyond the allowance, in USD. */
+  shortageRateUsd?: number;
+}
+export interface ExpenseCategory {
+  id: string;
+  name: string;
+}
+export interface Settings {
+  company: string;
+  office: string;
+  fxZmwPerUsd: number;
+  clockOffsetMs: number;
+  seq: Record<string, number>;
+  people: Record<Desk, string>;
+}
+
+export interface Stop {
+  id: string;
+  placeId: string;
+  kind: StopKind;
+  legKm: number;
+  legHours: number;
+  arrivedAt?: string;
+  leftAt?: string;
+}
+export interface Tracking {
+  km: number;
+  speed: number;
+  heading: number;
+  at: string;
+}
+export interface Trip {
+  id: string;
+  /** The record version, sent back when the plan is edited. */
+  version?: number;
+  no: string;
+  nominationId?: string;
+  customerId: string;
+  truckId: string;
+  driverId?: string;
+  trailerId?: string;
+  routeId?: string;
+  stops: Stop[];
+  productId?: string;
+  plannedQty?: number;
+  plannedStart: string;
+  fuelBudgetL: number;
+  cashBudgetZmw: number;
+  openingFuelL: number;
+  createdAt: string;
+  dispatchedAt?: string;
+  endedAt?: string;
+  closingFuelL?: number;
+  cancelledAt?: string;
+  tracking?: Tracking;
+  settlementId?: string;
+  /** The trip type's configured stages and where the trip is (from the API). */
+  stages?: { code: string; name: string; completesOn: string; completedAt?: string }[];
+  stage?: { code: string; name: string; completesOn: string; done: boolean } | null;
+}
+
+export interface Decision {
+  role: Role;
+  what: "requested" | "approved" | "sent to owner" | "rejected" | "issued" | "cancelled";
+  at: string;
+  note?: string;
+  via: "app" | "WhatsApp";
+}
+export interface FundRequest {
+  id: string;
+  no: string;
+  tripId: string;
+  kind: "fuel" | "cash";
+  amount: number;
+  currency: Currency;
+  suggested: number;
+  reason?: string;
+  status: "pending" | "owner" | "approved" | "issued" | "rejected" | "cancelled";
+  trail: Decision[];
+  medium?: string;
+  reference?: string;
+  station?: string;
+  issuedAt?: string;
+  fxAtIssue?: number;
+  createdAt: string;
+  /** Who must decide next, and whether the signed-in person may (from the company's approval policy). */
+  waitingOn?: string;
+  mayDecide?: boolean;
+  level?: { current: number; of: number };
+}
+
+export interface Attachment {
+  name: string;
+  mime: string;
+  sampleId?: string;
+  dataUrl?: string;
+}
+export type DocKind = "loading" | "delivery" | "expense" | "fuel" | "other";
+export interface Extracted {
+  docNo?: string;
+  productId?: string;
+  qty?: number;
+  ambientL?: number;
+  tempC?: number;
+  density?: number;
+  certStd20L?: number;
+  consignor?: string;
+  consignee?: string;
+  amount?: number;
+  currency?: Currency;
+  categoryId?: string;
+  fuelL?: number;
+}
+export interface DriverDoc {
+  id: string;
+  tripId?: string;
+  driverId: string;
+  kind: DocKind;
+  channel: "WhatsApp" | "App" | "Operations";
+  note?: string;
+  file?: Attachment;
+  read?: Extracted;
+  status: "new" | "recorded" | "returned";
+  recordRef?: string;
+  returnReason?: string;
+  at: string;
+}
+
+export interface Measure {
+  qty: number;
+  unit: Unit;
+  ambientL?: number;
+  tempC?: number;
+  density?: number;
+  vcf?: number;
+  std20L?: number;
+  certStd20L?: number;
+}
+export interface Shortage {
+  loaded20L: number;
+  delivered20L: number;
+  lossL: number;
+  allowancePct: number;
+  allowanceL: number;
+  netShortL: number;
+  rateUsd: number;
+  amountZmw: number;
+  status: "pending" | "charged" | "waived" | "none";
+  decidedAt?: string;
+  note?: string;
+}
+export interface Consignment {
+  id: string;
+  no: string;
+  tripId: string;
+  productId: string;
+  invoiceNo: string;
+  consignor: string;
+  consignee: string;
+  loadedAt: string;
+  loadDocId?: string;
+  load: Measure;
+  delivered?: Measure & { at: string; podNo: string; docId?: string };
+  shortage?: Shortage;
+}
+
+export interface Expense {
+  id: string;
+  no: string;
+  tripId?: string;
+  driverId: string;
+  categoryId: string;
+  amount: number;
+  currency: Currency;
+  amountZmw: number;
+  receiptNo?: string;
+  docId?: string;
+  note?: string;
+  status: "pending" | "approved" | "rejected";
+  recordedBy: Role;
+  waitingOn?: string;
+  mayDecide?: boolean;
+  decidedAt?: string;
+  reason?: string;
+  at: string;
+}
+
+export interface Settlement {
+  id: string;
+  no: string;
+  driverId: string;
+  tripIds: string[];
+  from: string;
+  to: string;
+  openingZmw: number;
+  advancesZmw: number;
+  expensesZmw: number;
+  shortagesZmw: number;
+  /** Positive: driver handed cash back. Negative: company paid the driver. */
+  cashZmw: number;
+  closingZmw: number;
+  note?: string;
+  postedAt: string;
+}
+
+export interface Nomination {
+  id: string;
+  version?: number;
+  no: string;
+  customerId: string;
+  /** The order source's name. */
+  source: string;
+  orderSourceId?: string;
+  reference?: string;
+  loadingPlaceId: string;
+  productId?: string;
+  qtyPerTruck?: number;
+  requiredDate: string;
+  trucks: { truckId: string; driverId?: string }[];
+  status: "draft" | "sent" | "accepted" | "converted" | "cancelled";
+  note?: string;
+  createdAt: string;
+  sentAt?: string;
+  acceptedAt?: string;
+  tripIds: string[];
+}
+
+export type Nav = { tripId?: string; view?: string; docId?: string; driverId?: string; masterEntity?: string };
+export interface MsgButton {
+  label: string;
+  action?: Action;
+  attach?: DocKind;
+  nav?: Nav;
+  tone?: "primary" | "danger";
+}
+export interface Message {
+  id: string;
+  thread: string;
+  from: "bot" | "me" | "contact";
+  text: string;
+  title?: string;
+  rows?: [string, string][];
+  attachment?: Attachment;
+  buttons?: MsgButton[];
+  resolved?: string;
+  refId?: string;
+  at: string;
+  /** The API thread when a desk shows it under its own name. */
+  realThread?: string;
+}
+export interface ActivityEvent {
+  id: string;
+  at: string;
+  tripId?: string;
+  role: Role;
+  text: string;
+}
+
+export interface AppData {
+  version: 4;
+  settings: Settings;
+  places: Place[];
+  customers: Customer[];
+  drivers: Driver[];
+  trucks: Truck[];
+  trailers: Trailer[];
+  pairings: Pairing[];
+  routes: RouteTemplate[];
+  products: Product[];
+  categories: ExpenseCategory[];
+  nominations: Nomination[];
+  trips: Trip[];
+  requests: FundRequest[];
+  docs: DriverDoc[];
+  consignments: Consignment[];
+  expenses: Expense[];
+  settlements: Settlement[];
+  messages: Message[];
+  events: ActivityEvent[];
+  reads: Record<string, string>;
+  /** Reference lists from the API that the screens choose from. */
+  paymentMethods?: { id: string; name: string; kind: string; forFuel: boolean; forCash: boolean; referenceRequired: boolean }[];
+  orderSources?: { id: string; name: string; referenceRequired: boolean }[];
+  currencies?: { id: string; code: string; minorUnits: number }[];
+  baseCurrency?: { id: string; code: string; minorUnits: number };
+}
+
+export type MasterEntity =
+  | "places"
+  | "customers"
+  | "drivers"
+  | "trucks"
+  | "trailers"
+  | "routes"
+  | "products"
+  | "categories";
+
+export type Action =
+  | {
+      type: "nomination.save";
+      id?: string;
+      customerId: string;
+      source: Nomination["source"];
+      reference?: string;
+      loadingPlaceId: string;
+      productId?: string;
+      qtyPerTruck?: number;
+      requiredDate: string;
+      trucks: { truckId: string; driverId?: string }[];
+      note?: string;
+    }
+  | { type: "nomination.send"; id: string }
+  | { type: "nomination.accept"; id: string }
+  | { type: "nomination.convert"; id: string; routeId?: string; offloadPlaceId?: string }
+  | { type: "nomination.cancel"; id: string }
+  | {
+      type: "trip.create";
+      customerId: string;
+      truckId: string;
+      driverId?: string;
+      trailerId?: string;
+      routeId?: string;
+      stops?: RouteStop[];
+      plannedStart: string;
+      productId?: string;
+      plannedQty?: number;
+    }
+  | {
+      type: "trip.update";
+      tripId: string;
+      customerId?: string;
+      driverId?: string;
+      trailerId?: string;
+      routeId?: string;
+      stops?: RouteStop[];
+      plannedStart?: string;
+      productId?: string;
+      plannedQty?: number;
+      fuelBudgetL?: number;
+      cashBudgetZmw?: number;
+    }
+  | { type: "trip.cancel"; tripId: string; reason: string }
+  | { type: "request.create"; tripId: string; kind: "fuel" | "cash"; amount: number; currency: Currency; reason?: string }
+  | { type: "request.decide"; id: string; approve: boolean; note?: string; via?: "app" | "WhatsApp" }
+  | { type: "request.issue"; id: string; medium: string; reference: string; station?: string; via?: "app" | "WhatsApp" }
+  | { type: "request.cancel"; id: string }
+  | { type: "trip.dispatch"; tripId: string }
+  | { type: "trip.ping"; tripId: string; km: number; speed: number; advanceMs?: number }
+  | { type: "trip.arrive"; tripId: string; stopId: string }
+  | { type: "trip.remind"; tripId: string }
+  | {
+      type: "doc.send";
+      driverId: string;
+      tripId?: string;
+      kind: DocKind;
+      note?: string;
+      file?: Attachment;
+      channel: DriverDoc["channel"];
+      read?: Extracted;
+    }
+  | { type: "doc.return"; docId: string; reason: string }
+  | {
+      type: "load.record";
+      tripId: string;
+      docId?: string;
+      productId: string;
+      invoiceNo: string;
+      consignor: string;
+      consignee: string;
+      qty: number;
+      ambientL?: number;
+      tempC?: number;
+      density?: number;
+      certStd20L?: number;
+    }
+  | {
+      type: "delivery.record";
+      consignmentId: string;
+      docId?: string;
+      podNo: string;
+      qty: number;
+      ambientL?: number;
+      tempC?: number;
+      density?: number;
+      certStd20L?: number;
+    }
+  | { type: "shortage.decide"; consignmentId: string; charge: boolean; note?: string; via?: "app" | "WhatsApp" }
+  | {
+      type: "expense.record";
+      driverId: string;
+      tripId?: string;
+      categoryId: string;
+      amount: number;
+      currency: Currency;
+      receiptNo?: string;
+      docId?: string;
+      note?: string;
+    }
+  | { type: "expense.decide"; id: string; approve: boolean; reason?: string; via?: "app" | "WhatsApp" }
+  | { type: "trip.end"; tripId: string; closingFuelL: number }
+  | { type: "settlement.request"; driverId: string }
+  | { type: "settlement.post"; driverId: string; tripIds: string[]; cashZmw: number; note?: string }
+  | { type: "thread.read"; thread: string }
+  | { type: "chat.send"; thread: string; text: string }
+  | { type: "customer.reply"; nominationId: string };

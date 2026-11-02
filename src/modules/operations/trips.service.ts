@@ -182,6 +182,8 @@ export function tripState(trip: Plain) {
 
 export const presentTrip = (doc: Plain): Plain => {
   const out = present(doc);
+  // Stops carry `id` like every other record (they are subdocuments with their own _id).
+  out.stops = ((out.stops ?? []) as Plain[]).map(({ _id, ...stop }) => ({ id: _id, ...stop }));
   return { ...out, state: tripState(doc), totalKm: tripKm((doc.stops ?? []) as StopLeg[]), stage: currentStage(doc) };
 };
 
