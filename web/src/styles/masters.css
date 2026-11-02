@@ -3,7 +3,7 @@
 .masters-nav { position: sticky; top: 0; max-height: calc(100vh - 120px); overflow: auto; display: grid; gap: 14px; padding-right: 6px; }
 .masters-nav h3 { margin: 0 0 4px; font-size: 12.5px; color: var(--ink-3); font-weight: 560; }
 .masters-nav section { display: grid; gap: 1px; }
-.masters-nav button { text-align: left; padding: 6px 10px; border-radius: 8px; color: var(--ink-2); font-size: 14px; }
+.masters-nav button { border: 0; background: transparent; text-align: left; padding: 6px 10px; border-radius: 8px; color: var(--ink-2); font-size: 14px; }
 .masters-nav button:hover { background: var(--surface); }
 .masters-nav button.on { background: var(--surface); color: var(--ink); font-weight: 560; box-shadow: inset 2px 0 0 var(--pine, #1f4d3f); }
 .masters-main { min-width: 0; }
@@ -23,10 +23,10 @@ details.form-group summary { cursor: pointer; }
 .array-row { display: grid; gap: 8px; padding-bottom: 10px; border-bottom: 1px dashed var(--line-2); }
 .money-input { display: grid; grid-template-columns: 1fr 90px; gap: 6px; }
 .chips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
-.chips .chip button { margin-left: 4px; color: var(--ink-3); }
+.chips .chip button { border: 0; background: transparent; padding: 0; margin-left: 4px; color: var(--ink-3); }
 .checks { display: flex; flex-wrap: wrap; gap: 8px 14px; }
 .seg-tabs { display: flex; gap: 4px; margin-bottom: 14px; border-bottom: 1px solid var(--line-2); }
-.seg-tabs button { padding: 8px 12px; color: var(--ink-3); border-bottom: 2px solid transparent; }
+.seg-tabs button { border: 0; border-bottom: 2px solid transparent; background: transparent; padding: 8px 12px; margin-bottom: -1px; color: var(--ink-3); border-bottom: 2px solid transparent; }
 .seg-tabs button.on { color: var(--ink); border-bottom-color: var(--pine, #1f4d3f); font-weight: 560; }
 .extra { margin-bottom: 14px; }
 .preview { white-space: pre-wrap; font-size: 12px; }

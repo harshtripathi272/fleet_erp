@@ -4,6 +4,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Archive, History, Link2, Plus, RotateCcw, Search, Trash2 } from "lucide-react";
 import { api, ApiError, request } from "../api/client";
 import type { Rec } from "../api/adapter";
+import { can } from "../api/session";
 import { useApp } from "../store";
 import { Button, Drawer, Empty, Field, Status } from "../ui/kit";
 
@@ -226,7 +227,7 @@ function RecordDrawer({ def, defs, id, onClose }: { def: Def; defs: Def[]; id?: 
 
 /** Actions some masters add beyond create, edit, archive and delete. */
 function Extras({ def, id, record }: { def: Def; id?: string; record?: Rec }) {
-  const { data, toast, refreshReference } = useApp();
+  const { data, me, toast, refreshReference } = useApp();
   const [preview, setPreview] = useState<string>("");
   if (!id || !record) return null;
   if (def.key === "pairings" && record.open !== false && !record.to)
@@ -235,7 +236,7 @@ function Extras({ def, id, record }: { def: Def; id?: string; record?: Rec }) {
     return <div className="extra"><Button size="sm" onClick={async () => setPreview(`Next: ${(await api<Rec>(`/numbering-series/${id}/preview`)).next}`)}>Preview the next number</Button> <span className="mono">{preview}</span></div>;
   if (def.key === "message-templates")
     return <div className="extra"><Button size="sm" onClick={async () => { try { setPreview(JSON.stringify(await api(`/message-templates/${id}/preview`, { method: "POST", body: {} }))); } catch (e) { setPreview((e as Error).message); } }}>Preview with sample values</Button><pre className="mono preview">{preview}</pre></div>;
-  if (def.key === "vehicles") {
+  if (def.key === "vehicles" && can(me, "vehicle-states", "update")) {
     const truck = data.trucks.find((t) => t.id === id);
     return <TruckNow truckId={id} placeId={truck?.placeId ?? ""} fuelL={truck?.fuelL ?? 0} tankL={truck?.tankL ?? 0} places={data.places} onSave={(placeId, fuelL) => void saveState(id, placeId, fuelL, toast)} />;
   }
