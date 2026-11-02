@@ -11,6 +11,7 @@ Marichi Fleet is built for **one company at a time**: each installation runs one
 - **Everything a company might do differently is configuration, not code.** Approvals, policies, workflows, trip steps, fields, lists, record types, roles, numbering, messages, documents, notifications, and whatever comes up next. Each has sensible defaults and no limit on what a company can add or change.
 - **A client's rules are that client's settings.** The first client's decisions (below) ship as defaults; another company can change every one of them.
 - **Setting up a new company is easy:** a new installation, its own settings and data, and small additions where its way of working needs them, without changing the core.
+- **It deploys anywhere with little effort:** GCP, any other cloud or a single server. The API is one container image configured only by environment variables, and MongoDB can be hosted anywhere. See [Deploying a company's copy](#deploying-a-companys-copy).
 - **It scales without a ceiling** within a company: any number of branches, records, fields and options.
 
 When building anything, ask: *could another company want this differently?* If yes, make it a setting with a sensible default rather than a value in the code.
@@ -26,7 +27,7 @@ When building anything, ask: *could another company want this differently?* If y
 7. [Masters and their endpoints](#masters-and-their-endpoints)
 8. [Code layout](#code-layout)
 9. [Tests and checks](#tests-and-checks)
-10. [Production notes](#production-notes)
+10. [Deploying a company's copy](#deploying-a-companys-copy)
 
 ## Where things stand
 
@@ -258,7 +259,7 @@ Settings you may change:
 | `REDIS_URL` | empty | A Redis address, to keep rate limits in Redis instead of memory |
 | `SMTP_HOST`, `SMTP_USER`, `SMTP_PASS` | empty | Real SMTP credentials, to send e-mail |
 
-In production the API refuses to start without the settings in [Production notes](#production-notes).
+In production the API refuses to start without the settings in [Deploying a company's copy](#deploying-a-companys-copy).
 
 ### Sample data
 
@@ -474,7 +475,36 @@ The tests run on their own temporary MongoDB and cover:
 - load, size limits and hostile input;
 - a fuzzer that sends random input to every endpoint and fails on any server error.
 
-## Production notes
+## Deploying a company's copy
+
+Each company gets its own copy: its own API and its own MongoDB database. Nothing in the code is tied to a cloud provider.
+
+**What the API needs anywhere:**
+
+- The container image built from the `Dockerfile` (or Node.js 22 running `npm ci && npm run build && npm start`).
+- A MongoDB database for that company: [MongoDB Atlas](https://www.mongodb.com/atlas) on any cloud, or MongoDB on a server.
+- Environment variables, at least: `MONGODB_URI`, a random `JWT_SECRET` of 32+ characters (e.g. `openssl rand -base64 48`), `APP_URL` (the public address, used in reset links), `SMTP_HOST`, `SMTP_USER`, `SMTP_PASS` and `SMTP_FROM`. The image already sets `NODE_ENV=production` and listens on `0.0.0.0` and the `PORT` the platform provides. Keep secrets in the platform's secret store rather than in plain settings.
+- Behind the platform's load balancer or reverse proxy, set `TRUST_PROXY=1`. Set `CORS_ORIGINS` to the frontend's address if it is served from a different one.
+- With more than one API instance, set `REDIS_URL` so rate limits are shared.
+- The platform's health check can use `GET /api/v1/health/ready`, which fails while the database is unreachable.
+- Logs are JSON on standard output, so the platform's log viewer picks them up.
+
+**Example: Google Cloud.** Two common ways, as examples rather than the only options:
+
+- **Cloud Run with MongoDB Atlas.** From the repository folder, deploy one service per company. Cloud Build builds the image from the `Dockerfile`:
+
+  ```sh
+  gcloud run deploy fleet-<company> --source . --region <region> \
+    --set-env-vars "TRUST_PROXY=1,APP_URL=https://<address>,SMTP_HOST=smtp.mandrillapp.com,SMTP_FROM=<from address>" \
+    --set-secrets "MONGODB_URI=<company>-mongodb-uri:latest,JWT_SECRET=<company>-jwt-secret:latest,SMTP_USER=<company>-smtp-user:latest,SMTP_PASS=<company>-smtp-pass:latest"
+  ```
+
+  The secrets live in Secret Manager. Add `REDIS_URL` (Memorystore) if the service scales past one instance.
+- **One VM (Compute Engine) with Docker Compose.** Install Docker, copy the repository and a filled-in `.env`, and run `docker compose up -d --build`. That runs the API, MongoDB and Redis together on one machine, the same way as locally. Back up the `mongo-data` volume.
+
+The same pieces work on AWS, Azure, DigitalOcean or any server that runs containers.
+
+**Settings for production:**
 
 - Set `NODE_ENV=production`, a random `JWT_SECRET` of 32+ characters (e.g. `openssl rand -base64 48`) and the SMTP settings. The API refuses to start without them, and refuses `EXPOSE_RESET_TOKEN=true`.
 - Set `REDIS_URL` when running more than one API instance, so rate limits are shared.
