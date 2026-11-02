@@ -14,6 +14,16 @@ Marichi Fleet is built for **one company at a time**: each installation runs one
 - **It deploys anywhere with little effort:** GCP, any other cloud or a single server. The API is one container image configured only by environment variables, and MongoDB can be hosted anywhere. See [Deploying a company's copy](#deploying-a-companys-copy).
 - **It scales without a ceiling** within a company: any number of branches, records, fields and options.
 
+What we do not know about any customer, and where each answer is configured:
+
+| We do not know | Configured through | State today |
+| --- | --- | --- |
+| Which features they want | `modules` on the company record (masters, trips, finance, maintenance, tracking, billing) | Stored, but not yet enforced. New areas should check it, and screens should hide switched-off areas |
+| Which fields they want | Custom fields on any master, company-editable lists, custom masters | Built |
+| How their approvals work | `approval-policies`: levels by amount, approver role or person, escalation, channels | Built. New money flows route through it |
+| How big the team is and who does what | Users, roles with per-master rights, branches | Built, with no limit on users, roles or branches |
+| How much of the process they use | Trip types, each with its own stages; modules; policies | Trip types and stages built. The trip flow should follow a company's configured stages, not a fixed sequence |
+
 When building anything, ask: *could another company want this differently?* If yes, make it a setting with a sensible default rather than a value in the code.
 
 ## Contents
