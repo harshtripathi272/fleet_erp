@@ -1,7 +1,6 @@
 import { useMemo } from "react";
 import { useApp } from "../store";
-import { byId } from "../domain/calc";
-import { positionAt, tripShape } from "../domain/route";
+import { byId, positionAt, tripShape } from "../domain/calc";
 import { activeTrip } from "../domain/helpers";
 
 /** All active trips on one drawn map of the region. */
