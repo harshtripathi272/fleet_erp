@@ -6,6 +6,7 @@ import { setSmtpTransportFactory, type SmtpSettings } from '../src/core/mail/mai
 import { registerSmsAdapter, simulatedSms } from '../src/core/sms/index.js';
 import { dispatch, processDue, RETRY_MINUTES } from '../src/modules/messaging/dispatcher.js';
 import { OutboundMessage } from '../src/modules/messaging/models/connection.model.js';
+import { NotificationRule } from '../src/modules/messaging/models/messaging.model.js';
 import { api, bearer, find, loadSample, resetDatabase, signUp, startDatabase, stopDatabase, userWithRole, type Session } from './helpers.js';
 
 const SECRET = 'smtp-pass-7Hq2-do-not-leak';
@@ -157,6 +158,7 @@ describe('connections', () => {
 describe('dispatching', () => {
   test('fans out to every channel and recipient of the rule, rendering each template', async () => {
     await loadSample(owner);
+    await NotificationRule.deleteMany({ isDefault: true }); // only this test's rules (the defaults have their own tests)
     const driver = await find(owner, 'drivers', 'Joseph');
     const financeUser = await userWithRole(owner, 'finance', 'Natasha Banda');
     await emailConnection();
@@ -186,6 +188,7 @@ describe('dispatching', () => {
     env.DRIVER_PHONE_SIMULATOR = false;
     process.env.MESSAGING_SMS_KEY = 'sms-key-123';
     await loadSample(owner);
+    await NotificationRule.deleteMany({ isDefault: true }); // only this test's rules (the defaults have their own tests)
     const driver = await find(owner, 'drivers', 'Joseph');
     await as(owner).post('/message-connections', { code: 'SMS', name: 'SMS', channel: 'sms', provider: 'test-sms', enabled: true, user: 'marichi', senderId: 'MARICHI', secretEnv: 'MESSAGING_SMS_KEY' }).expect(201);
     await dispatchRule();
@@ -199,6 +202,7 @@ describe('dispatching', () => {
   test('a simulated SMS provider records the message as Simulated', async () => {
     env.DRIVER_PHONE_SIMULATOR = false;
     await loadSample(owner);
+    await NotificationRule.deleteMany({ isDefault: true }); // only this test's rules (the defaults have their own tests)
     const driver = await find(owner, 'drivers', 'Joseph');
     await as(owner).post('/message-connections', { code: 'SMS', name: 'SMS', channel: 'sms', provider: 'simulated', enabled: true }).expect(201);
     await dispatchRule();
