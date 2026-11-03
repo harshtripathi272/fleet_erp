@@ -25,12 +25,12 @@ import type { Overlay, Toast } from "./store";
 import { forDesk } from "./api/adapter";
 import { ApiError, hasSession, onSignedOut } from "./api/client";
 import { Refusal } from "./api/commands";
-import { AccountDialog, desksFor, signOut, SignIn, useMe, type Me } from "./api/session";
-import { queueFor } from "./domain/turn";
+import { AccountDialog, desksFor, signOut, SignIn, useMay, useMe, type Me } from "./api/session";
+import { nextStep, queueFor, type QueueItem } from "./domain/turn";
 import type { Action, Desk, Nav, Role } from "./domain/types";
 import { Wordmark } from "./ui/brand";
 import { Avatar, Modal } from "./ui/kit";
-import { TripsPage } from "./desks/Trips";
+import { TripsPage, useMine } from "./desks/Trips";
 import { FinanceToday } from "./desks/Finance";
 import { Accounts } from "./desks/Accounts";
 import { Nominations } from "./desks/Nominations";
@@ -527,13 +527,26 @@ function NavButton({
   );
 }
 
+/** The number beside a desk's tab: only what this person may do now, matching "Needs me". */
 function useQueueCount(role: Role, view: View) {
-  const { data } = useApp() ?? {};
+  const { data } = useApp();
+  const mineFor = useMine();
+  const may = useMay();
   if (!data || role === "driver") return 0;
-  const queue = queueFor(data, role as Desk);
+  const yours = (item: QueueItem) => {
+    // Finance's request items: paying needs the permission; deciding needs the approval policy to name this person.
+    const request = data.requests.find((r) => r.id === item.key);
+    if (request) return item.move === "issue" ? may("request.issue") : Boolean(request.mayDecide);
+    // A new driver document or message: Operations files it or sends it back.
+    if (item.move === "receipt") return may("doc.return");
+    // Judge the item by its own move, not only the trip's next step.
+    const trip = data.trips.find((t) => t.id === item.tripId);
+    return trip ? mineFor(trip, { ...nextStep(data, trip), actor: role as Desk, move: item.move }) : true;
+  };
+  const queue = queueFor(data, role as Desk).filter(yours);
   if (view === "today" || view === "overview") return queue.length;
   if (view === "trips" && role === "operations") return queue.filter((q) => q.tripId).length;
-  if (view === "nominations" && role !== "finance")
+  if (view === "nominations" && role !== "finance" && may("nomination.convert"))
     return data.nominations.filter((n) => n.status === "accepted").length;
   return 0;
 }
