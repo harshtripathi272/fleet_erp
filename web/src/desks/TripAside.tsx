@@ -1,6 +1,6 @@
 import { Maximize2, Phone } from "lucide-react";
 import { useApp } from "../store";
-import { byId, funding, fuelNow } from "../domain/calc";
+import { byId, driverLedger, funding, fuelNow } from "../domain/calc";
 import { activeTrip } from "../domain/helpers";
 import type { Trip } from "../domain/types";
 import { MiniRoute } from "../tracking/MiniRoute";
@@ -10,6 +10,10 @@ import { Avatar } from "../ui/kit";
 export function TripAside({ trip }: { trip: Trip }) {
   const { data, setOverlay } = useApp();
   const f = funding(data, trip);
+  // Unsettled: what the driver holds now, the Driver accounts figure. Settled: this trip's advances less its approved receipts.
+  const ledger = trip.driverId ? driverLedger(data, trip.driverId) : [];
+  const own = ledger.filter((e) => e.tripId === trip.id && (e.kind === "advance" || e.kind === "expense"));
+  const cash = Math.max(0, Math.round((trip.settlementId ? own : ledger).reduce((sum, e) => sum + e.amountZmw, 0)));
   const events = data.events.filter((e) => e.tripId === trip.id).slice().reverse();
   const driver = byId(data.drivers, trip.driverId);
   const customer = byId(data.customers, trip.customerId);
@@ -41,8 +45,9 @@ export function TripAside({ trip }: { trip: Trip }) {
             <small>of {L(f.fuel.budget)} budget</small>
           </div>
           <div>
-            <span>Cash with driver</span>
-            <strong>{zmw(Math.max(0, f.cash.holds) + f.cash.issued)}</strong>
+            {/* The driver ledger's figure (as on Driver accounts): advances paid less receipts approved. */}
+            <span>{trip.settlementId ? "Cash on this trip" : "Cash with driver"}</span>
+            <strong>{zmw(cash)}</strong>
             <small>of {zmw(f.cash.budget)} budget</small>
           </div>
         </div>
