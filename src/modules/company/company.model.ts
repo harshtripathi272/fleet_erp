@@ -51,7 +51,7 @@ const companySchema = new Schema<any>({
   timezone: { type: String, default: 'Africa/Lusaka' },
   fiscalYearStartMonth: { type: Number, min: 1, max: 12, default: 1 },
   dateFormat: { type: String, enum: ['DD/MM/YYYY', 'MM/DD/YYYY', 'YYYY-MM-DD'], default: 'DD/MM/YYYY' },
-  allowSelfRegistration: { type: Boolean, default: true },
+  allowSelfRegistration: { type: Boolean, default: false },
   modules: { type: [String], default: ['masters', 'trips'] },
   operations: { type: operationsSchema, default: () => ({}) },
   address: { line1: String, line2: String, city: String, postalCode: String },

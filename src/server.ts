@@ -3,11 +3,13 @@ import { env } from './config/env.js';
 import { connectRedis, disconnectRedis } from './core/cache/redis.js';
 import { connectMongo, disconnectMongo, syncIndexes } from './core/db/mongo.js';
 import { logger } from './core/logger/index.js';
+import { ensureFirstOwner } from './modules/auth/auth.service.js';
 import { ensureSystemRoles } from './modules/roles/roles.service.js';
 
 await connectMongo();
 await syncIndexes();
 await ensureSystemRoles();
+await ensureFirstOwner();
 await connectRedis();
 
 const server = app.listen(env.PORT, env.HOST, () => {

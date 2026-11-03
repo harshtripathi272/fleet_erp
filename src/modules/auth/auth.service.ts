@@ -64,10 +64,12 @@ async function claimFirstOwner(): Promise<boolean> {
 
 export async function register(input: RegisterInput, client: ClientInfo) {
   if (await User.exists({ email: input.email })) throw new ConflictError('An account with this e-mail already exists', { fields: ['email'] });
-  const first = await claimFirstOwner();
+  // With OWNER_EMAIL set, the first Owner is created at start-up (ensureFirstOwner), never by signing up.
+  const first = !env.OWNER_EMAIL && await claimFirstOwner();
   if (!first) {
+    // Off unless the company turns it on: a sign-up on a public address would otherwise get read access.
     const company = await Company.findOne().lean<{ allowSelfRegistration?: boolean }>();
-    if (company && company.allowSelfRegistration === false) throw new ForbiddenError('Self sign-up is turned off. Ask an administrator for an invitation.');
+    if (company?.allowSelfRegistration !== true) throw new ForbiddenError('Self sign-up is turned off. Ask an administrator for an invitation.');
   }
   const role = await Role.findOne({ key: first ? 'owner' : 'viewer' }).select('_id').lean();
   if (!role) throw new ConflictError('System roles are missing. Restart the server to recreate them.');
@@ -86,6 +88,40 @@ export async function register(input: RegisterInput, client: ClientInfo) {
   }
 }
 
+/**
+ * Creates the company's first Owner for `OWNER_EMAIL` and e-mails them a link to choose a password, once,
+ * on an installation nobody has claimed yet. Proving the address by that link is what makes the account
+ * theirs, so a stranger who reaches a new installation first cannot take it over by signing up.
+ * Safe to call from every instance at start-up: only one claims the slot.
+ */
+export async function ensureFirstOwner(emailAddress = env.OWNER_EMAIL): Promise<{ created: boolean; sent?: boolean }> {
+  if (!emailAddress) return { created: false };
+  if (!(await claimFirstOwner())) return { created: false };
+  try {
+    const role = await Role.findOne({ key: 'owner' }).select('_id').lean();
+    if (!role) throw new Error('System roles are missing');
+    const existing = await User.findOne({ email: emailAddress }).select('_id').lean();
+    if (existing) {
+      await User.updateOne({ _id: existing._id }, { $addToSet: { roleIds: role._id }, $inc: { version: 1 } });
+      await audit({ entity: 'users', entityId: existing._id, action: 'update', summary: 'Granted owner role from OWNER_EMAIL' });
+      logger.info({ userId: String(existing._id) }, 'First Owner granted to the existing account for OWNER_EMAIL');
+      return { created: false };
+    }
+    const user = await User.create({
+      name: emailAddress.split('@')[0]!.slice(0, 100) || 'Owner', email: emailAddress,
+      passwordHash: await hashPassword(randomToken(24)), roleIds: [role._id],
+    });
+    await audit({ entity: 'users', entityId: user._id, action: 'create', summary: 'First Owner created from OWNER_EMAIL; set-password e-mail sent' });
+    const { sent } = await issuePasswordReset(emailAddress, 'invite');
+    // If the e-mail did not go, "Forgot password" on the same address sends a new link.
+    logger.info({ userId: String(user._id), sent }, 'First Owner account created');
+    return { created: true, sent };
+  } catch (err) {
+    await SystemState.deleteOne({ key: 'owner-claimed' });
+    throw err;
+  }
+}
+
 /** The account for an e-mail, or for a phone number held by exactly one account. */
 async function findForLogin(input: LoginInput) {
   if (input.email) return User.findOne({ email: input.email }).select('+passwordHash').lean();
@@ -100,19 +136,32 @@ export async function login(input: LoginInput, client: ClientInfo) {
     await verifyPassword(input.password, await dummyPasswordHash());
     throw new UnauthorizedError(INVALID_LOGIN);
   }
-  if (user.lockedUntil && user.lockedUntil > new Date()) {
-    throw new TooManyRequestsError('Too many failed sign-ins. Try again later or reset your password.', { lockedUntil: user.lockedUntil });
-  }
+  const locked = (until: Date | undefined) => new TooManyRequestsError('Too many failed sign-ins. Try again later or reset your password.', { lockedUntil: until });
+  if (user.lockedUntil && user.lockedUntil > new Date()) throw locked(user.lockedUntil);
+  // Count the attempt before checking the password, in one atomic step, so sign-ins sent in parallel
+  // cannot all read the same failure count: at most LOGIN_MAX_FAILURES of them are ever checked.
+  const now = new Date();
+  const attempt = await User.findOneAndUpdate(
+    { _id: user._id, $or: [{ lockedUntil: { $exists: false } }, { lockedUntil: null }, { lockedUntil: { $lte: now } }] },
+    { $inc: { failedLoginCount: 1 } },
+    { returnDocument: 'after', projection: { failedLoginCount: 1, lockedUntil: 1 } },
+  ).lean();
+  if (!attempt) throw locked((await User.findById(user._id).select('lockedUntil').lean())?.lockedUntil);
+  const lockAccount = async () => {
+    const until = new Date(Date.now() + env.LOGIN_LOCK_MINUTES * 60000);
+    await User.updateOne({ _id: user._id }, { $set: { failedLoginCount: 0, lockedUntil: until } });
+    logger.warn({ userId: String(user._id) }, 'Account locked after failed sign-ins');
+    return until;
+  };
+  if (attempt.failedLoginCount > env.LOGIN_MAX_FAILURES) throw locked(await lockAccount());
   if (!(await verifyPassword(input.password, user.passwordHash))) {
-    const failures = (user.failedLoginCount ?? 0) + 1;
-    const lock = failures >= env.LOGIN_MAX_FAILURES;
-    await User.updateOne({ _id: user._id }, lock
-      ? { $set: { failedLoginCount: 0, lockedUntil: new Date(Date.now() + env.LOGIN_LOCK_MINUTES * 60000) } }
-      : { $set: { failedLoginCount: failures } });
-    if (lock) logger.warn({ userId: String(user._id) }, 'Account locked after failed sign-ins');
+    if (attempt.failedLoginCount >= env.LOGIN_MAX_FAILURES) await lockAccount();
     throw new UnauthorizedError(INVALID_LOGIN);
   }
-  if (user.status !== 'active') throw new ForbiddenError('This account is deactivated. Contact an administrator.');
+  if (user.status !== 'active') {
+    await User.updateOne({ _id: user._id }, { $set: { failedLoginCount: 0 } });
+    throw new ForbiddenError('This account is deactivated. Contact an administrator.');
+  }
   await User.updateOne({ _id: user._id }, { $set: { failedLoginCount: 0, lastLoginAt: new Date() }, $unset: { lockedUntil: 1 } });
   return sessionResponse(user._id, client);
 }

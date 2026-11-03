@@ -40,12 +40,15 @@ describe('password hashing and tokens', () => {
 });
 
 describe('registration', () => {
-  test('first account becomes owner, later accounts become viewers', async () => {
+  test('first account becomes owner; later sign-ups are refused until the company allows them, then become viewers', async () => {
     const first = await api().post('/api/v1/auth/register').send({ name: 'Owner', email: uniqueEmail(), password: 'Passw0rd!' }).expect(201);
     assert.equal(first.body.data.firstOwner, true);
     assert.deepEqual(first.body.data.roles.map((r: { key: string }) => r.key), ['owner']);
     assert.equal(first.body.data.user.passwordHash, undefined);
     assert.equal(first.body.data.user.tokenVersion, undefined);
+    const refused = await api().post('/api/v1/auth/register').send({ name: 'Stranger', email: uniqueEmail(), password: 'Passw0rd!' }).expect(403);
+    assert.equal(errorCode(refused), 'FORBIDDEN');
+    await api().put('/api/v1/company').set({ Authorization: `Bearer ${first.body.data.accessToken}` }).send({ legalName: 'Marichi', allowSelfRegistration: true }).expect(200);
     const second = await api().post('/api/v1/auth/register').send({ name: 'Second', email: uniqueEmail(), password: 'Passw0rd!' }).expect(201);
     assert.equal(second.body.data.firstOwner, false);
     assert.deepEqual(second.body.data.roles.map((r: { key: string }) => r.key), ['viewer']);
@@ -53,8 +56,9 @@ describe('registration', () => {
 
   test('simultaneous first sign-ups produce exactly one owner', async () => {
     const results = await Promise.all(Array.from({ length: 8 }, (_, i) => api().post('/api/v1/auth/register').send({ name: `P${i}`, email: uniqueEmail('race'), password: 'Passw0rd!' })));
-    assert.ok(results.every((r) => r.status === 201));
-    assert.equal(results.filter((r) => r.body.data.firstOwner).length, 1);
+    assert.equal(results.filter((r) => r.status === 201).length, 1);
+    assert.equal(results.filter((r) => r.status === 201 && r.body.data.firstOwner).length, 1);
+    assert.ok(results.every((r) => r.status === 201 || r.status === 403));
   });
 
   test('rejects duplicate e-mails case-insensitively and weak or malformed input', async () => {
@@ -72,9 +76,12 @@ describe('registration', () => {
     await api().post('/api/v1/auth/register').send({ name: 'F', email: uniqueEmail(), password: 'Passw0rd!', roleIds: ['x'] }).expect(422);
   });
 
-  test('self sign-up can be switched off by the company', async () => {
+  test('self sign-up can be switched off again by the company', async () => {
     const owner = await signUp('Owner');
-    await api().put('/api/v1/company').set(bearer(owner)).send({ legalName: 'Marichi', allowSelfRegistration: false }).expect(200);
+    await api().put('/api/v1/company').set(bearer(owner)).send({ legalName: 'Marichi', allowSelfRegistration: true }).expect(200);
+    await api().post('/api/v1/auth/register').send({ name: 'Early', email: uniqueEmail(), password: 'Passw0rd!' }).expect(201);
+    const company = await api().get('/api/v1/company').set(bearer(owner)).expect(200);
+    await api().put('/api/v1/company').set(bearer(owner)).send({ legalName: 'Marichi', allowSelfRegistration: false, version: company.body.data.version }).expect(200);
     const blocked = await api().post('/api/v1/auth/register').send({ name: 'Late', email: uniqueEmail(), password: 'Passw0rd!' }).expect(403);
     assert.equal(errorCode(blocked), 'FORBIDDEN');
     assert.equal(await Company.countDocuments(), 1);
