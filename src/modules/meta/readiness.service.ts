@@ -8,7 +8,12 @@ import { Company } from '../company/company.model.js';
  */
 interface Check { key: string; label: string; why: string; master?: string; min: number; required: boolean; filter?: Record<string, unknown> }
 
+/** Checked before the company details: the base currency is picked from these. */
+const FIRST: Check[] = [
+  { key: 'currencies', label: 'Currencies', why: 'The base currency of the books, and any other currency the company is paid or pays in.', master: 'currencies', min: 1, required: true },
+];
 const CHECKS: Check[] = [
+  { key: 'countries', label: 'Countries and cities', why: 'Where places are; also each country\'s ID types and currency.', master: 'countries', min: 1, required: false },
   { key: 'places', label: 'Places', why: 'Depots, ports, customers\' sites: where trips start, load and offload.', master: 'places', min: 2, required: true },
   { key: 'customers', label: 'Customers', why: 'Every trip is for a customer.', master: 'parties', min: 1, required: true, filter: { roles: 'customer' } },
   { key: 'vehicle-types', label: 'Vehicle types', why: 'Each truck has a type (and its fuel use).', master: 'vehicle-types', min: 1, required: true },
@@ -26,15 +31,17 @@ const CHECKS: Check[] = [
 export async function readiness() {
   const company = await Company.findOne().select('legalName baseCurrencyId timezone').lean<{ legalName?: string; baseCurrencyId?: unknown; timezone?: string }>();
   const companyDone = Boolean(company?.legalName && company.baseCurrencyId && company.timezone);
-  const checks: { key: string; label: string; why: string; master?: string; required: boolean; count: number; min: number; done: boolean }[] = [{
+  const count = async (c: Check) => {
+    const def = c.master ? getMaster(c.master) : undefined;
+    return def ? def.model.countDocuments({ status: 'active', ...(c.filter ?? {}) }) : 0;
+  };
+  const checks: { key: string; label: string; why: string; master?: string; required: boolean; count: number; min: number; done: boolean }[] = [];
+  for (const c of FIRST) { const n = await count(c); checks.push({ key: c.key, label: c.label, why: c.why, master: c.master, required: c.required, count: n, min: c.min, done: n >= c.min }); }
+  checks.push({
     key: 'company', label: 'Company details', why: 'Name, base currency and time zone: money and dates depend on them.', master: undefined, required: true,
     count: companyDone ? 1 : 0, min: 1, done: companyDone,
-  }];
-  for (const c of CHECKS) {
-    const def = c.master ? getMaster(c.master) : undefined;
-    const count = def ? await def.model.countDocuments({ status: 'active', ...(c.filter ?? {}) }) : 0;
-    checks.push({ key: c.key, label: c.label, why: c.why, master: c.master, required: c.required, count, min: c.min, done: count >= c.min });
-  }
+  });
+  for (const c of CHECKS) { const n = await count(c); checks.push({ key: c.key, label: c.label, why: c.why, master: c.master, required: c.required, count: n, min: c.min, done: n >= c.min }); }
   const missing = checks.filter((c) => c.required && !c.done);
   return { ready: missing.length === 0, missing: missing.map((c) => c.label), checks };
 }

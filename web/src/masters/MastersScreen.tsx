@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Archive, History, Link2, Plus, RotateCcw, Search, Trash2, Upload } from "lucide-react";
@@ -13,6 +13,7 @@ import { UserAccess } from "./UserAccess";
 import { PermissionMatrix } from "./PermissionMatrix";
 import { RateFeed } from "./RateFeed";
 import { ImportDialog } from "./ImportDialog";
+import { CompanySetup, useReadiness } from "./CompanySetup";
 import MessagingSettings from "../settings/MessagingSettings";
 
 /**
@@ -38,7 +39,13 @@ export function MastersScreen({ initialEntity }: { initialEntity?: string }) {
   const masters = useMasters();
   const customMasters = useQuery({ queryKey: ["custom-masters"], queryFn: () => api<Rec[]>("/custom-masters", { query: { limit: 100 } }) });
   const [selected, setSelectedState] = useState<string>(() => (initialEntity && !initialEntity.includes(":") ? initialEntity : remembered() ?? "vehicles"));
-  const setSelected = (key: string) => { setSelectedState(key); remember(key); };
+  // A company that isn't ready for its first trip opens on "Set up the company", unless someone chose a page.
+  const readiness = useReadiness();
+  const [opened, setOpened] = useState(Boolean(initialEntity || remembered()));
+  useEffect(() => {
+    if (!opened && readiness.data && !readiness.data.ready && can(me, "company", "read")) { setSelectedState("setup"); setOpened(true); }
+  }, [opened, readiness.data, me]);
+  const setSelected = (key: string) => { setSelectedState(key); remember(key); setOpened(true); };
   const [filter, setFilter] = useState("");
   const defs = (masters.data ?? []).filter((d) => d.key !== "custom-records" && d.permissions?.read);
   const groups = useMemo(() => {
@@ -60,13 +67,18 @@ export function MastersScreen({ initialEntity }: { initialEntity?: string }) {
         {(() => {
           // Settings pages that are not masters: the company, and how messages are sent (#19).
           const pages = [
+            { key: "setup", label: "Set up the company", badge: readiness.data?.missing.length ?? 0, show: can(me, "company", "read") },
             { key: "company", label: "Company", show: can(me, "company", "read") },
             { key: "messaging", label: "Sending messages", show: can(me, "message-connections", "read") },
           ].filter((p) => p.show && (!filter || p.label.toLowerCase().includes(filter.toLowerCase())));
           return pages.length > 0 && (
             <section>
               <h3>Organisation</h3>
-              {pages.map((p) => <button key={p.key} className={selected === p.key ? "on" : ""} onClick={() => setSelected(p.key)}>{p.label}</button>)}
+              {pages.map((p) => (
+                <button key={p.key} className={selected === p.key ? "on" : ""} onClick={() => setSelected(p.key)}>
+                  {p.label}{"badge" in p && p.badge ? <b className="setup-badge" aria-label={`${p.badge} steps missing`}>{p.badge}</b> : null}
+                </button>
+              ))}
             </section>
           );
         })()}
@@ -88,7 +100,7 @@ export function MastersScreen({ initialEntity }: { initialEntity?: string }) {
         )}
       </aside>
       <section className="masters-main">
-        {selected === "company" ? <CompanyPanel /> : selected === "messaging" ? <MessagingSettings /> : custom ? <CustomRecords master={custom} defs={defs} /> : def ? <Records key={def.key} def={def} defs={defs} /> : null}
+        {selected === "setup" ? <CompanySetup defs={defs} onOpen={setSelected} /> : selected === "company" ? <CompanyPanel /> : selected === "messaging" ? <MessagingSettings /> : custom ? <CustomRecords master={custom} defs={defs} /> : def ? <Records key={def.key} def={def} defs={defs} /> : null}
       </section>
     </div>
   );

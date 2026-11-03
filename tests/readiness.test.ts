@@ -12,7 +12,8 @@ describe('readiness for a first trip', () => {
     const owner = await signUp('Owner');
     const empty = (await api().get('/api/v1/meta/readiness').set(bearer(owner)).expect(200)).body.data;
     assert.equal(empty.ready, false);
-    for (const label of ['Company details', 'Places', 'Customers', 'Trucks', 'Drivers', 'Payment methods']) assert.ok(empty.missing.includes(label), label);
+    assert.equal(empty.checks[0].key, 'currencies', 'currencies come first: the base currency is picked from them');
+    for (const label of ['Currencies', 'Company details', 'Places', 'Customers', 'Trucks', 'Drivers', 'Payment methods']) assert.ok(empty.missing.includes(label), label);
     assert.ok(!empty.missing.includes('Routes'), 'routes help, but are not required');
     const places = empty.checks.find((c: { key: string }) => c.key === 'places');
     assert.deepEqual([places.count, places.min, places.master], [0, 2, 'places']);
