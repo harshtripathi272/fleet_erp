@@ -480,6 +480,7 @@ const SPEC_LABEL: Record<string, string> = { entity: "Master", listId: "Choices 
 const isFieldSpec = (schema: Schema) => Boolean(schema.properties?.type?.enum?.includes?.("multi_select") && schema.properties?.key && schema.properties?.label);
 /** "Union membership no." → "unionMembershipNo", the key a new field is stored under. */
 const keyFromLabel = (text: string) => text.trim().replace(/[^A-Za-z0-9]+(.)?/g, (_, c: string | undefined) => (c ? c.toUpperCase() : "")).replace(/^[^a-z]+/i, "").replace(/^./, (c) => c.toLowerCase()).slice(0, 40);
+const valueFromLabel = (text: string) => text.trim().toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 60);
 const withoutWriteOnly = (schema: Schema): Schema => ({ ...schema, properties: Object.fromEntries(Object.entries((schema.properties ?? {}) as Rec).filter(([k]) => !WRITE_ONLY.has(k))) });
 const refOf = (def: Def, path: string) => (def.fields as Rec[]).find((f) => f.path === path)?.ref as string | undefined;
 const fieldOf = (def: Def, path: string) => (def.fields as Rec[]).find((f) => f.path === path);
@@ -500,11 +501,14 @@ function SchemaForm({ schema, def, defs, value, onChange, readOnly, canSensitive
   const props = Object.entries((schema.properties ?? {}) as Record<string, Schema>);
   const required = new Set((schema.required ?? []) as string[]);
   const spec = isFieldSpec(schema);
+  const choice = Boolean(path && schema.properties?.value && schema.properties?.label && !schema.properties?.key);
   const main = props.filter(([k]) => (path || !BASE_KEYS.has(k)) && (!spec || !FOR_TYPES[k] || FOR_TYPES[k]!.includes(String(value.type ?? ""))));
   const more = path ? [] : props.filter(([k]) => BASE_KEYS.has(k) && !["externalRefs", "attachments", "custom"].includes(k));
   const set = (key: string, v: unknown) => {
     // A new field's key follows its label until someone types a key of their own.
     if (spec && key === "label" && !editing && (!value.key || value.key === keyFromLabel(String(value.label ?? "")))) return onChange({ ...value, label: v, key: keyFromLabel(String(v ?? "")) || undefined });
+    // A list's value ("o_positive") follows its label ("O positive") the same way.
+    if (choice && key === "label" && (!value.value || value.value === valueFromLabel(String(value.label ?? "")))) return onChange({ ...value, label: v, value: valueFromLabel(String(v ?? "")) || undefined });
     onChange({ ...value, [key]: v });
   };
   const render = ([key, raw]: [string, Schema]) => {
@@ -608,7 +612,8 @@ function FieldInput({ name, path, schema, required, def, defs, value, onChange, 
     return <Field label={title} hint="Leave empty to e-mail them an invitation to set their own."><input type="password" autoComplete="new-password" disabled={readOnly} value={(value as string) ?? ""} onChange={(e) => onChange(e.target.value || undefined)} /></Field>;
   if (specField !== undefined && name === "type" && schema.enum)
     return <Field label={title}><select disabled={readOnly} value={(value as string) ?? ""} onChange={(e) => onChange(e.target.value || undefined)}><option value="">—</option>{(schema.enum as string[]).map((o) => <option key={o} value={o}>{TYPE_LABEL[o] ?? label(o)}</option>)}</select></Field>;
-  if (schema.enum) return <Field label={title}><select disabled={readOnly} value={(value as string) ?? ""} onChange={(e) => onChange(e.target.value || undefined)}><option value="">—</option>{(schema.enum as string[]).map((o) => <option key={o} value={o}>{label(o)}</option>)}</select></Field>;
+  // A value outside the choices (an archived record's status) is still shown, but can't be picked.
+  if (schema.enum) return <Field label={title}><select disabled={readOnly} value={(value as string) ?? ""} onChange={(e) => onChange(e.target.value || undefined)}><option value="">—</option>{typeof value === "string" && value && !(schema.enum as string[]).includes(value) && <option value={value} disabled>{label(value)}</option>}{(schema.enum as string[]).map((o) => <option key={o} value={o}>{label(o)}</option>)}</select></Field>;
   const type = schema.type === "boolean" ? "boolean" : schema.type === "number" || schema.type === "integer" ? "number" : schema.format === "date" || schema.format === "date-time" || info?.type === "date" ? "date" : (schema.maxLength ?? 0) > 300 ? "longtext" : "text";
   return <Field label={title} wide={type === "longtext"}><ScalarInput type={type} value={value} onChange={onChange} disabled={readOnly} /></Field>;
 }
