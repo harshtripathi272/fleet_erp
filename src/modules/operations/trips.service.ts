@@ -491,9 +491,28 @@ async function announceArrival(trip: Plain, index: number, at: Date, ctx: OpsCon
   }
 }
 
-/** Stamps arrival at a stop (and the stops passed before it) and sends the messages for it. */
+/**
+ * Why the truck can't be at this stop yet, if it can't. Stops follow the cargo: nothing after the loading
+ * point before the loading is recorded, and nothing after the offloading point before the delivery is.
+ */
+export async function arrivalRefusal(trip: HydratedDocument<any>, index: number): Promise<string | undefined> {
+  const stops = trip.get('stops') as Array<{ kind: string; placeId: unknown }>;
+  const loadIndex = stops.findIndex((s) => s.kind === 'load');
+  const offloadIndex = stops.findIndex((s) => s.kind === 'offload');
+  if (loadIndex < 0 || index <= loadIndex) return undefined;
+  const consignments = await Consignment.find({ tripId: trip._id }).select('delivered').lean();
+  if (!consignments.length) return 'Record the loading first.';
+  if (offloadIndex >= 0 && index > offloadIndex && consignments.some((c) => !c.delivered)) return `Record the delivery at ${await placeName(stops[offloadIndex]!.placeId)} first.`;
+  return undefined;
+}
+
+/** Stamps arrival at a stop (and the stops passed before it) and sends the messages for it. Refuses a stop the cargo hasn't reached. */
 export async function arriveAt(trip: HydratedDocument<any>, index: number, at: Date, ctx: OpsContext, via: ArrivalSource, quiet = false) {
   const stops = trip.get('stops') as Array<{ legKm: number; arrivedAt?: Date; leftAt?: Date; arrivedVia?: ArrivalSource; kind: string }>;
+  if (!stops[index]?.arrivedAt) {
+    const refusal = await arrivalRefusal(trip, index);
+    if (refusal) throw refuse(refusal);
+  }
   const stamped = stampArrival(stops, index, at);
   if (!stamped) return;
   for (const stop of stops.slice(0, index + 1)) if (stop.arrivedAt && !stop.arrivedVia) stop.arrivedVia = via;
@@ -547,8 +566,11 @@ export async function arriveAtStop(id: string, stopId: string, ctx: OpsContext) 
   const stops = trip.get('stops') as Array<{ _id: unknown; kind: string; legKm: number }>;
   const index = stops.findIndex((s) => String(s._id) === stopId);
   if (index < 0) throw new NotFoundError('Stop not found');
-  const loadIndex = stops.findIndex((s) => s.kind === 'load');
-  if (index > loadIndex && !(await Consignment.exists({ tripId: trip._id }))) throw refuse('Record the loading first.');
+  // Checked before the tracking moves, so a refused arrival leaves the truck where it was.
+  if (!(stops[index] as { arrivedAt?: Date }).arrivedAt) {
+    const refusal = await arrivalRefusal(trip, index);
+    if (refusal) throw refuse(refusal);
+  }
   const via = ctx.asDriver ? 'driver' : 'office';
   trip.set('tracking', { ...(trip.get('tracking')?.toObject?.() ?? { heading: 0 }), km: cumulativeKm(stops)[index], speed: 0, at, source: via });
   await arriveAt(trip, index, at, ctx, via);
