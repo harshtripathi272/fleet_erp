@@ -8,7 +8,7 @@ import { Consignment, DriverDocument } from './models/cargo.model.js';
 import { FundRequest, VehicleState } from './models/funding.model.js';
 import { Message, Activity, ThreadRead } from './models/message.model.js';
 import { DriverAccount, Expense, Nomination, Settlement } from './models/money.model.js';
-import { Trip } from './models/trip.model.js';
+import { TO_SETTLE, Trip } from './models/trip.model.js';
 import { baseCurrency, present } from './support.js';
 import { presentTrip } from './trips.service.js';
 import { threadFilter, type Viewer } from './messages.service.js';
@@ -58,7 +58,7 @@ export async function financeDashboard() {
     Consignment.find({ 'shortage.status': 'pending' }).sort({ updatedAt: 1 }).lean(),
     DriverDocument.find({ status: 'new', kind: { $in: ['expense', 'fuel'] } }).sort({ at: 1 }).lean(),
     DriverAccount.find({ settleRequestedAt: { $exists: true } }).lean(),
-    Trip.aggregate<{ _id: unknown; n: number }>([{ $match: { endedAt: { $exists: true }, settlementId: { $exists: false }, driverId: { $exists: true } } }, { $group: { _id: '$driverId', n: { $sum: 1 } } }]),
+    Trip.aggregate<{ _id: unknown; n: number }>([{ $match: { ...TO_SETTLE, driverId: { $exists: true } } }, { $group: { _id: '$driverId', n: { $sum: 1 } } }]),
     balances(),
   ]);
   const requested = new Map(accounts.map((a) => [String(a.driverId), a.settleRequestedAt]));

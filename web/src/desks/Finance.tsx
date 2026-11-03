@@ -4,7 +4,7 @@ import { ArrowRight, Check, CircleDollarSign, Droplets } from "lucide-react";
 import { useApp } from "../store";
 import { useMay } from "../api/session";
 import { byId, carriedIn, driverBalance, funding } from "../domain/calc";
-import { routeLabel } from "../domain/helpers";
+import { routeLabel, toSettle } from "../domain/helpers";
 import type { FundRequest } from "../domain/types";
 import { Avatar, Button, Status } from "../ui/kit";
 import { ago, cash, L, zmw } from "../ui/format";
@@ -21,7 +21,7 @@ export function FinanceToday() {
   const shortages = may("shortage.decide") ? data.consignments.filter((c) => c.shortage?.status === "pending") : [];
   const settle = may("settlement.post")
     ? data.drivers
-      .map((d) => ({ driver: d, trips: data.trips.filter((t) => t.driverId === d.id && t.endedAt && !t.settlementId) }))
+      .map((d) => ({ driver: d, trips: data.trips.filter((t) => t.driverId === d.id && toSettle(t)) }))
       .filter((x) => x.trips.length)
     : [];
   const [picked, setPicked] = useState<string[]>([]);

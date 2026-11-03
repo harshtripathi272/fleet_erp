@@ -1,5 +1,5 @@
 import { byId, driverBalance, funding, volume20 } from "./calc";
-import { firstName, litres, money, placeName, zmw } from "./helpers";
+import { closedAt, firstName, litres, money, placeName, toSettle, zmw } from "./helpers";
 import type { AppData, Desk, Role, Trip } from "./types";
 
 export type StageId = "plan" | "funding" | "loading" | "transit" | "offloading" | "close" | "settle";
@@ -361,14 +361,14 @@ export function queueFor(data: AppData, desk: Desk): QueueItem[] {
         });
       }
       for (const driver of data.drivers) {
-        const trips = data.trips.filter((t) => t.driverId === driver.id && t.endedAt && !t.settlementId);
+        const trips = data.trips.filter((t) => t.driverId === driver.id && toSettle(t));
         if (!trips.length) continue;
         items.push({
           key: `${driver.id}-settle`,
           driverId: driver.id,
           title: `Settle ${driver.name}`,
           detail: `${trips.length} closed trip${trips.length === 1 ? "" : "s"} · balance ${zmw(driverBalance(data, driver.id))}${driver.settleRequestedAt ? " · requested" : ""}`,
-          since: driver.settleRequestedAt ?? trips.map((t) => t.endedAt!).sort()[0],
+          since: driver.settleRequestedAt ?? trips.map((t) => closedAt(t)!).sort()[0],
           move: "settle",
         });
       }

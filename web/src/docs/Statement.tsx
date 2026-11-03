@@ -45,7 +45,7 @@ export function Statement({ id }: { id: string }) {
             {dayYear(s.from)} to {dayYear(s.to)}
           </strong>
           <span>
-            {trips.length} trip{trips.length === 1 ? "" : "s"}, {num(trips.reduce((a, t) => a + tripKm(t), 0))} km
+            {trips.length} trip{trips.length === 1 ? "" : "s"}, {num(trips.reduce((a, t) => a + (t.endedAt ? tripKm(t) : 0), 0))} km
           </span>
         </div>
       </section>
@@ -68,7 +68,7 @@ export function Statement({ id }: { id: string }) {
                 <td>{routeLabel(data, t)}</td>
                 <td>{byId(data.trucks, t.truckId)?.plate}</td>
                 <td>{stamp(t.dispatchedAt)}</td>
-                <td>{stamp(t.endedAt)}</td>
+                <td>{t.endedAt ? stamp(t.endedAt) : `Cancelled ${stamp(t.cancelledAt)}`}</td>
               </tr>
             ))}
           </tbody>

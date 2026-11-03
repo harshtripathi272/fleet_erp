@@ -134,10 +134,22 @@ function PlanPanel({ trip }: { trip: Trip }) {
     fuelBudgetL: String(trip.fuelBudgetL),
     cashBudgetZmw: String(trip.cashBudgetZmw),
   });
-  const [form, setForm] = useState(initial);
+  // The form is based on one version of the trip. While nobody is editing it follows the trip;
+  // once someone edits, their changes stay, and saving sends the version they started from, so a
+  // save over another person's is refused instead of overwriting it.
+  const [base, setBase] = useState(() => ({ version: trip.version, form: initial() }));
+  const [form, setForm] = useState(base.form);
+  const dirty = JSON.stringify(form) !== JSON.stringify(base.form);
+  const reload = () => {
+    const fresh = initial();
+    setBase({ version: trip.version, form: fresh });
+    setForm(fresh);
+  };
+  const baseTripId = useRef(trip.id);
   useEffect(() => {
-    setForm(initial());
-  }, [trip.id, trip.stops.length, trip.driverId, trip.trailerId, trip.fuelBudgetL, trip.cashBudgetZmw]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (!dirty || trip.id !== baseTripId.current) reload();
+    baseTripId.current = trip.id;
+  }, [trip.id, trip.version, dirty]); // eslint-disable-line react-hooks/exhaustive-deps
   const set = (patch: Partial<ReturnType<typeof initial>>) => setForm((f) => ({ ...f, ...patch }));
   const busyDrivers = new Set(data.trips.filter((t) => activeTrip(t) && t.id !== trip.id).map((t) => t.driverId));
   const busyTrailers = new Set(data.trips.filter((t) => activeTrip(t) && t.id !== trip.id).map((t) => t.trailerId));
@@ -152,7 +164,6 @@ function PlanPanel({ trip }: { trip: Trip }) {
     return { stops, fuel: fuelEstimate({ stops }, truck) };
   }, [data, form.stops, stopsProblem, truck]);
   const route = byId(data.routes, form.routeId);
-  const dirty = JSON.stringify(form) !== JSON.stringify(initial());
   const useRoute = (id: string) => {
     const r = byId(data.routes, id);
     if (!r) return set({ routeId: "" });
@@ -160,11 +171,12 @@ function PlanPanel({ trip }: { trip: Trip }) {
     const f = fuelEstimate({ stops: stops.map((s, i) => ({ ...s, id: String(i), legKm: i ? leg(data, stops[i - 1].placeId, s.placeId).km : 0, legHours: 0 })) }, truck);
     set({ routeId: id, stops, fuelBudgetL: String(r.fuelBudgetL ?? f), cashBudgetZmw: String(r.cashBudgetZmw) });
   };
-  const save = () =>
-    run(
+  const save = async () => {
+    const saved = await run(
       {
         type: "trip.update",
         tripId: trip.id,
+        version: base.version,
         driverId: form.driverId,
         trailerId: form.trailerId,
         customerId: form.customerId,
@@ -178,6 +190,11 @@ function PlanPanel({ trip }: { trip: Trip }) {
       },
       "Plan saved.",
     );
+    // Saved: follow the trip again, so the next version from the server replaces the form.
+    if (saved) setBase((b) => ({ ...b, form }));
+    // Refused because someone else saved first: show their plan, so the person can redo their change on it.
+    else if (trip.version !== base.version) reload();
+  };
   if (!editable)
     return (
       <div className="stack">
@@ -445,12 +462,12 @@ function FundingPanel({ trip, step }: { trip: Trip; step: NextStep }) {
           budget={f.fuel.budget}
           rows={[
             ["Budget", L(f.fuel.budget)],
-            ["In the tank", L(f.fuel.onTruck)],
+            ["In the tank at the start", L(f.fuel.onTruck)],
             ["Issued", L(f.fuel.issued)],
             ["Waiting", L(f.fuel.open)],
           ]}
           parts={[
-            { value: f.fuel.onTruck, tone: "base", label: "In the tank" },
+            { value: f.fuel.onTruck, tone: "base", label: "In the tank at the start" },
             { value: f.fuel.issued, tone: "issued", label: "Issued" },
             { value: f.fuel.open, tone: "open", label: "Waiting" },
           ]}
@@ -634,7 +651,7 @@ function RequestRow({ request }: { request: FundRequest }) {
           <strong className="num">{amount}</strong>
           <span className="muted">
             <span className="mono">{request.no}</span>
-            {request.medium ? ` · ${request.medium} ${request.reference}` : ""}
+            {request.medium ? ` · ${[request.medium, request.reference].filter(Boolean).join(" ")}` : ""}
             {request.reason ? ` · ${request.reason}` : ""}
           </span>
         </div>

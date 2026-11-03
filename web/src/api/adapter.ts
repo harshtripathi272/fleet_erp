@@ -177,7 +177,7 @@ export function toAppData(ref: Reference, ops: Operations): AppData {
     stops: (t.stops ?? []).map((s: Rec) => ({ id: String(s.id ?? s._id), placeId: s.placeId, kind: s.kind, legKm: s.legKm, legHours: s.legHours, arrivedAt: s.arrivedAt, arrivedVia: s.arrivedVia, leftAt: s.leftAt })),
     productId: t.productId, plannedQty: t.plannedQty, plannedStart: t.plannedStart,
     fuelBudgetL: t.fuelBudgetL ?? 0, cashBudgetZmw: baseMajor(t.cashBudget?.amountMinor), openingFuelL: t.openingFuelL ?? 0,
-    createdAt: t.createdAt, dispatchedAt: t.dispatchedAt, endedAt: t.endedAt, closingFuelL: t.closingFuelL, cancelledAt: t.cancelledAt,
+    createdAt: t.createdAt, dispatchedAt: t.dispatchedAt, endedAt: t.endedAt, closingFuelL: t.closingFuelL, cancelledAt: t.cancelledAt, settleAfterCancel: t.settleAfterCancel,
     tracking: t.tracking ? { km: t.tracking.km ?? 0, speed: t.tracking.speed ?? 0, heading: t.tracking.heading ?? 0, at: t.tracking.at, source: t.tracking.source } : undefined,
     settlementId: t.settlementId,
     stages: (t.stages ?? []).map((s: Rec) => ({ code: s.code, name: s.name, completesOn: s.completesOn, completedAt: s.completedAt })),
