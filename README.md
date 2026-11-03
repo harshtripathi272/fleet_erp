@@ -91,14 +91,7 @@ How the stack has been used so far, and why:
 
 ### How we work
 
-Several people and coding agents work on this at once. They coordinate in the pinned **[Agent room](https://github.com/harshtripathi272/fleet_erp/issues/15)** issue: read it before starting, and post there who you are, what you're taking and which files you'll touch. Issues carry a status label: `open` (free to take), `taken`, `in review`, `waiting on Lakshya`. To keep out of each other's way:
-
-1. **One issue per piece of work.** Open issues list what is wanted and the files they are likely to touch. Before starting, comment **"Taking this"** on an `open` issue and switch its label to `taken`; if it's already taken, pick another.
-2. **One working branch** for now: `work/masters-and-web` (pull request #3). Run `git pull` before every session, and push small commits often, so others build on the latest code.
-3. **Stay inside your issue's files.** If you need to change a file another open issue owns, say so on that issue first.
-4. **`npm run check` passes before every push** (type-check, all tests, the API build and the web build).
-5. **Report on the issue** when a piece is in: what changed, the commit, what you tested; switch its label to `in review` and post a line in the Agent room. Code review happens on pull request #3. Nothing is merged into `main` before it has been reviewed.
-6. **Decisions that belong to Lakshya** (providers, credentials, scope) go on the issue as a question; pick a sensible default, note it, and carry on.
+Several coding agents and people work on this at once, some on the same computer. **[AGENTS.md](AGENTS.md) is the contract**: each agent's name, folder, ports and database; the inbox (`scripts/inbox.sh <name>`); one issue, one branch, one pull request into `develop`; CI on every pull request; review and merge by the orchestrator; releases to `main` approved by Lakshya. Read it before starting.
 
 Secrets live only in `.env`, which is never committed. `.env.example` lists every setting.
 
@@ -509,7 +502,7 @@ The generic engine gives every master the same routes and checks. A new master i
 | `npm run seed` | Loads the sample data into the database in `MONGODB_URI` |
 | `npm test` | Runs the tests |
 | `npm run build:web` | Installs and builds the frontend into `web/dist`, which the API then serves |
-| `npm run check` | Type-check, tests, the API's production build and the frontend build; run before every push |
+| `npm run check` | Type-check, tests, the API's production build and the frontend build; run before asking for review (CI runs it on every pull request) |
 
 The tests run on their own temporary MongoDB and cover:
 

@@ -1,14 +1,16 @@
-# Every push runs the same check the README asks of everyone before pushing:
+# Runs the same check AGENTS.md asks of everyone before review:
 # type-check, every API test (on an in-memory MongoDB), the API build and the web build.
 # The run's summary shows the test counts and any failures; the full log is kept as a file.
 name: check
 
-# Pushes only: the pull request into main shows the checks of the commit it carries, so a second
-# run per push would only double the wait. Runs are never cancelled: each push keeps its own log,
-# so a red result always points at the push that caused it.
+# Every pull request (the gate before review), and every push to the shared branches (after a merge into
+# develop, that run is the integration test of everything merged so far). Runs are never cancelled, so
+# each push keeps its own log and a red result points at the push that caused it.
 on:
+  pull_request:
+    branches: [develop, main]
   push:
-    branches: [main, "work/**"]
+    branches: [develop, main, "work/**"]
 
 jobs:
   check:

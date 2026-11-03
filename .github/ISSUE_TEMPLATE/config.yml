@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: How we work
+    url: https://github.com/harshtripathi272/fleet_erp/blob/develop/AGENTS.md
+    about: Read this first. Every agent and person follows it.
