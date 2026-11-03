@@ -5,7 +5,7 @@ import { Wordmark } from "../ui/brand";
 import { Button, Field, Modal } from "../ui/kit";
 import type { Action, Role } from "../domain/types";
 import { useApp } from "../store";
-import { api, ApiError, hasSession, setTokens, type Tokens } from "./client";
+import { api, ApiError, hasSession, onSignedOut, setTokens, type Tokens } from "./client";
 
 /** The desk, view and trip this browser tab has open (the office desks keep it; signing out forgets it). */
 export const DESK_SESSION = "marichi.tripdesk.session";
@@ -77,8 +77,37 @@ const toMe = (r: MeResponse): Me => ({
   roles: r.roles.map((x) => x.key), permissions: r.roles.flatMap((x) => x.permissions ?? []),
 });
 
+/**
+ * A driver's account is kept on the phone, so the driver app opens with no signal (the trip and the outbox
+ * are kept too). Staff desks always load the account fresh.
+ */
+const KEPT_ME = "marichi.driver.me";
+const keptMe = () => {
+  try {
+    const raw = localStorage.getItem(KEPT_ME);
+    return raw && hasSession() ? toMe(JSON.parse(raw) as MeResponse) : undefined;
+  } catch {
+    return undefined;
+  }
+};
+onSignedOut(() => localStorage.removeItem(KEPT_ME));
+
 export function useMe(signedIn: boolean) {
-  return useQuery({ queryKey: ["me"], queryFn: async () => toMe(await api<MeResponse>("/auth/me")), enabled: signedIn && hasSession(), staleTime: 60_000 });
+  return useQuery({
+    queryKey: ["me"],
+    queryFn: async () => {
+      const raw = await api<MeResponse>("/auth/me");
+      try {
+        if (raw.user.driverId) localStorage.setItem(KEPT_ME, JSON.stringify(raw));
+        else localStorage.removeItem(KEPT_ME);
+      } catch { /* private mode */ }
+      return toMe(raw);
+    },
+    enabled: signedIn && hasSession(),
+    staleTime: 60_000,
+    initialData: keptMe,
+    initialDataUpdatedAt: 0,
+  });
 }
 
 export interface Approver { level: number; roleKey?: string; userId?: string }

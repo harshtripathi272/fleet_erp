@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Camera, LogOut, MapPin, Send } from "lucide-react";
+import { Camera, CloudOff, LogOut, MapPin, Send } from "lucide-react";
 import { api, ApiError } from "../api/client";
-import { ACCEPT, uploadFile } from "../api/files";
+import { ACCEPT } from "../api/files";
+import { clearNotices, connectionLost, connectionWorks, enqueue, startOutbox, useOutbox } from "./outbox";
+import { shrinkPhoto } from "./shrink";
 import { signOut, type Me } from "../api/session";
 import { DocThumb } from "../docs/DocThumb";
 import { Wordmark } from "../ui/brand";
@@ -32,52 +34,92 @@ interface Home {
 }
 interface Msg { id: string; at: string; from: string; title?: string; text?: string; rows?: [string, string][]; upload?: Kind }
 
-const useHome = () => useQuery({ queryKey: ["driver-home"], queryFn: () => api<Home>("/driver-app/home"), refetchInterval: 10_000 });
-const useMessages = () => useQuery({ queryKey: ["driver-messages"], queryFn: () => api<Msg[]>("/driver-app/messages"), refetchInterval: 10_000 });
+/**
+ * The trip and messages, kept on the phone as well: with no signal the driver still sees the last ones,
+ * never a blank page. A failed fetch with no answer at all means the connection is down.
+ */
+function useKept<T>(userId: string, name: string, path: string) {
+  const key = `marichi.driver.${userId}.${name}`;
+  return useQuery({
+    queryKey: [`driver-${name}`],
+    queryFn: async () => {
+      try {
+        const data = await api<T>(path);
+        connectionWorks();
+        try { localStorage.setItem(key, JSON.stringify(data)); } catch { /* storage full: keep going */ }
+        return data;
+      } catch (error) {
+        if (!(error instanceof ApiError)) connectionLost();
+        throw error;
+      }
+    },
+    initialData: () => {
+      try { const raw = localStorage.getItem(key); return raw ? (JSON.parse(raw) as T) : undefined; } catch { return undefined; }
+    },
+    initialDataUpdatedAt: 0,
+    refetchInterval: 10_000,
+    retry: false,
+  });
+}
 
 export function DriverPortal({ me }: { me: Me }) {
-  const home = useHome();
-  const messages = useMessages();
+  const home = useKept<Home>(me.id, "home", "/driver-app/home");
+  const messages = useKept<Msg[]>(me.id, "messages", "/driver-app/messages");
   const client = useQueryClient();
-  const [notice, setNotice] = useState<{ text: string; bad?: boolean } | null>(null);
-  const [busy, setBusy] = useState<string | null>(null);
+  const outbox = useOutbox();
   const file = useRef<HTMLInputElement>(null);
   const [pending, setPending] = useState<Kind>("other");
+  const [preparing, setPreparing] = useState(false);
 
-  const refresh = () => Promise.all([client.invalidateQueries({ queryKey: ["driver-home"] }), client.invalidateQueries({ queryKey: ["driver-messages"] })]);
-  const attempt = async (key: string, work: () => Promise<unknown>, done: string) => {
-    setBusy(key);
-    setNotice(null);
+  // Everything the driver sends goes through the outbox, which keeps it on the phone until the API has it.
+  useEffect(() => {
+    startOutbox(me.id, () => void Promise.all([client.invalidateQueries({ queryKey: ["driver-home"] }), client.invalidateQueries({ queryKey: ["driver-messages"] })]));
+  }, [me.id, client]);
+  // "Sent" and refusals show for a moment, then make way.
+  useEffect(() => {
+    if (!outbox.sent.length && !outbox.refused.length) return;
+    const t = window.setTimeout(clearNotices, outbox.refused.length ? 8000 : 4000);
+    return () => window.clearTimeout(t);
+  }, [outbox.sent.length, outbox.refused.length]);
+
+  const pick = (kind: Kind) => { setPending(kind); file.current?.click(); };
+  const upload = async (chosen: File | undefined) => {
+    if (file.current) file.current.value = "";
+    if (!chosen) return;
+    setPreparing(true);
     try {
-      await work();
-      setNotice({ text: done });
-      await refresh();
-    } catch (error) {
-      setNotice({ text: error instanceof ApiError ? error.message : "That didn't go through. Check your connection and try again.", bad: true });
+      const photo = await shrinkPhoto(chosen);
+      await enqueue({ type: "send", kind: pending, file: photo.blob, fileName: photo.name, label: KIND_LABEL[pending] });
     } finally {
-      setBusy(null);
+      setPreparing(false);
     }
   };
-  const pick = (kind: Kind) => { setPending(kind); file.current?.click(); };
-  const upload = (chosen: File | undefined) => {
-    if (!chosen) return;
-    void attempt("upload", async () => {
-      const stored = await uploadFile(chosen);
-      await api("/driver-app/send", { method: "POST", body: { kind: pending, fileId: stored.id } });
-    }, `${KIND_LABEL[pending]} sent to the office.`);
-    if (file.current) file.current.value = "";
-  };
+  const arrivalWaiting = (stopId: string) => outbox.items.some((i) => i.type === "arrive" && i.stopId === stopId);
 
-  if (home.isLoading) return <Shell me={me}><p className="muted">Loading your trip…</p></Shell>;
-  if (home.error) return <Shell me={me}><p className="drv-error" role="alert">{(home.error as Error).message}</p></Shell>;
-  const h = home.data!;
+  if (!home.data) {
+    if (home.error) return <Shell me={me}><p className="drv-error" role="alert">{home.error instanceof ApiError ? home.error.message : "No connection, and nothing kept on this phone yet. Your trip shows as soon as the signal is back."}</p></Shell>;
+    return <Shell me={me}><p className="muted">Loading your trip…</p></Shell>;
+  }
+  const h = home.data;
   const trip = h.trip;
   const nextStop = trip?.stops.find((s) => !s.arrivedAt);
 
   return (
     <Shell me={me}>
-      <input ref={file} type="file" accept={ACCEPT} capture="environment" hidden onChange={(e) => upload(e.target.files?.[0])} />
-      {notice && <p className={notice.bad ? "drv-error" : "drv-ok"} role="status">{notice.text}</p>}
+      <input ref={file} type="file" accept={ACCEPT} capture="environment" hidden onChange={(e) => void upload(e.target.files?.[0])} />
+      {!outbox.online && (
+        <p className="drv-offline" role="status">
+          <CloudOff size={18} /> No connection. What you send waits on this phone and goes when the signal is back.
+        </p>
+      )}
+      {outbox.items.length > 0 && (
+        <div className="drv-outbox" role="status">
+          <strong>Waiting to send ({outbox.items.length})</strong>
+          <ul>{outbox.items.map((i) => <li key={i.id}>{i.label}</li>)}</ul>
+        </div>
+      )}
+      {outbox.sent.length > 0 && <p className="drv-ok" role="status">Sent: {outbox.sent.join(", ")}.</p>}
+      {outbox.refused.map((r, i) => <p key={i} className="drv-error" role="alert">{r.label} wasn't accepted: {r.message}</p>)}
 
       {!trip && (
         <section className="drv-card">
@@ -99,7 +141,7 @@ export function DriverPortal({ me }: { me: Me }) {
             {trip.product && <div><dt>Cargo</dt><dd>{trip.product}</dd></div>}
           </dl>
           {trip.next && (
-            <Button tone="primary" size="lg" busy={busy === "upload"} onClick={() => pick(trip.next!)}>
+            <Button tone="primary" size="lg" busy={preparing} onClick={() => pick(trip.next!)}>
               <Camera /> Send the {KIND_LABEL[trip.next].toLowerCase()}
             </Button>
           )}
@@ -121,11 +163,13 @@ export function DriverPortal({ me }: { me: Me }) {
                     {s.arrivedAt ? ` · arrived ${stamp(s.arrivedAt)}${s.arrivedVia === "simulator" ? " (simulated)" : ""}` : ""}
                   </small>
                 </span>
-                {s === nextStop && trip.dispatchedAt && s.kind !== "start" && (
-                  <Button size="sm" busy={busy === s.id} onClick={() => void attempt(s.id, () => api(`/driver-app/stops/${s.id}/arrive`, { method: "POST" }), `Arrival at ${s.place} recorded.`)}>
-                    <MapPin /> I've arrived
-                  </Button>
-                )}
+                {s === nextStop && trip.dispatchedAt && s.kind !== "start" && (arrivalWaiting(s.id)
+                  ? <small className="drv-waiting">Arrival waiting to send</small>
+                  : (
+                    <Button size="sm" onClick={() => void enqueue({ type: "arrive", stopId: s.id, label: `Arrived at ${s.place}` })}>
+                      <MapPin /> I've arrived
+                    </Button>
+                  ))}
               </li>
             ))}
           </ol>
@@ -136,7 +180,7 @@ export function DriverPortal({ me }: { me: Me }) {
         <h3>Send a document</h3>
         <div className="drv-kinds">
           {KINDS.map(([kind, label]) => (
-            <Button key={kind} disabled={busy === "upload"} onClick={() => pick(kind)}><Camera /> {label}</Button>
+            <Button key={kind} disabled={preparing} onClick={() => pick(kind)}><Camera /> {label}</Button>
           ))}
         </div>
         {trip && trip.documents.some((d) => d.file) && (
@@ -155,7 +199,12 @@ export function DriverPortal({ me }: { me: Me }) {
         )}
       </section>
 
-      <Conversation messages={messages.data ?? []} onPick={pick} onSend={(text) => attempt("message", () => api("/driver-app/send", { method: "POST", body: { kind: "other", note: text } }), "Message sent.")} busy={busy === "message"} />
+      <Conversation
+        messages={messages.data ?? []}
+        waiting={outbox.items.filter((i) => i.type === "send" && i.note && !i.file).map((i) => ({ id: i.id, text: i.note!, at: i.at }))}
+        onPick={pick}
+        onSend={(text) => void enqueue({ type: "send", kind: "other", note: text, label: "Message" })}
+      />
 
       <section className="drv-card">
         <h3>Money</h3>
@@ -182,10 +231,10 @@ export function DriverPortal({ me }: { me: Me }) {
   );
 }
 
-function Conversation({ messages, onPick, onSend, busy }: { messages: Msg[]; onPick: (k: Kind) => void; onSend: (text: string) => void; busy: boolean }) {
+function Conversation({ messages, waiting, onPick, onSend }: { messages: Msg[]; waiting: { id: string; text: string; at: string }[]; onPick: (k: Kind) => void; onSend: (text: string) => void }) {
   const [text, setText] = useState("");
   const thread = useRef<HTMLDivElement>(null);
-  const last = messages.at(-1)?.id;
+  const last = `${messages.at(-1)?.id}-${waiting.length}`;
   // Open at the newest message, and follow new ones as they arrive.
   useEffect(() => { thread.current?.scrollTo({ top: thread.current.scrollHeight }); }, [last]);
   const submit = (e: FormEvent) => {
@@ -208,10 +257,16 @@ function Conversation({ messages, onPick, onSend, busy }: { messages: Msg[]; onP
             <small>{stamp(m.at)}</small>
           </div>
         ))}
+        {waiting.map((m) => (
+          <div key={m.id} className="drv-msg mine drv-msg-waiting">
+            <p>{m.text}</p>
+            <small>Waiting to send</small>
+          </div>
+        ))}
       </div>
       <form className="drv-compose" onSubmit={submit}>
         <input value={text} onChange={(e) => setText(e.target.value)} placeholder="Write to the office" aria-label="Message to the office" maxLength={1000} />
-        <Button tone="primary" type="submit" busy={busy} aria-label="Send"><Send /></Button>
+        <Button tone="primary" type="submit" aria-label="Send"><Send /></Button>
       </form>
     </section>
   );

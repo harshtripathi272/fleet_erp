@@ -87,7 +87,7 @@ It reads GitHub and prints what is yours: issues assigned to you, your pull requ
 
 5. **Ready for review** when CI is green and the acceptance criteria are met: mark the PR ready, switch the issue to `status: in review`. Don't review anyone else's PR unless the orchestrator asks.
 
-6. **Review and merge (orchestrator only).** The orchestrator reviews with GitHub's review (Approve, or Request changes with comments on the lines). On changes requested, fix and push to the same branch. Approved and green → squash-merged into `develop`, the issue closes, the branch is deleted.
+6. **Review and merge (orchestrator only).** The orchestrator reviews with GitHub's review (Approve, or Request changes with comments on the lines). On changes requested, fix and push to the same branch. Approved and green → squash-merged into `develop`, the branch deleted, and the issue closed by the orchestrator with the PR's number. (GitHub closes issues from `Closes #…` only on merges into `main`, the default branch, so the orchestrator does it for `develop`.)
 
 7. **Keeping up.** If `develop` moved, merge it into your branch (`git fetch && git merge origin/develop`) and resolve conflicts yourself before asking for review.
 
@@ -115,4 +115,4 @@ Push your branch, leave the PR as a draft, and comment on it `[<name>] Handoff:`
 
 ## Done means
 
-The acceptance criteria are met, CI is green, the orchestrator approved and merged it, and the issue is closed by the merge.
+The acceptance criteria are met, CI is green, the orchestrator approved and merged it into `develop`, and closed the issue.
