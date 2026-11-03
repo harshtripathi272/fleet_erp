@@ -208,8 +208,9 @@ export default function Tracking({ tripId }: { tripId: string }) {
               {driver?.name} · {routeLabel(data, trip)}
             </span>
           </div>
-          <button className="icon-btn" onClick={close} aria-label="Close map">
+          <button className="icon-btn with-label" onClick={close} aria-label="Close map">
             <X size={20} />
+            <span>Close</span>
           </button>
         </header>
         <div className="gauges">
@@ -262,8 +263,9 @@ export default function Tracking({ tripId }: { tripId: string }) {
               <Camera /> {camera ? "Hide camera" : "Simulated camera"}
             </Button>
           )}
-          <button className={`icon-btn ${follow ? "on" : ""}`} onClick={() => setFollow((f) => !f)} aria-label="Follow truck" title="Follow truck">
+          <button className={`icon-btn with-label ${follow ? "on" : ""}`} onClick={() => setFollow((f) => !f)} aria-pressed={follow}>
             <Crosshair size={18} />
+            <span>Follow truck</span>
           </button>
         </div>
         {sim.note && sim.tripId === trip.id && <p className="sim-note">{sim.note}</p>}

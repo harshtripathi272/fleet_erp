@@ -181,8 +181,9 @@ function DrawerBody({
       >
         <header className="drawer-head">
           <h2>{title}</h2>
-          <button className="icon-btn" onClick={onClose} aria-label="Close">
+          <button className="icon-btn with-label" onClick={onClose}>
             <X size={18} />
+            <span>Close</span>
           </button>
         </header>
         <div className="drawer-body">{children}</div>
@@ -248,8 +249,9 @@ function ModalBody({
       >
         <header className="modal-head">
           <h2>{title}</h2>
-          <button className="icon-btn" onClick={onClose} aria-label="Close">
+          <button className="icon-btn with-label" onClick={onClose}>
             <X size={18} />
+            <span>Close</span>
           </button>
         </header>
         <div className="modal-body">{children}</div>

@@ -42,8 +42,9 @@ export function DocumentOverlay() {
                 <Printer /> Print or save as PDF
               </Button>
             )}
-            <button className="doc-close" onClick={close} aria-label="Close">
+            <button className="doc-close" onClick={close}>
               <X size={20} />
+              <span>Close</span>
             </button>
           </div>
           <div className="doc-scroll" onClick={(e) => e.target === e.currentTarget && close()}>

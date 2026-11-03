@@ -387,8 +387,9 @@ export function StopEditor({
               )}
             </span>
             {!fixedKind ? (
-              <button className="icon-btn" aria-label={`Remove stop ${i + 1}`} onClick={() => onChange(stops.filter((_, j) => j !== i))}>
+              <button className="icon-btn with-label" aria-label={`Remove stop ${i + 1}`} onClick={() => onChange(stops.filter((_, j) => j !== i))}>
                 <Trash2 size={16} />
+                <span>Remove</span>
               </button>
             ) : (
               <span />
@@ -1027,11 +1028,13 @@ function LoadingPanel({ trip }: { trip: Trip }) {
               <strong>{load?.arrivedAt ? "Waiting for the loading invoice" : `Arriving at ${placeName(data, load?.placeId)}`}</strong>
               <span className="muted">The driver sends a photo from the driver app, or you upload it here.</span>
             </div>
-            {ops && <UploadDoc trip={trip} kind="loading" label="Upload the invoice" />}
             {ops && (
-              <Button tone="quiet" onClick={() => setManual(true)}>
-                Type it without a photo
-              </Button>
+              <div className="waiting-actions">
+                <UploadDoc trip={trip} kind="loading" label="Upload the invoice" />
+                <Button tone="quiet" onClick={() => setManual(true)}>
+                  Type it without a photo
+                </Button>
+              </div>
             )}
           </div>
         )}
@@ -1213,8 +1216,12 @@ function OffloadingPanel({ trip }: { trip: Trip }) {
               <strong>{offload?.arrivedAt ? "Waiting for the delivery note" : `Driving to ${placeName(data, offload?.placeId)}`}</strong>
               <span className="muted">Loaded {consignment.load.unit === "L" ? L(volume20(consignment.load)) + " at 20 °C" : `${consignment.load.qty} ${consignment.load.unit}`}.</span>
             </div>
-            {ops && offload?.arrivedAt && <UploadDoc trip={trip} kind="delivery" label="Upload the delivery note" />}
-            {ops && offload?.arrivedAt && <Button tone="quiet" onClick={() => setManual(true)}>Type it without a photo</Button>}
+            {ops && offload?.arrivedAt && (
+              <div className="waiting-actions">
+                <UploadDoc trip={trip} kind="delivery" label="Upload the delivery note" />
+                <Button tone="quiet" onClick={() => setManual(true)}>Type it without a photo</Button>
+              </div>
+            )}
           </div>
         )}
       </Card>

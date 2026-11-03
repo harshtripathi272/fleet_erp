@@ -98,7 +98,8 @@ export function Overview() {
                   </span>
                   <span className="muted">{ago(data, e.at)}</span>
                   {trip && (
-                    <button className="icon-btn" aria-label={`Open ${trip.no}`} onClick={() => nav({ tripId: trip.id })}>
+                    <button className="icon-btn with-label" aria-label={`Open ${trip.no}`} onClick={() => nav({ tripId: trip.id })}>
+                      <span>Open</span>
                       <ArrowRight size={15} />
                     </button>
                   )}

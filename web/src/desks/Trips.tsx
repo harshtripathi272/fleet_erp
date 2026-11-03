@@ -247,8 +247,9 @@ function TripView({
             <FileText /> Trip sheet
           </Button>
           {!trip.dispatchedAt && !trip.cancelledAt && (role === "operations" || role === "owner") && (
-            <button className="icon-btn" title="Cancel trip" aria-label="Cancel trip" onClick={() => setCancelOpen(true)}>
+            <button className="icon-btn with-label" onClick={() => setCancelOpen(true)}>
               <XCircle size={18} />
+              <span>Cancel trip</span>
             </button>
           )}
         </div>

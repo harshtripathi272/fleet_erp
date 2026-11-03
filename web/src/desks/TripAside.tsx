@@ -20,8 +20,9 @@ export function TripAside({ trip }: { trip: Trip }) {
         <section className="aside-card map-card">
           <MiniRoute stops={trip.stops} trip={trip} height={170} />
           {trip.dispatchedAt && (
-            <button className="map-card-open" onClick={() => setOverlay({ tracking: trip.id })} aria-label="Open live map">
+            <button className="map-card-open" onClick={() => setOverlay({ tracking: trip.id })}>
               <Maximize2 size={15} />
+              <span>Live map</span>
             </button>
           )}
           {live && (
@@ -54,8 +55,9 @@ export function TripAside({ trip }: { trip: Trip }) {
               <strong>{driver.name}</strong>
               <span className="mono muted">{driver.phone}</span>
             </span>
-            <a className="icon-btn" href={`tel:${driver.phone.replace(/\s/g, "")}`} aria-label={`Call ${driver.name}`}>
+            <a className="icon-btn with-label" href={`tel:${driver.phone.replace(/\s/g, "")}`} aria-label={`Call ${driver.name}`}>
               <Phone size={16} />
+              <span>Call</span>
             </a>
           </div>
         )}
