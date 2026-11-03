@@ -27,8 +27,15 @@ export const exchangeRateDefinition = defineMaster({
   filters: {
     currencyId: { schema: idQuery, apply: (v: string) => ({ $or: [{ baseCurrencyId: new Types.ObjectId(v) }, { quoteCurrencyId: new Types.ObjectId(v) }] }), description: 'Rates involving this currency' },
   },
-  async prepare(data: Plain) {
+  async prepare(data: Plain, ctx) {
     if (String(data.baseCurrencyId) === String(data.quoteCurrencyId)) throw new ValidationError('Base and quote currencies must differ', { quoteCurrencyId: ['Same as base'] });
+    // A rate typed in (manual or bank) replaces the feed's rate for that pair and day, in either direction.
+    if (ctx.mode === 'create' && data.source !== 'feed' && data.effectiveDate) {
+      await ExchangeRate.deleteMany({
+        source: 'feed', effectiveDate: new Date(String(data.effectiveDate)),
+        $or: [{ baseCurrencyId: data.baseCurrencyId, quoteCurrencyId: data.quoteCurrencyId }, { baseCurrencyId: data.quoteCurrencyId, quoteCurrencyId: data.baseCurrencyId }],
+      });
+    }
     return data;
   },
 });

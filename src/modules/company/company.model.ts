@@ -41,6 +41,18 @@ const operationsSchema = new Schema({
   stopBeforeLoading: { type: Boolean, default: OPERATIONS_DEFAULTS.stopBeforeLoading },
 }, { _id: false, strict: 'throw' });
 
+/**
+ * Where daily exchange rates come from (Exchange rates → Rate feed). "manual" means none: people type
+ * rates in. The provider's API key is the RATE_FEED_API_KEY secret, never stored here.
+ */
+const rateFeedSchema = new Schema({
+  provider: { type: String, default: 'manual' },
+  /** Currencies to fetch against the base; empty means every active currency. */
+  currencyIds: { type: [{ type: Schema.Types.ObjectId, ref: 'Currency' }], default: [] },
+  /** When the daily fetch should run, company time (the scheduler that calls rates:fetch follows it). */
+  fetchAt: { type: String, default: '06:00' },
+}, { _id: false, strict: 'throw' });
+
 /** The transporter using this deployment. Exactly one document. */
 const companySchema = new Schema<any>({
   /** Fixed value with a unique index, so only one company document can exist. */
@@ -57,6 +69,7 @@ const companySchema = new Schema<any>({
   allowSelfRegistration: { type: Boolean, default: false },
   modules: { type: [String], default: ['masters', 'trips'] },
   operations: { type: operationsSchema, default: () => ({}) },
+  rateFeed: { type: rateFeedSchema, default: () => ({}) },
   address: { line1: String, line2: String, city: String, postalCode: String },
   phone: String,
   email: String,
