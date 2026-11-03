@@ -58,6 +58,27 @@ export async function saveFeedSettings(input: Partial<RateFeedSettings>, actorId
   return feedStatus();
 }
 
+/** The time of day of `at` in the company's time zone, as "HH:MM". */
+function companyTime(at: Date, timeZone: string) {
+  return new Intl.DateTimeFormat('en-GB', { timeZone, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(at);
+}
+
+/**
+ * Whether the scheduled fetch should run now. The scheduler starts the job every hour; the job fetches once a
+ * day, after the company's fetch time, and tries again each hour until a fetch that day succeeds. So the
+ * fetch time set on the screen is the only one, and a failure is retried without anyone acting.
+ */
+export async function fetchIsDue(now = new Date()) {
+  const settings = await feedSettings();
+  if (settings.provider === 'manual') return { due: false, reason: 'The feed is off (manual rates)' };
+  const c = await company();
+  const zone = c?.timezone ?? 'UTC';
+  if (companyTime(now, zone) < settings.fetchAt) return { due: false, reason: `Before today's fetch time (${settings.fetchAt})` };
+  const today = companyDay(now, zone);
+  if (await RateFeedRun.exists({ outcome: 'stored', effectiveDate: today })) return { due: false, reason: "Today's rates are already stored" };
+  return { due: true, reason: 'Due' };
+}
+
 /**
  * Fetches today's rates and stores them. Never throws for a provider failure: the run is recorded as failed,
  * yesterday's rates stay in place, and the screen shows the reason.

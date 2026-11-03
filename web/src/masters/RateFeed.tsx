@@ -60,7 +60,7 @@ export function RateFeed() {
             {feed.data.providers.map((p) => <option key={p.key} value={p.key}>{p.label}</option>)}
           </select>
         </Field>
-        <Field label="Fetch every day at" hint="Company time. The server's scheduler runs the fetch then.">
+        <Field label="Fetch every day at" hint="Company time. The server checks every hour and fetches once a day after this time; a failed fetch is tried again the next hour.">
           <input type="time" value={draft.fetchAt} onChange={(e) => setDraft({ ...draft, fetchAt: e.target.value })} />
         </Field>
       </div>

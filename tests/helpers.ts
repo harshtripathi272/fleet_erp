@@ -4,6 +4,7 @@ import request from 'supertest';
 import { app } from '../src/app.js';
 import { connectMongo, syncIndexes } from '../src/core/db/mongo.js';
 import { MemoryRateLimitStore, setRateLimitStore } from '../src/core/rateLimit/index.js';
+import { settleSends } from '../src/modules/messaging/dispatcher.js';
 import { ensureSystemRoles } from '../src/modules/roles/roles.service.js';
 
 let mongo: MongoMemoryServer | null = null;
@@ -18,11 +19,14 @@ export async function startDatabase() {
 }
 
 export async function stopDatabase() {
+  // Messages a step started sending finish first, so none outlives the database.
+  await settleSends();
   await mongoose.disconnect();
   await mongo?.stop();
 }
 
 export async function resetDatabase() {
+  await settleSends();
   const db = mongoose.connection.db!;
   for (const c of await db.collections()) await c.deleteMany({});
   setRateLimitStore(new MemoryRateLimitStore());

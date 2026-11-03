@@ -8,6 +8,7 @@ import { Route } from '../geography/models/route.model.js';
 import { OrderSource } from '../parties/models/orderSource.model.js';
 import { Nomination } from './models/money.model.js';
 import { Trip } from './models/trip.model.js';
+import { announce } from './notices.js';
 import {
   activeDriver, activeRecord, conflict, customerParty, customerThread, loadOr404, log, need, nextNumber, post, present, queue, refuse, resolve,
   save, shortDate, type OpsContext,
@@ -98,6 +99,14 @@ export async function sendNomination(id: string, ctx: OpsContext) {
     rows, refId: String(n._id),
   }, ctx);
   await log(ctx, at, `${n.number} sent to ${customer.name}`, { entity: 'nominations', entityId: n._id });
+  await announce('nomination.sent', null, ctx, {
+    partyId: customer._id,
+    variables: {
+      'vehicle.registration': rows.map(([plate]) => plate).filter(Boolean).join(', '),
+      'place.name': await placeName(n.loadingPlaceId), 'document.number': String(n.number), date: shortDate(n.requiredDate as Date),
+    },
+    ref: { kind: 'nominations', id: n._id },
+  });
   return present(n);
 }
 
