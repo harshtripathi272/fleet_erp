@@ -76,3 +76,7 @@ details.form-group summary { cursor: pointer; }
 /* Yes/no fields: a checkbox, not a full-width text box. */
 .field input[type="checkbox"],
 .field input[type="radio"] { width: 18px; height: 18px; min-height: 0; padding: 0; box-shadow: none; justify-self: start; }
+
+.template-preview { display: grid; gap: 6px; margin-top: 10px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
+.template-preview p { margin: 0; }
+.template-body { white-space: pre-wrap; }

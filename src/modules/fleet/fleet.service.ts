@@ -174,7 +174,8 @@ export const trailerDefinition = defineMaster({
 export const pairingDefinition = defineMaster({
   key: 'pairings', label: 'Truck–trailer pairings', singular: 'Pairing', group: GROUPS.fleet,
   description: 'Which trailer runs with which truck, with full history. Use Pair and End; a truck and a trailer can each be in only one open pairing. Ended pairings are kept as archived history (list with status=all).',
-  model: Pairing, createSchema: S.pairingPlaceholderSchema, updateSchema: S.pairingPlaceholderSchema,
+  // Created by POST /pairings with pairSchema (the screens build their form from it); never edited, only ended.
+  model: Pairing, createSchema: S.pairSchema, updateSchema: S.pairingPlaceholderSchema,
   searchFields: ['reason', 'endReason'], sortFields: ['from', 'to', 'createdAt'], defaultSort: '-from', titleField: 'from',
   refs: [{ path: 'vehicleId', target: 'vehicles' }, { path: 'trailerId', target: 'trailers' }],
   managed: { create: true, update: true, delete: true, archive: true },

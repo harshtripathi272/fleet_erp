@@ -165,9 +165,9 @@ function listColumns(def: Def) {
 
 /**
  * Masters whose create is a custom endpoint at the same path that still takes the create schema
- * (users: an empty password sends an invitation e-mail instead).
+ * (users: an empty password sends an invitation e-mail instead; pairings: truck, trailer and start).
  */
-const CREATES_AT_ROOT = new Set(["users"]);
+const CREATES_AT_ROOT = new Set(["users", "pairings"]);
 const creatable = (def: Def) => Boolean(def.permissions?.create && (!def.managed?.create || CREATES_AT_ROOT.has(def.key)));
 /** Write-only fields: offered when creating, never shown on an existing record. */
 const WRITE_ONLY = new Set(["password"]);
@@ -228,7 +228,7 @@ function RecordDrawer({ def, defs, id, onClose }: { def: Def; defs: Def[]; id?: 
     return invitation.sent ? `${def.singular} created. An invitation to set a password went to ${String((result as Rec).user?.email ?? "them")}.`
       : `${def.singular} created, but the invitation e-mail could not be sent. Open the user and set a password, or check the e-mail settings.`;
   }, !id);
-  const title = id ? String(base?.[def.titleField] ?? def.singular) : `New ${def.singular.toLowerCase()}`;
+  const title = id ? (base ? `${def.key === "pairings" ? "Pairing from " : ""}${titleOf(base, def)}` : def.singular) : `New ${def.singular.toLowerCase()}`;
   return (
     <Drawer
       open
@@ -286,6 +286,20 @@ function RecordDrawer({ def, defs, id, onClose }: { def: Def; defs: Def[]; id?: 
   );
 }
 
+/** A message template filled with sample values, shown the way the person would receive it. */
+function TemplatePreview({ preview }: { preview: Rec }) {
+  if (preview.error) return <p className="signin-error">{String(preview.error)}</p>;
+  return (
+    <div className="template-preview">
+      <p className="muted">{label(String(preview.channel ?? ""))}{preview.delivery ? ` · sent by ${String(preview.delivery)}` : ""}</p>
+      {Boolean(preview.subject) && <strong>{String(preview.subject)}</strong>}
+      <p className="template-body">{String(preview.body ?? "")}</p>
+      {(preview.buttons as Rec[] | undefined)?.length ? <div className="row-actions">{(preview.buttons as Rec[]).map((b, i) => <span key={i} className="chip">{String(b.label ?? b.text ?? b)}</span>)}</div> : null}
+      {(preview.sampleValuesUsedFor as string[] | undefined)?.length ? <p className="muted small">Sample values for: {(preview.sampleValuesUsedFor as string[]).join(", ")}</p> : null}
+    </div>
+  );
+}
+
 /** Actions some masters add beyond create, edit, archive and delete. */
 function Extras({ def, id, record }: { def: Def; id?: string; record?: Rec }) {
   const { data, me, toast, refreshReference } = useApp();
@@ -293,11 +307,16 @@ function Extras({ def, id, record }: { def: Def; id?: string; record?: Rec }) {
   const [preview, setPreview] = useState<string>("");
   if (!id || !record) return null;
   if (def.key === "pairings" && record.open !== false && !record.to)
-    return <div className="extra"><Button size="sm" onClick={async () => { try { await api(`/pairings/${id}/end`, { method: "POST", body: { reason: "Ended from Masters" } }); toast("Pairing ended"); refreshReference(); } catch (e) { toast((e as Error).message, "error"); } }}>End this pairing</Button></div>;
+    return <div className="extra"><Button size="sm" onClick={async () => { try { await api(`/pairings/${id}/end`, { method: "POST", body: { reason: "Ended from Masters" } }); toast("Pairing ended"); await client.invalidateQueries({ queryKey: ["records", "pairings"] }); await client.invalidateQueries({ queryKey: ["record", "pairings", id] }); refreshReference(); } catch (e) { toast((e as Error).message, "error"); } }}>End this pairing</Button></div>;
   if (def.key === "numbering-series")
     return <div className="extra"><Button size="sm" onClick={async () => setPreview(`Next: ${(await api<Rec>(`/numbering-series/${id}/preview`)).next}`)}>Preview the next number</Button> <span className="mono">{preview}</span></div>;
   if (def.key === "message-templates")
-    return <div className="extra"><Button size="sm" onClick={async () => { try { setPreview(JSON.stringify(await api(`/message-templates/${id}/preview`, { method: "POST", body: {} }))); } catch (e) { setPreview((e as Error).message); } }}>Preview with sample values</Button><pre className="mono preview">{preview}</pre></div>;
+    return (
+      <div className="extra">
+        <Button size="sm" onClick={async () => { try { setPreview(JSON.stringify(await api(`/message-templates/${id}/preview`, { method: "POST", body: {} }))); } catch (e) { setPreview(JSON.stringify({ error: (e as Error).message })); } }}>Preview with sample values</Button>
+        {preview && <TemplatePreview preview={JSON.parse(preview) as Rec} />}
+      </div>
+    );
   if (def.key === "roles" && record.isSystem && def.permissions?.create)
     return <div className="extra"><Button size="sm" onClick={async () => {
       try {
@@ -671,7 +690,11 @@ function Value({ value, field, defs }: { value: unknown; field: Rec; defs: Def[]
 
 /* ---------- Helpers ---------- */
 
-const titleOf = (r: Rec, def?: Def) => String(r[def?.titleField ?? "name"] ?? r.name ?? r.code ?? r.registrationNumber ?? r.id);
+/** A record's name; a master titled by a date (pairings) reads as that date, not a timestamp. */
+const titleOf = (r: Rec, def?: Def) => {
+  const value = String(r[def?.titleField ?? "name"] ?? r.name ?? r.code ?? r.registrationNumber ?? r.id);
+  return /^\d{4}-\d{2}-\d{2}T/.test(value) ? new Date(value).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : value;
+};
 const get = (r: Rec, path: string) => path.split(".").reduce<unknown>((v, k) => (v && typeof v === "object" ? (v as Rec)[k] : undefined), r);
 /** Bookkeeping the server fills in itself, and changes from nothing to nothing, are left out of history. */
 const BOOKKEEPING = new Set(["createdBy", "updatedBy", "archivedBy", "archivedAt", "version"]);

@@ -119,5 +119,5 @@ export const pairSchema = z.strictObject({
   reason: text(300).optional(),
 });
 export const endPairingSchema = z.strictObject({ to: isoDate.optional(), reason: text(300).optional() }).default({});
-/** Pairings have no create/update schema of their own: they are managed by /pair and /end. */
+/** Pairings are never edited, only ended (POST /pairings/:id/end). */
 export const pairingPlaceholderSchema = z.strictObject({});
