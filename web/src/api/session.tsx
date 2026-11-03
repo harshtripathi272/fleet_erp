@@ -7,6 +7,9 @@ import type { Action, Role } from "../domain/types";
 import { useApp } from "../store";
 import { api, ApiError, hasSession, onSignedOut, setTokens, type Tokens } from "./client";
 
+/** The desk, view and trip this browser tab has open (the office desks keep it; signing out forgets it). */
+export const DESK_SESSION = "marichi.tripdesk.session";
+
 export interface Permission { resource: string; actions: string[] }
 export interface Me {
   id: string;
