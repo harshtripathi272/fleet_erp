@@ -555,7 +555,7 @@ The same pieces work on AWS, Azure, DigitalOcean or any server that runs contain
 - Set `REDIS_URL` when running more than one API instance, so rate limits are shared.
 - Set `CORS_ORIGINS` to the frontend's address, and `TRUST_PROXY` when behind a reverse proxy.
 - Set `OWNER_EMAIL` to the company's first Owner. On first start that account is created and e-mailed a link to choose a password; nobody can claim the installation by signing up. If the e-mail does not arrive, "Forgot password" on the same address sends another.
-- Leave `CONSOLE_ENABLED=true` for now: password-reset and invitation links open the console. Turning it off also removes the public `/meta/models` route.
+- `CONSOLE_ENABLED=false` turns off the test console and the public `/meta/models` route. Password-reset and invitation links open the web app, so they keep working.
 - MongoDB runs as an ordinary standalone server; no replica set is needed.
 
 **What production refuses or adds** (checked in [#18](https://github.com/harshtripathi272/fleet_erp/issues/18), tests in `tests/hardening.test.ts`):
