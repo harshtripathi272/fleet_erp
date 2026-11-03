@@ -5,6 +5,7 @@ import { approveAs, highestEligible, notifyLevel, routeApproval, waitingOn, type
 import { DriverDocument } from './models/cargo.model.js';
 import { Expense } from './models/money.model.js';
 import { Trip } from './models/trip.model.js';
+import { announce, moneyValues } from './notices.js';
 import {
   activeDriver, activeRecord, conflict, currencyInfo, driverThread, formatMoney, loadOr404, log, need, nextNumber, post, present, refuse,
   resolve, save, toBase, type OpsContext,
@@ -77,6 +78,12 @@ export async function recordExpense(input: S.ExpenseInput, ctx: OpsContext) {
     }, ctx);
   }
   await log(ctx, at, `${approved ? 'Approved' : 'Recorded'} ${category.name} ${amount} (${number})`, { tripId: trip?._id, entity: 'expenses', entityId: expense._id });
+  // One message per step: an expense approved as it is recorded says "approved", not also "submitted".
+  await announce(approved ? 'expense.approved' : 'expense.submitted', trip, ctx, {
+    driverId: driver._id,
+    variables: { ...(await moneyValues(input.amount)), 'document.name': String(category.name), 'document.number': input.receiptNo, reason: input.note },
+    ref: { kind: 'expenses', id: expense._id },
+  });
   return present(expense.toObject());
 }
 
@@ -111,5 +118,11 @@ export async function decideExpense(id: string, input: S.ExpenseDecisionInput, c
     text: input.approve ? `${category} ${amount}. It's off your balance.` : `${category} ${amount}: ${input.reason}`,
   }, ctx);
   await log(ctx, at, `${input.approve ? 'Approved' : 'Rejected'} ${expense.get('number')}`, { tripId: expense.get('tripId'), entity: 'expenses', entityId: expense._id });
+  const trip = expense.get('tripId') ? ((await Trip.findById(expense.get('tripId')).lean()) as Plain | null) : null;
+  await announce(input.approve ? 'expense.approved' : 'expense.rejected', trip, ctx, {
+    driverId: expense.get('driverId'),
+    variables: { ...(await moneyValues(expense.toObject().amount as { amountMinor: number; currencyId: unknown })), 'document.name': category, 'document.number': expense.get('receiptNo'), reason: input.reason },
+    ref: { kind: 'expenses', id: expense._id },
+  });
   return present(expense.toObject());
 }

@@ -22,6 +22,7 @@ import { waitingOn, type Approval } from './approvals.js';
 import { issueButtons, requestAmount, requestButtons } from './funding.service.js';
 import { assertStageAllows, currentStage, recordEvent, stageSnapshot, tripTypeFor } from './stages.js';
 import { carriedIn, driverBalance } from './ledger.js';
+import { announce } from './notices.js';
 import { Consignment } from './models/cargo.model.js';
 import { FundRequest, OPEN_REQUEST, VehicleState } from './models/funding.model.js';
 import { Expense, Nomination } from './models/money.model.js';
@@ -452,6 +453,7 @@ export async function dispatchTrip(id: string, ctx: OpsContext) {
     ],
   }, ctx);
   await log(ctx, at, `Dispatched from ${await placeName(plainStops[0]?.placeId)}`, { tripId: trip._id });
+  await announce('trip.dispatched', plain, ctx, { variables: { 'place.name': await placeName(plainStops[0]?.placeId) } });
   return presentTrip(plain);
 }
 
@@ -478,6 +480,7 @@ async function announceArrival(trip: Plain, index: number, at: Date, ctx: OpsCon
       text: `${firstName(driver)} will send the ${loading ? 'loading invoice' : 'delivery note'}.`,
       buttons: [{ label: 'Open trip', nav: { tripId: String(trip._id) } }],
     }, ctx);
+    await announce(loading ? 'trip.arrived_loading' : 'trip.arrived_offloading', trip, ctx, { variables: { 'place.name': place } });
   } else if (stop.kind === 'via' || stop.kind === 'border') {
     await log(ctx, at, `Passed ${place}`, { tripId: trip._id });
   } else if (stop.kind === 'end') {
@@ -648,6 +651,15 @@ export async function endTrip(id: string, input: S.EndTripInput, ctx: OpsContext
   const label = await routeLabel(plain as never);
   await post(queue('trips'), at, { title: `Trip sheet ready · ${plain.number}`, text: `${label}, ${Math.round(tripKm(stops)).toLocaleString('en-GB')} km. ${truck.plate} is free at ${place}.`, buttons: [{ label: 'View trip sheet', nav: { tripId: String(plain._id), view: 'sheet' } }] }, ctx);
   await log(ctx, at, `Ended at ${place} · ${litres(input.closingFuelL)} in the tank`, { tripId: trip._id });
+  await announce('trip.closed', plain, ctx, {
+    variables: { 'place.name': place },
+    // The trip sheet goes with the e-mails; it is only made when one is going to someone.
+    attachments: async () => {
+      const { printoutFile } = await import('./printouts.js');
+      const file = await printoutFile('trip_sheet', String(plain._id), ctx.actorId);
+      return file ? [file] : null;
+    },
+  });
   return presentTrip(plain);
 }
 
