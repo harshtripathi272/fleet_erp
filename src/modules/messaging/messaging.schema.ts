@@ -51,3 +51,12 @@ export const previewSchema = z.strictObject({
   variables: z.array(z.strictObject({ name: z.string().max(60), value: z.union([z.string().max(500), z.number()]) })).max(40).optional(),
 }).default({});
 export type PreviewInput = z.infer<typeof previewSchema>;
+
+export const outboxQuerySchema = z.strictObject({
+  page: z.coerce.number().int().min(1).max(100000).default(1),
+  limit: z.coerce.number().int().min(1).max(100).default(25),
+  status: z.enum(['queued', 'sending', 'sent', 'failed', 'simulated', 'skipped']).optional(),
+  channel: z.enum(MESSAGE_CHANNELS).optional(),
+  event: z.string().trim().regex(/^[a-z_]+\.[a-z_]+$|^account$/, 'An event, e.g. trip.dispatched').optional(),
+  search: z.string().trim().min(1).max(100).optional(),
+});

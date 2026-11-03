@@ -1,0 +1,19 @@
+/* The messages settings screen (#19). Builds on the shared desk, card, table and form classes. */
+.messaging-settings .card + .card { margin-top: 16px; }
+.connection-list { display: grid; gap: 12px; }
+.connection { border: 1px solid var(--line); border-radius: var(--radius); padding: 12px 14px; }
+.connection-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.connection-facts { display: grid; grid-template-columns: max-content 1fr; gap: 4px 16px; margin: 10px 0 0; }
+.connection-facts dt { color: var(--ink-3); }
+.connection-facts dd { margin: 0; overflow-wrap: anywhere; }
+.connection-error { color: var(--rust); }
+.connection-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.connection-actions .input { flex: 1 1 220px; min-width: 0; }
+.outbox-filters { display: flex; gap: 8px; }
+.outbox-note { max-width: 28ch; overflow-wrap: anywhere; }
+.outbox-pages { display: flex; align-items: center; justify-content: center; gap: 12px; margin-top: 12px; }
+.outbox-body { white-space: pre-wrap; font: inherit; background: var(--paper-2); padding: 12px; border-radius: var(--radius-sm); margin-top: 12px; }
+.link-btn { background: none; border: 0; padding: 0; color: inherit; text-decoration: underline; cursor: pointer; text-align: left; font: inherit; }
+@media (max-width: 640px) {
+  .outbox-filters { flex-direction: column; }
+}
