@@ -11,12 +11,16 @@ import { pairSchema } from '../fleet/fleet.schema.js';
 import { createRecord } from '../configuration/configuration.service.js';
 import { pair } from '../fleet/fleet.service.js';
 import { Role } from '../roles/role.model.js';
+import { loadSampleHistory } from './sampleHistory.js';
+
+/** `small`: the masters with two trucks and two drivers, which the tests build on. `full`: a fleet of ten with trips at every stage. */
+export type SampleSize = 'small' | 'full';
 
 /**
  * A realistic cross-border fuel and copper operation (Zambia, Tanzania, DRC) created through
  * the same services the API uses, so every business rule is applied. Runs once per database.
  */
-export async function loadSampleData(actorId?: string) {
+export async function loadSampleData(actorId?: string, size: SampleSize = 'full') {
   const countries = getMaster('countries')!;
   if (await countries.model.exists({ code: 'ZM' })) throw new ConflictError('Sample data is already loaded (country ZM exists)');
   const ctx = { actorId, canSeeSensitive: true };
@@ -126,7 +130,7 @@ export async function loadSampleData(actorId?: string) {
   await make('product-groups', 'pgFuel', { code: 'FUEL', name: 'Fuel', defaultUnitId: ids.L, pricingBasis: 'per_litre' });
   await make('product-groups', 'pgMinerals', { code: 'MINERALS', name: 'Minerals', defaultUnitId: ids.T, pricingBasis: 'per_tonne' });
   await make('products', 'diesel50', { code: 'DIESEL-50', name: 'Diesel 50 ppm', groupId: ids.pgFuel, unitId: ids.L, hazard: { unClass: '3', unNumber: 'UN1202', packingGroup: 'III' }, densityKgPerL: 0.835, volumeCorrected: true, referenceTemperatureC: 20, shortageAllowancePercent: 0.3, shortagePricePerUnit: money(31_00), packaging: 'bulk', allowedTrailerTypeIds: [ids.ttTanker] });
-  await make('products', 'copper', { code: 'CU-CATH', name: 'Copper cathodes', groupId: ids.pgMinerals, unitId: ids.T, packaging: 'pallets', allowedTrailerTypeIds: [ids.ttFlat] });
+  await make('products', 'cuCathodes', { code: 'CU-CATH', name: 'Copper cathodes', groupId: ids.pgMinerals, unitId: ids.T, packaging: 'pallets', allowedTrailerTypeIds: [ids.ttFlat] });
   await make('load-types', 'ltFull', { code: 'FTL', name: 'Full truck load', pricingBasis: 'per_trip' });
   await make('load-types', 'ltBulk', { code: 'BULK-LIQ', name: 'Bulk liquid', pricingBasis: 'per_litre' });
   await make('shortage-policies', 'spDiesel', { code: 'DIESEL-LOSS', name: 'Diesel transit loss', productId: ids.diesel50, allowanceKind: 'percent', allowanceValue: 0.3, measuredAt: 'reference_temperature', pricePerUnit: money(31_00), bearer: 'driver', approvalPolicyId: ids.advanceApproval });
@@ -190,10 +194,93 @@ export async function loadSampleData(actorId?: string) {
   await createRecord(ids.cmHealth!, createCustomRecordSchema.parse({ data: { cardNumber: 'HC-001', driver: ids.d1, clinic: 'Lusaka Medical Centre', expiryDate: days(90).toISOString().slice(0, 10) } }), ctx);
   created += 1;
 
+  const names = size === 'full' ? await moreOfTheOperation(make, ids, ctx) : {};
+
   if (!(await Company.exists({}))) {
     await saveCompany(saveCompanySchema.parse({ legalName: 'Marichi Connect Logistics Ltd', tradingName: 'Marichi Fleet', countryId: ids.ZM, baseCurrencyId: ids.ZMW, timezone: 'Africa/Lusaka', fiscalYearStartMonth: 1, modules: ['masters', 'trips', 'finance', 'tracking', 'driver-app'], phone: '+260211123456', email: 'ops@marichi.example', allowSelfRegistration: true }), actorId);
     created += 1;
   }
-  logger.info({ created }, 'Sample data loaded');
+  if (size === 'full') created += await loadSampleHistory(ids, names, actorId);
+  logger.info({ created, size }, 'Sample data loaded');
   return { created };
+}
+
+type Make = (key: string, ref: string, data: Plain) => Promise<string>;
+
+/**
+ * The full sample: more customers, a petrol product, routes to Lubumbashi and from the Kitwe refinery,
+ * and eight more trucks, trailers and drivers with their road tax and licences. Returns the drivers' names.
+ */
+async function moreOfTheOperation(make: Make, ids: Record<string, string>, ctx: { actorId?: string; canSeeSensitive: boolean }) {
+  const money = (amountMinor: number, currency = 'ZMW') => ({ amountMinor, currencyId: ids[currency]! });
+  const date = (n: number) => new Date(Date.now() + n * 86400000).toISOString().slice(0, 10);
+
+  await make('cities', 'cKitwe', { code: 'KIW', name: 'Kitwe', provinceId: ids.pCopperbelt, location: { lat: -12.8024, lng: 28.2132 } });
+  await make('provinces', 'pHautKatanga', { code: 'HKT', name: 'Haut-Katanga', countryId: ids.CD });
+  await make('cities', 'cLubumbashi', { code: 'FBM', name: 'Lubumbashi', provinceId: ids.pHautKatanga, location: { lat: -11.6609, lng: 27.4794 } });
+  await make('places', 'kitweRefinery', { code: 'KIT-REF', name: 'Kitwe copper refinery', type: 'refinery', cityId: ids.cKitwe, location: { lat: -12.8170, lng: 28.1990 } });
+  await make('places', 'lubDepot', { code: 'LUB-DEPOT', name: 'Lubumbashi fuel depot', type: 'depot', cityId: ids.cLubumbashi, location: { lat: -11.6420, lng: 27.4830 } });
+
+  await make('parties', 'lake', { name: 'Lake Petroleum Supplies Ltd', roles: ['customer', 'consignee'], countryId: ids.ZM, currencyId: ids.USD, paymentTermsDays: 15, contacts: [{ name: 'Chanda Mulenga', jobTitle: 'Supply officer', phone: '+260977450011', email: 'supply@lakepetroleum.example', receives: ['nominations', 'pods'], isPrimary: true }] });
+  await make('parties', 'katanga', { name: 'Katanga Mining Services SARL', roles: ['customer', 'consignee'], countryId: ids.CD, currencyId: ids.USD, paymentTermsDays: 45, contacts: [{ name: 'Didier Ngoy', email: 'logistique@kms.example', receives: ['nominations', 'invoices'], isPrimary: true }] });
+  await make('parties', 'mpika', { name: 'Mpika Agro Traders', roles: ['customer'], countryId: ids.ZM, currencyId: ids.ZMW, contacts: [{ name: 'Ruth Tembo', whatsapp: '+260966700120' }] });
+
+  await make('products', 'ulp95', { code: 'ULP-95', name: 'Petrol ULP 95', groupId: ids.pgFuel, unitId: ids.L, hazard: { unClass: '3', unNumber: 'UN1203', packingGroup: 'II' }, densityKgPerL: 0.745, volumeCorrected: true, referenceTemperatureC: 20, shortageAllowancePercent: 0.3, shortagePricePerUnit: money(34_00), packaging: 'bulk', allowedTrailerTypeIds: [ids.ttTanker] });
+  await make('routes', 'routeLub', {
+    code: 'DAR-LUB', name: 'Dar es Salaam port to Lubumbashi fuel depot', standardDays: 6,
+    stops: [
+      { placeId: ids.depot, kind: 'start', legKm: 0 },
+      { placeId: ids.darPort, kind: 'load', legKm: 1961 },
+      { placeId: ids.nakonde, kind: 'border', legKm: 934, borderPostId: ids.bpNakonde },
+      { placeId: ids.kasumbalesa, kind: 'border', legKm: 1105, borderPostId: ids.bpKasumbalesa },
+      { placeId: ids.lubDepot, kind: 'offload', legKm: 92 },
+      { placeId: ids.lubDepot, kind: 'end', legKm: 0 },
+    ],
+  });
+  await make('routes', 'routeCopper', {
+    code: 'KIT-DAR', name: 'Kitwe refinery to Dar es Salaam port', standardDays: 4,
+    stops: [
+      { placeId: ids.ndolaYard, kind: 'start', legKm: 0 },
+      { placeId: ids.kitweRefinery, kind: 'load', legKm: 60 },
+      { placeId: ids.nakonde, kind: 'border', legKm: 880, borderPostId: ids.bpNakonde },
+      { placeId: ids.darPort, kind: 'offload', legKm: 934 },
+      { placeId: ids.darPort, kind: 'end', legKm: 0 },
+    ],
+  });
+  await make('trip-budgets', 'budgetLub', { code: 'DAR-LUB-PRIME', name: 'Lubumbashi run, prime mover', routeId: ids.routeLub, vehicleTypeId: ids.vtPrime, currencyId: ids.ZMW, cashItems: [{ expenseItemId: ids.eiToll, amountMinor: 1800_00 }, { expenseItemId: ids.eiBorder, amountMinor: 4200_00 }, { expenseItemId: ids.eiMeals, amountMinor: 2160_00 }] });
+  await make('trip-budgets', 'budgetCopper', { code: 'KIT-DAR-PRIME', name: 'Copper to Dar, prime mover', routeId: ids.routeCopper, vehicleTypeId: ids.vtPrime, currencyId: ids.ZMW, cashItems: [{ expenseItemId: ids.eiToll, amountMinor: 600_00 }, { expenseItemId: ids.eiBorder, amountMinor: 1200_00 }, { expenseItemId: ids.eiMeals, amountMinor: 1080_00 }] });
+
+  // Trucks 3–10: Scanias at Lusaka, Volvos at Ndola; flatbeds for the copper trucks (5 and 10), tankers for the rest.
+  const people = [
+    ['Bwalya', 'Chanda'], ['Mutale', 'Kasonde'], ['Kelvin', 'Zulu'], ['Esther', 'Lungu'],
+    ['Charles', 'Mumba'], ['Patrick', 'Sakala'], ['Agnes', 'Mwale'], ['Moses', 'Banda'],
+  ] as const;
+  const plates = ['ALD 1150', 'ALE 2287', 'BCB 3309', 'ALF 4415', 'BCC 5526', 'ALG 6631', 'BCD 7742', 'BCE 8853'];
+  const names: Record<string, string> = {};
+  for (const [i, [firstName, lastName]] of people.entries()) {
+    const n = i + 3;
+    const scania = n % 2 === 1;
+    const flatbed = n === 5 || n === 10;
+    const branch = scania ? ids.hq : ids.ndola;
+    const code = String(n).padStart(3, '0');
+    await make('vehicles', `v${n}`, {
+      code: `T${code}`, registrationNumber: plates[i], makeId: scania ? ids.scania : ids.volvo, modelId: scania ? ids.r460 : ids.fh, vehicleTypeId: ids.vtPrime,
+      year: 2018 + (n % 6), homeBranchId: branch, odometerKm: 180000 + n * 41250, tankCapacityL: scania ? 900 : 800, fuelTypeId: ids.diesel,
+    });
+    await make('trailers', `t${n}`, flatbed
+      ? { code: `TR${code}`, registrationNumber: `TBM ${4100 + n}`, trailerTypeId: ids.ttFlat, axles: 3, capacityKg: 34000, homeBranchId: branch }
+      : { code: `TR${code}`, registrationNumber: `TAD ${7100 + n}`, trailerTypeId: ids.ttTanker, make: 'Henred', axles: 3, capacityL: 38000, compartments: [{ number: 1, capacityL: 13000 }, { number: 2, capacityL: 12500 }, { number: 3, capacityL: 12500 }], homeBranchId: branch });
+    await pair(pairSchema.parse({ vehicleId: ids[`v${n}`], trailerId: ids[`t${n}`], reason: flatbed ? 'Copper runs' : 'Fuel runs' }), ctx);
+    const phone = `+26097${String(1000000 + n * 104729).slice(-7)}`;
+    const licence = `ZM-DL-6${String(n).padStart(5, '0')}`;
+    await make('drivers', `d${n}`, {
+      firstName, lastName, phone, whatsapp: phone, dateOfBirth: `${1978 + n}-0${(n % 9) + 1}-1${n % 10}`,
+      licence: { number: licence, classIds: [ids.lcEC], issuedByCountryId: ids.ZM, expiryDate: date(120 + n * 30) },
+      homeBranchId: branch, employmentType: n % 3 === 0 ? 'contract' : 'permanent', assignedVehicleId: ids[`v${n}`],
+    });
+    names[`d${n}`] = `${firstName} ${lastName}`;
+    await make('compliance-documents', `roadTax${n}`, { documentTypeId: ids.dtRoadTax, subjectKind: 'vehicle', subjectId: ids[`v${n}`], number: `RT-2026-0${100 + n}`, issueDate: date(-100), expiryDate: date(265), issuedBy: 'RTSA' });
+    await make('compliance-documents', `licence${n}`, { documentTypeId: ids.dtLicence, subjectKind: 'driver', subjectId: ids[`d${n}`], number: licence, issueDate: '2016-05-01', expiryDate: date(120 + n * 30) });
+  }
+  return names;
 }
