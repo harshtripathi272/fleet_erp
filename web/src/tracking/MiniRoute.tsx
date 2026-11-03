@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { useApp } from "../store";
-import { byId, legLoaded, legShape, positionAt } from "../domain/calc";
+import { byId, legLoaded } from "../domain/calc";
+import { legShape, positionAt } from "../domain/route";
 import type { StopKind, Trip } from "../domain/types";
 
 interface StopLike {

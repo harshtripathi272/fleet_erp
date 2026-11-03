@@ -20,6 +20,20 @@ export function BrandMark({ size = 30 }: { size?: number }) {
   );
 }
 
+/** The branded screen shown while signing in or while a part of the app loads. */
+export function Waiting({ text }: { text: string }) {
+  return (
+    <div className="picker">
+      <aside className="picker-side">
+        <Wordmark />
+      </aside>
+      <main className="picker-main">
+        <p className="muted">{text}</p>
+      </main>
+    </div>
+  );
+}
+
 export function Wordmark({ light = true }: { light?: boolean }) {
   return (
     <span className={`wordmark ${light ? "light" : ""}`}>
