@@ -103,13 +103,17 @@ export interface Stop {
   legKm: number;
   legHours: number;
   arrivedAt?: string;
+  /** Who reported the arrival; "simulator" is a demo drive. */
+  arrivedVia?: ArrivalSource;
   leftAt?: string;
 }
+export type ArrivalSource = "office" | "driver" | "simulator" | "gps";
 export interface Tracking {
   km: number;
   speed: number;
   heading: number;
   at: string;
+  source?: ArrivalSource;
 }
 export interface Trip {
   id: string;
@@ -174,6 +178,9 @@ export interface FundRequest {
 export interface Attachment {
   name: string;
   mime: string;
+  /** An uploaded file in file storage. */
+  fileId?: string;
+  /** A sample picture from the simulated phone. */
   sampleId?: string;
   dataUrl?: string;
 }
@@ -202,6 +209,8 @@ export interface DriverDoc {
   note?: string;
   file?: Attachment;
   read?: Extracted;
+  /** Sent from the simulated phone: a sample picture with generated figures. */
+  simulated?: boolean;
   status: "new" | "recorded" | "returned";
   recordRef?: string;
   returnReason?: string;

@@ -378,3 +378,12 @@
     print-color-adjust: exact;
   }
 }
+.photo-figure {
+  margin: 0;
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+}
+.photo-figure .sim-tag {
+  font-size: 13px;
+}

@@ -9,7 +9,7 @@ import type { DocKind, Trip } from "../domain/types";
 import { Device } from "../phone/Device";
 import { BotAvatar, WhatsApp } from "../phone/WhatsApp";
 import { AttachSheet } from "../phone/Attach";
-import { docImage } from "../phone/samples";
+import { DocThumb } from "../docs/DocThumb";
 import { Segmented } from "../ui/kit";
 import { day, hm, L, stamp, zmw } from "../ui/format";
 
@@ -202,7 +202,6 @@ function DriverApp({ trip }: { trip?: Trip }) {
         <h4 className="dapp-h">Sent</h4>
         <div className="dapp-sent">
           {docs.map((d) => {
-            const src = docImage(data, d);
             const expense = data.expenses.find((e) => e.docId === d.id);
             const status =
               d.status === "returned"
@@ -216,7 +215,7 @@ function DriverApp({ trip }: { trip?: Trip }) {
                       : ["Accepted", "ok"];
             return (
               <div key={d.id} className="dapp-doc">
-                {src ? <img src={src} alt="" /> : <span className="dapp-doc-blank" />}
+                <DocThumb doc={d} />
                 <span>
                   <strong>{DOC_LABEL[d.kind]}</strong>
                   <small>{d.returnReason ?? `${day(d.at)}, ${hm(d.at)}`}</small>

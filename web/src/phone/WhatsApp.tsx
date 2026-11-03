@@ -18,8 +18,9 @@ import {
   Video,
 } from "lucide-react";
 import { useApp } from "../store";
-import type { Action, DocKind, Message, MsgButton } from "../domain/types";
-import { docImage } from "./samples";
+import type { Action, Attachment, DocKind, Message, MsgButton } from "../domain/types";
+import { useDocImage } from "../docs/useDocImage";
+import { FileText } from "lucide-react";
 import { clock, hm } from "../ui/format";
 import { AttachSheet } from "./Attach";
 
@@ -310,7 +311,7 @@ function Chat({ thread, onBack, driverId, tripId }: { thread: ThreadInfo; onBack
 function Bubble({ message, onPress }: { message: Message; onPress: (b: MsgButton) => void }) {
   const { data, setOverlay } = useApp();
   const mine = message.from === "me";
-  const image = message.attachment ? docImage(data, { file: message.attachment, tripId: findTrip(data, message), read: findRead(data, message) }) : undefined;
+  const { src: image, pdf } = useDocImage(message.attachment ? { file: message.attachment, tripId: findTrip(data, message), read: findRead(data, message) } : undefined);
   return (
     <motion.div
       className={`wa-bubble-wrap ${mine ? "out" : "in"}`}
@@ -319,10 +320,15 @@ function Bubble({ message, onPress }: { message: Message; onPress: (b: MsgButton
       transition={{ type: "spring", stiffness: 520, damping: 34 }}
     >
       <div className={`wa-bubble ${mine ? "out" : "in"} ${message.buttons?.length && !message.resolved ? "has-buttons" : ""}`}>
-        {image && (
+        {image && !pdf && (
           <button className="wa-image" onClick={() => setOverlay({ document: { kind: "photo", id: `msg:${message.id}` } })}>
             <img src={image} alt={message.attachment?.name ?? "Photo"} />
           </button>
+        )}
+        {image && pdf && (
+          <a className="wa-file" href={image} target="_blank" rel="noreferrer">
+            <FileText size={18} /> {message.attachment?.name ?? "Document.pdf"}
+          </a>
         )}
         {message.title && <strong className="wa-title">{message.title}</strong>}
         {message.text && <p>{message.text}</p>}
@@ -361,11 +367,12 @@ function Bubble({ message, onPress }: { message: Message; onPress: (b: MsgButton
   );
 }
 
+const sameFile = (a: Attachment, b: Attachment) => (a.fileId ? a.fileId === b.fileId : a.sampleId === b.sampleId && a.name === b.name);
 function findTrip(data: ReturnType<typeof useApp>["data"], m: Message) {
-  const doc = data.docs.find((d) => d.file && m.attachment && d.file.sampleId === m.attachment.sampleId && d.file.name === m.attachment.name);
+  const doc = data.docs.find((d) => d.file && m.attachment && sameFile(d.file, m.attachment));
   return doc?.tripId ?? m.attachment?.sampleId?.split(":")[1];
 }
 function findRead(data: ReturnType<typeof useApp>["data"], m: Message) {
-  const doc = data.docs.find((d) => d.file && m.attachment && d.file.sampleId === m.attachment.sampleId && d.file.name === m.attachment.name);
+  const doc = data.docs.find((d) => d.file && m.attachment && sameFile(d.file, m.attachment));
   return doc?.read;
 }

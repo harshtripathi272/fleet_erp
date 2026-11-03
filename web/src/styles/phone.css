@@ -1300,3 +1300,26 @@
     zoom: 0.72;
   }
 }
+.dapp-doc .doc-pdf {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 44px;
+  flex: none;
+  border-radius: 6px;
+  background: var(--surface, #fff);
+  color: var(--ink-2, #444);
+}
+.wa-file {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.05);
+  color: inherit;
+  font-weight: 560;
+  text-decoration: none;
+  overflow-wrap: anywhere;
+}

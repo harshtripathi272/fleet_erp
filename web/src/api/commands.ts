@@ -86,7 +86,7 @@ export async function runCommand(action: Action, ctx: { data: AppData; role: Rol
     }
     case "trip.cancel": await api(`/trips/${action.tripId}/cancel`, { method: "POST", body: { reason: action.reason.trim() } }); return;
     case "trip.dispatch": await api(`/trips/${action.tripId}/dispatch`, { method: "POST" }); return;
-    case "trip.ping": await api(`/trips/${action.tripId}/position`, { method: "POST", body: { km: Math.max(0, action.km), speed: Math.max(0, Math.min(200, action.speed)) } }); return;
+    case "trip.ping": await api(`/trips/${action.tripId}/position`, { method: "POST", body: { km: Math.max(0, action.km), speed: Math.max(0, Math.min(200, action.speed)), source: "simulator" } }); return;
     case "trip.arrive": await api(`/trips/${action.tripId}/stops/${action.stopId}/arrive`, { method: "POST" }); return;
     case "trip.remind": await api(`/trips/${action.tripId}/remind`, { method: "POST" }); return;
     case "trip.end": await api(`/trips/${action.tripId}/end`, { method: "POST", body: { closingFuelL: action.closingFuelL } }); return;
@@ -114,7 +114,8 @@ export async function runCommand(action: Action, ctx: { data: AppData; role: Rol
 
     /* Driver documents, loading, delivery */
     case "doc.send": {
-      const file = action.file ? clean({ name: action.file.name, mime: action.file.mime, sampleId: action.file.sampleId, dataUrl: action.file.dataUrl }) : undefined;
+      // A real upload goes by its id; the simulated phone's sample pictures by their sample id.
+      const file = action.file?.fileId ? { fileId: action.file.fileId } : action.file?.sampleId ? { name: action.file.name, mime: action.file.mime, sampleId: action.file.sampleId } : undefined;
       // The driver's own phone (the simulated WhatsApp) goes in as the driver; the office files for them.
       if (role === "driver" || action.channel === "WhatsApp") {
         await api("/whatsapp/simulate", { method: "POST", body: clean({ driverId: action.driverId, tripId: blank(action.tripId), kind: action.kind, text: blank(action.note?.trim()), file, reading: reading(action.read) }) });

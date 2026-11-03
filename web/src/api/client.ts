@@ -123,6 +123,19 @@ export async function request<T = unknown>(path: string, options: Options = {}):
 
 export const api = async <T = unknown>(path: string, options: Options = {}) => (await request<T>(path, options)).data;
 
+/** A signed-in request with a raw body or a binary answer (uploads and downloads), refreshed like the rest. */
+export async function authorizedFetch(path: string, init: RequestInit = {}): Promise<Response> {
+  const go = () => fetch(`/api/v1${path}`, { ...init, headers: { ...(init.headers as Record<string, string>), ...(tokens?.accessToken ? { Authorization: `Bearer ${tokens.accessToken}` } : {}) } });
+  let res = await go();
+  if (res.status === 401 && (await refresh())) res = await go();
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    if (res.status === 401) setTokens(null);
+    throw new ApiError(messageOf(body, res.statusText), res.status, body.error?.code, body.error?.details);
+  }
+  return res;
+}
+
 /** Every page of a list, for the reference data the desks keep in memory. */
 export async function all<T>(path: string, query: Query = {}): Promise<T[]> {
   const out: T[] = [];

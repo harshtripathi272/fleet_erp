@@ -174,11 +174,11 @@ export function toAppData(ref: Reference, ops: Operations): AppData {
   const trips: Trip[] = ops.trips.map((t) => ({
     id: t.id, version: t.version, no: t.number, nominationId: t.nominationId, customerId: t.customerId, truckId: t.vehicleId,
     driverId: t.driverId, trailerId: t.trailerId, routeId: t.routeId,
-    stops: (t.stops ?? []).map((s: Rec) => ({ id: String(s.id ?? s._id), placeId: s.placeId, kind: s.kind, legKm: s.legKm, legHours: s.legHours, arrivedAt: s.arrivedAt, leftAt: s.leftAt })),
+    stops: (t.stops ?? []).map((s: Rec) => ({ id: String(s.id ?? s._id), placeId: s.placeId, kind: s.kind, legKm: s.legKm, legHours: s.legHours, arrivedAt: s.arrivedAt, arrivedVia: s.arrivedVia, leftAt: s.leftAt })),
     productId: t.productId, plannedQty: t.plannedQty, plannedStart: t.plannedStart,
     fuelBudgetL: t.fuelBudgetL ?? 0, cashBudgetZmw: baseMajor(t.cashBudget?.amountMinor), openingFuelL: t.openingFuelL ?? 0,
     createdAt: t.createdAt, dispatchedAt: t.dispatchedAt, endedAt: t.endedAt, closingFuelL: t.closingFuelL, cancelledAt: t.cancelledAt,
-    tracking: t.tracking ? { km: t.tracking.km ?? 0, speed: t.tracking.speed ?? 0, heading: t.tracking.heading ?? 0, at: t.tracking.at } : undefined,
+    tracking: t.tracking ? { km: t.tracking.km ?? 0, speed: t.tracking.speed ?? 0, heading: t.tracking.heading ?? 0, at: t.tracking.at, source: t.tracking.source } : undefined,
     settlementId: t.settlementId,
     stages: (t.stages ?? []).map((s: Rec) => ({ code: s.code, name: s.name, completesOn: s.completesOn, completedAt: s.completedAt })),
     stage: t.stage ?? null,
@@ -202,8 +202,9 @@ export function toAppData(ref: Reference, ops: Operations): AppData {
 
   const docs: DriverDoc[] = ops.documents.map((d) => ({
     id: d.id, tripId: d.tripId, driverId: d.driverId, kind: d.kind, channel: CHANNEL[d.channel] ?? "Operations", note: d.note,
-    file: d.file ? { name: d.file.name, mime: d.file.mime, sampleId: d.file.sampleId, dataUrl: d.file.dataUrl } : undefined,
+    file: d.file ? { name: d.file.name, mime: d.file.mime, fileId: d.file.fileId, sampleId: d.file.sampleId, dataUrl: d.file.dataUrl } : undefined,
     read: d.reading ? { ...d.reading, currency: d.reading.currencyCode } : undefined,
+    simulated: Boolean(d.simulated),
     status: d.status, recordRef: d.recordRef, returnReason: d.returnReason, at: d.at,
   })).sort((a, b) => a.at.localeCompare(b.at));
 

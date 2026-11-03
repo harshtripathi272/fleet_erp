@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import {
@@ -15,6 +15,8 @@ import {
   Send,
   Trash2,
   Undo2,
+  FileText,
+  Upload,
 } from "lucide-react";
 import { useApp } from "../store";
 import {
@@ -41,6 +43,7 @@ import type {
   AppData,
   Consignment,
   Currency,
+  DocKind,
   DriverDoc,
   FundRequest,
   RouteStop,
@@ -49,7 +52,8 @@ import type {
 } from "../domain/types";
 import { Button, Empty, Field, Meter, Rows, Status } from "../ui/kit";
 import { cash, day, fromLocalInput, hm, hoursText, km, L, localInput, num, stamp, zmw } from "../ui/format";
-import { docImage } from "../phone/samples";
+import { useDocImage } from "../docs/useDocImage";
+import { ACCEPT, uploadFile } from "../api/files";
 import { useSim } from "../tracking/sim";
 import { MiniRoute } from "../tracking/MiniRoute";
 import { StopsTimeline } from "./Trips";
@@ -710,12 +714,18 @@ function RequestRow({ request }: { request: FundRequest }) {
 /* ================= Documents ================= */
 
 export function DocPhoto({ doc, size = "md" }: { doc: DriverDoc; size?: "sm" | "md" }) {
-  const { data, setOverlay } = useApp();
-  const src = docImage(data, doc);
+  const { setOverlay } = useApp();
+  const { src, pdf } = useDocImage(doc);
+  const body = pdf
+    ? <span className="doc-photo-pdf"><FileText size={size === "sm" ? 18 : 28} /><span>{doc.file?.name}</span></span>
+    : src ? <img src={src} alt={doc.file?.name ?? "Document"} loading="lazy" /> : <span className="doc-photo-none">{doc.note}</span>;
   return (
-    <button className={`doc-photo doc-photo-${size}`} onClick={() => setOverlay({ document: { kind: "photo", id: doc.id } })} aria-label="Open photo">
-      {src ? <img src={src} alt={doc.file?.name ?? "Document"} loading="lazy" /> : <span className="doc-photo-none">{doc.note}</span>}
-    </button>
+    <span className="doc-photo-wrap">
+      {pdf && src
+        ? <a className={`doc-photo doc-photo-${size}`} href={src} target="_blank" rel="noreferrer" aria-label="Open PDF">{body}</a>
+        : <button className={`doc-photo doc-photo-${size}`} onClick={() => setOverlay({ document: { kind: "photo", id: doc.id } })} aria-label="Open photo">{body}</button>}
+      {doc.simulated && <span className="sim-tag">Simulated</span>}
+    </span>
   );
 }
 
@@ -725,7 +735,9 @@ function DocHeader({ doc }: { doc: DriverDoc }) {
   return (
     <div className="doc-head">
       <strong>
-        {doc.channel === "Operations" ? "Entered by Operations" : `${driver?.name.split(" ")[0]} sent this on ${doc.channel}`}
+        {doc.simulated
+          ? `Simulated: ${driver?.name.split(" ")[0]}'s phone (sample picture, generated figures)`
+          : doc.channel === "Operations" ? "Filed by the office" : `${driver?.name.split(" ")[0]} sent this ${doc.channel === "App" ? "from the driver app" : `on ${doc.channel}`}`}
       </strong>
       <span className="muted">{stamp(doc.at)}</span>
       {doc.status === "recorded" && <Status tone="ok">Recorded · {doc.recordRef}</Status>}
@@ -752,6 +764,34 @@ function ReturnDoc({ doc }: { doc: DriverDoc }) {
         Send
       </Button>
     </div>
+  );
+}
+
+/** The office uploads the real document (a photo or PDF) for the driver; a person then types the figures from it. */
+function UploadDoc({ trip, kind, label }: { trip: Trip; kind: DocKind; label: string }) {
+  const { run, toast } = useApp();
+  const input = useRef<HTMLInputElement>(null);
+  const [busy, setBusy] = useState(false);
+  const choose = async (file: File | undefined) => {
+    if (!file || !trip.driverId) return;
+    setBusy(true);
+    try {
+      const stored = await uploadFile(file);
+      await run({ type: "doc.send", driverId: trip.driverId, tripId: trip.id, kind, channel: "Operations", file: { name: stored.name, mime: stored.mime, fileId: stored.id } }, "Uploaded. Type the figures from it.");
+    } catch (err) {
+      toast(err instanceof Error ? err.message : "The upload failed.", "error");
+    } finally {
+      setBusy(false);
+      if (input.current) input.current.value = "";
+    }
+  };
+  return (
+    <>
+      <input ref={input} type="file" accept={ACCEPT} hidden onChange={(e) => void choose(e.target.files?.[0])} />
+      <Button busy={busy} onClick={() => input.current?.click()}>
+        <Upload /> {label}
+      </Button>
+    </>
   );
 }
 
@@ -985,11 +1025,12 @@ function LoadingPanel({ trip }: { trip: Trip }) {
             <span className="waiting-pulse" aria-hidden />
             <div>
               <strong>{load?.arrivedAt ? "Waiting for the loading invoice" : `Arriving at ${placeName(data, load?.placeId)}`}</strong>
-              <span className="muted">The driver sends a photo on WhatsApp. It's read and filled in here.</span>
+              <span className="muted">The driver sends a photo from the driver app, or you upload it here.</span>
             </div>
+            {ops && <UploadDoc trip={trip} kind="loading" label="Upload the invoice" />}
             {ops && (
-              <Button onClick={() => setManual(true)}>
-                Enter it myself
+              <Button tone="quiet" onClick={() => setManual(true)}>
+                Type it without a photo
               </Button>
             )}
           </div>
@@ -1169,7 +1210,8 @@ function OffloadingPanel({ trip }: { trip: Trip }) {
               <strong>{offload?.arrivedAt ? "Waiting for the delivery note" : `Driving to ${placeName(data, offload?.placeId)}`}</strong>
               <span className="muted">Loaded {consignment.load.unit === "L" ? L(volume20(consignment.load)) + " at 20 °C" : `${consignment.load.qty} ${consignment.load.unit}`}.</span>
             </div>
-            {ops && offload?.arrivedAt && <Button onClick={() => setManual(true)}>Enter it myself</Button>}
+            {ops && offload?.arrivedAt && <UploadDoc trip={trip} kind="delivery" label="Upload the delivery note" />}
+            {ops && offload?.arrivedAt && <Button tone="quiet" onClick={() => setManual(true)}>Type it without a photo</Button>}
           </div>
         )}
       </Card>
