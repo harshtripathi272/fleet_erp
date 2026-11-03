@@ -11,6 +11,7 @@ import companyRouter from '../company/company.router.js';
 import healthRouter from '../health/health.router.js';
 import operationsRouter, { webhookRouter } from '../operations/operations.router.js';
 import * as MetaService from './meta.service.js';
+import * as Readiness from './readiness.service.js';
 import { loadSampleData, type SampleSize } from './sampleData.js';
 
 export const masters = asyncHandler(async (req, res) => {
@@ -55,6 +56,8 @@ export const sampleData = asyncHandler(async (req, res) => {
   ApiResponse.created(res, await loadSampleData(req.auth?.userId, (req.body as { size: SampleSize }).size), 'Sample data loaded');
 });
 
+/** What a new company still needs before its first trip (#45). */
+export const readiness = asyncHandler(async (_req, res) => ApiResponse.success(res, await Readiness.readiness()));
 /** Loading a master from a spreadsheet (#41): it needs the right to create records of that master. */
 const importable = (req: Parameters<Parameters<typeof asyncHandler>[0]>[0]) => {
   const key = (req.params as { master: string }).master;
