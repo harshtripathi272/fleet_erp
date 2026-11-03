@@ -253,3 +253,48 @@
   background: var(--rust-50);
   color: var(--rust);
 }
+
+/* ---------- Weak connection: the offline banner and the outbox ---------- */
+.drv-offline {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: #3a2f17;
+  color: #f8ecd0;
+  font-size: 14px;
+}
+.drv-offline svg {
+  flex: none;
+  margin-top: 1px;
+}
+.drv-outbox {
+  padding: 10px 12px;
+  border: 1px solid #e3c886;
+  border-radius: 10px;
+  background: var(--brass-50);
+  color: var(--ink);
+  font-size: 14px;
+}
+.drv-outbox ul {
+  margin: 4px 0 0;
+  padding-left: 18px;
+  color: var(--ink-2);
+}
+.drv-waiting {
+  color: var(--brass);
+  font-weight: 600;
+  white-space: nowrap;
+}
+.drv-msg-waiting {
+  opacity: 0.7;
+}
+.drv-msg-waiting small {
+  color: var(--brass);
+  font-weight: 600;
+}
