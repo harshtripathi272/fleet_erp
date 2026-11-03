@@ -7,6 +7,7 @@ import { authenticate } from './middleware/authenticate.js';
 import { cors } from './middleware/cors.js';
 import { errorHandler } from './middleware/errorHandler.js';
 import { notFound } from './middleware/notFound.js';
+import { precompressed } from './middleware/precompressed.js';
 import { rejectOperators } from './middleware/rejectOperators.js';
 import { requestId } from './middleware/requestId.js';
 import { requestLogger } from './middleware/requestLogger.js';
@@ -73,10 +74,22 @@ app.use('/api/v1', authenticate, configurationRouter);
 
 // The web app (web/dist), when built: hashed assets cached for a year, the page itself never,
 // and any other GET outside the API answered with the page so the app's own routes work.
+// "Never" is no-cache: the browser asks every time (a 304 when unchanged), so a deploy is picked up at once.
 const webDir = env.WEB_DIR ?? fileURLToPath(new URL('../web/dist', import.meta.url));
 if (existsSync(join(webDir, 'index.html'))) {
-  app.use('/assets', express.static(join(webDir, 'assets'), { immutable: true, maxAge: '1y', fallthrough: false }));
-  app.use(express.static(webDir, { index: false, maxAge: '1h' }));
+  // Compressed when the browser accepts it. A file from an older build is a plain 404 (the app reloads
+  // itself when that happens; see web/src/App.tsx).
+  const assets = { immutable: true, maxAge: '1y' };
+  app.use('/assets', precompressed(join(webDir, 'assets'), assets), express.static(join(webDir, 'assets'), assets), notFound);
+  app.use(
+    express.static(webDir, {
+      index: false,
+      maxAge: '1h',
+      setHeaders: (res, path) => {
+        if (path.endsWith('.html')) res.setHeader('Cache-Control', 'no-cache');
+      },
+    }),
+  );
   app.get(/^\/(?!api\/|api$|console(\/|$)).*/, (_req, res) => {
     res.setHeader('Cache-Control', 'no-cache');
     res.sendFile(join(webDir, 'index.html'));
