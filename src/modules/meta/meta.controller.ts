@@ -8,7 +8,7 @@ import companyRouter from '../company/company.router.js';
 import healthRouter from '../health/health.router.js';
 import operationsRouter, { webhookRouter } from '../operations/operations.router.js';
 import * as MetaService from './meta.service.js';
-import { loadSampleData } from './sampleData.js';
+import { loadSampleData, type SampleSize } from './sampleData.js';
 
 export const masters = asyncHandler(async (req, res) => {
   ApiResponse.success(res, await MetaService.describeMasters(req.auth));
@@ -49,5 +49,5 @@ export const outbox = asyncHandler(async (_req, res) => {
 /** Loads the sample operation once (outside production). */
 export const sampleData = asyncHandler(async (req, res) => {
   if (env.NODE_ENV === 'production') throw new NotFoundError('Route not found');
-  ApiResponse.created(res, await loadSampleData(req.auth?.userId), 'Sample data loaded');
+  ApiResponse.created(res, await loadSampleData(req.auth?.userId, (req.body as { size: SampleSize }).size), 'Sample data loaded');
 });

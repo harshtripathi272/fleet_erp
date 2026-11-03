@@ -57,9 +57,9 @@ export async function userWithRole(owner: Session, roleKey: string, name = `${ro
   return { token: login.body.data.accessToken, refreshToken: login.body.data.refreshToken, userId: created.body.data.user.id, email, password };
 }
 
-/** Loads the sample operation and returns a lookup of ids by master + code/title. */
-export async function loadSample(owner: Session) {
-  const res = await api().post('/api/v1/meta/sample-data').set(bearer(owner));
+/** Loads the sample operation (the small one unless asked) and returns how many records it created. */
+export async function loadSample(owner: Session, size: 'small' | 'full' = 'small') {
+  const res = await api().post('/api/v1/meta/sample-data').set(bearer(owner)).send({ size });
   if (res.status !== 201) throw new Error(`sample data failed ${JSON.stringify(res.body)}`);
   return res.body.data.created as number;
 }

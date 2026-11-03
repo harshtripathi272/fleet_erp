@@ -291,14 +291,26 @@ In production the API refuses to start without the settings in [Deploying a comp
 
 ### Sample data
 
-`npm run seed`, or **Load sample data** in the console, creates a small, made-up operation through the same validation as the API. Nothing in it is real or confidential:
+`npm run seed`, or **Load sample data** in the console, creates a made-up operation through the same validation and services as the API, so every business rule applies. Nothing in it is real or confidential.
 
-- Zambia, Tanzania and DR Congo with provinces and cities; places such as the Lusaka fuel depot, Dar es Salaam port, the Ndola yard and the Nakonde and Kasumbalesa borders; a route from Dar es Salaam port to the Lusaka depot.
+**The masters:**
+- Zambia, Tanzania and DR Congo with provinces and cities; places such as the Lusaka and Lubumbashi fuel depots, Dar es Salaam port, the Kitwe copper refinery, the Ndola yard and the Nakonde and Kasumbalesa borders.
 - Kwacha, US dollar and Tanzanian shilling with exchange rates; cash, mobile-money and depot-fuel payment methods.
 - A Lusaka head office and an Ndola branch; numbering series for drivers, parties and trips.
-- Customers and partners such as Zambezi Energy Ltd, Copperbelt Minerals plc, Tunduma Clearing & Forwarding and Afri Asset Leasing.
-- A Scania and a Volvo truck, a tanker and a flatbed trailer, a pairing, two drivers and compliance documents.
-- Fuel and copper products, trip types and stages, a budget, fuel norms, advance, shortage and recovery rules, message templates and a print layout.
+- Customers and partners such as Zambezi Energy Ltd, Copperbelt Minerals plc, Lake Petroleum Supplies, Katanga Mining Services, Tunduma Clearing & Forwarding and Afri Asset Leasing.
+- Ten trucks (Scania and Volvo) paired with tankers and flatbeds, ten drivers, road tax and licences.
+- Diesel, petrol and copper; three routes (Dar es Salaam to Lusaka, to Lubumbashi, and Kitwe to Dar es Salaam) with budgets; trip types and stages, fuel norms, advance, shortage and recovery rules, message templates and a print layout.
+
+**The history**, each step taken by the desk that owns it. Driver documents are sample pictures from the simulated phone and are marked as simulated:
+- Four settled trips: one in full, two on one settlement with K 1,000 carried forward, and one where road costs exceeded the advance and the company paid the driver.
+- A trip ended and waiting for settlement, with a fuel shortage waived; another trip's shortage was charged.
+- Two trucks on the road: one loaded and through the border, with a receipt returned to the driver and sent again; one dispatched with its loading invoice waiting for Operations.
+- Two planned trips: one with fuel approved but not paid and a cash request above budget waiting for the Owner; one with nothing asked for yet.
+- A nomination sent to Copperbelt Minerals, waiting for the reply. ALC 4821 and BCA 9034 are free for a trip of your own.
+
+The trips are created at the moment of loading, so all their times are the same day; planned start dates are spread over the past weeks.
+
+`npm run seed -- --small`, or `POST /api/v1/meta/sample-data` with `{ "size": "small" }`, loads only the masters with two trucks and two drivers. The tests use this smaller set.
 
 It loads once into an empty database. To start again, delete the `fleet_erp` database in Compass and seed again.
 
