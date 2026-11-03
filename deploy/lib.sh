@@ -72,6 +72,10 @@ load_company() {
   # Behind the external load balancer there is one more proxy hop than on Cloud Run alone.
   TRUST_PROXY="${TRUST_PROXY:-$([ "$DOMAIN_MODE" = lb ] && echo 2 || echo 1)}"
   SA_EMAIL="$SERVICE_ACCOUNT@$PROJECT_ID.iam.gserviceaccount.com"
+  # The daily exchange-rate fetch. Cloud Scheduler isn't offered in every region (not africa-south1, as far as
+  # we know: check with `gcloud scheduler locations list`); a trigger elsewhere still starts the job here.
+  RATES_JOB="${RATES_JOB:-$SERVICE-rates}"
+  SCHEDULER_REGION="${SCHEDULER_REGION:-$([ "$REGION" = africa-south1 ] && echo europe-west1 || echo "$REGION")}"
 }
 
 # The version to deploy: the one given, or the current git commit (the tag build-image.sh gives it).

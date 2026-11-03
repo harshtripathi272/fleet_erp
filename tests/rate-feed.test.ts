@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { after, afterEach, before, beforeEach, describe, test } from 'node:test';
 import { env } from '../src/config/env.js';
 import { setRateProvider, type RateProvider } from '../src/core/rates/providers.js';
-import { companyDay, fetchRates } from '../src/modules/finance/rateFeed.service.js';
+import { companyDay, fetchIsDue, fetchRates } from '../src/modules/finance/rateFeed.service.js';
 import { api, bearer, find, loadSample, resetDatabase, signUp, startDatabase, stopDatabase, userWithRole, type Session } from './helpers.js';
 
 /** The daily exchange-rate feed (#22), with a fake provider in place of Open Exchange Rates. */
@@ -125,6 +125,21 @@ describe('exchange-rate feed', () => {
     await api().get('/api/v1/exchange-rates/feed').set(bearer(viewer)).expect(200);
     await api().put('/api/v1/exchange-rates/feed').set(bearer(viewer)).send({ provider: 'manual' }).expect(403);
     await api().post('/api/v1/exchange-rates/feed/run').set(bearer(viewer)).expect(403);
+  });
+
+  test('the hourly job fetches once a day after the fetch time, and retries after a failure', async () => {
+    assert.equal((await fetchIsDue(new Date('2026-11-11T08:00:00Z'))).due, false, 'off while manual');
+    await switchOn({ provider: 'openexchangerates', fetchAt: '06:00' }).expect(200);
+    // Lusaka is UTC+2: 03:30 UTC is 05:30 there, before the fetch time.
+    assert.equal((await fetchIsDue(new Date('2026-11-11T03:30:00Z'))).due, false);
+    assert.equal((await fetchIsDue(new Date('2026-11-11T04:05:00Z'))).due, true, '06:05 in Lusaka');
+    fail = new Error('timeout');
+    await fetchRates({ now: new Date('2026-11-11T04:05:00Z') });
+    assert.equal((await fetchIsDue(new Date('2026-11-11T05:05:00Z'))).due, true, 'a failed fetch is tried again the next hour');
+    fail = null;
+    await fetchRates({ now: new Date('2026-11-11T05:05:00Z') });
+    assert.equal((await fetchIsDue(new Date('2026-11-11T06:05:00Z'))).due, false, 'once stored, done for the day');
+    assert.equal((await fetchIsDue(new Date('2026-11-12T04:05:00Z'))).due, true, 'due again the next day');
   });
 
   test('the company day follows the time zone, not UTC', () => {
