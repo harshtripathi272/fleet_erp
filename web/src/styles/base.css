@@ -681,6 +681,13 @@ select.input {
     white-space: normal;
   }
 }
+/* On touch-sized screens, text links get a tap area of about 40 px without moving the layout. */
+@media (max-width: 900px) {
+  .link-btn {
+    padding-block: 9px;
+    margin-block: -9px;
+  }
+}
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

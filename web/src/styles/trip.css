@@ -1432,6 +1432,10 @@
   font-weight: 650;
 }
 @media (max-width: 900px) {
+  .fund-more {
+    min-height: 40px;
+    padding: 0;
+  }
   .quick {
     flex-direction: column;
     align-items: stretch;

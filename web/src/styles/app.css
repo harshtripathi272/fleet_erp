@@ -1474,6 +1474,10 @@
   }
   .back-link {
     display: inline-flex;
+    justify-self: start;
+    min-height: 40px;
+    margin-bottom: 2px;
+    padding: 0 12px 0 0;
   }
   .picker {
     grid-template-columns: 1fr;
