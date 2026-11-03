@@ -386,6 +386,9 @@ describe('cargo and trip operations', () => {
     assert.equal(photo.body.data.requiresPhoto, true);
   });
 
+  /** A different, valid id: changing the last character to "0" gave the same id when it already was "0". */
+  const otherId = (id: string) => id.replace(/.$/, (c) => (c === '0' ? '1' : '0'));
+
   test('trip stages: unique order, one final stage at the end', async () => {
     const final = (await get('/trip-stages', { tripTypeId: ids.ttFuel, sort: '-order' })).body.data[0];
     assert.equal(final.isFinal, true);
@@ -394,7 +397,7 @@ describe('cargo and trip operations', () => {
     assert.equal((await post('/trip-stages', { tripTypeId: ids.ttFuel, code: 'plan', name: 'Same code', order: 4 })).status, 409);
     assert.equal((await post('/trip-stages', { tripTypeId: ids.ttFuel, code: 'F2', name: 'Second final', order: 5, isFinal: true })).status, 422);
     assert.equal((await post('/trip-stages', { tripTypeId: ids.ttFuel, code: 'RO', name: 'X', order: 5, isFinal: true, reopenable: true })).status, 422);
-    assert.equal((await patch(`/trip-stages/${final.id}`, { version: final.version, tripTypeId: ids.ttFuel!.replace(/.$/, '0') })).status, 422);
+    assert.equal((await patch(`/trip-stages/${final.id}`, { version: final.version, tripTypeId: otherId(ids.ttFuel!) })).status, 422);
     assert.equal((await post('/trip-types', { code: 'FUEL2', name: 'Second default', cargoKind: 'liquid_bulk', isDefault: true })).status, 409);
   });
 
