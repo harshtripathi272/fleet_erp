@@ -142,6 +142,8 @@ describe('connections', () => {
   test('channel status says where each channel sends', async () => {
     let status = (await as(owner).get('/message-channels').expect(200)).body.data;
     assert.deepEqual(status.map((c: { via: string }) => c.via), ['simulated', 'simulated', 'simulated']);
+    assert.deepEqual(status[0].providers.map((p: { key: string }) => p.key), ['smtp']);
+    assert.ok(status[1].providers.some((p: { key: string; simulated: boolean }) => p.key === 'simulated' && p.simulated));
     await emailConnection();
     status = (await as(owner).get('/message-channels')).body.data;
     assert.equal(status[0].via, 'connection');

@@ -6,7 +6,7 @@ import { defineMaster } from '../../core/masters/define.js';
 import { GROUPS } from '../../core/masters/groups.js';
 import type { Plain } from '../../core/masters/types.js';
 import { baseShape, code, integer, name, text, toUpdateSchema } from '../../core/masters/zod.js';
-import { getSmsAdapter } from '../../core/sms/index.js';
+import { getSmsAdapter, smsAdapters } from '../../core/sms/index.js';
 import { MessageConnection, providersFor, SECRET_ENV } from './models/connection.model.js';
 
 export const CHANNELS = ['email', 'sms', 'whatsapp'] as const;
@@ -132,7 +132,14 @@ export async function senderFor(channel: Channel): Promise<Sender> {
   return { channel, simulated: `No ${CHANNEL_LABEL[channel]} connection is switched on` };
 }
 
-/** Where each channel sends right now, for the settings screen. */
+/** The providers a connection on this channel may use, for the settings screen's choice. */
+export function providerChoices(channel: Channel) {
+  if (channel === 'email') return [{ key: 'smtp', label: 'SMTP server', simulated: false }];
+  if (channel === 'whatsapp') return [{ key: 'simulator', label: 'Simulator (until Marichi Talks is connected)', simulated: true }];
+  return smsAdapters();
+}
+
+/** Where each channel sends right now, and what it could use, for the settings screen. */
 export async function channelStatus() {
   return Promise.all(CHANNELS.map(async (channel) => {
     const sender = await senderFor(channel);
@@ -143,6 +150,7 @@ export async function channelStatus() {
       connectionId: connection ? String(connection._id) : undefined,
       connectionName: connection?.name,
       simulated: sender.simulated,
+      providers: providerChoices(channel),
     };
   }));
 }
