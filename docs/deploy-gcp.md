@@ -114,6 +114,21 @@ Without a version, both scripts use the current git commit, and they stop if tha
 
 To change a setting, edit the company file and run `new-company.sh` again. To replace a secret, for example after the SMTP password changes, run `new-company.sh` with the new value; the service picks up `:latest` on its next revision. The JWT secret isn't replaced on re-runs. To rotate it on purpose, add a new version with `gcloud secrets versions add <company>-jwt-secret` and redeploy; everyone signs in again.
 
+## Daily exchange rates
+
+`new-company.sh` also sets up the exchange-rate fetch (#22):
+
+- **A Cloud Run job**, `fleet-<company>-rates`, from the same image, settings and secrets as the service. It runs `node dist/jobs/fetchRates.js`.
+- **A Cloud Scheduler trigger**, `fleet-<company>-rates-hourly`, which starts the job at five past every hour.
+
+The job fetches only when it's due: after the fetch time set in the app (Masters → Exchange rates → Rate feed), and until a fetch that day succeeds. So the time in the app is the only fetch time, and a failed fetch is tried again an hour later without anyone acting. While the feed is off (the default, manual rates), the job finds nothing to do and exits at once.
+
+- **Region:** Cloud Scheduler isn't offered in every region. For `africa-south1` the trigger defaults to `europe-west1` (set `SCHEDULER_REGION` in the company file); it still starts the job in the company's region. To see what's offered: `gcloud scheduler locations list --project <project-id>`.
+- **The provider's key:** when the company picks a provider in the app, run `new-company.sh` again with `RATE_FEED_API_KEY=<key>` in the environment. It goes to Secret Manager as `<company>-rate-feed-key`, and the service and the job both get it.
+- **Updates:** `update-company.sh` moves the job to the new version together with the service.
+- **What happened:** Cloud Run → Jobs → `fleet-<company>-rates` → Executions (exit 1 means a fetch failed), and in the app, the Rate feed panel's last run and its reason.
+- **Fetch now, by hand:** `gcloud run jobs execute fleet-<company>-rates --region <region> --args dist/jobs/fetchRates.js,--now`, or "Fetch now" in the app.
+
 ## Backups and restore
 
 - **Database:**
