@@ -1277,15 +1277,39 @@
     padding: 0;
     border-radius: 0;
   }
+  /* On a phone the desk's WhatsApp opens as a full screen under the top bar, whose WhatsApp button closes it. */
+  .phone-layer {
+    top: 58px;
+    perspective: none;
+  }
+  .phone-scrim {
+    display: none;
+  }
   .phone-float {
-    right: 0;
-    left: 0;
-    bottom: 0;
-    display: flex;
-    justify-content: center;
+    inset: 0;
+    transform: none !important;
   }
   .phone-float .device {
-    zoom: 0.84;
+    width: 100%;
+    height: 100%;
+    padding: 0;
+    border-radius: 0;
+    background: none;
+    box-shadow: none;
+    zoom: 1 !important;
+  }
+  .phone-float .device::after,
+  .phone-float .device-btn,
+  .phone-float .island,
+  .phone-float .statusbar,
+  .phone-float .home-bar {
+    display: none;
+  }
+  .phone-float .device-bezel,
+  .phone-float .device-screen {
+    padding: 0;
+    border-radius: 0;
+    box-shadow: none;
   }
   .banner {
     top: 64px;
@@ -1293,11 +1317,6 @@
   }
   .shell.role-driver .side {
     display: none;
-  }
-}
-@media (max-width: 420px) {
-  .phone-float .device {
-    zoom: 0.72;
   }
 }
 .dapp-doc .doc-pdf {

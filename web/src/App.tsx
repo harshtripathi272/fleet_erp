@@ -17,6 +17,7 @@ import {
   Truck,
   TriangleAlert,
   Wallet,
+  X,
 } from "lucide-react";
 import { AppProvider, queryClient, resetSync, useApp, useSharedData } from "./store";
 import type { Overlay, Toast } from "./store";
@@ -69,11 +70,12 @@ const readSession = (): Session => {
   }
 };
 
-const NAV: Record<Role, { id: View; label: string; icon: typeof Truck }[]> = {
+/** `short` is the label in the phone tab bar, where there is room for one word. */
+const NAV: Record<Role, { id: View; label: string; short?: string; icon: typeof Truck }[]> = {
   operations: [
     { id: "trips", label: "Trips", icon: Truck },
     { id: "nominations", label: "Nominations", icon: ClipboardList },
-    { id: "accounts", label: "Driver accounts", icon: Wallet },
+    { id: "accounts", label: "Driver accounts", short: "Accounts", icon: Wallet },
     { id: "masters", label: "Masters", icon: Settings2 },
   ],
   finance: [
@@ -86,7 +88,7 @@ const NAV: Record<Role, { id: View; label: string; icon: typeof Truck }[]> = {
     { id: "overview", label: "Overview", icon: Gauge },
     { id: "trips", label: "Trips", icon: Truck },
     { id: "nominations", label: "Nominations", icon: ClipboardList },
-    { id: "accounts", label: "Driver accounts", icon: Wallet },
+    { id: "accounts", label: "Driver accounts", short: "Accounts", icon: Wallet },
     { id: "masters", label: "Masters", icon: Settings2 },
   ],
   driver: [{ id: "driver", label: "My trip", icon: Truck }],
@@ -439,9 +441,6 @@ function Shell({
           <header className="topbar">
             <h1>{current?.label}</h1>
             <PhoneButton />
-            <button className="topbar-user" onClick={() => setMore(true)} aria-label="Account">
-              <Avatar name={person} size={32} />
-            </button>
           </header>
         )}
         <div className={`page page-${view}`}>{children}</div>
@@ -451,15 +450,20 @@ function Shell({
           {items.slice(0, 4).map((item) => (
             <NavButton key={item.id} item={item} active={item.id === view} onClick={() => onView(item.id)} role={role} compact />
           ))}
-          {items.length > 4 && (
-            <button className={`tab ${items.slice(4).some((i) => i.id === view) ? "on" : ""}`} onClick={() => setMore(true)}>
-              <MoreHorizontal />
-              <span>More</span>
-            </button>
-          )}
+          <button className={`tab ${items.slice(4).some((i) => i.id === view) ? "on" : ""}`} onClick={() => setMore(true)}>
+            <MoreHorizontal />
+            <span>More</span>
+          </button>
         </nav>
       )}
       <Modal open={more} title="More" onClose={() => setMore(false)}>
+        <div className="more-person">
+          <Avatar name={person} size={36} />
+          <span>
+            <strong>{person}</strong>
+            <span>{ROLE_LABEL[role]}</span>
+          </span>
+        </div>
         <div className="more-list">
           {items.slice(4).map((item) => (
             <button
@@ -493,7 +497,7 @@ function NavButton({
   role,
   compact,
 }: {
-  item: { id: View; label: string; icon: typeof Truck };
+  item: { id: View; label: string; short?: string; icon: typeof Truck };
   active: boolean;
   onClick: () => void;
   role: Role;
@@ -503,7 +507,7 @@ function NavButton({
   return (
     <button className={compact ? `tab ${active ? "on" : ""}` : `side-link ${active ? "on" : ""}`} onClick={onClick} aria-current={active}>
       <item.icon size={compact ? 20 : 18} />
-      <span>{compact ? item.label.split(" ")[0] : item.label}</span>
+      <span>{compact ? item.short ?? item.label : item.label}</span>
       {count > 0 && <b className="nav-count">{count}</b>}
     </button>
   );
@@ -526,10 +530,10 @@ function PhoneButton() {
     (m) => (m.thread === role || m.thread.startsWith("customer:")) && m.from !== "me" && m.at > (data.reads[role] ?? ""),
   ).length;
   return (
-    <button className={`phone-btn ${overlay.phone ? "on" : ""}`} onClick={() => setOverlay({ ...overlay, phone: !overlay.phone })}>
-      <MessageCircle size={18} />
-      <span>WhatsApp</span>
-      {unread > 0 && <b>{unread}</b>}
+    <button className={`phone-btn ${overlay.phone ? "on" : ""}`} onClick={() => setOverlay({ ...overlay, phone: !overlay.phone })} aria-pressed={!!overlay.phone}>
+      {overlay.phone ? <X size={18} /> : <MessageCircle size={18} />}
+      <span>{overlay.phone ? "Close" : "WhatsApp"}</span>
+      {unread > 0 && !overlay.phone && <b>{unread}</b>}
     </button>
   );
 }

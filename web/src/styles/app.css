@@ -307,12 +307,6 @@
   font: 600 23px/1 var(--serif);
   letter-spacing: -0.015em;
 }
-.topbar-user {
-  display: none;
-  border: 0;
-  background: none;
-  padding: 0;
-}
 .phone-btn {
   position: relative;
   display: inline-flex;
@@ -359,6 +353,22 @@
 .tabbar {
   display: none;
 }
+.more-person {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.more-person > span {
+  display: grid;
+}
+.more-person strong {
+  font-weight: 600;
+}
+.more-person span span {
+  color: var(--ink-3);
+  font-size: 13px;
+}
 .more-list {
   display: grid;
   gap: 4px;
@@ -381,6 +391,7 @@
 .desk {
   display: grid;
   gap: 16px;
+  grid-template-columns: minmax(0, 1fr);
   max-width: 1180px;
 }
 .desk-tools {
@@ -400,6 +411,7 @@
 .stack {
   display: grid;
   gap: 14px;
+  grid-template-columns: minmax(0, 1fr);
 }
 .search {
   display: flex;
@@ -519,6 +531,10 @@
 .table-wrap {
   overflow-x: auto;
   margin: -6px -18px -18px;
+}
+/* A table wider than its card scrolls inside the card, never the page. */
+.card-body:has(> .table) {
+  overflow-x: auto;
 }
 .table {
   width: 100%;
@@ -856,6 +872,7 @@
 .account {
   display: grid;
   gap: 16px;
+  grid-template-columns: minmax(0, 1fr);
   max-width: 1020px;
 }
 .account-head {
@@ -1352,17 +1369,23 @@
     padding: 0 16px;
     height: 58px;
   }
-  .topbar-user {
-    display: block;
-  }
-  .phone-btn span {
-    display: none;
+  .topbar h1 {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
   .phone-btn {
-    padding: 0 12px;
+    flex: none;
+    height: 40px;
   }
   .page {
     padding: 16px 16px 96px;
+  }
+  /* These two pages pad their own panes. */
+  .page-trips,
+  .page-accounts {
+    padding: 0;
   }
   .tabbar {
     position: fixed;

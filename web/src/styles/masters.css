@@ -38,8 +38,17 @@ details.form-group summary { cursor: pointer; }
 .signin-error { color: var(--rust); margin: 0; }
 .picker-signout { margin-top: 28px; }
 @media (max-width: 760px) {
-  .masters { grid-template-columns: 1fr; }
-  .masters-nav { position: static; max-height: 220px; }
+  .masters { grid-template-columns: 1fr; gap: 16px; }
+  /* The list of masters becomes a framed box that scrolls on its own, above the chosen master. */
+  .masters-nav { position: static; max-height: 260px; padding: 10px; border: 1px solid var(--line-2); border-radius: 12px; background: var(--surface); }
+  .masters-nav button { min-height: 40px; }
+  .masters-nav button.on { background: var(--paper-2); }
+  .masters-head { flex-wrap: wrap; }
+  .masters-head > :first-child { flex: 1 1 100%; }
+  .pager { flex-wrap: wrap; justify-content: space-between; }
+  .seg-tabs { overflow-x: auto; scrollbar-width: none; }
+  .seg-tabs button { flex: none; min-height: 40px; white-space: nowrap; }
+  .money-input { grid-template-columns: 1fr 96px; }
 }
 
 /* Company settings */
