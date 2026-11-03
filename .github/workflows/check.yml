@@ -75,7 +75,9 @@ jobs:
     timeout-minutes: 20
     services:
       mongo:
-        image: mongo:8.0
+        # The version the tests' in-memory MongoDB uses. MongoDB 8.0 refuses to start on the runners'
+        # Linux kernel (6.19+, https://jira.mongodb.org/browse/SERVER-121912).
+        image: mongo:8.2.6
         ports: ["27017:27017"]
         options: >-
           --health-cmd "mongosh --quiet --eval 'db.runCommand({ ping: 1 }).ok'"

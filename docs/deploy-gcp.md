@@ -40,7 +40,7 @@ This creates the Artifact Registry repository `fleet` if it's missing, builds th
 4. **Backup:** turn on Cloud Backup, and continuous backup on M10+. Keep at least 7 days of snapshots.
 5. Copy the connection string (`mongodb+srv://user:password@cluster…/fleet_acme?retryWrites=true&w=majority`). The script stores it in Secret Manager, and nobody needs to keep it anywhere else.
 
-**Or MongoDB on a VM.** For a small company, or where Atlas isn't wanted: a Compute Engine VM (e2-small or larger, with a persistent disk) running `mongo:8.0` from the repository's `docker-compose.yml` (only the `mongo` service, with authentication turned on). Keep it on the VPC's internal address, so it isn't reachable from the internet. Set `EGRESS=static` so the service reaches it through the VPC. Back up with a nightly `mongodump --archive --gzip` copied to a Cloud Storage bucket, and take disk snapshots on a schedule.
+**Or MongoDB on a VM.** For a small company, or where Atlas isn't wanted: a Compute Engine VM (e2-small or larger, with a persistent disk) running MongoDB from the repository's `docker-compose.yml` (only the `mongo` service, with authentication turned on). Use MongoDB 8.2 or later on a recent Linux: MongoDB 8.0 refuses to start on kernel 6.19 and newer ([SERVER-121912](https://jira.mongodb.org/browse/SERVER-121912)). Keep it on the VPC's internal address, so it isn't reachable from the internet. Set `EGRESS=static` so the service reaches it through the VPC. Back up with a nightly `mongodump --archive --gzip` copied to a Cloud Storage bucket, and take disk snapshots on a schedule.
 
 ## 3. Write the company file
 
