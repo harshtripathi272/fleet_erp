@@ -8,9 +8,21 @@ export class MemoryRateLimitStore implements RateLimitStore {
   private readonly windows = new Map<string, { count: number; resetAt: number }>();
   private lastSweep = Date.now();
 
+  /** `maxKeys` bounds memory when many addresses or accounts are tried at once; the oldest windows go first. */
+  constructor(private readonly maxKeys = 100000) {}
+
+  get size() { return this.windows.size; }
+
   async hit(key: string, limit: number, windowMs: number): Promise<HitResult> {
     const now = Date.now();
     if (now - this.lastSweep > 60000) this.sweep(now);
+    if (this.windows.size >= this.maxKeys && !this.windows.has(key)) {
+      this.sweep(now);
+      for (const oldest of this.windows.keys()) {
+        if (this.windows.size < this.maxKeys) break;
+        this.windows.delete(oldest);
+      }
+    }
     let window = this.windows.get(key);
     if (!window || window.resetAt <= now) {
       window = { count: 0, resetAt: now + windowMs };

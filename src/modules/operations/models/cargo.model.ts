@@ -58,6 +58,9 @@ driverDocumentSchema.index({ tripId: 1, status: 1 });
 driverDocumentSchema.index({ driverId: 1, at: -1 });
 driverDocumentSchema.index({ updatedAt: 1 });
 driverDocumentSchema.index({ 'file.fileId': 1 }, { sparse: true });
+// The desks' queues: documents still to check, oldest first; and the paged list, newest first.
+driverDocumentSchema.index({ status: 1, kind: 1, at: 1 });
+driverDocumentSchema.index({ at: -1 });
 
 export const DriverDocument = opsModel('DriverDocument', driverDocumentSchema);
 
@@ -114,5 +117,8 @@ consignmentSchema.index({ number: 1 }, { unique: true });
 consignmentSchema.index({ tripId: 1 });
 consignmentSchema.index({ tripId: 1, inTransit: 1 }, { unique: true, partialFilterExpression: { inTransit: true } });
 consignmentSchema.index({ updatedAt: 1 });
+// Shortages waiting for a decision, and the paged list.
+consignmentSchema.index({ 'shortage.status': 1 }, { sparse: true });
+consignmentSchema.index({ loadedAt: -1 });
 
 export const Consignment = opsModel('Consignment', consignmentSchema);

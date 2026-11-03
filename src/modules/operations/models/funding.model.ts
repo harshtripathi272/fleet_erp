@@ -69,6 +69,9 @@ const fundRequestSchema = new Schema<any>({
 fundRequestSchema.index({ number: 1 }, { unique: true });
 fundRequestSchema.index({ tripId: 1, status: 1 });
 fundRequestSchema.index({ updatedAt: 1 });
+// The approval and payment queues (by status, oldest first), and the paged list, newest first.
+fundRequestSchema.index({ status: 1, createdAt: 1 });
+fundRequestSchema.index({ createdAt: -1 });
 
 export const FundRequest = opsModel('FundRequest', fundRequestSchema);
 

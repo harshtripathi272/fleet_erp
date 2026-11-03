@@ -29,6 +29,9 @@ expenseSchema.index({ number: 1 }, { unique: true });
 expenseSchema.index({ driverId: 1, status: 1 });
 expenseSchema.index({ tripId: 1 });
 expenseSchema.index({ updatedAt: 1 });
+// Expenses waiting for a decision, oldest first, and the paged list.
+expenseSchema.index({ status: 1, at: 1 });
+expenseSchema.index({ at: -1 });
 
 export const Expense = opsModel('Expense', expenseSchema);
 

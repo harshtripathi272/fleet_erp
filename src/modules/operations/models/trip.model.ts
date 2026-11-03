@@ -73,5 +73,8 @@ tripSchema.index({ trailerId: 1 }, { unique: true, partialFilterExpression: { ac
 tripSchema.index({ driverId: 1 }, { unique: true, partialFilterExpression: { active: true, driverId: { $exists: true } } });
 tripSchema.index({ driverId: 1, endedAt: 1, settlementId: 1 });
 tripSchema.index({ updatedAt: 1 });
+// Open trips on the dashboards, and the paged list, newest first.
+tripSchema.index({ active: 1 });
+tripSchema.index({ createdAt: -1 });
 
 export const Trip = opsModel('Trip', tripSchema);
