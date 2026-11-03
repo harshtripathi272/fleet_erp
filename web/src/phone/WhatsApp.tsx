@@ -18,6 +18,7 @@ import {
   Video,
 } from "lucide-react";
 import { useApp } from "../store";
+import { useMay } from "../api/session";
 import type { Action, Attachment, DocKind, Message, MsgButton } from "../domain/types";
 import { useDocImage } from "../docs/useDocImage";
 import { FileText } from "lucide-react";
@@ -147,6 +148,7 @@ function withReason(action: Action, reason: string): Action {
 
 function Chat({ thread, onBack, driverId, tripId }: { thread: ThreadInfo; onBack?: () => void; driverId?: string; tripId?: string }) {
   const { data, run, nav } = useApp();
+  const may = useMay();
   const messages = useMemo(() => data.messages.filter((m) => m.thread === thread.key), [data.messages, thread.key]);
   const [draft, setDraft] = useState("");
   const [typingUntil, setTypingUntil] = useState(0);
@@ -266,6 +268,7 @@ function Chat({ thread, onBack, driverId, tripId }: { thread: ThreadInfo; onBack
           </motion.div>
         )}
       </AnimatePresence>
+      {may("chat.send") && (
       <footer className="wa-compose">
         <div className="wa-input">
           <Smile size={21} />
@@ -291,6 +294,7 @@ function Chat({ thread, onBack, driverId, tripId }: { thread: ThreadInfo; onBack
           {draft ? <SendHorizontal size={19} /> : <Mic size={20} />}
         </button>
       </footer>
+      )}
       {driverId && (
         <AttachSheet
           open={attach !== null}
@@ -310,7 +314,17 @@ function Chat({ thread, onBack, driverId, tripId }: { thread: ThreadInfo; onBack
 
 function Bubble({ message, onPress }: { message: Message; onPress: (b: MsgButton) => void }) {
   const { data, setOverlay } = useApp();
+  const may = useMay();
   const mine = message.from === "me";
+  // A button that acts shows only to someone who may take the action; approvals follow the policy.
+  const allowed = (b: MsgButton) => {
+    const a = b.action;
+    if (!a) return true;
+    if (a.type === "request.decide") return Boolean(data.requests.find((r) => r.id === a.id)?.mayDecide);
+    if (a.type === "expense.decide") return Boolean(data.expenses.find((e) => e.id === a.id)?.mayDecide);
+    return may(a.type);
+  };
+  const buttons = (message.buttons ?? []).filter(allowed);
   const { src: image, pdf } = useDocImage(message.attachment ? { file: message.attachment, tripId: findTrip(data, message), read: findRead(data, message) } : undefined);
   return (
     <motion.div
@@ -319,7 +333,7 @@ function Bubble({ message, onPress }: { message: Message; onPress: (b: MsgButton
       animate={{ opacity: 1, y: 0, scale: 1 }}
       transition={{ type: "spring", stiffness: 520, damping: 34 }}
     >
-      <div className={`wa-bubble ${mine ? "out" : "in"} ${message.buttons?.length && !message.resolved ? "has-buttons" : ""}`}>
+      <div className={`wa-bubble ${mine ? "out" : "in"} ${buttons.length && !message.resolved ? "has-buttons" : ""}`}>
         {image && !pdf && (
           <button className="wa-image" onClick={() => setOverlay({ document: { kind: "photo", id: `msg:${message.id}` } })}>
             <img src={image} alt={message.attachment?.name ?? "Photo"} />
@@ -352,9 +366,9 @@ function Bubble({ message, onPress }: { message: Message; onPress: (b: MsgButton
           {mine && <CheckCheck size={15} className="tick read" />}
         </span>
       </div>
-      {!message.resolved && message.buttons && message.buttons.length > 0 && (
+      {!message.resolved && buttons.length > 0 && (
         <div className="wa-buttons">
-          {message.buttons.map((b, i) => (
+          {buttons.map((b, i) => (
             <button key={i} className={b.tone ?? ""} onClick={() => onPress(b)}>
               {b.nav ? <ExternalLink size={14} /> : b.attach ? <Paperclip size={14} /> : <CornerUpLeft size={14} />}
               {b.label}

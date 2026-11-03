@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { Check, MessageCircle, Pencil, Plus, Send, Truck as TruckIcon, X } from "lucide-react";
 import { useApp } from "../store";
+import { useMay } from "../api/session";
 import { byId, leg } from "../domain/calc";
 import { activeTrip, placeName } from "../domain/helpers";
 import { nextStep } from "../domain/turn";
@@ -18,7 +19,8 @@ const firstLoadingPlace = (data: AppData) => data.places.find((p) => p.kind !== 
 const firstSource = (data: AppData) => data.orderSources?.[0]?.name ?? "Direct";
 
 export function Nominations() {
-  const { data, role } = useApp();
+  const { data } = useApp();
+  const may = useMay();
   const [editing, setEditing] = useState<Nomination | "new" | null>(null);
   const [converting, setConverting] = useState<Nomination | null>(null);
   const [filter, setFilter] = useState<"open" | "done">("open");
@@ -38,7 +40,7 @@ export function Nominations() {
             { value: "done", label: "Done" },
           ]}
         />
-        {role !== "finance" && (
+        {may("nomination.save") && (
           <Button tone="primary" onClick={() => setEditing("new")}>
             <Plus /> New nomination
           </Button>
@@ -57,11 +59,12 @@ export function Nominations() {
 }
 
 function NominationCard({ n, onEdit, onConvert }: { n: Nomination; onEdit: () => void; onConvert: () => void }) {
-  const { data, role, run, setOverlay } = useApp();
+  const { data, run, setOverlay } = useApp();
+  const may = useMay();
   const customer = byId(data.customers, n.customerId)!;
   const product = byId(data.products, n.productId);
   const at = STEPS.indexOf(n.status as (typeof STEPS)[number]);
-  const ops = role !== "finance";
+  const ops = may("nomination.send");
   return (
     <article className={`nom nom-${n.status}`}>
       <header className="nom-head">
@@ -117,7 +120,7 @@ function NominationCard({ n, onEdit, onConvert }: { n: Nomination; onEdit: () =>
                 <TruckIcon size={15} />
                 <b>{byId(data.trucks, t.truckId)?.plate}</b>
                 <span className="mono muted">{t.no}</span>
-                <Turn step={nextStep(data, t)} role={role} compact />
+                <Turn trip={t} step={nextStep(data, t)} compact />
               </div>
             );
           })}
@@ -136,23 +139,25 @@ function NominationCard({ n, onEdit, onConvert }: { n: Nomination; onEdit: () =>
         </div>
       )}
       {n.note && <p className="nom-note">{n.note}</p>}
-      {ops && !["converted", "cancelled"].includes(n.status) && (
+      {(ops || (n.status === "accepted" && may("nomination.convert"))) && !["converted", "cancelled"].includes(n.status) && (
         <footer className="nom-actions">
-          {(n.status === "draft" || n.status === "sent") && (
+          {ops && (n.status === "draft" || n.status === "sent") && (
             <Button tone="quiet" size="sm" onClick={onEdit}>
               <Pencil /> Edit
             </Button>
           )}
-          <Button tone="quiet" size="sm" onClick={() => run({ type: "nomination.cancel", id: n.id }, "Nomination cancelled.")}>
-            <X /> Cancel
-          </Button>
+          {ops && (
+            <Button tone="quiet" size="sm" onClick={() => run({ type: "nomination.cancel", id: n.id }, "Nomination cancelled.")}>
+              <X /> Cancel
+            </Button>
+          )}
           <span className="spacer" />
-          {n.status === "draft" && (
+          {ops && n.status === "draft" && (
             <Button tone="primary" onClick={() => run({ type: "nomination.send", id: n.id }, `Sent to ${customer.name} on WhatsApp.`)}>
               <Send /> Send to {customer.contact.split(" ")[0]}
             </Button>
           )}
-          {n.status === "sent" && (
+          {ops && n.status === "sent" && (
             <>
               <Button onClick={() => setOverlay({ phone: true })}>
                 <MessageCircle /> See chat
@@ -162,7 +167,7 @@ function NominationCard({ n, onEdit, onConvert }: { n: Nomination; onEdit: () =>
               </Button>
             </>
           )}
-          {n.status === "accepted" && (
+          {n.status === "accepted" && may("nomination.convert") && (
             <Button tone="brass" onClick={onConvert}>
               Create {n.trucks.length} trip{n.trucks.length === 1 ? "" : "s"}
             </Button>

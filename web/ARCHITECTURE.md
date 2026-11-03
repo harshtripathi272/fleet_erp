@@ -23,7 +23,9 @@ A screen calls `run(action)`. `runCommand` sends it to the API, the store re-rea
 
 What each person sees is filtered by the API. Message threads, queues and approvals follow permissions and the approval policies, not desk names.
 
+Which buttons show follows the same rules. `ACTION_PERMISSION` in `src/api/session.tsx` names the permission each action needs, as `operations.router.ts` checks it, and `useMay()` asks it for the signed-in person. Approving a money request or an expense also needs the approval policy to name the person for a waiting level (`mayDecide` on the record, worked out in the adapter by the API's rule). A desk's "your turn" (`useMine` in `desks/Trips.tsx`) needs both: the step is that desk's, and the person may take it. Buttons inside chat messages follow the same check.
+
 ## Still open
 
 - **Currency.** Base-currency amounts show in the company's currency, but the request and receipt forms still offer only ZMW and USD, as the mock did, and conversion uses one USD rate. Both should come from the company's currencies and exchange rates.
-- **Actions by permission.** Desks show their buttons by desk. A Viewer sees them and the API refuses (403); the buttons should follow `can()`.
+- **Waivers and settlements under a policy.** Waiving a shortage and posting a settlement show by permission (`shortage-decisions`, `settlements`). When a company adds an approval policy for either, the API decides who may by amount, and the screen doesn't mirror that yet: it would need the API to say who may waive or settle, as it does with `mayDecide`.

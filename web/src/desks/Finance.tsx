@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { ArrowRight, Check, CircleDollarSign, Droplets } from "lucide-react";
 import { useApp } from "../store";
+import { useMay } from "../api/session";
 import { byId, carriedIn, driverBalance, funding } from "../domain/calc";
 import { routeLabel } from "../domain/helpers";
 import type { FundRequest } from "../domain/types";
@@ -11,15 +12,18 @@ import { Card, ReceiptReview, ShortageCard } from "./stages";
 
 export function FinanceToday() {
   const { data, role, run, nav } = useApp();
-  // What this person may approve now, by the company's approval policy.
+  const may = useMay();
+  // Only the work this person may do: approvals by the company's approval policy, the rest by permission.
   const toApprove = data.requests.filter((r) => (r.status === "pending" || r.status === "owner") && r.mayDecide);
-  const toPay = data.requests.filter((r) => r.status === "approved");
-  const receipts = data.docs.filter((d) => d.status === "new" && (d.kind === "expense" || d.kind === "fuel"));
-  const expenses = data.expenses.filter((e) => e.status === "pending");
-  const shortages = data.consignments.filter((c) => c.shortage?.status === "pending");
-  const settle = data.drivers
-    .map((d) => ({ driver: d, trips: data.trips.filter((t) => t.driverId === d.id && t.endedAt && !t.settlementId) }))
-    .filter((x) => x.trips.length);
+  const toPay = may("request.issue") ? data.requests.filter((r) => r.status === "approved") : [];
+  const receipts = may("expense.record") ? data.docs.filter((d) => d.status === "new" && (d.kind === "expense" || d.kind === "fuel")) : [];
+  const expenses = data.expenses.filter((e) => e.status === "pending" && e.mayDecide);
+  const shortages = may("shortage.decide") ? data.consignments.filter((c) => c.shortage?.status === "pending") : [];
+  const settle = may("settlement.post")
+    ? data.drivers
+      .map((d) => ({ driver: d, trips: data.trips.filter((t) => t.driverId === d.id && t.endedAt && !t.settlementId) }))
+      .filter((x) => x.trips.length)
+    : [];
   const [picked, setPicked] = useState<string[]>([]);
   const pickable = toApprove;
   const allClear = !toApprove.length && !toPay.length && !receipts.length && !expenses.length && !shortages.length && !settle.length;

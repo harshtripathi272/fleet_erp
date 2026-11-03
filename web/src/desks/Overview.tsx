@@ -12,7 +12,7 @@ export function Overview() {
   const { data, nav } = useApp();
   const active = data.trips.filter(activeTrip);
   const onRoad = active.filter((t) => t.dispatchedAt);
-  const owner = data.requests.filter((r) => r.status === "owner");
+  const owner = data.requests.filter((r) => r.status === "owner" && r.mayDecide);
   const weekAgo = new Date(Date.now() + data.settings.clockOffsetMs - 7 * 864e5).toISOString();
   const fuelWeek = data.requests.filter((r) => r.kind === "fuel" && r.status === "issued" && (r.issuedAt ?? "") > weekAgo).reduce((s, r) => s + r.amount, 0);
   const cashOut = data.drivers.reduce((s, d) => s + Math.max(0, driverBalance(data, d.id)), 0);

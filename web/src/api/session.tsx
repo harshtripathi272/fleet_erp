@@ -3,7 +3,8 @@ import type { FormEvent } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Wordmark } from "../ui/brand";
 import { Button, Field, Modal } from "../ui/kit";
-import type { Role } from "../domain/types";
+import type { Action, Role } from "../domain/types";
+import { useApp } from "../store";
 import { api, ApiError, hasSession, setTokens, type Tokens } from "./client";
 
 export interface Permission { resource: string; actions: string[] }
@@ -21,6 +22,49 @@ export interface Me {
 
 export const can = (me: Me | undefined, resource: string, action: string) =>
   Boolean(me?.permissions.some((p) => (p.resource === "*" || p.resource === resource) && (p.actions.includes("*") || p.actions.includes(action))));
+
+/**
+ * The permission each action needs, as `operations.router.ts` checks it, so a screen offers only what the
+ * API would accept. Deciding a money request or an expense also needs the approval policy to name the
+ * person for a waiting level: that is `mayDecide` on the record, not a permission.
+ */
+export const ACTION_PERMISSION: Record<Action["type"], [resource: string, action: string]> = {
+  "nomination.save": ["nominations", "create"],
+  "nomination.send": ["nominations", "update"],
+  "nomination.accept": ["nominations", "update"],
+  "customer.reply": ["nominations", "update"],
+  "nomination.cancel": ["nominations", "update"],
+  "nomination.convert": ["trips", "create"],
+  "trip.create": ["trips", "create"],
+  "trip.update": ["trips", "update"],
+  "trip.cancel": ["trips", "update"],
+  "trip.dispatch": ["trips", "update"],
+  "trip.ping": ["trips", "update"],
+  "trip.arrive": ["trips", "update"],
+  "trip.end": ["trips", "update"],
+  "trip.remind": ["messages", "create"],
+  "request.create": ["fund-requests", "create"],
+  "request.decide": ["fund-requests", "read"],
+  "request.issue": ["payments", "create"],
+  "request.cancel": ["fund-requests", "update"],
+  "doc.send": ["driver-documents", "create"],
+  "doc.return": ["driver-documents", "update"],
+  "load.record": ["consignments", "create"],
+  "delivery.record": ["consignments", "update"],
+  "shortage.decide": ["shortage-decisions", "create"],
+  "expense.record": ["expenses", "create"],
+  "expense.decide": ["expenses", "read"],
+  "settlement.request": ["settlement-requests", "create"],
+  "settlement.post": ["settlements", "create"],
+  "chat.send": ["messages", "create"],
+  "thread.read": ["messages", "read"],
+};
+
+/** May the signed-in person take this action? Screens use it to decide which buttons to show. */
+export function useMay() {
+  const { me } = useApp();
+  return (type: Action["type"]) => can(me, ...ACTION_PERMISSION[type]);
+}
 
 interface MeResponse { simulators?: boolean; user: { id: string; name: string; email: string; driverId?: string }; roles: { key: string; permissions: Permission[] }[] }
 const toMe = (r: MeResponse): Me => ({

@@ -19,6 +19,7 @@ import {
   Upload,
 } from "lucide-react";
 import { useApp } from "../store";
+import { can, useMay } from "../api/session";
 import {
   byId,
   carriedIn,
@@ -117,8 +118,9 @@ const KIND_LABEL: Record<StopKind, string> = {
 };
 
 function PlanPanel({ trip }: { trip: Trip }) {
-  const { data, role, run } = useApp();
-  const editable = !trip.dispatchedAt && activeTrip(trip) && (role === "operations" || role === "owner");
+  const { data, run } = useApp();
+  const may = useMay();
+  const editable = !trip.dispatchedAt && activeTrip(trip) && may("trip.update");
   const truck = byId(data.trucks, trip.truckId)!;
   const initial = () => ({
     driverId: trip.driverId ?? "",
@@ -407,14 +409,15 @@ export function StopEditor({
 /* ================= Funding ================= */
 
 function FundingPanel({ trip, step }: { trip: Trip; step: NextStep }) {
-  const { data, role, run } = useApp();
+  const { data, run } = useApp();
+  const may = useMay();
   const f = funding(data, trip);
   const requests = data.requests.filter((r) => r.tripId === trip.id).slice().reverse();
-  const canRequest = (role === "operations" || role === "owner") && activeTrip(trip) && Boolean(trip.driverId) && trip.stops.length > 0;
+  const canRequest = may("request.create") && activeTrip(trip) && Boolean(trip.driverId) && trip.stops.length > 0;
   const driver = byId(data.drivers, trip.driverId);
   const truck = byId(data.trucks, trip.truckId)!;
   const both = canRequest && !trip.dispatchedAt && f.fuel.suggested > 0 && f.cash.suggested > 0;
-  const mine = step.move === "request" && (role === "operations" || role === "owner");
+  const mine = step.move === "request" && may("request.create");
   return (
     <div className="stack">
       {both && (
@@ -593,7 +596,8 @@ function FundCard({
 }
 
 function RequestRow({ request }: { request: FundRequest }) {
-  const { data, role, run } = useApp();
+  const { data, run } = useApp();
+  const may = useMay();
   const [mode, setMode] = useState<"reject" | "pay" | null>(null);
   const [note, setNote] = useState("");
   // The company's payment methods that suit the request.
@@ -605,8 +609,8 @@ function RequestRow({ request }: { request: FundRequest }) {
   const amount = request.kind === "fuel" ? L(request.amount) : cash(request.amount, request.currency);
   // Who may decide comes from the company's approval policy (worked out by the API's rule).
   const canDecide = (request.status === "pending" || request.status === "owner") && Boolean(request.mayDecide);
-  const canPay = request.status === "approved" && (role === "finance" || role === "owner");
-  const canCancel = ["pending", "owner", "approved"].includes(request.status) && (role === "operations" || role === "owner");
+  const canPay = request.status === "approved" && may("request.issue");
+  const canCancel = ["pending", "owner", "approved"].includes(request.status) && may("request.cancel");
   const status: Record<FundRequest["status"], [string, "ok" | "wait" | "bad" | "info" | "mute"]> = {
     pending: [`With ${request.waitingOn ?? "the approver"}`, "wait"],
     owner: [`With ${request.waitingOn ?? "the next approver"}${request.level ? ` (${request.level.current} of ${request.level.of})` : ""}`, "wait"],
@@ -750,8 +754,10 @@ function DocHeader({ doc }: { doc: DriverDoc }) {
 
 function ReturnDoc({ doc }: { doc: DriverDoc }) {
   const { run } = useApp();
+  const may = useMay();
   const [open, setOpen] = useState(false);
   const [reason, setReason] = useState("");
+  if (!may("doc.return")) return null;
   if (!open)
     return (
       <Button tone="quiet" size="sm" onClick={() => setOpen(true)}>
@@ -771,6 +777,7 @@ function ReturnDoc({ doc }: { doc: DriverDoc }) {
 /** The office uploads the real document (a photo or PDF) for the driver; a person then types the figures from it. */
 function UploadDoc({ trip, kind, label }: { trip: Trip; kind: DocKind; label: string }) {
   const { run, toast } = useApp();
+  const may = useMay();
   const input = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
   const choose = async (file: File | undefined) => {
@@ -786,6 +793,7 @@ function UploadDoc({ trip, kind, label }: { trip: Trip; kind: DocKind; label: st
       if (input.current) input.current.value = "";
     }
   };
+  if (!may("doc.send")) return null;
   return (
     <>
       <input ref={input} type="file" accept={ACCEPT} hidden onChange={(e) => void choose(e.target.files?.[0])} />
@@ -988,13 +996,14 @@ function Ticket({ consignment, part }: { consignment: Consignment; part: "load" 
 }
 
 function LoadingPanel({ trip }: { trip: Trip }) {
-  const { data, role } = useApp();
+  const { data } = useApp();
+  const may = useMay();
   const [manual, setManual] = useState(false);
   const load = trip.stops.find((s) => s.kind === "load");
   const consignment = data.consignments.find((c) => c.tripId === trip.id);
   const docs = data.docs.filter((d) => d.tripId === trip.id && d.kind === "loading").slice().reverse();
   const open = docs.find((d) => d.status === "new");
-  const ops = role === "operations" || role === "owner";
+  const ops = may("load.record");
   if (!trip.dispatchedAt)
     return (
       <Card>
@@ -1028,12 +1037,14 @@ function LoadingPanel({ trip }: { trip: Trip }) {
               <strong>{load?.arrivedAt ? "Waiting for the loading invoice" : `Arriving at ${placeName(data, load?.placeId)}`}</strong>
               <span className="muted">The driver sends a photo from the driver app, or you upload it here.</span>
             </div>
-            {ops && (
+            {(ops || may("doc.send")) && (
               <div className="waiting-actions">
                 <UploadDoc trip={trip} kind="loading" label="Upload the invoice" />
-                <Button tone="quiet" onClick={() => setManual(true)}>
-                  Type it without a photo
-                </Button>
+                {ops && (
+                  <Button tone="quiet" onClick={() => setManual(true)}>
+                    Type it without a photo
+                  </Button>
+                )}
               </div>
             )}
           </div>
@@ -1058,7 +1069,8 @@ function LoadingPanel({ trip }: { trip: Trip }) {
 /* ================= Transit ================= */
 
 function TransitPanel({ trip }: { trip: Trip }) {
-  const { data, role, run, setOverlay, me } = useApp();
+  const { data, run, setOverlay, me } = useApp();
+  const may = useMay();
   const sim = useSim();
   const total = tripKm(trip);
   const at = trip.tracking?.km ?? 0;
@@ -1069,7 +1081,7 @@ function TransitPanel({ trip }: { trip: Trip }) {
   const eta = next ? new Date(Date.now() + data.settings.clockOffsetMs + (remainingKm / (data.settings.averageSpeedKmh || 62)) * 36e5).toISOString() : undefined;
   const receipts = data.docs.filter((d) => d.tripId === trip.id && (d.kind === "expense" || d.kind === "fuel"));
   const running = sim.tripId === trip.id && sim.running;
-  const ops = role === "operations" || role === "owner";
+  const ops = may("trip.arrive");
   const cons = data.consignments.filter((c) => c.tripId === trip.id);
   const blocked =
     (!cons.length && nextIndex > trip.stops.findIndex((s) => s.kind === "load")) ||
@@ -1173,13 +1185,14 @@ function ReceiptStatus({ doc }: { doc: DriverDoc }) {
 /* ================= Offloading ================= */
 
 function OffloadingPanel({ trip }: { trip: Trip }) {
-  const { data, role } = useApp();
+  const { data } = useApp();
+  const may = useMay();
   const [manual, setManual] = useState(false);
   const offload = trip.stops.find((s) => s.kind === "offload");
   const consignment = data.consignments.find((c) => c.tripId === trip.id);
   const docs = data.docs.filter((d) => d.tripId === trip.id && d.kind === "delivery").slice().reverse();
   const open = docs.find((d) => d.status === "new");
-  const ops = role === "operations" || role === "owner";
+  const ops = may("delivery.record");
   if (!consignment)
     return (
       <Card>
@@ -1216,10 +1229,10 @@ function OffloadingPanel({ trip }: { trip: Trip }) {
               <strong>{offload?.arrivedAt ? "Waiting for the delivery note" : `Driving to ${placeName(data, offload?.placeId)}`}</strong>
               <span className="muted">Loaded {consignment.load.unit === "L" ? L(volume20(consignment.load)) + " at 20 °C" : `${consignment.load.qty} ${consignment.load.unit}`}.</span>
             </div>
-            {ops && offload?.arrivedAt && (
+            {(ops || may("doc.send")) && offload?.arrivedAt && (
               <div className="waiting-actions">
                 <UploadDoc trip={trip} kind="delivery" label="Upload the delivery note" />
-                <Button tone="quiet" onClick={() => setManual(true)}>Type it without a photo</Button>
+                {ops && <Button tone="quiet" onClick={() => setManual(true)}>Type it without a photo</Button>}
               </div>
             )}
           </div>
@@ -1231,11 +1244,12 @@ function OffloadingPanel({ trip }: { trip: Trip }) {
 }
 
 export function ShortageCard({ consignment }: { consignment: Consignment }) {
-  const { role, run } = useApp();
+  const { run } = useApp();
+  const may = useMay();
   const s = consignment.shortage!;
   const [note, setNote] = useState("");
   const [waiving, setWaiving] = useState(false);
-  const finance = role === "finance" || role === "owner";
+  const finance = may("shortage.decide");
   return (
     <Card
       title="Fuel reconciliation"
@@ -1311,7 +1325,8 @@ export function ShortageCard({ consignment }: { consignment: Consignment }) {
 /* ================= Close ================= */
 
 function ClosePanel({ trip }: { trip: Trip }) {
-  const { data, role, run } = useApp();
+  const { data, run } = useApp();
+  const may = useMay();
   const truck = byId(data.trucks, trip.truckId)!;
   const estimate = Math.round(fuelNow(data, trip) / 5) * 5;
   const [closing, setClosing] = useState(String(estimate));
@@ -1319,7 +1334,7 @@ function ClosePanel({ trip }: { trip: Trip }) {
   const issued = data.requests.filter((r) => r.tripId === trip.id && r.kind === "fuel" && r.status === "issued").reduce((s, r) => s + r.amount, 0);
   const used = trip.openingFuelL + issued - Number(closing || 0);
   const variance = used - trip.fuelBudgetL;
-  const ops = role === "operations" || role === "owner";
+  const ops = may("trip.end");
   if (trip.endedAt) {
     const actual = tripFuelUsed(data, trip) ?? 0;
     return (
@@ -1377,7 +1392,8 @@ function ClosePanel({ trip }: { trip: Trip }) {
 /* ================= Settlement ================= */
 
 function SettlePanel({ trip }: { trip: Trip }) {
-  const { data, role, run, nav } = useApp();
+  const { data, run, nav } = useApp();
+  const may = useMay();
   const driver = byId(data.drivers, trip.driverId);
   const settlement = byId(data.settlements, trip.settlementId);
   const advances = data.requests.filter((r) => r.tripId === trip.id && r.kind === "cash" && r.status === "issued");
@@ -1387,7 +1403,7 @@ function SettlePanel({ trip }: { trip: Trip }) {
   const adv = advances.reduce((s, r) => s + (r.currency === "USD" ? r.amount * (r.fxAtIssue ?? data.settings.fxZmwPerUsd) : r.amount), 0);
   const exp = expenses.filter((e) => e.status === "approved").reduce((s, e) => s + e.amountZmw, 0);
   const sh = shortage.reduce((s, c) => s + c.shortage!.amountZmw, 0);
-  const finance = role === "finance" || role === "owner";
+  const finance = may("settlement.post");
   return (
     <div className="stack">
       <Card title="This trip's cash" aside={settlement ? <Status tone="ok">Settled in {settlement.no}</Status> : trip.endedAt ? <Status tone="wait">Next statement</Status> : undefined}>
@@ -1423,7 +1439,7 @@ function SettlePanel({ trip }: { trip: Trip }) {
                 Open statement <ArrowRight />
               </Button>
             )}
-            {!finance && trip.endedAt && !settlement && (
+            {!finance && may("settlement.request") && trip.endedAt && !settlement && (
               <Button disabled={Boolean(driver.settleRequestedAt)} onClick={() => run({ type: "settlement.request", driverId: driver.id }, "Finance asked on WhatsApp.")}>
                 {driver.settleRequestedAt ? "Finance asked" : "Ask Finance to settle"}
               </Button>
@@ -1450,7 +1466,7 @@ function SettlePanel({ trip }: { trip: Trip }) {
                   <span className="mono">{e.no}</span> · {stamp(e.at)}
                 </span>
               </div>
-              {e.status === "pending" && finance ? (
+              {e.status === "pending" && e.mayDecide ? (
                 <span className="row-buttons">
                   <Button size="sm" tone="primary" onClick={() => run({ type: "expense.decide", id: e.id, approve: true }, "Approved.")}>
                     Approve
@@ -1471,12 +1487,15 @@ function SettlePanel({ trip }: { trip: Trip }) {
 }
 
 export function ReceiptReview({ doc }: { doc: DriverDoc }) {
-  const { data, role, run } = useApp();
+  const { data, run, me } = useApp();
+  const may = useMay();
   const read = doc.read ?? {};
   const [categoryId, setCategoryId] = useState(read.categoryId ?? data.categories[0].id);
   const [amount, setAmount] = useState(String(read.amount ?? ""));
   const [currency, setCurrency] = useState<Currency>(read.currency ?? ((data.baseCurrency?.code ?? "ZMW") as Currency));
-  const finance = role === "finance" || role === "owner";
+  const finance = may("expense.record");
+  // Recording approves it too for someone who approves expenses; otherwise it waits for whoever does.
+  const approves = can(me, "expense-approvals", "create");
   const driver = byId(data.drivers, doc.driverId);
   return (
     <div className="receipt-review">
@@ -1517,11 +1536,11 @@ export function ReceiptReview({ doc }: { doc: DriverDoc }) {
               onClick={() =>
                 run(
                   { type: "expense.record", driverId: doc.driverId, tripId: doc.tripId, categoryId, amount: Number(amount), currency, receiptNo: read.docNo, docId: doc.id },
-                  "Approved. It's off the driver's balance.",
+                  approves ? "Approved. It's off the driver's balance." : "Recorded. It waits for approval.",
                 )
               }
             >
-              <Check /> Approve {Number(amount) > 0 ? cash(Number(amount), currency) : ""}
+              <Check /> {approves ? "Approve" : "Record"} {Number(amount) > 0 ? cash(Number(amount), currency) : ""}
             </Button>
           </div>
         ) : (

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { ArrowLeft, Check, FileText, Search } from "lucide-react";
 import { useApp } from "../store";
+import { useMay } from "../api/session";
 import { byId, driverBalance, driverLedger, round } from "../domain/calc";
 import { routeLabel } from "../domain/helpers";
 import type { Driver } from "../domain/types";
@@ -56,7 +57,8 @@ export function Accounts({ driverId, onDriver }: { driverId?: string; onDriver: 
 }
 
 function DriverAccount({ driver, onBack }: { driver: Driver; onBack: () => void }) {
-  const { data, role } = useApp();
+  const { data } = useApp();
+  const may = useMay();
   const [tab, setTab] = useState<"settle" | "ledger" | "history">("settle");
   const balance = driverBalance(data, driver.id);
   const history = data.settlements.filter((s) => s.driverId === driver.id).slice().reverse();
@@ -83,7 +85,7 @@ function DriverAccount({ driver, onBack }: { driver: Driver; onBack: () => void 
         value={tab}
         onChange={setTab}
         options={[
-          { value: "settle", label: role === "finance" ? "Statement" : "Next statement" },
+          { value: "settle", label: may("settlement.post") ? "Statement" : "Next statement" },
           { value: "ledger", label: "All movements" },
           { value: "history", label: "Past statements", count: history.length },
         ]}
@@ -96,7 +98,8 @@ function DriverAccount({ driver, onBack }: { driver: Driver; onBack: () => void 
 }
 
 function StatementBuilder({ driver }: { driver: Driver }) {
-  const { data, role, run, setOverlay } = useApp();
+  const { data, run, setOverlay } = useApp();
+  const may = useMay();
   const closed = data.trips.filter((t) => t.driverId === driver.id && t.endedAt && !t.settlementId);
   const [picked, setPicked] = useState<string[]>(() => closed.map((t) => t.id));
   useEffect(() => {
@@ -123,7 +126,7 @@ function StatementBuilder({ driver }: { driver: Driver }) {
       }),
     [data, picked],
   );
-  const finance = role === "finance";
+  const finance = may("settlement.post");
   // After posting, open the new statement once it arrives from the API.
   const [awaiting, setAwaiting] = useState<number | null>(null);
   useEffect(() => {
@@ -244,11 +247,11 @@ function StatementBuilder({ driver }: { driver: Driver }) {
             <Button tone="primary" size="lg" disabled={!picked.length || blockers.length > 0} onClick={post}>
               <Check /> Post statement
             </Button>
-          ) : (
+          ) : may("settlement.request") ? (
             <Button disabled={Boolean(driver.settleRequestedAt)} onClick={() => run({ type: "settlement.request", driverId: driver.id }, "Finance asked on WhatsApp.")}>
               {driver.settleRequestedAt ? "Finance has been asked" : "Ask Finance to settle"}
             </Button>
-          )}
+          ) : null}
           {data.settlements.some((s) => s.driverId === driver.id) && (
             <Button tone="quiet" onClick={() => setOverlay({ document: { kind: "statement", id: data.settlements.filter((s) => s.driverId === driver.id).at(-1)!.id } })}>
               <FileText /> Last statement

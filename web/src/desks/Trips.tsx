@@ -13,11 +13,12 @@ import {
   XCircle,
 } from "lucide-react";
 import { useApp } from "../store";
+import { useMay } from "../api/session";
 import { byId, tripKm } from "../domain/calc";
 import { activeTrip, placeName, routeLabel } from "../domain/helpers";
 import { ACTOR_NAME, nextStep, STAGES, stageIndex, stageTimes } from "../domain/turn";
-import type { NextStep, StageId } from "../domain/turn";
-import type { Desk, Role, Trip } from "../domain/types";
+import type { Move, NextStep, StageId } from "../domain/turn";
+import type { Action, Desk, Trip } from "../domain/types";
 import { Avatar, Button, Empty, Field, Modal, Segmented } from "../ui/kit";
 import { ago, day, hm, km, stamp } from "../ui/format";
 import { NewTrip } from "./NewTrip";
@@ -26,8 +27,22 @@ import { TripAside } from "./TripAside";
 
 type Filter = "mine" | "active" | "closed";
 
-export function mineFor(step: NextStep, role: Role) {
-  return step.actor === role;
+/** The action each step asks for, so "your turn" only shows to someone allowed to take it. */
+const MOVE_ACTION: Partial<Record<Move, Action["type"]>> = {
+  plan: "trip.update", request: "request.create", issue: "request.issue", dispatch: "trip.dispatch", "confirm-load": "load.record",
+  "confirm-delivery": "delivery.record", shortage: "shortage.decide", end: "trip.end", expenses: "expense.record", settle: "settlement.post",
+};
+
+/** Is this trip's next step this desk's, and may this person take it? Approvals follow the policy (`mayDecide`). */
+export function useMine() {
+  const { data, role } = useApp();
+  const may = useMay();
+  return (trip: Trip, step: NextStep) => {
+    if (step.actor !== role) return false;
+    if (step.move === "approve" || step.move === "owner-approve") return data.requests.some((r) => r.tripId === trip.id && r.mayDecide);
+    const action = MOVE_ACTION[step.move];
+    return !action || may(action);
+  };
 }
 
 export function TripsPage({
@@ -40,6 +55,8 @@ export function TripsPage({
   onSelect: (tripId: string | undefined, stage?: string) => void;
 }) {
   const { data, role } = useApp();
+  const may = useMay();
+  const mineFor = useMine();
   const [filter, setFilter] = useState<Filter>(role === "owner" ? "active" : "mine");
   const [query, setQuery] = useState("");
   const [creating, setCreating] = useState(false);
@@ -51,13 +68,13 @@ export function TripsPage({
     [data],
   );
   const counts = {
-    mine: rows.filter((r) => mineFor(r.step, role) && activeOrUnsettled(r.trip)).length,
+    mine: rows.filter((r) => mineFor(r.trip, r.step) && activeOrUnsettled(r.trip)).length,
     active: rows.filter((r) => activeOrUnsettled(r.trip)).length,
     closed: rows.filter((r) => !activeOrUnsettled(r.trip)).length,
   };
   const q = query.trim().toLowerCase();
   const shown = rows.filter(({ trip, step }) => {
-    if (filter === "mine" && !(mineFor(step, role) && activeOrUnsettled(trip))) return false;
+    if (filter === "mine" && !(mineFor(trip, step) && activeOrUnsettled(trip))) return false;
     if (filter === "active" && !activeOrUnsettled(trip)) return false;
     if (filter === "closed" && activeOrUnsettled(trip)) return false;
     if (!q) return true;
@@ -92,7 +109,7 @@ export function TripsPage({
             <Search size={16} />
             <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Truck, driver, trip, customer" aria-label="Search trips" />
           </div>
-          {(role === "operations" || role === "owner") && (
+          {may("trip.create") && (
             <Button tone="primary" onClick={() => setCreating(true)} className="new-trip-btn">
               <Plus /> New trip
             </Button>
@@ -144,7 +161,7 @@ function TripRow({ trip, step, selected, onClick }: { trip: Trip; step: NextStep
     <button role="listitem" className={`trip-row ${selected ? "on" : ""}`} onClick={onClick}>
       <div className="trip-row-top">
         <span className="plate">{truck?.plate}</span>
-        <Turn step={step} role={role} compact />
+        <Turn trip={trip} step={step} compact />
       </div>
       <div className="trip-row-route">{trip.stops.length ? routeLabel(data, trip) : "Route not set"}</div>
       <div className="trip-row-foot">
@@ -159,8 +176,9 @@ function TripRow({ trip, step, selected, onClick }: { trip: Trip; step: NextStep
   );
 }
 
-export function Turn({ step, role, compact }: { step: NextStep; role: Role; compact?: boolean }) {
+export function Turn({ trip, step, compact }: { trip: Trip; step: NextStep; compact?: boolean }) {
   const { data } = useApp();
+  const mine = useMine()(trip, step);
   if (step.actor === "done")
     return (
       <span className="turn turn-done">
@@ -173,7 +191,7 @@ export function Turn({ step, role, compact }: { step: NextStep; role: Role; comp
         <Navigation size={12} /> {compact ? "On the road" : step.title}
       </span>
     );
-  if (step.actor === role)
+  if (mine)
     return <span className="turn turn-you">{compact ? "Your turn" : step.title}</span>;
   return (
     <span className={`turn turn-${step.actor}`}>
@@ -195,6 +213,7 @@ function TripView({
   onBack: () => void;
 }) {
   const { data, role, setOverlay } = useApp();
+  const may = useMay();
   const step = nextStep(data, trip);
   const truck = byId(data.trucks, trip.truckId)!;
   const trailer = byId(data.trailers, trip.trailerId);
@@ -246,7 +265,7 @@ function TripView({
           <Button onClick={() => setOverlay({ document: { kind: "trip-sheet", id: trip.id } })}>
             <FileText /> Trip sheet
           </Button>
-          {!trip.dispatchedAt && !trip.cancelledAt && (role === "operations" || role === "owner") && (
+          {!trip.dispatchedAt && !trip.cancelledAt && may("trip.cancel") && (
             <button className="icon-btn with-label" onClick={() => setCancelOpen(true)}>
               <XCircle size={18} />
               <span>Cancel trip</span>
@@ -280,13 +299,14 @@ function Stepper({
   selected: StageId;
   onSelect: (stage: StageId) => void;
 }) {
-  const { data, role } = useApp();
+  const { data } = useApp();
+  const mine = useMine()(trip, step);
   const times = stageTimes(data, trip);
   const current = step.actor === "done" ? STAGES.length : stageIndex(step.stage);
   return (
     <ol className="stepper" aria-label="Trip stages">
       {STAGES.map((s, i) => {
-        const state = i < current ? "done" : i === current ? (step.actor === role ? "mine" : "now") : "next";
+        const state = i < current ? "done" : i === current ? (mine ? "mine" : "now") : "next";
         return (
           <li key={s.id} className={`step step-${state} ${selected === s.id ? "selected" : ""}`}>
             <button onClick={() => onSelect(s.id)} aria-current={selected === s.id ? "step" : undefined}>
@@ -302,8 +322,9 @@ function Stepper({
 }
 
 function NextStepBar({ trip, step, onGo, viewing }: { trip: Trip; step: NextStep; onGo: (stage: StageId) => void; viewing: StageId }) {
-  const { data, role, run, setOverlay } = useApp();
-  const mine = step.actor === role;
+  const { data, run, setOverlay } = useApp();
+  const may = useMay();
+  const mine = useMine()(trip, step);
   const actor = step.actor;
   const inline = mine && step.move === "dispatch";
   const target: StageId = step.move === "settle" || step.move === "expenses" ? "settle" : step.stage;
@@ -327,7 +348,7 @@ function NextStepBar({ trip, step, onGo, viewing }: { trip: Trip; step: NextStep
     else onGo(target);
   };
   const canRemind =
-    !mine && (role === "operations" || role === "owner") && (actor === "finance" || actor === "owner" || actor === "driver");
+    !mine && may("trip.remind") && (actor === "finance" || actor === "owner" || actor === "driver");
   return (
     <section className={`next next-${mine ? "mine" : actor}`} aria-live="polite">
       <div className="next-who">

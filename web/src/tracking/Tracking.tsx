@@ -9,6 +9,7 @@ import workerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url";
 maplibregl.setWorkerUrl(workerUrl);
 import { Camera, Crosshair, Fuel, Gauge, MapPin, Pause, Play, X } from "lucide-react";
 import { useApp } from "../store";
+import { useMay } from "../api/session";
 import { byId, cumulativeKm, fuelNow, legLoaded, positionAt, tripKm, tripShape } from "../domain/calc";
 import { activeTrip, placeName, routeLabel } from "../domain/helpers";
 import { useSim } from "./sim";
@@ -33,7 +34,8 @@ function tint(map: MlMap) {
 }
 
 export default function Tracking({ tripId }: { tripId: string }) {
-  const { data, role, run, overlay, setOverlay, me } = useApp();
+  const { data, run, overlay, setOverlay, me } = useApp();
+  const may = useMay();
   const sim = useSim();
   const trip = byId(data.trips, tripId)!;
   const truck = byId(data.trucks, trip.truckId)!;
@@ -51,7 +53,7 @@ export default function Tracking({ tripId }: { tripId: string }) {
   const at = trip.tracking?.km ?? 0;
   const pos = positionAt(data, trip, at);
   const running = sim.running && sim.tripId === trip.id;
-  const ops = role === "operations" || role === "owner";
+  const ops = may("trip.arrive");
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && close();
