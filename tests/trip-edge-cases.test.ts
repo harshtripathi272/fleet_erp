@@ -164,3 +164,48 @@ describe('delivered more than loaded', () => {
   });
 });
 
+describe('stopping a trip that left but never loaded', () => {
+  test('frees the truck where it is, cancels open requests, keeps paid cash for settlement; refused once loaded or when switched off', async () => {
+    const trip = await newTrip();
+    await paidAdvance(trip.id, 150000);
+    // Not yet on the road: cancel, not stop.
+    await as(ops).post(`/trips/${trip.id}/stop`, { reason: 'Customer cancelled', closingFuelL: 150 }).expect(409);
+    ok(await as(ops).post(`/trips/${trip.id}/dispatch`));
+    // A request made on the road and not yet decided.
+    const open = ok(await as(ops).post('/fund-requests', { tripId: trip.id, kind: 'cash', amount: { amountMinor: 50000, currencyId: ids.ZMW } }), 201);
+    // Nobody without trips:update may stop it.
+    const viewer = await userWithRole(owner, 'viewer');
+    await as(viewer).post(`/trips/${trip.id}/stop`, { reason: 'x', closingFuelL: 150 }).expect(403);
+    const stopped = ok(await as(ops).post(`/trips/${trip.id}/stop`, { reason: 'Customer cancelled the order.', closingFuelL: 150, placeId: ids.depot }));
+    assert.equal(stopped.stopReason, 'Customer cancelled the order.');
+    assert.ok(stopped.endedAt);
+    assert.equal(stopped.active, false);
+    const request = ok(await as(ops).get(`/fund-requests/${open.id}`));
+    assert.equal(request.status, 'cancelled');
+    const state = ok<any[]>(await as(ops).get('/vehicle-states')).find((v) => v.vehicleId === ids.v1);
+    assert.deepEqual([state.placeId, state.fuelL], [ids.depot, 150]);
+    // The truck, trailer and driver can go on a new trip straight away.
+    const next = await newTrip();
+    assert.ok(next.id);
+    // Stopping twice, or a loaded trip, is refused.
+    await as(ops).post(`/trips/${trip.id}/stop`, { reason: 'again', closingFuelL: 150 }).expect(409);
+  });
+
+  test('a loaded trip cannot be stopped, and a company can switch stopping off', async () => {
+    const loaded = await newTrip();
+    ok(await as(ops).post(`/trips/${loaded.id}/dispatch`));
+    ok(await as(ops).post(`/trips/${loaded.id}/position`, { km: 1961, speed: 0, source: 'simulator' }));
+    ok(await as(ops).post('/consignments', { tripId: loaded.id, productId: ids.diesel, invoiceNo: 'INV-S', qty: 38000, ambientL: 38000, tempC: 28, density: 835 }), 201);
+    const refused = await as(ops).post(`/trips/${loaded.id}/stop`, { reason: 'Accident', closingFuelL: 100 });
+    assert.equal(refused.status, 422);
+    assert.match(refused.body.error.message, /loaded/);
+    const company = ok(await as(owner).get('/company'));
+    ok(await as(owner).put('/company', { legalName: company.legalName, version: company.version, operations: { ...company.operations, stopBeforeLoading: false } }));
+    const other = await newTrip('v2', 'd2', 't2');
+    ok(await as(ops).post(`/trips/${other.id}/dispatch`));
+    const off = await as(ops).post(`/trips/${other.id}/stop`, { reason: 'Breakdown', closingFuelL: 100 });
+    assert.equal(off.status, 422);
+    assert.match(off.body.error.message, /does not stop trips/);
+  });
+});
+

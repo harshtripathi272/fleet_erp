@@ -95,6 +95,8 @@ export interface Settings {
   roadDistanceFactor: number;
   /** Company trip settings: average driving speed for times and ETAs. */
   averageSpeedKmh: number;
+  /** Company trip settings: a trip that left but never loaded may be stopped. */
+  stopBeforeLoading: boolean;
   clockOffsetMs: number;
   seq: Record<string, number>;
   people: Record<Desk, string>;
@@ -142,6 +144,8 @@ export interface Trip {
   endedAt?: string;
   closingFuelL?: number;
   cancelledAt?: string;
+  /** Stopped after leaving, before loading: why. The trip is closed like an ended one. */
+  stopReason?: string;
   /** Cancelled after cash was paid or spent on it: it still goes on the driver's next settlement. */
   settleAfterCancel?: boolean;
   tracking?: Tracking;
@@ -443,6 +447,7 @@ export type Action =
       cashBudgetZmw?: number;
     }
   | { type: "trip.cancel"; tripId: string; reason: string }
+  | { type: "trip.stop"; tripId: string; reason: string; closingFuelL: number; placeId?: string }
   | { type: "request.create"; tripId: string; kind: "fuel" | "cash"; amount: number; currency: Currency; reason?: string }
   | { type: "request.decide"; id: string; approve: boolean; note?: string; via?: "app" | "WhatsApp" }
   | { type: "request.issue"; id: string; medium: string; reference: string; station?: string; via?: "app" | "WhatsApp" }

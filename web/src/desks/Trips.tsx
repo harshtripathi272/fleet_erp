@@ -236,6 +236,7 @@ function TripView({
   const selectedStage = stage ?? step.stage;
   const panelRef = useRef<HTMLDivElement>(null);
   const [cancelOpen, setCancelOpen] = useState(false);
+  const [stopOpen, setStopOpen] = useState(false);
   const focus = (s: StageId) => {
     onStage(s);
     requestAnimationFrame(() => panelRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }));
@@ -277,6 +278,12 @@ function TripView({
           <Button onClick={() => setOverlay({ document: { kind: "trip-sheet", id: trip.id } })}>
             <FileText /> Trip sheet
           </Button>
+          {trip.dispatchedAt && !trip.endedAt && data.settings.stopBeforeLoading && !data.consignments.some((c) => c.tripId === trip.id) && may("trip.stop") && (
+            <button className="icon-btn with-label" onClick={() => setStopOpen(true)}>
+              <XCircle size={18} />
+              <span>Stop trip</span>
+            </button>
+          )}
           {!trip.dispatchedAt && !trip.cancelledAt && may("trip.cancel") && (
             <button className="icon-btn with-label" onClick={() => setCancelOpen(true)}>
               <XCircle size={18} />
@@ -288,6 +295,7 @@ function TripView({
 
       <Stepper trip={trip} step={step} selected={selectedStage} onSelect={onStage} />
       <NextStepBar trip={trip} step={step} onGo={focus} viewing={selectedStage} />
+      {trip.stopReason && <p className="drawer-note">Stopped before loading: {trip.stopReason}</p>}
 
       <div className="trip-body">
         <div className="trip-main" ref={panelRef}>
@@ -297,6 +305,7 @@ function TripView({
         <TripAside trip={trip} />
       </div>
       <CancelTrip trip={trip} open={cancelOpen} onClose={() => setCancelOpen(false)} />
+      {stopOpen && <StopTrip trip={trip} onClose={() => setStopOpen(false)} />}
     </article>
   );
 }
@@ -408,6 +417,46 @@ function NextStepBar({ trip, step, onGo, viewing }: { trip: Trip; step: NextStep
         )}
       </div>
     </section>
+  );
+}
+
+/** A trip that left but will never load: close it where the truck is now, and free the truck and driver. */
+function StopTrip({ trip, onClose }: { trip: Trip; onClose: () => void }) {
+  const { data, run } = useApp();
+  const reached = [...trip.stops].reverse().find((s) => s.arrivedAt) ?? trip.stops[0];
+  const [reason, setReason] = useState("");
+  const [placeId, setPlaceId] = useState(reached?.placeId ?? "");
+  const [fuel, setFuel] = useState("");
+  const ready = reason.trim() && fuel !== "" && Number(fuel) >= 0;
+  return (
+    <Modal
+      open
+      title={`Stop ${trip.no}?`}
+      onClose={onClose}
+      footer={
+        <>
+          <Button tone="quiet" onClick={onClose}>Keep trip</Button>
+          <Button tone="danger" disabled={!ready} onClick={async () => (await run({ type: "trip.stop", tripId: trip.id, reason: reason.trim(), closingFuelL: Number(fuel), placeId: placeId || undefined }, "Trip stopped. The truck and driver are free.")) && onClose()}>
+            Stop trip
+          </Button>
+        </>
+      }
+    >
+      <div className="form-stack">
+        <p className="muted">Nothing was loaded. Open money requests are cancelled; cash already paid stays with the driver for settlement.</p>
+        <Field label="Reason">
+          <input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Customer cancelled the order" autoFocus />
+        </Field>
+        <Field label="Where the truck is now">
+          <select value={placeId} onChange={(e) => setPlaceId(e.target.value)}>
+            {data.places.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+          </select>
+        </Field>
+        <Field label="Fuel in the tank (L)">
+          <input type="number" min={0} value={fuel} onChange={(e) => setFuel(e.target.value)} inputMode="numeric" />
+        </Field>
+      </div>
+    </Modal>
   );
 }
 

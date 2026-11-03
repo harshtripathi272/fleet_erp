@@ -49,6 +49,7 @@ router.post('/trips/:id/position', tracking, authorize('trips', 'update'), valid
 router.post('/trips/:id/stops/:stopId/arrive', authorize('trips', 'update'), validate({ params: S.tripStopParams }), C.arriveAtStop);
 router.post('/trips/:id/remind', authorize('messages', 'create'), validate(id), C.remind);
 router.post('/trips/:id/end', authorize('trips', 'update'), validate({ ...id, body: S.endTripSchema }), C.endTrip);
+router.post('/trips/:id/stop', authorize('trips', 'update'), validate({ ...id, body: S.stopTripSchema }), C.stopTrip);
 router.post('/trips/:id/stages/complete', authorize('trips', 'read'), validate(id), C.completeStage);
 
 router.get('/vehicle-states', authorize('vehicle-states', 'read'), C.listVehicleStates);

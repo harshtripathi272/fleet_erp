@@ -347,6 +347,46 @@ export async function cancelTrip(id: string, input: S.ReasonInput, ctx: OpsConte
   return presentTrip(trip.toObject());
 }
 
+/**
+ * A trip that left but will never load (the customer cancelled, the truck broke down on the way) is
+ * stopped: it closes where the truck is, open money requests are cancelled, and the truck, trailer
+ * and driver are free. Cash already paid stays with the driver and the trip goes on their next
+ * settlement, like an ended trip. A company can switch this off (operations.stopBeforeLoading).
+ */
+export async function stopTrip(id: string, input: S.StopTripInput, ctx: OpsContext) {
+  need(ctx, 'trips', 'update');
+  const at = new Date();
+  const trip = await tripDoc(id);
+  if (!trip.get('dispatchedAt')) throw conflict("This trip hasn't left yet. Cancel it instead.");
+  if (!activeTrip(trip.toObject())) throw conflict('This trip is already closed.');
+  if (!(await operationsSettings()).stopBeforeLoading) throw refuse('This company does not stop trips before loading. Ask an administrator to switch it on in Company settings.');
+  if (await Consignment.exists({ tripId: trip._id })) throw refuse('The cargo is loaded, so the trip can only end after delivery.');
+  const truck = await truckFacts(trip.get('vehicleId'), false);
+  if (truck.tankL && input.closingFuelL > truck.tankL) throw refuse(`The tank holds ${litres(truck.tankL)}.`);
+  const stops = trip.get('stops') as Array<{ placeId: unknown; arrivedAt?: Date }>;
+  // Where the truck is: the place given, or the last stop it reached.
+  const placeId = input.placeId ?? [...stops].reverse().find((s) => s.arrivedAt)?.placeId ?? stops[0]!.placeId;
+  trip.set({ endedAt: at, stopReason: input.reason, closingFuelL: input.closingFuelL, active: false, updatedBy: ctx.actorId });
+  const tracking = trip.get('tracking');
+  if (tracking) trip.set('tracking.speed', 0);
+  await save(trip);
+  await setVehicleState(trip.get('vehicleId'), { placeId, fuelL: input.closingFuelL }, ctx.actorId);
+  for (const request of await FundRequest.find({ tripId: trip._id, status: { $in: OPEN_REQUEST } })) {
+    request.set('status', 'cancelled');
+    request.get('trail').push({ desk: ctx.desk, userId: ctx.actorId, name: ctx.name, what: 'cancelled', at, note: 'Trip stopped before loading', via: 'app' });
+    await save(request);
+    await resolve(String(request._id), 'Trip stopped');
+    await resolve(`${request._id}-issue`, 'Trip stopped');
+  }
+  await resolve(`${trip._id}-end`, 'Trip stopped');
+  const place = await placeName(placeId);
+  const number = String(trip.get('number'));
+  if (trip.get('driverId')) await post(driverThread(trip.get('driverId')), at, { title: `${number} stopped`, text: `${input.reason} Park the truck at ${place}.` }, ctx);
+  await post(queue('trips'), at, { title: `${number} stopped before loading`, text: `${input.reason} ${truck.plate} is free at ${place} with ${litres(input.closingFuelL)}.` }, ctx);
+  await log(ctx, at, `Stopped before loading at ${place}: ${input.reason}`, { tripId: trip._id });
+  return presentTrip(trip.toObject());
+}
+
 /* ---------- Funding suggestion ---------- */
 
 export async function fundingFor(trip: Plain) {

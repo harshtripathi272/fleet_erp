@@ -23,6 +23,8 @@ export const OPERATIONS_DEFAULTS = {
   defaultFuelReservePercent: 6,
   /** How often drivers are settled; "any" lets Finance settle whenever. */
   settlementPeriod: 'any',
+  /** A trip that left but never loaded (the customer cancelled, a breakdown) may be stopped and its truck freed. */
+  stopBeforeLoading: true,
 } as const;
 export const SETTLEMENT_PERIODS = ['any', 'weekly', 'fortnightly', 'monthly'] as const;
 
@@ -36,6 +38,7 @@ const operationsSchema = new Schema({
   defaultShortageAllowancePercent: { type: Number, min: 0, max: 10, default: OPERATIONS_DEFAULTS.defaultShortageAllowancePercent },
   defaultFuelReservePercent: { type: Number, min: 0, max: 50, default: OPERATIONS_DEFAULTS.defaultFuelReservePercent },
   settlementPeriod: { type: String, enum: SETTLEMENT_PERIODS, default: OPERATIONS_DEFAULTS.settlementPeriod },
+  stopBeforeLoading: { type: Boolean, default: OPERATIONS_DEFAULTS.stopBeforeLoading },
 }, { _id: false, strict: 'throw' });
 
 /** The transporter using this deployment. Exactly one document. */

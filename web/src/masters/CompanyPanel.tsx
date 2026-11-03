@@ -57,6 +57,7 @@ function formFrom(company: Rec | null): Form {
     modules: company?.modules ?? ["masters", "trips"],
     operations: {
       tripStartsFromTruck: ops.tripStartsFromTruck ?? true,
+      stopBeforeLoading: ops.stopBeforeLoading ?? true,
       settlementPeriod: ops.settlementPeriod ?? "any",
       ...Object.fromEntries(NUMBERS.map((n) => [n.key, ops[n.key] ?? n.fallback])),
     },
@@ -185,6 +186,10 @@ export function CompanyPanel() {
           <label className="check-line">
             <input type="checkbox" checked={Boolean(form.operations.tripStartsFromTruck)} onChange={(e) => setOp("tripStartsFromTruck", e.target.checked)} />
             Trips start from the truck: its trailer and driver fill in
+          </label>
+          <label className="check-line">
+            <input type="checkbox" checked={Boolean(form.operations.stopBeforeLoading)} onChange={(e) => setOp("stopBeforeLoading", e.target.checked)} />
+            Operations can stop a trip that left but never loaded, and free the truck
           </label>
           <div className="grid-2">
             {NUMBERS.map((n) => (

@@ -59,6 +59,8 @@ const tripSchema = new Schema<any>({
   closingFuelL: { type: Number, min: 0 },
   cancelledAt: Date,
   cancelReason: String,
+  /** Stopped after leaving, before anything was loaded; the trip is closed like an ended one. */
+  stopReason: String,
   /** Cancelled after cash was paid or spent on it: the trip still goes on the driver's next settlement. */
   settleAfterCancel: Boolean,
   /** The latest position. `source` says where it came from; `simulator` positions are a demo, not the truck. */

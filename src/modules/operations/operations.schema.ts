@@ -77,6 +77,9 @@ export type PositionInput = z.infer<typeof positionSchema>;
 
 export const endTripSchema = z.strictObject({ closingFuelL: litresValue });
 export type EndTripInput = z.infer<typeof endTripSchema>;
+/** Where the truck is now and what is left in the tank, when a trip is stopped before loading. */
+export const stopTripSchema = z.strictObject({ reason: text(300), closingFuelL: litresValue, placeId: objectId.optional() });
+export type StopTripInput = z.infer<typeof stopTripSchema>;
 
 export const vehicleStateSchema = z.strictObject({ placeId: objectId.optional(), fuelL: litresValue.optional() })
   .refine((v) => v.placeId !== undefined || v.fuelL !== undefined, 'Send the place, the fuel or both');

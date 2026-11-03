@@ -33,6 +33,7 @@ const companyShape = {
     defaultShortageAllowancePercent: z.number().min(0).max(10).optional(),
     defaultFuelReservePercent: z.number().min(0).max(50).optional(),
     settlementPeriod: z.enum(SETTLEMENT_PERIODS).optional(),
+    stopBeforeLoading: z.boolean().optional(),
   }).refine((o) => o.densityMinKgM3 === undefined || o.densityMaxKgM3 === undefined || o.densityMinKgM3 < o.densityMaxKgM3, 'Minimum density must be below the maximum').optional(),
 };
 

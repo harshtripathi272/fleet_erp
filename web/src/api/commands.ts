@@ -89,6 +89,7 @@ export async function runCommand(action: Action, ctx: { data: AppData; role: Rol
     case "trip.ping": await api(`/trips/${action.tripId}/position`, { method: "POST", body: { km: Math.max(0, action.km), speed: Math.max(0, Math.min(200, action.speed)), source: "simulator" } }); return;
     case "trip.arrive": await api(`/trips/${action.tripId}/stops/${action.stopId}/arrive`, { method: "POST" }); return;
     case "trip.remind": await api(`/trips/${action.tripId}/remind`, { method: "POST" }); return;
+    case "trip.stop": await api(`/trips/${action.tripId}/stop`, { method: "POST", body: { reason: action.reason, closingFuelL: action.closingFuelL, ...(action.placeId ? { placeId: action.placeId } : {}) } }); return;
     case "trip.end": await api(`/trips/${action.tripId}/end`, { method: "POST", body: { closingFuelL: action.closingFuelL } }); return;
 
     /* Money requests */
