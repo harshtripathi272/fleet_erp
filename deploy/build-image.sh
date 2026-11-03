@@ -4,7 +4,8 @@
 #
 #   deploy/build-image.sh <project-id> <region> [version]
 #
-# version defaults to the current git commit. The image is also tagged `latest`.
+# version defaults to the current git commit. Deploy it with new-company.sh or update-company.sh and the
+# same version; there is no `latest`, so every company runs a named version.
 # DRY_RUN=1 prints the commands instead of running them.
 
 here="$(cd "$(dirname "$0")" && pwd)"
@@ -30,7 +31,6 @@ fi
 say "Build $REPO:$VERSION"
 run gcloud builds submit "$here/.." --project "$PROJECT_ID" --region "$REGION" \
   --tag "$REPO:$VERSION" --ignore-file "$here/gcloudignore"
-run gcloud artifacts docker tags add "$REPO:$VERSION" "$REPO:latest" --quiet
 
 say "Done"
-printf 'Image: %s:%s\nRoll it out: deploy/update-company.sh <company file> %s:%s\n' "$REPO" "$VERSION" "$REPO" "$VERSION"
+printf 'Image: %s:%s\nRoll it out: deploy/update-company.sh <company file or folder> %s\n' "$REPO" "$VERSION" "$VERSION"

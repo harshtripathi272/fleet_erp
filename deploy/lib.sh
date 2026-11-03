@@ -48,7 +48,7 @@ load_company() {
   SERVICE="${SERVICE:-fleet-$COMPANY}"
   SERVICE_ACCOUNT="${SERVICE_ACCOUNT:-fleet-$COMPANY}"
   BUCKET="${BUCKET:-$PROJECT_ID-$COMPANY-files}"
-  IMAGE="${IMAGE:-$REGION-docker.pkg.dev/$PROJECT_ID/fleet/fleet-erp:latest}"
+  IMAGE_REPO="${IMAGE_REPO:-$REGION-docker.pkg.dev/$PROJECT_ID/fleet/fleet-erp}"
   DOMAIN="${DOMAIN:-}"
   DOMAIN_MODE="${DOMAIN_MODE:-$([ -n "$DOMAIN" ] && echo lb || echo none)}"
   EGRESS="${EGRESS:-static}"
@@ -72,6 +72,22 @@ load_company() {
   # Behind the external load balancer there is one more proxy hop than on Cloud Run alone.
   TRUST_PROXY="${TRUST_PROXY:-$([ "$DOMAIN_MODE" = lb ] && echo 2 || echo 1)}"
   SA_EMAIL="$SERVICE_ACCOUNT@$PROJECT_ID.iam.gserviceaccount.com"
+}
+
+# The version to deploy: the one given, or the current git commit (the tag build-image.sh gives it).
+# Never `latest`, so which version runs where is always known and a rollback names the version.
+pick_version() {
+  local version="${1:-}"
+  [ -n "$version" ] || version="$(git -C "$(dirname "${BASH_SOURCE[0]}")/.." rev-parse --short HEAD 2>/dev/null || true)"
+  [ -n "$version" ] || fail "Give the version to deploy (the image tag from build-image.sh)"
+  [ "$version" != latest ] || fail "Name a version, not latest"
+  printf '%s' "$version"
+}
+
+# Stops before deploying an image tag that was never built.
+need_image() {
+  if exists gcloud artifacts docker images describe "$1" --quiet; then return; fi
+  [ "$DRY_RUN" = 1 ] || fail "No image $1. Build it first: deploy/build-image.sh $PROJECT_ID $REGION <version>"
 }
 
 # Reads a secret value from the named environment variable, or asks for it without echoing it.

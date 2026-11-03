@@ -28,7 +28,7 @@ None of these is in the repository. No account, project id or secret is committe
 deploy/build-image.sh <project-id> africa-south1
 ```
 
-This creates the Artifact Registry repository `fleet` if it's missing, builds the `Dockerfile` with Cloud Build, and tags the image with the git commit and `latest`. Cloud Build uploads only what `deploy/gcloudignore` allows: never `.env` files, `node_modules`, local data or the tests.
+This creates the Artifact Registry repository `fleet` if it's missing, builds the `Dockerfile` with Cloud Build, and tags the image with the git commit, for example `fleet-erp:4fff8a7`. That tag is the version. There's no `latest`: every company runs a named version, so it's always clear what runs where, and a rollback names the version to go back to. Cloud Build uploads only what `deploy/gcloudignore` allows: never `.env` files, `node_modules`, local data or the tests.
 
 ## 2. Make the company's database
 
@@ -53,8 +53,10 @@ Fill in `PROJECT_ID`, `REGION`, `COMPANY`, `OWNER_EMAIL`, `SMTP_HOST`, `SMTP_FRO
 ## 4. Run the script
 
 ```sh
-MONGODB_URI='mongodb+srv://…' SMTP_PASS='…' deploy/new-company.sh ~/companies/acme.env
+MONGODB_URI='mongodb+srv://…' SMTP_PASS='…' deploy/new-company.sh ~/companies/acme.env [version]
 ```
+
+The version is the image tag from step 1, and defaults to the current git commit. The script stops if that image was never built.
 
 Leave out `MONGODB_URI` and `SMTP_PASS`, and the script asks for them without showing what you type. Run it first with `DRY_RUN=1` to see every command without creating anything.
 
@@ -96,15 +98,19 @@ At the end the script prints:
 
 ## Updating
 
-Build a new image, then roll it out to one company or to every company file in a folder:
+Build the new version, then roll it out to one company or to every company file in a folder:
 
 ```sh
-deploy/build-image.sh <project-id> africa-south1
-deploy/update-company.sh ~/companies/acme.env
-deploy/update-company.sh ~/companies/
+deploy/build-image.sh <project-id> africa-south1            # prints the version, e.g. 9a1c2e4
+deploy/update-company.sh ~/companies/acme.env 9a1c2e4
+deploy/update-company.sh ~/companies/ 9a1c2e4
 ```
 
-Cloud Run starts the new revision and checks it before moving traffic. To go back: `gcloud run services update-traffic fleet-<company> --to-revisions <previous revision>=100 --region <region>`.
+Without a version, both scripts use the current git commit, and they stop if that image was never built. Cloud Run starts the new revision and checks it before moving traffic; if it fails to start, the old one keeps serving.
+
+**Rollback:** run the same command with the previous version, for example `deploy/update-company.sh ~/companies/acme.env 4fff8a7`.
+
+**Which version runs where:** `gcloud run services describe fleet-<company> --region <region> --format 'value(spec.template.spec.containers[0].image)'` ends with the version.
 
 To change a setting, edit the company file and run `new-company.sh` again. To replace a secret, for example after the SMTP password changes, run `new-company.sh` with the new value; the service picks up `:latest` on its next revision. The JWT secret isn't replaced on re-runs. To rotate it on purpose, add a new version with `gcloud secrets versions add <company>-jwt-secret` and redeploy; everyone signs in again.
 
@@ -115,7 +121,7 @@ To change a setting, edit the company file and run `new-company.sh` again. To re
   - **VM:** the nightly `mongodump` in a bucket, plus disk snapshots. To restore, run `mongorestore --archive --gzip`.
 - **Uploaded documents:** the bucket keeps every object's earlier versions. `gcloud storage ls -a gs://<bucket>/<key>` lists them, and `gcloud storage cp` with the version number restores one. For a second copy in another region, schedule a Storage Transfer Service job to a backup bucket.
 - **Secrets:** Secret Manager keeps every version. The database address can be rebuilt from Atlas; the JWT secret only signs sign-ins, so losing it only signs everyone out.
-- **Settings:** the company file, kept outside the repository, together with the image tag in use (`gcloud run services describe fleet-<company>`).
+- **Settings:** the company file, kept outside the repository, together with the version in use (see Updating).
 
 Test a restore once per company before go-live: restore the latest snapshot into a scratch cluster, and sign in to a scratch service pointed at it.
 

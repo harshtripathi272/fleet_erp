@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Sets up a new company's copy on Google Cloud, from nothing, in one command:
 #
-#   MONGODB_URI='mongodb+srv://…' SMTP_PASS='…' deploy/new-company.sh companies/acme.env
+#   MONGODB_URI='mongodb+srv://…' SMTP_PASS='…' deploy/new-company.sh companies/acme.env [version]
 #
+# version is the image tag from build-image.sh; it defaults to the current git commit.
 # The company file holds the settings (see deploy/company.env.example). Secrets come from the
 # environment or are asked for, and go straight into Secret Manager. Every step checks what exists
 # first, so the script can be run again after a failure or to change a setting.
@@ -21,12 +22,14 @@ here="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=deploy/lib.sh
 . "$here/lib.sh"
 
-[ $# -eq 1 ] || fail "Usage: deploy/new-company.sh <company file>"
+[ $# -ge 1 ] && [ $# -le 2 ] || fail "Usage: deploy/new-company.sh <company file> [version]"
 load_company "$1"
+IMAGE="$IMAGE_REPO:$(pick_version "${2:-}")"
 need_tool gcloud "Install the Google Cloud CLI: https://cloud.google.com/sdk/docs/install"
 need_tool openssl "It generates the JWT secret."
 
-printf 'Company %s in project %s (%s). Domain: %s (%s). Egress: %s.\n' "$COMPANY" "$PROJECT_ID" "$REGION" "${DOMAIN:-none}" "$DOMAIN_MODE" "$EGRESS"
+printf 'Company %s in project %s (%s). Image: %s. Domain: %s (%s). Egress: %s.\n' "$COMPANY" "$PROJECT_ID" "$REGION" "$IMAGE" "${DOMAIN:-none}" "$DOMAIN_MODE" "$EGRESS"
+need_image "$IMAGE"
 
 MONGODB_URI_VALUE="$(read_secret MONGODB_URI 'MongoDB connection string for this company')"
 case "$MONGODB_URI_VALUE" in mongodb://*|mongodb+srv://*|'<MONGODB_URI>') ;; *) fail "MONGODB_URI must start with mongodb:// or mongodb+srv://" ;; esac

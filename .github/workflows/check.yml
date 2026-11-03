@@ -67,3 +67,76 @@ jobs:
           name: test-log
           path: test.log
           if-no-files-found: ignore
+
+  # The production image, as Cloud Run runs it (docs/deploy-gcp.md): it builds, starts with production
+  # settings against a real MongoDB, passes the health check Cloud Run uses, and refuses an unsafe setting.
+  image:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      mongo:
+        image: mongo:8.0
+        ports: ["27017:27017"]
+        options: >-
+          --health-cmd "mongosh --quiet --eval 'db.runCommand({ ping: 1 }).ok'"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build the image
+        run: docker build -t fleet-erp:ci .
+      - name: Production settings
+        # SMTP points at nothing: the first Owner's e-mail fails, is logged, and start-up carries on.
+        run: |
+          {
+            echo "MONGODB_URI=mongodb://127.0.0.1:27017/fleet_ci"
+            echo "JWT_SECRET=$(openssl rand -base64 48 | tr -d '\n')"
+            echo "APP_URL=https://fleet.ci.test"
+            echo "OWNER_EMAIL=owner@ci.test"
+            echo "TRUST_PROXY=1"
+            echo "SMTP_HOST=127.0.0.1"
+            echo "SMTP_PORT=2525"
+            echo "SMTP_FROM=Fleet CI <no-reply@ci.test>"
+            echo "CONSOLE_ENABLED=false"
+            echo "FILE_STORAGE=local"
+            echo "FILE_STORAGE_DIR=/tmp/files"
+          } > prod.env
+      - name: Start the container
+        run: docker run -d --name app --network host --env-file prod.env fleet-erp:ci
+      - name: Ready, as Cloud Run's startup check sees it
+        run: |
+          for i in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:3000/api/v1/health/ready; then echo; break; fi
+            [ "$i" = 60 ] && { echo "Not ready after 60 s"; exit 1; }
+            sleep 1
+          done
+          curl -fsS http://127.0.0.1:3000/api/v1/health/ready | grep -q '"mongo":"connected"'
+      - name: Healthy, by the image's own HEALTHCHECK
+        run: |
+          for i in $(seq 1 30); do
+            status="$(docker inspect --format '{{.State.Health.Status}}' app)"
+            echo "health: $status"
+            [ "$status" = healthy ] && exit 0
+            sleep 2
+          done
+          exit 1
+      - name: Production behaviour
+        run: |
+          headers="$(curl -fsSI http://127.0.0.1:3000/api/v1/health)"
+          echo "$headers" | grep -qi '^strict-transport-security:' || { echo "No HSTS"; exit 1; }
+          echo "$headers" | grep -qi '^cache-control: no-store' || { echo "API answers are cacheable"; exit 1; }
+          [ "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:3000/)" = 200 ] || { echo "The web app is not served"; exit 1; }
+          [ "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:3000/console/)" = 404 ] || { echo "The console is on"; exit 1; }
+          curl -fsS http://127.0.0.1:3000/api/v1/auth/options | grep -q '"signUp":false' || { echo "Self sign-up is on"; exit 1; }
+          docker logs app 2>&1 | grep -q 'First Owner account created' || { echo "No first Owner from OWNER_EMAIL"; exit 1; }
+      - name: An unsafe setting stops the container
+        run: |
+          set +e
+          out="$(timeout 60 docker run --rm --network host --env-file prod.env -e PORT=3001 -e APP_URL=http://localhost fleet-erp:ci 2>&1)"
+          code=$?
+          set -e
+          echo "$out" | tail -5
+          [ "$code" != 0 ] && [ "$code" != 124 ] || { echo "Expected a refusal, got exit $code"; exit 1; }
+          echo "$out" | grep -q 'APP_URL' || { echo "The refusal does not name APP_URL"; exit 1; }
+      - name: Container log
+        if: always()
+        run: docker logs app 2>&1 | tail -60 || true
