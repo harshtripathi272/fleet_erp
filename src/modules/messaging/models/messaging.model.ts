@@ -29,6 +29,8 @@ const messageTemplateSchema = masterSchema({
   body: { type: String, required: true },
   buttons: { type: [{ _id: false, label: String, action: { type: String, enum: BUTTON_ACTIONS } }], default: undefined },
   providerTemplateId: String,
+  /** Created by the installation's default set (#43); the company may edit or archive it like any other. */
+  isDefault: { type: Boolean, default: undefined },
 });
 uniqueIndex(messageTemplateSchema, { code: 1 });
 messageTemplateSchema.index({ event: 1, channel: 1, audience: 1, language: 1 }, { unique: true, partialFilterExpression: { status: 'active' } });
@@ -49,6 +51,8 @@ const notificationRuleSchema = masterSchema({
   delayMinutes: { type: Number, min: 0, max: 10080, default: 0 },
   repeatEveryMinutes: { type: Number, min: 15, max: 10080 },
   maxRepeats: { type: Number, min: 0, max: 10, default: 0 },
+  /** Created by the installation's default set (#43); the company may edit or archive it like any other. */
+  isDefault: { type: Boolean, default: undefined },
 });
 uniqueIndex(notificationRuleSchema, { code: 1 });
 export const NotificationRule = masterModel('NotificationRule', notificationRuleSchema);
