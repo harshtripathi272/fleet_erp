@@ -44,6 +44,7 @@ router.get('/trips/:id', authorize('trips', 'read'), validate(id), C.getTrip);
 router.patch('/trips/:id', authorize('trips', 'update'), validate({ ...id, body: S.updateTripSchema }), C.updateTrip);
 router.get('/trips/:id/funding', finance, authorize('trips', 'read'), validate(id), C.funding);
 router.get('/trips/:id/sheet', authorize('trips', 'read'), validate(id), C.tripSheet);
+router.get('/trips/:id/sheet.pdf', authorize('trips', 'read'), validate(id), C.tripSheetPdf);
 router.post('/trips/:id/cancel', authorize('trips', 'update'), validate({ ...id, body: S.reasonSchema }), C.cancelTrip);
 router.post('/trips/:id/dispatch', authorize('trips', 'update'), validate(id), C.dispatchTrip);
 router.post('/trips/:id/position', tracking, authorize('trips', 'update'), validate({ ...id, body: S.positionSchema }), C.reportPosition);
@@ -87,6 +88,7 @@ router.get('/settlements', authorize('settlements', 'read'), validate({ query: S
 router.post('/settlements', authorize('settlements', 'create'), validate({ body: S.settlementSchema }), C.postSettlement);
 router.get('/settlements/:id', authorize('settlements', 'read'), validate(id), C.getSettlement);
 router.get('/settlements/:id/statement', authorize('settlements', 'read'), validate(id), C.statement);
+router.get('/settlements/:id/statement.pdf', authorize('settlements', 'read'), validate(id), C.statementPdf);
 
 router.get('/nominations', authorize('nominations', 'read'), validate({ query: S.nominationListQuery }), C.listNominations);
 router.post('/nominations', authorize('nominations', 'create'), validate({ body: S.nominationSchema }), C.createNomination);
@@ -104,6 +106,7 @@ router.post('/messages/read', authorize('messages', 'read'), validate({ body: S.
 router.get('/activity', authorize('activity', 'read'), validate({ query: S.activityListQuery }), C.listActivity);
 
 router.get('/driver-app/home', C.driverHome);
+router.get('/driver-app/settlements/:id/statement.pdf', validate(id), C.driverStatementPdf);
 router.get('/driver-app/messages', validate({ query: S.driverMessagesQuery }), C.driverMessages);
 // The driver app queues these on a weak signal and may send one twice; the Idempotency-Key keeps it to one.
 router.post('/driver-app/send', idempotent, validate({ body: S.driverSendSchema }), C.driverSend);

@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Camera, CloudOff, LogOut, MapPin, Send } from "lucide-react";
+import { Camera, CloudOff, Download, LogOut, MapPin, Send } from "lucide-react";
 import { api, ApiError } from "../api/client";
-import { ACCEPT } from "../api/files";
+import { ACCEPT, downloadPdf } from "../api/files";
 import { clearNotices, connectionLost, connectionWorks, enqueue, startOutbox, useOutbox } from "./outbox";
 import { shrinkPhoto } from "./shrink";
 import { signOut, type Me } from "../api/session";
@@ -222,7 +222,7 @@ export function DriverPortal({ me }: { me: Me }) {
           <>
             <h4>Settlements</h4>
             <ul className="drv-list">
-              {h.account.settlements.map((s) => <li key={s.id}><span>{s.number}</span><span className="muted">{stamp(s.at)}</span></li>)}
+              {h.account.settlements.map((s) => <li key={s.id}><span>{s.number}</span><span className="muted">{stamp(s.at)}</span><StatementLink id={s.id} number={s.number} /></li>)}
             </ul>
           </>
         )}
@@ -284,5 +284,24 @@ function Shell({ me, children }: { me: Me; children: React.ReactNode }) {
         {children}
       </main>
     </div>
+  );
+}
+
+/** A settlement's statement as a PDF the phone saves or opens: the same file the office prints. */
+function StatementLink({ id, number }: { id: string; number: string }) {
+  const [state, setState] = useState<"idle" | "busy" | "failed">("idle");
+  const open = async () => {
+    setState("busy");
+    try {
+      await downloadPdf(`/driver-app/settlements/${id}/statement.pdf`, `Statement ${number}.pdf`);
+      setState("idle");
+    } catch {
+      setState("failed");
+    }
+  };
+  return (
+    <button className="drv-link" onClick={() => void open()} disabled={state === "busy"}>
+      <Download size={15} /> {state === "busy" ? "Getting it…" : state === "failed" ? "No signal. Try again" : "PDF"}
+    </button>
   );
 }

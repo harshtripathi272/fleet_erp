@@ -1,8 +1,10 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "motion/react";
-import { Printer, X } from "lucide-react";
+import { Download, Printer, X } from "lucide-react";
 import { useApp } from "../store";
+import { ApiError } from "../api/client";
+import { downloadPdf } from "../api/files";
 import { byId } from "../domain/calc";
 import type { Attachment, Extracted } from "../domain/types";
 import { useDocImage } from "./useDocImage";
@@ -11,8 +13,24 @@ import { TripSheet } from "./TripSheet";
 import { Statement } from "./Statement";
 
 export function DocumentOverlay() {
-  const { data, overlay, setOverlay } = useApp();
+  const { data, overlay, setOverlay, toast } = useApp();
   const doc = overlay.document;
+  const [downloading, setDownloading] = useState(false);
+  // The same PDF the e-mails attach, laid out by the company's print layout.
+  const pdf = doc?.kind === "trip-sheet" ? { path: `/trips/${doc.id}/sheet.pdf`, name: "Trip sheet.pdf" }
+    : doc?.kind === "statement" ? { path: `/settlements/${doc.id}/statement.pdf`, name: "Driver statement.pdf" }
+    : undefined;
+  const download = async () => {
+    if (!pdf) return;
+    setDownloading(true);
+    try {
+      await downloadPdf(pdf.path, pdf.name);
+    } catch (error) {
+      toast(error instanceof ApiError ? error.message : "The PDF didn't download. Check the connection and try again.", "error");
+    } finally {
+      setDownloading(false);
+    }
+  };
   const close = () => setOverlay({ ...overlay, document: undefined });
   useEffect(() => {
     if (!doc) return;
@@ -37,9 +55,14 @@ export function DocumentOverlay() {
       {doc && (
         <motion.div className={`doc-layer ${doc.kind === "photo" ? "photo" : ""}`} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
           <div className="doc-toolbar">
+            {pdf && (
+              <Button tone="primary" onClick={() => void download()} busy={downloading} disabled={downloading}>
+                <Download /> Download PDF
+              </Button>
+            )}
             {doc.kind !== "photo" && (
-              <Button tone="primary" onClick={() => window.print()}>
-                <Printer /> Print or save as PDF
+              <Button onClick={() => window.print()}>
+                <Printer /> Print
               </Button>
             )}
             <button className="doc-close" onClick={close}>
