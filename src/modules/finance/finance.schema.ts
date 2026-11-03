@@ -49,3 +49,10 @@ export const convertMoneyQuerySchema = z.strictObject({
   date: day.optional(),
 });
 export type ConvertMoneyQuery = z.infer<typeof convertMoneyQuerySchema>;
+
+/** Exchange rates → Rate feed. The provider's key is the RATE_FEED_API_KEY secret, never sent here. */
+export const rateFeedSettingsSchema = z.strictObject({
+  provider: z.string().regex(/^[a-z][a-z0-9-]{1,39}$/).optional(),
+  currencyIds: z.array(objectId).max(200).optional(),
+  fetchAt: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'A time such as 06:00').optional(),
+}).refine((v) => Object.keys(v).length > 0, 'Send at least one setting');

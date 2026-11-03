@@ -11,6 +11,7 @@ import { CompanyPanel } from "./CompanyPanel";
 import { DriverAccess } from "./DriverAccess";
 import { UserAccess } from "./UserAccess";
 import { PermissionMatrix } from "./PermissionMatrix";
+import { RateFeed } from "./RateFeed";
 
 /**
  * One screen for every master, built from GET /meta/masters: groups, fields, links, choices and the
@@ -108,6 +109,7 @@ function Records({ def, defs }: { def: Def; defs: Def[] }) {
           <Button tone="primary" onClick={() => setOpen("new")}><Plus size={16} /> New {def.singular.toLowerCase()}</Button>
         )}
       </header>
+      {def.key === "exchange-rates" && <RateFeed />}
       <div className="desk-tools">
         <label className="search">
           <Search size={15} />
