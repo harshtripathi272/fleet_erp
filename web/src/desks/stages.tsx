@@ -20,8 +20,7 @@ import {
 } from "lucide-react";
 import { useApp } from "../store";
 import { can, useMay } from "../api/session";
-import { byId, carriedIn, cumulativeKm, driverBalance, fuelEstimate, fuelNow, funding, legLoaded, measureFuel, shortageFor, toZmw, tripFuelUsed, tripHours, tripKm, validateStops, volume20 } from "../domain/calc";
-import { leg } from "../domain/route";
+import { byId, carriedIn, cumulativeKm, driverBalance, fuelEstimate, fuelNow, funding, leg, legLoaded, measureFuel, shortageFor, toZmw, tripFuelUsed, tripHours, tripKm, validateStops, volume20 } from "../domain/calc";
 import { activeTrip, placeName } from "../domain/helpers";
 import type { NextStep, StageId } from "../domain/turn";
 import type {
@@ -142,7 +141,7 @@ function PlanPanel({ trip }: { trip: Trip }) {
     if (stopsProblem) return undefined;
     const stops = form.stops.map((s, i) => {
       const prev = form.stops[i - 1];
-      const l = prev ? leg(data, prev.placeId, s.placeId) : { km: 0, hours: 0 };
+      const l = prev ? leg(data, prev.placeId, s.placeId, trip) : { km: 0, hours: 0 };
       return { ...s, id: String(i), legKm: l.km, legHours: l.hours };
     });
     return { stops, fuel: fuelEstimate({ stops }, truck) };
@@ -272,7 +271,7 @@ function PlanPanel({ trip }: { trip: Trip }) {
           </select>
         }
       >
-        <StopEditor stops={form.stops} onChange={(stops) => set({ stops, routeId: route && JSON.stringify(stops) === JSON.stringify(route.stops) ? form.routeId : "" })} startLocked={truck.placeId} />
+        <StopEditor stops={form.stops} onChange={(stops) => set({ stops, routeId: route && JSON.stringify(stops) === JSON.stringify(route.stops) ? form.routeId : "" })} startLocked={truck.placeId} trip={trip} />
         {preview ? (
           <div className="route-summary">
             <MiniRoute stops={preview.stops} height={120} />
@@ -332,10 +331,13 @@ export function StopEditor({
   stops,
   onChange,
   startLocked,
+  trip,
 }: {
   stops: RouteStop[];
   onChange: (stops: RouteStop[]) => void;
   startLocked?: string;
+  /** When re-planning a trip: its own distances for the legs it already has. */
+  trip?: Trip;
 }) {
   const { data } = useApp();
   const patch = (index: number, p: Partial<RouteStop>) => onChange(stops.map((s, i) => (i === index ? { ...s, ...p } : s)));
@@ -347,7 +349,7 @@ export function StopEditor({
     <div className="stop-editor">
       {stops.map((stop, i) => {
         const prev = stops[i - 1];
-        const l = prev && stop.placeId && prev.placeId ? leg(data, prev.placeId, stop.placeId) : undefined;
+        const l = prev && stop.placeId && prev.placeId ? leg(data, prev.placeId, stop.placeId, trip) : undefined;
         const fixedKind = i === 0 || i === stops.length - 1;
         return (
           <div className={`stop-row kind-${stop.kind}`} key={i}>
