@@ -1,4 +1,4 @@
-import type { Request } from 'express';
+import type { Request, Response } from 'express';
 import { ApiResponse, buildPaginationMeta } from '../../core/response/index.js';
 import { asyncHandler } from '../../utils/asyncHandler.js';
 import * as Cargo from './cargo.service.js';
@@ -8,6 +8,7 @@ import * as Expenses from './expenses.service.js';
 import * as Funding from './funding.service.js';
 import * as Messages from './messages.service.js';
 import * as Nominations from './nominations.service.js';
+import * as Printouts from './printouts.js';
 import * as Settlements from './settlements.service.js';
 import * as Stages from './stages.js';
 import { opsContext } from './support.js';
@@ -18,6 +19,14 @@ type Page = { data: unknown[]; total: number; page: number; limit: number };
 const paged = (res: Parameters<Parameters<typeof asyncHandler>[0]>[1], result: Page) => ApiResponse.paginated(res, result.data, buildPaginationMeta(result.total, result.page, result.limit));
 const param = (req: Request, key = 'id') => (req.params as Record<string, string>)[key]!;
 const query = <T>(req: Request) => req.query as unknown as T;
+
+/** A printout as a file the browser opens or saves, the same PDF the e-mails attach (printouts.ts). */
+function sendPdf(res: Response, pdf: { name: string; body: Buffer }) {
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', `inline; filename*=UTF-8''${encodeURIComponent(pdf.name)}`);
+  res.setHeader('Content-Security-Policy', "default-src 'none'; sandbox");
+  res.send(pdf.body);
+}
 
 /* Trips */
 export const listTrips = asyncHandler(async (req, res) => paged(res, await Trips.listTrips(query(req))));
@@ -34,6 +43,7 @@ export const endTrip = asyncHandler(async (req, res) => ApiResponse.success(res,
 export const completeStage = asyncHandler(async (req, res) => ApiResponse.success(res, Trips.presentTrip((await Stages.completeStage(param(req), opsContext(req))).toObject()), 'Stage complete'));
 export const funding = asyncHandler(async (req, res) => ApiResponse.success(res, await Trips.getFunding(param(req))));
 export const tripSheet = asyncHandler(async (req, res) => ApiResponse.success(res, await Dashboards.tripSheet(param(req))));
+export const tripSheetPdf = asyncHandler(async (req, res) => sendPdf(res, await Printouts.tripSheetPdf(param(req))));
 export const listVehicleStates = asyncHandler(async (_req, res) => ApiResponse.success(res, await Trips.listVehicleStates()));
 export const correctVehicleState = asyncHandler(async (req, res) => ApiResponse.success(res, await Trips.correctVehicleState(param(req, 'vehicleId'), req.body, opsContext(req)), 'Truck updated'));
 
@@ -70,6 +80,7 @@ export const requestSettlement = asyncHandler(async (req, res) => ApiResponse.su
 export const listSettlements = asyncHandler(async (req, res) => paged(res, await Settlements.listSettlements(query(req))));
 export const getSettlement = asyncHandler(async (req, res) => ApiResponse.success(res, await Settlements.getSettlement(param(req))));
 export const statement = asyncHandler(async (req, res) => ApiResponse.success(res, await Settlements.statement(param(req))));
+export const statementPdf = asyncHandler(async (req, res) => sendPdf(res, await Printouts.statementPdf(param(req))));
 export const postSettlement = asyncHandler(async (req, res) => ApiResponse.created(res, await Settlements.postSettlement(req.body, opsContext(req)), 'Settlement posted'));
 
 /* Nominations */
@@ -98,6 +109,7 @@ export const inbound = asyncHandler(async (req, res) => ApiResponse.success(res,
 /* Driver app: the signed-in driver's own work */
 const driverActor = (req: Request): DriverApp.DriverActor => ({ userId: req.auth!.userId, driverId: req.auth!.driverId!, name: req.auth!.name });
 export const driverHome = asyncHandler(async (req, res) => ApiResponse.success(res, await DriverApp.home(driverActor(req))));
+export const driverStatementPdf = asyncHandler(async (req, res) => sendPdf(res, await DriverApp.statementPdf(driverActor(req), param(req))));
 export const driverMessages = asyncHandler(async (req, res) => ApiResponse.success(res, await DriverApp.messages(driverActor(req), query<{ since?: string }>(req).since)));
 export const driverSend = asyncHandler(async (req, res) => ApiResponse.created(res, await DriverApp.send(driverActor(req), req.body), 'Sent to the office'));
 export const driverArrive = asyncHandler(async (req, res) => ApiResponse.success(res, await DriverApp.arrive(driverActor(req), param(req, 'stopId')), 'Arrival recorded'));
