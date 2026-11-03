@@ -140,7 +140,12 @@ export async function sendDocument(input: DocumentInput, ctx: OpsContext) {
       title: `${simulated ? `Simulated ${label}` : `${label[0]!.toUpperCase()}${label.slice(1)}`} from ${driver.name}`,
       text: [source || (input.file ? 'Type the figures from the photo on the trip, then confirm.' : ''), input.note].filter(Boolean).join(' '),
       rows, attachment: file,
-      buttons: [...(confirm ? [confirm] : []), { label: 'Return', tone: 'danger', action: { type: 'doc.return', docId: id, reason: '' } }, { label: 'Open trip', nav: { tripId: trip ? String(trip._id) : undefined, docId: id } }],
+      buttons: [
+        ...(confirm ? [confirm] : []),
+        ...(input.kind === 'other' ? [{ label: 'Done', tone: 'primary' as const, action: { type: 'doc.done', docId: id } }] : []),
+        { label: 'Return', tone: 'danger', action: { type: 'doc.return', docId: id, reason: '' } },
+        { label: 'Open trip', nav: { tripId: trip ? String(trip._id) : undefined, docId: id } },
+      ],
       refId: id,
     }, ctx);
   }
@@ -162,6 +167,23 @@ export async function returnDocument(id: string, input: S.ReasonInput, ctx: OpsC
     refId: `${doc.get('tripId')}-${doc.get('kind')}`,
   }, ctx);
   await log(ctx, at, `Returned the driver's document: ${input.reason}`, { tripId: doc.get('tripId'), entity: 'driver-documents', entityId: doc._id });
+  return present(doc.toObject());
+}
+
+/**
+ * A message or photo from the driver that is not a document to record (a breakdown, a question): someone in
+ * the office has dealt with it. It stops waiting on the desks and its WhatsApp buttons close.
+ */
+export async function markDone(id: string, ctx: OpsContext) {
+  need(ctx, 'driver-documents', 'update');
+  const at = new Date();
+  const doc = await loadOr404(DriverDocument, id, 'Document');
+  if (doc.get('kind') !== 'other') throw refuse('Record this document on the trip instead.');
+  if (doc.get('status') !== 'new') throw conflict('It was already handled.');
+  doc.set({ status: 'recorded', recordRef: `Done by ${ctx.name}`, updatedBy: ctx.actorId });
+  await save(doc);
+  await resolve(id, `Done by ${ctx.name}`);
+  await log(ctx, at, `Dealt with the driver's message${doc.get('note') ? `: ${doc.get('note')}` : ''}`, { tripId: doc.get('tripId'), entity: 'driver-documents', entityId: doc._id });
   return present(doc.toObject());
 }
 
@@ -261,11 +283,14 @@ async function shortageFor(consignment: Plain, delivered: Measure) {
   const share = policy?.bearer === 'company' ? 0 : policy?.bearer === 'shared' ? Number(policy.driverSharePercent ?? 50) / 100 : 1;
   const amountMinor = price ? Math.round(figures.netShortL * price.amountMinor * share) : 0;
   const baseAmountMinor = price && amountMinor ? (await toBase(amountMinor, price.currencyId)).baseMinor : 0;
+  const pending = figures.netShortL > 0 && baseAmountMinor > 0;
   return {
     ...figures,
     ...(price ? { pricePerL: price, amount: { amountMinor, currencyId: price.currencyId } } : {}),
     baseAmountMinor,
-    status: figures.netShortL > 0 && baseAmountMinor > 0 ? 'pending' : 'none',
+    status: pending ? 'pending' : 'none',
+    // Waiving is an approval: route it now, so the desks know who may waive it.
+    ...(pending ? { approval: await routeApproval('shortage_waiver', { amountMinor: baseAmountMinor, currencyId: (await baseCurrency()).id }) } : {}),
   };
 }
 
@@ -348,7 +373,9 @@ export async function decideShortage(id: string, input: S.ShortageDecisionInput,
   if (input.charge) need(ctx, 'shortage-decisions', 'create', 'Your role does not decide shortages.');
   else {
     if (!input.note) throw refuse("Say why it's waived.");
-    const approval = await routeApproval('shortage_waiver', { amountMinor: Number(shortage.baseAmountMinor), currencyId: (await baseCurrency()).id });
+    // The route stored at delivery; shortages recorded before it was stored are routed now.
+    const stored = shortage.approval?.toObject?.() ?? shortage.approval;
+    const approval = stored?.levels?.length ? stored : await routeApproval('shortage_waiver', { amountMinor: Number(shortage.baseAmountMinor), currencyId: (await baseCurrency()).id });
     if (!mayDecideAll(ctx, approval)) throw new ForbiddenError(`Waiving this needs ${approval.levels.at(-1)!.label}.`);
   }
   consignment.set({ 'shortage.status': input.charge ? 'charged' : 'waived', 'shortage.decidedAt': at, 'shortage.decidedBy': ctx.actorId, 'shortage.note': input.note, updatedBy: ctx.actorId });

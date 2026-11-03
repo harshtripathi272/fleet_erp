@@ -545,7 +545,8 @@ function useQueueCount(role: Role, view: View) {
   };
   const queue = queueFor(data, role as Desk).filter(yours);
   if (view === "today" || view === "overview") return queue.length;
-  if (view === "trips" && role === "operations") return queue.filter((q) => q.tripId).length;
+  // Trips: one per trip, the same trips "Needs me" lists.
+  if (view === "trips" && role === "operations") return new Set(queue.filter((q) => q.tripId).map((q) => q.tripId)).size;
   if (view === "nominations" && role !== "finance" && may("nomination.convert"))
     return data.nominations.filter((n) => n.status === "accepted").length;
   return 0;

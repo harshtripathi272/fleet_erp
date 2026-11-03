@@ -758,7 +758,7 @@ function DocHeader({ doc }: { doc: DriverDoc }) {
     <div className="doc-head">
       <strong>
         {doc.simulated
-          ? `Simulated: ${driver?.name.split(" ")[0]}'s phone (sample picture, generated figures)`
+          ? `Simulated: ${driver?.name.split(" ")[0]}'s phone${doc.kind === "other" ? "" : " (sample picture, generated figures)"}`
           : doc.channel === "Operations" ? "Filed by the office" : `${driver?.name.split(" ")[0]} sent this ${doc.channel === "App" ? "from the driver app" : `on ${doc.channel}`}`}
       </strong>
       <span className="muted">{stamp(doc.at)}</span>
@@ -766,6 +766,38 @@ function DocHeader({ doc }: { doc: DriverDoc }) {
       {doc.status === "returned" && <Status tone="bad">Returned · {doc.returnReason}</Status>}
       {doc.status === "new" && <Status tone="wait">To check</Status>}
     </div>
+  );
+}
+
+/** Messages and photos from the driver on this trip that wait for someone in the office (a breakdown, a question). */
+export function DriverMessages({ trip }: { trip: Trip }) {
+  const { data, run } = useApp();
+  const may = useMay();
+  const waiting = data.docs.filter((d) => d.tripId === trip.id && d.kind === "other" && d.status === "new");
+  if (!waiting.length) return null;
+  const driver = byId(data.drivers, trip.driverId);
+  return (
+    <Card title={`From ${driver?.name ?? "the driver"}`} tone="mine">
+      <div className="stack">
+        {waiting.map((doc) => (
+          <div key={doc.id} className="driver-message">
+            {doc.file && <DocPhoto doc={doc} size="sm" />}
+            <div className="driver-message-text">
+              <DocHeader doc={doc} />
+              <p>{doc.note || "A photo, with no message."}</p>
+              {may("doc.done") && (
+                <div className="row-actions">
+                  <Button size="sm" tone="primary" onClick={() => run({ type: "doc.done", docId: doc.id }, "Done. It no longer waits on the desk.")}>
+                    <Check /> Done
+                  </Button>
+                  <ReturnDoc doc={doc} />
+                </div>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+    </Card>
   );
 }
 
@@ -1267,10 +1299,12 @@ export function ShortageCard({ consignment }: { consignment: Consignment }) {
   const [note, setNote] = useState("");
   const [waiving, setWaiving] = useState(false);
   const finance = may("shortage.decide");
+  // Charging needs the permission; waiving follows the shortage-waiver policy (the permission without one).
+  const mayWaive = s.mayWaive ?? finance;
   return (
     <Card
       title="Fuel reconciliation"
-      tone={s.status === "pending" && finance ? "mine" : undefined}
+      tone={s.status === "pending" && (finance || mayWaive) ? "mine" : undefined}
       aside={
         s.status === "none" ? (
           <Status tone="ok">Within allowance</Status>
@@ -1313,16 +1347,20 @@ export function ShortageCard({ consignment }: { consignment: Consignment }) {
           </tr>
         </tbody>
       </table>
-      {s.status === "pending" && finance && (
+      {s.status === "pending" && (finance || mayWaive) && (
         <div className="req-actions">
           {!waiving ? (
             <>
-              <Button tone="primary" onClick={() => run({ type: "shortage.decide", consignmentId: consignment.id, charge: true }, "Charged to the driver's account.")}>
-                Charge {zmw(s.amountZmw)}
-              </Button>
-              <Button tone="quiet" onClick={() => setWaiving(true)}>
-                Waive
-              </Button>
+              {finance && (
+                <Button tone="primary" onClick={() => run({ type: "shortage.decide", consignmentId: consignment.id, charge: true }, "Charged to the driver's account.")}>
+                  Charge {zmw(s.amountZmw)}
+                </Button>
+              )}
+              {mayWaive && (
+                <Button tone="quiet" onClick={() => setWaiving(true)}>
+                  Waive
+                </Button>
+              )}
             </>
           ) : (
             <div className="inline-form">

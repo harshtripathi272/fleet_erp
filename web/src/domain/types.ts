@@ -245,6 +245,8 @@ export interface Shortage {
   status: "pending" | "charged" | "waived" | "none";
   decidedAt?: string;
   note?: string;
+  /** May this person waive it? The company's shortage-waiver policy decides; charging needs the permission. */
+  mayWaive?: boolean;
 }
 export interface Consignment {
   id: string;
@@ -460,6 +462,8 @@ export type Action =
       read?: Extracted;
     }
   | { type: "doc.return"; docId: string; reason: string }
+  /** A message or photo from the driver that the office has dealt with. */
+  | { type: "doc.done"; docId: string }
   | {
       type: "load.record";
       tripId: string;

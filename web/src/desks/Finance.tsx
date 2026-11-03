@@ -18,7 +18,7 @@ export function FinanceToday() {
   const toPay = may("request.issue") ? data.requests.filter((r) => r.status === "approved") : [];
   const receipts = may("expense.record") ? data.docs.filter((d) => d.status === "new" && (d.kind === "expense" || d.kind === "fuel")) : [];
   const expenses = data.expenses.filter((e) => e.status === "pending" && e.mayDecide);
-  const shortages = may("shortage.decide") ? data.consignments.filter((c) => c.shortage?.status === "pending") : [];
+  const shortages = data.consignments.filter((c) => c.shortage?.status === "pending" && (may("shortage.decide") || c.shortage.mayWaive));
   const settle = may("settlement.post")
     ? data.drivers
       .map((d) => ({ driver: d, trips: data.trips.filter((t) => t.driverId === d.id && toSettle(t)) }))

@@ -22,7 +22,7 @@ import type { Action, Desk, Trip } from "../domain/types";
 import { Avatar, Button, Empty, Field, Modal, Segmented } from "../ui/kit";
 import { ago, day, hm, km, stamp } from "../ui/format";
 import { NewTrip } from "./NewTrip";
-import { StagePanel } from "./stages";
+import { DriverMessages, StagePanel } from "./stages";
 import { TripAside } from "./TripAside";
 
 type Filter = "mine" | "active" | "closed";
@@ -60,6 +60,8 @@ export function TripsPage({
   const [filter, setFilter] = useState<Filter>(role === "owner" ? "active" : "mine");
   const [query, setQuery] = useState("");
   const [creating, setCreating] = useState(false);
+  const messages = useMessageTrips();
+  const needsMe = (trip: Trip, step: NextStep) => activeOrUnsettled(trip) && (mineFor(trip, step) || messages.has(trip.id));
   const rows = useMemo(
     () =>
       data.trips
@@ -68,13 +70,13 @@ export function TripsPage({
     [data],
   );
   const counts = {
-    mine: rows.filter((r) => mineFor(r.trip, r.step) && activeOrUnsettled(r.trip)).length,
+    mine: rows.filter((r) => needsMe(r.trip, r.step)).length,
     active: rows.filter((r) => activeOrUnsettled(r.trip)).length,
     closed: rows.filter((r) => !activeOrUnsettled(r.trip)).length,
   };
   const q = query.trim().toLowerCase();
   const shown = rows.filter(({ trip, step }) => {
-    if (filter === "mine" && !(mineFor(trip, step) && activeOrUnsettled(trip))) return false;
+    if (filter === "mine" && !needsMe(trip, step)) return false;
     if (filter === "active" && !activeOrUnsettled(trip)) return false;
     if (filter === "closed" && activeOrUnsettled(trip)) return false;
     if (!q) return true;
@@ -152,8 +154,17 @@ export function TripsPage({
 
 const activeOrUnsettled = (trip: Trip) => !trip.cancelledAt && !trip.settlementId;
 
+/** Trips with a message or photo from the driver waiting for this person to deal with it. */
+export function useMessageTrips() {
+  const { data } = useApp();
+  const may = useMay();
+  if (!may("doc.done")) return new Set<string>();
+  return new Set(data.docs.filter((d) => d.kind === "other" && d.status === "new" && d.tripId).map((d) => d.tripId!));
+}
+
 function TripRow({ trip, step, selected, onClick }: { trip: Trip; step: NextStep; selected: boolean; onClick: () => void }) {
   const { data, role } = useApp();
+  const message = useMessageTrips().has(trip.id);
   const truck = byId(data.trucks, trip.truckId);
   const driver = byId(data.drivers, trip.driverId);
   const current = stageIndex(step.stage);
@@ -163,6 +174,7 @@ function TripRow({ trip, step, selected, onClick }: { trip: Trip; step: NextStep
         <span className="plate">{truck?.plate}</span>
         <Turn trip={trip} step={step} compact />
       </div>
+      {message && <div className="trip-row-message">Message from the driver</div>}
       <div className="trip-row-route">{trip.stops.length ? routeLabel(data, trip) : "Route not set"}</div>
       <div className="trip-row-foot">
         <span className="trip-row-bar" aria-hidden>
@@ -279,6 +291,7 @@ function TripView({
 
       <div className="trip-body">
         <div className="trip-main" ref={panelRef}>
+          <DriverMessages trip={trip} />
           <StagePanel trip={trip} stage={selectedStage} step={step} />
         </div>
         <TripAside trip={trip} />
