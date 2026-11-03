@@ -8,7 +8,7 @@ import { driverLedger, sumOf } from './ledger.js';
 import { Consignment, DriverDocument } from './models/cargo.model.js';
 import { FundRequest } from './models/funding.model.js';
 import { DriverAccount, Expense, Settlement } from './models/money.model.js';
-import { Trip } from './models/trip.model.js';
+import { TO_SETTLE, Trip } from './models/trip.model.js';
 import {
   activeDriver, baseCurrency, conflict, driverThread, formatMoney, log, need, nextNumber, post, present, queue, refuse, resolve, type OpsContext,
 } from './support.js';
@@ -22,7 +22,7 @@ export async function listAccounts() {
   const drivers = await Driver.find({ status: { $ne: 'archived' } }).select('name code phone').sort({ name: 1 }).lean();
   const accounts = new Map((await DriverAccount.find().lean()).map((a) => [String(a.driverId), a]));
   const unsettled = await Trip.aggregate<{ _id: Types.ObjectId; n: number }>([
-    { $match: { endedAt: { $exists: true }, settlementId: { $exists: false }, driverId: { $exists: true } } },
+    { $match: { ...TO_SETTLE, driverId: { $exists: true } } },
     { $group: { _id: '$driverId', n: { $sum: 1 } } },
   ]);
   const unsettledBy = new Map(unsettled.map((u) => [String(u._id), u.n]));
@@ -41,7 +41,7 @@ export async function getAccount(driverId: string) {
   if (!driver) throw new NotFoundError('Driver not found');
   const entries = await driverLedger(driverId);
   const account = await DriverAccount.findOne({ driverId }).lean();
-  const trips = await Trip.find({ driverId, endedAt: { $exists: true }, settlementId: { $exists: false } }).select('_id number').sort({ endedAt: 1 }).lean();
+  const trips = await Trip.find({ driverId, ...TO_SETTLE }).select('_id number').sort({ endedAt: 1, cancelledAt: 1 }).lean();
   return {
     driverId, name: driver.name, currency: await baseCurrency(), balanceMinor: sumOf(entries), entries,
     unsettledTrips: trips.map((t) => ({ id: String(t._id), number: t.number })), settleRequestedAt: account?.settleRequestedAt ?? null,
@@ -54,7 +54,7 @@ export async function requestSettlement(driverId: string, ctx: OpsContext) {
   const at = new Date();
   const driver = await activeDriver(driverId);
   await DriverAccount.updateOne({ driverId: driver._id }, { $set: { settleRequestedAt: at, settleRequestedByDesk: ctx.desk, settleRequestedBy: ctx.actorId }, $inc: { version: 1 } }, { upsert: true });
-  const trips = await Trip.countDocuments({ driverId: driver._id, endedAt: { $exists: true }, settlementId: { $exists: false } });
+  const trips = await Trip.countDocuments({ driverId: driver._id, ...TO_SETTLE });
   const base = await baseCurrency();
   await post(queue('settlements'), at, {
     title: `Settle ${driver.name}`,
@@ -96,7 +96,7 @@ export async function postSettlement(input: S.SettlementInput, ctx: OpsContext) 
   if (trips.length !== input.tripIds.length) throw new NotFoundError('Trip not found');
   for (const t of trips) {
     if (String(t.driverId) !== String(driver._id)) throw refuse(`${t.number} belongs to another driver.`);
-    if (!t.endedAt) throw refuse(`${t.number} is still on the road.`);
+    if (!t.endedAt && !t.settleAfterCancel) throw refuse(`${t.number} is still on the road.`);
     if (t.settlementId) throw conflict(`${t.number} is already settled.`);
     if (await Expense.exists({ tripId: t._id, status: 'pending' })) throw refuse(`Decide the expenses on ${t.number} first.`);
     if (await Consignment.exists({ tripId: t._id, 'shortage.status': 'pending' })) throw refuse(`Decide the fuel shortage on ${t.number} first.`);
@@ -117,7 +117,7 @@ export async function postSettlement(input: S.SettlementInput, ctx: OpsContext) 
   if (!mayDecideAll(ctx, approval)) throw new ForbiddenError(`Posting this settlement needs ${approval.levels.at(-1)!.label}.`);
   const sumKind = (kind: string) => sumOf(selected.filter((e) => e.kind === kind));
   const starts = trips.map((t) => (t.dispatchedAt ?? t.createdAt) as Date).sort((a, b) => a.getTime() - b.getTime());
-  const ends = trips.map((t) => t.endedAt as Date).sort((a, b) => a.getTime() - b.getTime());
+  const ends = trips.map((t) => (t.endedAt ?? t.cancelledAt) as Date).sort((a, b) => a.getTime() - b.getTime());
   const settlement = await Settlement.create({
     number: await nextNumber('settlements', 'SET', at), driverId: driver._id, tripIds: input.tripIds, from: starts[0], to: ends.at(-1),
     currencyId: base.id, openingMinor: opening, advancesMinor: sumKind('advance'), expensesMinor: -sumKind('expense'), shortagesMinor: sumKind('shortage'),

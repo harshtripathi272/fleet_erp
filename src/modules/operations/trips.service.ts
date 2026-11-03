@@ -24,8 +24,8 @@ import { assertStageAllows, currentStage, recordEvent, stageSnapshot, tripTypeFo
 import { carriedIn, driverBalance } from './ledger.js';
 import { Consignment } from './models/cargo.model.js';
 import { FundRequest, OPEN_REQUEST, VehicleState } from './models/funding.model.js';
-import { Nomination } from './models/money.model.js';
-import { Trip, type ArrivalSource } from './models/trip.model.js';
+import { Expense, Nomination } from './models/money.model.js';
+import { TO_SETTLE, Trip, type ArrivalSource } from './models/trip.model.js';
 import {
   activeDriver, activeRecord, baseCurrency, conflict, customerParty, driverThread, firstName, formatMoney, litres, log,
   need, nextNumber, post, present, queue, refuse, resolve, save, toBase, type OpsContext,
@@ -193,7 +193,7 @@ export async function listTrips(query: S.TripListQuery) {
   if (query.state === 'open') filter.active = true;
   if (query.state === 'planned') Object.assign(filter, { active: true, dispatchedAt: { $exists: false } });
   if (query.state === 'on_road') Object.assign(filter, { active: true, dispatchedAt: { $exists: true } });
-  if (query.state === 'ended') Object.assign(filter, { endedAt: { $exists: true }, settlementId: { $exists: false } });
+  if (query.state === 'ended') Object.assign(filter, TO_SETTLE);
   if (query.state === 'settled') filter.settlementId = { $exists: true };
   if (query.state === 'cancelled') filter.cancelledAt = { $exists: true };
   for (const key of ['driverId', 'vehicleId', 'customerId', 'nominationId'] as const) if (query[key]) filter[key] = query[key];
@@ -327,7 +327,12 @@ export async function cancelTrip(id: string, input: S.ReasonInput, ctx: OpsConte
   const trip = await tripDoc(id);
   if (trip.get('dispatchedAt')) throw conflict('The truck has left. End the trip instead.');
   if (!activeTrip(trip.toObject())) throw conflict('This trip is already closed.');
-  trip.set({ cancelledAt: at, cancelReason: input.reason, active: false, updatedBy: ctx.actorId });
+  // Cash already paid or spent on the trip stays with the driver; the trip then goes on their next settlement.
+  const cashOnTrip = Boolean(
+    (await FundRequest.exists({ tripId: trip._id, kind: 'cash', status: 'issued' })) ||
+    (await Expense.exists({ tripId: trip._id, status: { $in: ['pending', 'approved'] } })),
+  );
+  trip.set({ cancelledAt: at, cancelReason: input.reason, active: false, settleAfterCancel: cashOnTrip || undefined, updatedBy: ctx.actorId });
   await save(trip);
   for (const request of await FundRequest.find({ tripId: trip._id, status: { $in: OPEN_REQUEST } })) {
     request.set('status', 'cancelled');
@@ -569,7 +574,7 @@ export async function endTrip(id: string, input: S.EndTripInput, ctx: OpsContext
   const place = await placeName(endPlace);
   if (plain.driverId) {
     const name = await driverName(plain.driverId);
-    const unsettled = await Trip.countDocuments({ driverId: plain.driverId, endedAt: { $exists: true }, settlementId: { $exists: false } });
+    const unsettled = await Trip.countDocuments({ driverId: plain.driverId, ...TO_SETTLE });
     const base = await baseCurrency();
     await post(driverThread(plain.driverId), at, { title: `${plain.number} closed`, text: `Truck parked at ${place} with ${litres(input.closingFuelL)}. Thank you.` }, ctx);
     await post(queue('settlements'), at, {

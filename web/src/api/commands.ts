@@ -48,7 +48,7 @@ export async function runCommand(action: Action, ctx: { data: AppData; role: Rol
         trucks: action.trucks.map((t) => clean({ vehicleId: t.truckId, driverId: blank(t.driverId) })), note: blank(action.note?.trim()),
       });
       if (action.id) {
-        const version = data.nominations.find((n) => n.id === action.id)?.version ?? 0;
+        const version = action.version ?? data.nominations.find((n) => n.id === action.id)?.version ?? 0;
         await api(`/nominations/${action.id}`, { method: "PATCH", body: { ...body, version } });
       } else await api("/nominations", { method: "POST", body });
       return;
@@ -76,7 +76,7 @@ export async function runCommand(action: Action, ctx: { data: AppData; role: Rol
       await api(`/trips/${action.tripId}`, {
         method: "PATCH",
         body: clean({
-          version: trip?.version ?? 0, customerId: blank(action.customerId), driverId: nullable(action.driverId), trailerId: nullable(action.trailerId),
+          version: action.version ?? trip?.version ?? 0, customerId: blank(action.customerId), driverId: nullable(action.driverId), trailerId: nullable(action.trailerId),
           routeId: nullable(action.routeId), stops: action.stops, plannedStart: action.plannedStart ? new Date(action.plannedStart).toISOString() : undefined,
           productId: nullable(action.productId), plannedQty: action.plannedQty === undefined ? undefined : action.plannedQty || null,
           fuelBudgetL: action.fuelBudgetL, cashBudgetMinor: action.cashBudgetZmw === undefined ? undefined : Math.round(action.cashBudgetZmw * 10 ** (data.baseCurrency?.minorUnits ?? 2)),

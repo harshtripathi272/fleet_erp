@@ -193,8 +193,10 @@ function NominationForm({ open, editing, onClose }: { open: boolean; editing?: N
   const [note, setNote] = useState(editing?.note ?? "");
   const key = `${open}-${editing?.id}`;
   const [lastKey, setLastKey] = useState(key);
+  const [version, setVersion] = useState(editing?.version);
   if (key !== lastKey) {
     setLastKey(key);
+    setVersion(editing?.version);
     setCustomerId(editing?.customerId ?? data.customers[0].id);
     setSource(editing?.source ?? firstSource(data));
     setReference(editing?.reference ?? "");
@@ -222,6 +224,7 @@ function NominationForm({ open, editing, onClose }: { open: boolean; editing?: N
         {
           type: "nomination.save",
           id: editing?.id,
+          version,
           customerId,
           source,
           reference,

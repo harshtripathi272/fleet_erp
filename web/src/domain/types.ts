@@ -142,6 +142,8 @@ export interface Trip {
   endedAt?: string;
   closingFuelL?: number;
   cancelledAt?: string;
+  /** Cancelled after cash was paid or spent on it: it still goes on the driver's next settlement. */
+  settleAfterCancel?: boolean;
   tracking?: Tracking;
   settlementId?: string;
   /** The trip type's configured stages and where the trip is (from the API). */
@@ -394,6 +396,8 @@ export type Action =
   | {
       type: "nomination.save";
       id?: string;
+      /** The version the edit started from, so a save over someone else's is refused. */
+      version?: number;
       customerId: string;
       source: Nomination["source"];
       reference?: string;
@@ -423,6 +427,8 @@ export type Action =
   | {
       type: "trip.update";
       tripId: string;
+      /** The version the edit started from, so a save over someone else's is refused. */
+      version?: number;
       customerId?: string;
       driverId?: string;
       trailerId?: string;

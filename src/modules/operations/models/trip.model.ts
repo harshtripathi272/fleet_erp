@@ -59,6 +59,8 @@ const tripSchema = new Schema<any>({
   closingFuelL: { type: Number, min: 0 },
   cancelledAt: Date,
   cancelReason: String,
+  /** Cancelled after cash was paid or spent on it: the trip still goes on the driver's next settlement. */
+  settleAfterCancel: Boolean,
   /** The latest position. `source` says where it came from; `simulator` positions are a demo, not the truck. */
   tracking: { type: new Schema({ km: Number, speed: Number, heading: Number, at: Date, source: { type: String, enum: ARRIVAL_SOURCES } }, { _id: false }), default: undefined },
   settlementId: { type: ObjectId, ref: 'Settlement' },
@@ -78,3 +80,6 @@ tripSchema.index({ active: 1 });
 tripSchema.index({ createdAt: -1 });
 
 export const Trip = opsModel('Trip', tripSchema);
+
+/** Trips waiting for a driver settlement: ended, or cancelled after cash was paid or spent on them. */
+export const TO_SETTLE = { settlementId: { $exists: false }, $or: [{ endedAt: { $exists: true } }, { settleAfterCancel: true }] };

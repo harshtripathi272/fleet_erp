@@ -3,7 +3,7 @@ import { ArrowLeft, Check, FileText, Search } from "lucide-react";
 import { useApp } from "../store";
 import { useMay } from "../api/session";
 import { byId, driverBalance, driverLedger, round } from "../domain/calc";
-import { routeLabel } from "../domain/helpers";
+import { routeLabel, toSettle } from "../domain/helpers";
 import type { Driver } from "../domain/types";
 import { Avatar, Button, Empty, Field, Segmented, Status } from "../ui/kit";
 import { ago, day, dayYear, zmw } from "../ui/format";
@@ -16,7 +16,7 @@ export function Accounts({ driverId, onDriver }: { driverId?: string; onDriver: 
     .map((d) => ({
       driver: d,
       balance: driverBalance(data, d.id),
-      open: data.trips.filter((t) => t.driverId === d.id && t.endedAt && !t.settlementId).length,
+      open: data.trips.filter((t) => t.driverId === d.id && toSettle(t)).length,
       onTrip: data.trips.some((t) => t.driverId === d.id && t.dispatchedAt && !t.endedAt),
     }))
     .filter((r) => r.driver.name.toLowerCase().includes(query.toLowerCase()))
@@ -100,7 +100,7 @@ function DriverAccount({ driver, onBack }: { driver: Driver; onBack: () => void 
 function StatementBuilder({ driver }: { driver: Driver }) {
   const { data, run, setOverlay } = useApp();
   const may = useMay();
-  const closed = data.trips.filter((t) => t.driverId === driver.id && t.endedAt && !t.settlementId);
+  const closed = data.trips.filter((t) => t.driverId === driver.id && toSettle(t));
   const [picked, setPicked] = useState<string[]>(() => closed.map((t) => t.id));
   useEffect(() => {
     setPicked(closed.map((t) => t.id));
@@ -172,7 +172,7 @@ function StatementBuilder({ driver }: { driver: Driver }) {
                     <span className="mono">{t.no}</span> · {routeLabel(data, t)}
                   </strong>
                   <span className="muted">
-                    {day(t.dispatchedAt)} to {day(t.endedAt)} · {byId(data.trucks, t.truckId)?.plate}
+                    {t.endedAt ? `${day(t.dispatchedAt)} to ${day(t.endedAt)}` : `Cancelled ${day(t.cancelledAt)}`} · {byId(data.trucks, t.truckId)?.plate}
                   </span>
                 </span>
                 <span className="num">{zmw(net)}</span>
