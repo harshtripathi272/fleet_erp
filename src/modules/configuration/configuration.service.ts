@@ -83,7 +83,7 @@ export async function withChoices(fields: Plain[]) {
 
 export const fieldDefinitionDefinition = defineMaster({
   key: 'field-definitions', label: 'Custom fields', singular: 'Custom field', group: GROUPS.configuration,
-  description: 'Extra fields a company adds to any built-in master (e.g. "Union membership no." on Drivers). Values are stored under custom.<key> and validated on every save.',
+  description: 'Extra fields a company adds to any built-in master (e.g. "Union membership no." on Drivers). They show under "Company fields" on that master and are checked on every save.',
   model: FieldDefinition, createSchema: S.createFieldDefinitionSchema, updateSchema: S.updateFieldDefinitionSchema,
   searchFields: ['key', 'label', 'entity'], sortFields: ['entity', 'order', 'key', 'createdAt'], defaultSort: 'entity', titleField: 'label',
   refs: [{ path: 'listId', target: 'lists' }],

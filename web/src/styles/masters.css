@@ -72,3 +72,7 @@ details.form-group summary { cursor: pointer; }
 .perm-group th { text-align: left; background: var(--paper-2); color: var(--ink-2); font-weight: 600; font-size: 12.5px; }
 .perm input[type="checkbox"] { width: 16px; height: 16px; min-height: 0; margin: 0; padding: 0; vertical-align: middle; }
 .perm td, .perm th { line-height: 1.25; }
+
+/* Yes/no fields: a checkbox, not a full-width text box. */
+.field input[type="checkbox"],
+.field input[type="radio"] { width: 18px; height: 18px; min-height: 0; padding: 0; box-shadow: none; justify-self: start; }

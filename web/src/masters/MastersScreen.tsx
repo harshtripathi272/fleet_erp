@@ -160,7 +160,7 @@ function listColumns(def: Def) {
   // A master may name its own list columns; otherwise required fields and links to other masters.
   const named = ((def.columns ?? []) as string[]).map((p) => fields.find((f) => f.path === p)).filter(Boolean) as Rec[];
   const extra = named.length ? named : fields.filter((f) => top(f.path) && f.group === "master" && !f.hidden && f.type !== "object" && !f.array && f.path !== def.titleField && f.path !== "code" && (f.required || f.ref || f.enum)).slice(0, 3);
-  return [title, code, ...extra].filter(Boolean).map((f) => ({ path: f!.path as string, label: String(f!.path).split(".").map(label).join(" "), field: f! }));
+  return [title, code, ...extra].filter(Boolean).map((f) => ({ path: f!.path as string, label: (def.key === "field-definitions" && SPEC_LABEL[String(f!.path)]) || String(f!.path).split(".").map(label).join(" "), field: f! }));
 }
 
 /**
@@ -191,6 +191,8 @@ function RecordDrawer({ def, defs, id, onClose }: { def: Def; defs: Def[]; id?: 
     toast(message);
     await client.invalidateQueries({ queryKey: ["records", def.key] });
     await client.invalidateQueries({ queryKey: ["record", def.key, id] });
+    // Custom fields and custom masters change the forms themselves.
+    if (["field-definitions", "custom-masters", "lists"].includes(def.key)) await client.invalidateQueries({ queryKey: ["meta-masters"] });
     refreshReference();
   };
   const act = async (fn: () => Promise<unknown>, message: string | ((result: unknown) => string), close = false) => {
@@ -421,6 +423,19 @@ function CustomRecords({ master, defs }: { master: Rec; defs: Def[] }) {
 
 /* ---------- Forms from the API's JSON schema ---------- */
 
+/**
+ * A field definition (a custom field, or a field of a custom master) has a type; its other settings only
+ * apply to some types, so the form shows just those. Names below are what people see.
+ */
+const FOR_TYPES: Record<string, string[]> = {
+  options: ["select", "multi_select"], listId: ["select", "multi_select"], referenceMaster: ["reference"],
+  min: ["number"], max: ["number"], maxLength: ["text", "long_text"], pattern: ["text"],
+};
+const TYPE_LABEL: Record<string, string> = { boolean: "Yes or no", select: "One choice", multi_select: "Several choices", reference: "A record of another master", long_text: "Long text" };
+const SPEC_LABEL: Record<string, string> = { entity: "Master", listId: "Choices from a list", options: "Choices", referenceMaster: "Links to", maxLength: "Longest text", pattern: "Must match (pattern)", helpText: "Help text" };
+const isFieldSpec = (schema: Schema) => Boolean(schema.properties?.type?.enum?.includes?.("multi_select") && schema.properties?.key && schema.properties?.label);
+/** "Union membership no." → "unionMembershipNo", the key a new field is stored under. */
+const keyFromLabel = (text: string) => text.trim().replace(/[^A-Za-z0-9]+(.)?/g, (_, c: string | undefined) => (c ? c.toUpperCase() : "")).replace(/^[^a-z]+/i, "").replace(/^./, (c) => c.toLowerCase()).slice(0, 40);
 const withoutWriteOnly = (schema: Schema): Schema => ({ ...schema, properties: Object.fromEntries(Object.entries((schema.properties ?? {}) as Rec).filter(([k]) => !WRITE_ONLY.has(k))) });
 const refOf = (def: Def, path: string) => (def.fields as Rec[]).find((f) => f.path === path)?.ref as string | undefined;
 const fieldOf = (def: Def, path: string) => (def.fields as Rec[]).find((f) => f.path === path);
@@ -440,9 +455,14 @@ function unwrap(schema: Schema): Schema {
 function SchemaForm({ schema, def, defs, value, onChange, readOnly, canSensitive, path = "", editing }: { schema: Schema; def: Def; defs: Def[]; value: Rec; onChange: (v: Rec) => void; readOnly?: boolean; canSensitive: boolean; path?: string; editing?: boolean }) {
   const props = Object.entries((schema.properties ?? {}) as Record<string, Schema>);
   const required = new Set((schema.required ?? []) as string[]);
-  const main = props.filter(([k]) => path || !BASE_KEYS.has(k));
+  const spec = isFieldSpec(schema);
+  const main = props.filter(([k]) => (path || !BASE_KEYS.has(k)) && (!spec || !FOR_TYPES[k] || FOR_TYPES[k]!.includes(String(value.type ?? ""))));
   const more = path ? [] : props.filter(([k]) => BASE_KEYS.has(k) && !["externalRefs", "attachments", "custom"].includes(k));
-  const set = (key: string, v: unknown) => onChange({ ...value, [key]: v });
+  const set = (key: string, v: unknown) => {
+    // A new field's key follows its label until someone types a key of their own.
+    if (spec && key === "label" && !editing && (!value.key || value.key === keyFromLabel(String(value.label ?? "")))) return onChange({ ...value, label: v, key: keyFromLabel(String(v ?? "")) || undefined });
+    onChange({ ...value, [key]: v });
+  };
   const render = ([key, raw]: [string, Schema]) => {
     const full = path ? `${path}.${key}` : key;
     const hidden = isSensitive(def, full) && !canSensitive;
@@ -481,7 +501,21 @@ function SchemaForm({ schema, def, defs, value, onChange, readOnly, canSensitive
 }
 
 function FieldInput({ name, path, schema, required, def, defs, value, onChange, readOnly, canSensitive }: { name: string; path: string; schema: Schema; required: boolean; def: Def; defs: Def[]; value: unknown; onChange: (v: unknown) => void; readOnly?: boolean; canSensitive: boolean }) {
-  const title = `${label(name)}${required ? " *" : ""}`;
+  const isSpecMaster = def.key === "field-definitions" || def.key === "custom-masters";
+  const specField = isSpecMaster ? SPEC_LABEL[name] ?? "" : undefined;
+  const title = `${specField || label(name)}${required ? " *" : ""}`;
+  // Which master a custom field belongs to, or links to: chosen from the masters, not typed as a key.
+  if ((def.key === "field-definitions" && name === "entity") || ((def.key === "field-definitions" || def.key === "custom-masters") && name === "referenceMaster")) {
+    const choices = defs.filter((d) => d.key !== "custom-records" && (name !== "entity" || d.customFieldsAllowed !== false));
+    return (
+      <Field label={title}>
+        <select disabled={readOnly} value={(value as string) ?? ""} onChange={(e) => onChange(e.target.value || undefined)}>
+          <option value="">—</option>
+          {choices.map((d) => <option key={d.key} value={d.key}>{d.label}</option>)}
+        </select>
+      </Field>
+    );
+  }
   const ref = refOf(def, path);
   const info = fieldOf(def, path);
   if (def.key === "roles" && path === "permissions")
@@ -528,6 +562,8 @@ function FieldInput({ name, path, schema, required, def, defs, value, onChange, 
   if (ref || schema.pattern === OBJECT_ID) return <Field label={title}><RefSelect target={ref ?? ""} defs={defs} value={(value as string) ?? ""} onChange={onChange} disabled={readOnly} /></Field>;
   if (WRITE_ONLY.has(name))
     return <Field label={title} hint="Leave empty to e-mail them an invitation to set their own."><input type="password" autoComplete="new-password" disabled={readOnly} value={(value as string) ?? ""} onChange={(e) => onChange(e.target.value || undefined)} /></Field>;
+  if (specField !== undefined && name === "type" && schema.enum)
+    return <Field label={title}><select disabled={readOnly} value={(value as string) ?? ""} onChange={(e) => onChange(e.target.value || undefined)}><option value="">—</option>{(schema.enum as string[]).map((o) => <option key={o} value={o}>{TYPE_LABEL[o] ?? label(o)}</option>)}</select></Field>;
   if (schema.enum) return <Field label={title}><select disabled={readOnly} value={(value as string) ?? ""} onChange={(e) => onChange(e.target.value || undefined)}><option value="">—</option>{(schema.enum as string[]).map((o) => <option key={o} value={o}>{label(o)}</option>)}</select></Field>;
   const type = schema.type === "boolean" ? "boolean" : schema.type === "number" || schema.type === "integer" ? "number" : schema.format === "date" || schema.format === "date-time" || info?.type === "date" ? "date" : (schema.maxLength ?? 0) > 300 ? "longtext" : "text";
   return <Field label={title} wide={type === "longtext"}><ScalarInput type={type} value={value} onChange={onChange} disabled={readOnly} /></Field>;
@@ -624,6 +660,8 @@ function Value({ value, field, defs }: { value: unknown; field: Rec; defs: Def[]
   if (value === undefined || value === null || value === "") return <span className="muted">—</span>;
   if (field.ref && typeof value === "string") return <RefName target={field.ref} id={value} defs={defs} />;
   if (field.ref && Array.isArray(value)) return value.length ? value.map((id, i) => <span key={String(id)}>{i ? ", " : ""}<RefName target={field.ref} id={String(id)} defs={defs} /></span>) : <span className="muted">—</span>;
+  // A custom field's master is stored as its key ("drivers"); show its name.
+  if (field.path === "entity" && typeof value === "string") { const target = defs.find((d) => d.key === value); if (target) return String(target.label); }
   if (field.type === "date") return String(value).slice(0, 10);
   if (typeof value === "boolean") return value ? "Yes" : "No";
   if (Array.isArray(value)) return `${value.length} item${value.length === 1 ? "" : "s"}`;
