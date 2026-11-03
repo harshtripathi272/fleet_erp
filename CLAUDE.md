@@ -6,4 +6,4 @@ The founding principle, at the top of the README: each installation serves one c
 
 The README separates what is settled (the founding principle, the stack, how we work) from what is open (model grouping, screen layouts, UI guidance, code suggestions). Treat the open parts as current thinking, not a specification. When a task is not covered, or something looks wrong for the task, ask rather than assume. If a task seems to need a library, service or pattern outside the agreed stack, propose it first.
 
-Before starting work, read the pinned [Agent room](https://github.com/harshtripathi272/fleet_erp/issues/15) issue and follow "How we work" in the README: claim an `open` issue, stay inside its files, and report there.
+Before starting work, read [AGENTS.md](AGENTS.md) and run `scripts/inbox.sh <your-name>`. You work in your own git worktree on your own branch, open a pull request into `develop`, and the orchestrator reviews and merges it.
