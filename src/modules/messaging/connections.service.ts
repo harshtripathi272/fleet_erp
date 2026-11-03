@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { env } from '../../config/env.js';
+import { logger } from '../../core/logger/index.js';
 import { ValidationError } from '../../core/errors/index.js';
 import { type MailMessage, sendOverSmtp, serverSmtp, type SmtpSettings } from '../../core/mail/mailer.js';
 import { defineMaster } from '../../core/masters/define.js';
@@ -102,16 +103,37 @@ const smtpFrom = (connection: Plain): SmtpSettings => ({
   user: connection.user as string | undefined, pass: secretOf(connection), from: String(connection.from),
 });
 
+/**
+ * Why nothing is sent, in words for the office. The server setting behind it goes to the log, once
+ * per reason, for whoever runs the server.
+ */
+const REASON = {
+  testSetup: 'This is a test setup: phone messages are simulated, not sent.',
+  whatsapp: 'WhatsApp is not connected yet: messages are simulated, not sent.',
+  noEmail: 'No e-mail connection is set up yet: e-mails are simulated, not sent.',
+  noConnection: (channel: Channel) => `No ${CHANNEL_LABEL[channel]} connection is switched on: messages are simulated, not sent.`,
+  noProvider: 'The SMS service chosen for this connection is not available: messages are simulated, not sent.',
+};
+const logged = new Set<string>();
+function simulatedBecause(reason: string, detail: Record<string, unknown>, why: string) {
+  if (!logged.has(why)) { logged.add(why); logger.info(detail, why); }
+  return reason;
+}
+const testSetup = () => simulatedBecause(REASON.testSetup, { setting: 'DRIVER_PHONE_SIMULATOR' }, 'Phone messages are simulated because DRIVER_PHONE_SIMULATOR is on');
+
 /** The sender for a given connection, switched on or not (used by "send a test message"). */
 export function senderOn(connection: Plain): Sender {
   const channel = connection.channel as Channel;
-  if (channel !== 'email' && env.DRIVER_PHONE_SIMULATOR) return { channel, connection, simulated: 'Simulators are on (DRIVER_PHONE_SIMULATOR), so phones get nothing' };
+  if (channel !== 'email' && env.DRIVER_PHONE_SIMULATOR) return { channel, connection, simulated: testSetup() };
   if (channel === 'email') {
     return { channel, connection, send: (m) => sendOverSmtp(smtpFrom(connection), { to: m.to, subject: m.subject ?? '', text: m.text, attachments: m.attachments }) };
   }
-  if (channel === 'whatsapp') return { channel, connection, simulated: 'WhatsApp goes to the simulator until Marichi Talks is connected (#10)' };
+  if (channel === 'whatsapp') return { channel, connection, simulated: REASON.whatsapp };
   const adapter = getSmsAdapter(String(connection.provider));
-  if (!adapter) return { channel, connection, simulated: `SMS provider "${String(connection.provider)}" is not available on this server` };
+  if (!adapter) {
+    const provider = String(connection.provider);
+    return { channel, connection, simulated: simulatedBecause(REASON.noProvider, { provider }, `SMS provider "${provider}" is not registered in src/core/sms`) };
+  }
   if (adapter.simulated) return { channel, connection, send: async (m) => ({ ...(await adapter.send({ to: m.to, text: m.text }, {})), simulated: true }) };
   return {
     channel, connection,
@@ -126,16 +148,16 @@ export async function senderFor(channel: Channel): Promise<Sender> {
   if (channel === 'email') {
     const smtp = serverSmtp();
     if (smtp) return { channel, send: (m) => sendOverSmtp(smtp, { to: m.to, subject: m.subject ?? '', text: m.text, attachments: m.attachments }) };
-    return { channel, simulated: 'No e-mail connection, and the server has no SMTP settings' };
+    return { channel, simulated: simulatedBecause(REASON.noEmail, { setting: 'SMTP_HOST' }, 'E-mails are simulated: no e-mail connection is switched on and SMTP_HOST is not set') };
   }
-  if (env.DRIVER_PHONE_SIMULATOR) return { channel, simulated: 'Simulators are on (DRIVER_PHONE_SIMULATOR), so phones get nothing' };
-  return { channel, simulated: `No ${CHANNEL_LABEL[channel]} connection is switched on` };
+  if (env.DRIVER_PHONE_SIMULATOR) return { channel, simulated: testSetup() };
+  return { channel, simulated: REASON.noConnection(channel) };
 }
 
 /** The providers a connection on this channel may use, for the settings screen's choice. */
 export function providerChoices(channel: Channel) {
   if (channel === 'email') return [{ key: 'smtp', label: 'SMTP server', simulated: false }];
-  if (channel === 'whatsapp') return [{ key: 'simulator', label: 'Simulator (until Marichi Talks is connected)', simulated: true }];
+  if (channel === 'whatsapp') return [{ key: 'simulator', label: 'Simulated (until WhatsApp is connected)', simulated: true }];
   return smsAdapters();
 }
 

@@ -4,6 +4,7 @@ import { PaymentMethod } from '../finance/models/paymentMethod.model.js';
 import { approveAs, highestEligible, notifyLevel, routeApproval, waitingOn, type Approval } from './approvals.js';
 import { FundRequest, OPEN_REQUEST } from './models/funding.model.js';
 import { Trip } from './models/trip.model.js';
+import { announce, moneyValues } from './notices.js';
 import { assertStageAllows, fireEvent } from './stages.js';
 import {
   activeRecord, baseCurrency, conflict, currencyInfo, driverThread, formatMoney, litres, loadOr404, log, need, nextNumber,
@@ -13,6 +14,17 @@ import { activeTrip, driverName, fundingFor, plateOf, routeLabel, setVehicleStat
 import type * as S from './operations.schema.js';
 
 /* ---------- Message parts ---------- */
+
+/** {{amount}} and {{currency}} for a request: money for an advance; for fuel the litres, with no currency. */
+async function requestValues(request: Plain): Promise<Record<string, string>> {
+  if (request.kind === 'fuel') return { amount: litres(Number(request.litres)), currency: '' };
+  return moneyValues(request.amount as { amountMinor: number; currencyId: unknown });
+}
+
+const requestNotice = (request: Plain, money: Record<string, string>, extra: Record<string, string | undefined>) => ({
+  variables: { ...money, ...extra },
+  ref: { kind: 'fund-requests', id: request._id },
+});
 
 export async function requestAmount(request: Plain) {
   if (request.kind === 'fuel') return litres(Number(request.litres));
@@ -136,6 +148,7 @@ export async function createRequest(input: S.CreateRequestInput, ctx: OpsContext
   await askLevel(plain, trip, ctx, at);
   await fireEvent(trip._id, 'funding_requested', at, ctx.actorId);
   await log(ctx, at, `Requested ${await requestAmount(plain)} ${input.kind === 'fuel' ? 'fuel' : 'advance'} (${plain.number})`, { tripId: trip._id });
+  await announce('fund_request.created', trip, ctx, requestNotice(plain, await requestValues(plain), { reason: input.reason }));
   return present(plain);
 }
 
@@ -165,6 +178,7 @@ export async function decideRequest(id: string, input: S.DecideInput, ctx: OpsCo
       buttons: [{ label: 'Open trip', nav: { tripId: String(trip._id), view: 'funding' } }],
     }, ctx);
     await log(ctx, at, `Rejected ${plain.number}: ${input.note}`, { tripId: trip._id });
+    await announce('fund_request.rejected', trip, ctx, requestNotice(plain, await requestValues(plain), { reason: input.note }));
     return present(request.toObject());
   }
   const levels = approval.levels.length;
@@ -188,6 +202,7 @@ export async function decideRequest(id: string, input: S.DecideInput, ctx: OpsCo
     refId: `${id}-issue`,
   }, ctx);
   await log(ctx, at, `Approved ${plain.number}`, { tripId: trip._id });
+  await announce('fund_request.approved', trip, ctx, requestNotice(plain, await requestValues(plain), { reason: input.note }));
   return present(request.toObject());
 }
 
@@ -248,6 +263,7 @@ export async function issueRequest(id: string, input: S.IssueInput, ctx: OpsCont
     }
   }
   await log(ctx, at, `${kind === 'fuel' ? 'Issued' : 'Paid'} ${amount} · ${[medium, input.reference].filter(Boolean).join(' ')}`, { tripId: trip._id });
+  await announce('fund_request.paid', trip, ctx, requestNotice(plain, await requestValues(plain), { 'document.number': input.reference }));
   return present(plain);
 }
 
