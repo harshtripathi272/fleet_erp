@@ -1,5 +1,8 @@
 import { env } from '../../config/env.js';
-import { NotFoundError } from '../../core/errors/index.js';
+import { ForbiddenError, NotFoundError } from '../../core/errors/index.js';
+import { contextOf } from '../../core/masters/controller.js';
+import { importableMaster, importColumns, importRows, templateCsv } from '../../core/masters/import.js';
+import { Company } from '../company/company.model.js';
 import { ApiResponse } from '../../core/response/index.js';
 import { asyncHandler } from '../../utils/asyncHandler.js';
 import auditRouter from '../audit/audit.router.js';
@@ -55,3 +58,28 @@ export const sampleData = asyncHandler(async (req, res) => {
 
 /** What a new company still needs before its first trip (#45). */
 export const readiness = asyncHandler(async (_req, res) => ApiResponse.success(res, await Readiness.readiness()));
+/** Loading a master from a spreadsheet (#41): it needs the right to create records of that master. */
+const importable = (req: Parameters<Parameters<typeof asyncHandler>[0]>[0]) => {
+  const key = (req.params as { master: string }).master;
+  const def = importableMaster(key);
+  if (!req.auth?.can(key, 'create')) throw new ForbiddenError(`You may not add ${def.label.toLowerCase()}`);
+  return def;
+};
+export const importInfo = asyncHandler(async (req, res) => {
+  const def = importable(req);
+  ApiResponse.success(res, { master: def.key, label: def.label, columns: importColumns(def) });
+});
+export const importTemplate = asyncHandler(async (req, res) => {
+  const def = importable(req);
+  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+  res.setHeader('Content-Disposition', `attachment; filename="${def.key}-template.csv"`);
+  res.send(`\uFEFF${templateCsv(def)}`);
+});
+export const importRun = asyncHandler(async (req, res) => {
+  const def = importable(req);
+  const { rows, dryRun, firstRow } = req.body as { rows: Record<string, string>[]; dryRun: boolean; firstRow?: number };
+  const company = await Company.findOne().select('baseCurrencyId').lean<{ baseCurrencyId?: unknown }>();
+  const results = await importRows(def, rows, { dryRun, firstRow, baseCurrencyId: company?.baseCurrencyId ? String(company.baseCurrencyId) : undefined }, contextOf(req, def.key));
+  const count = (s: string) => results.filter((r) => r.status === s).length;
+  ApiResponse.success(res, { results, summary: { ready: count('ready'), exists: count('exists'), invalid: count('invalid'), created: count('created'), failed: count('failed') } });
+});
