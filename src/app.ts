@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { env } from './config/env.js';
 import { authenticate } from './middleware/authenticate.js';
+import { compressJson } from './middleware/compressJson.js';
 import { cors } from './middleware/cors.js';
 import { errorHandler } from './middleware/errorHandler.js';
 import { notFound } from './middleware/notFound.js';
@@ -40,6 +41,7 @@ app.use(securityHeaders);
 app.use(cors);
 app.use(requestId);
 app.use(requestLogger);
+app.use('/api', compressJson);
 app.use(express.json({ limit: '1mb' }));
 app.use(rejectOperators);
 
