@@ -152,10 +152,19 @@ function messageOf(body: { error?: { message?: string; details?: unknown } }, fa
   const message = body.error?.message ?? fallback;
   const first = firstProblem(body.error?.details);
   if (!first) return message;
-  if (message === "Validation failed") return first;
+  // A generic sentence ("Validation failed", "Invalid data fields") gives way to every field's problem.
+  if (message === "Validation failed" || /^Invalid .*fields?$/.test(message)) return allProblems(body.error?.details).join(". ") || first;
   // Add the field's problem only when the sentence does not already name that field.
   const field = first.split(/:| is required/)[0]!.toLowerCase();
   return !message.toLowerCase().includes(field) && message.length < 40 ? `${message}: ${first}` : message;
+}
+
+/** Every field problem, one sentence each ("Driver is required", "Expiry date is required"). */
+function allProblems(details: unknown, key = ""): string[] {
+  if (!details || typeof details !== "object") return [];
+  if (Array.isArray(details)) return typeof details[0] === "string" ? [key ? plain(key, details[0]) : details[0]] : [];
+  return Object.entries(details as Record<string, unknown>).flatMap(([k, v]) =>
+    k === "currentVersion" || k === "usage" ? [] : ["body", "data", "formErrors", "fieldErrors", "references"].includes(k) ? allProblems(v) : typeof v === "string" ? [plain(k, v)] : allProblems(v, k));
 }
 
 function firstProblem(details: unknown): string | undefined {
@@ -165,7 +174,7 @@ function firstProblem(details: unknown): string | undefined {
     if (key === "currentVersion" || key === "usage") continue;
     if (typeof value === "string") return value;
     const nested = firstProblem(value);
-    if (nested) return key === "body" || key === "formErrors" || key === "fieldErrors" || key === "references" ? nested : plain(key, nested);
+    if (nested) return ["body", "data", "formErrors", "fieldErrors", "references"].includes(key) ? nested : plain(key, nested);
   }
   return undefined;
 }
