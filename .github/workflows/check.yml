@@ -1,16 +1,14 @@
-# Every push and pull request runs the same check the README asks of everyone before pushing:
+# Every push runs the same check the README asks of everyone before pushing:
 # type-check, every API test (on an in-memory MongoDB), the API build and the web build.
 # The run's summary shows the test counts and any failures; the full log is kept as a file.
 name: check
 
+# Pushes only: the pull request into main shows the checks of the commit it carries, so a second
+# run per push would only double the wait. Runs are never cancelled: each push keeps its own log,
+# so a red result always points at the push that caused it.
 on:
   push:
     branches: [main, "work/**"]
-  pull_request:
-
-concurrency:
-  group: check-${{ github.ref }}
-  cancel-in-progress: true
 
 jobs:
   check:
