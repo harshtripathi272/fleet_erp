@@ -92,6 +92,8 @@ export interface Options {
   query?: Query;
   /** Sign-in calls send no token and never refresh. */
   anonymous?: boolean;
+  /** Extra headers, e.g. `Idempotency-Key` for a request the driver app may send twice. */
+  headers?: Record<string, string>;
 }
 
 function url(path: string, query?: Query) {
@@ -102,7 +104,7 @@ function url(path: string, query?: Query) {
 }
 
 async function send(path: string, options: Options) {
-  const headers: Record<string, string> = {};
+  const headers: Record<string, string> = { ...options.headers };
   if (options.body !== undefined) headers["Content-Type"] = "application/json";
   if (!options.anonymous && tokens?.accessToken) headers.Authorization = `Bearer ${tokens.accessToken}`;
   return fetch(url(path, options.query), { method: options.method ?? "GET", headers, body: options.body === undefined ? undefined : JSON.stringify(options.body) });

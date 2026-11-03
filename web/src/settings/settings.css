@@ -17,3 +17,4 @@
 @media (max-width: 640px) {
   .outbox-filters { flex-direction: column; }
 }
+.channel-why { display: block; margin-top: 4px; color: var(--ink-3); font-size: 13px; overflow-wrap: anywhere; }

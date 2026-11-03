@@ -105,7 +105,7 @@ export default function MessagingSettings() {
                     <td>
                       {c.via === "connection" && <Status tone="ok">{c.connectionName}</Status>}
                       {c.via === "server-settings" && <Status tone="ok">The server's e-mail settings</Status>}
-                      {c.via === "simulated" && <Status tone="info">Simulated: {c.simulated}</Status>}
+                      {c.via === "simulated" && <><Status tone="info">Simulated</Status> <span className="channel-why">{c.simulated}</span></>}
                     </td>
                   </tr>
                 ))}

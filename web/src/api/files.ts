@@ -12,11 +12,18 @@ export interface StoredFile {
 /** Photos and PDFs the API accepts (it checks the bytes too). */
 export const ACCEPT = "image/jpeg,image/png,image/webp,image/heic,application/pdf";
 
-/** Sends one file to file storage and returns its id, for a document to point at. */
-export async function uploadFile(file: File): Promise<StoredFile> {
+/**
+ * Sends one file to file storage and returns its id, for a document to point at. With `key`, sending the
+ * same file again (after a dropped connection) returns the first upload instead of storing a second.
+ */
+export async function uploadFile(file: Blob, key?: string, name = (file as File).name ?? "document"): Promise<StoredFile> {
   const res = await authorizedFetch("/files", {
     method: "POST",
-    headers: { "Content-Type": file.type || "application/octet-stream", "X-File-Name": encodeURIComponent(file.name) },
+    headers: {
+      "Content-Type": file.type || "application/octet-stream",
+      "X-File-Name": encodeURIComponent(name),
+      ...(key ? { "Idempotency-Key": key } : {}),
+    },
     body: file,
   });
   return (await res.json()).data as StoredFile;
