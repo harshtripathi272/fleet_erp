@@ -12,6 +12,7 @@ import { DriverAccess } from "./DriverAccess";
 import { UserAccess } from "./UserAccess";
 import { PermissionMatrix } from "./PermissionMatrix";
 import { RateFeed } from "./RateFeed";
+import MessagingSettings from "../settings/MessagingSettings";
 
 /**
  * One screen for every master, built from GET /meta/masters: groups, fields, links, choices and the
@@ -55,12 +56,19 @@ export function MastersScreen({ initialEntity }: { initialEntity?: string }) {
           <Search size={15} />
           <input value={filter} onChange={(e) => setFilter(e.target.value)} placeholder="Find a master" />
         </label>
-        {can(me, "company", "read") && (!filter || "company".includes(filter.toLowerCase())) && (
-          <section>
-            <h3>Organisation</h3>
-            <button className={selected === "company" ? "on" : ""} onClick={() => setSelected("company")}>Company</button>
-          </section>
-        )}
+        {(() => {
+          // Settings pages that are not masters: the company, and how messages are sent (#19).
+          const pages = [
+            { key: "company", label: "Company", show: can(me, "company", "read") },
+            { key: "messaging", label: "Sending messages", show: can(me, "message-connections", "read") },
+          ].filter((p) => p.show && (!filter || p.label.toLowerCase().includes(filter.toLowerCase())));
+          return pages.length > 0 && (
+            <section>
+              <h3>Organisation</h3>
+              {pages.map((p) => <button key={p.key} className={selected === p.key ? "on" : ""} onClick={() => setSelected(p.key)}>{p.label}</button>)}
+            </section>
+          );
+        })()}
         {groups.map(([group, list]) => (
           <section key={group}>
             <h3>{group}</h3>
@@ -79,7 +87,7 @@ export function MastersScreen({ initialEntity }: { initialEntity?: string }) {
         )}
       </aside>
       <section className="masters-main">
-        {selected === "company" ? <CompanyPanel /> : custom ? <CustomRecords master={custom} defs={defs} /> : def ? <Records key={def.key} def={def} defs={defs} /> : null}
+        {selected === "company" ? <CompanyPanel /> : selected === "messaging" ? <MessagingSettings /> : custom ? <CustomRecords master={custom} defs={defs} /> : def ? <Records key={def.key} def={def} defs={defs} /> : null}
       </section>
     </div>
   );
