@@ -20,24 +20,7 @@ import {
 } from "lucide-react";
 import { useApp } from "../store";
 import { can, useMay } from "../api/session";
-import {
-  byId,
-  carriedIn,
-  cumulativeKm,
-  driverBalance,
-  fuelEstimate,
-  fuelNow,
-  funding,
-  leg,
-  legLoaded,
-  measureFuel,
-  shortageFor,
-  tripFuelUsed,
-  tripHours,
-  tripKm,
-  validateStops,
-  volume20,
-} from "../domain/calc";
+import { byId, carriedIn, cumulativeKm, driverBalance, fuelEstimate, fuelNow, funding, leg, legLoaded, measureFuel, shortageFor, toZmw, tripFuelUsed, tripHours, tripKm, validateStops, volume20 } from "../domain/calc";
 import { activeTrip, placeName } from "../domain/helpers";
 import type { NextStep, StageId } from "../domain/turn";
 import type {
@@ -550,7 +533,9 @@ function FundCard({
     setAmount(String(suggested || ""));
   }, [suggested]);
   const value = Number(amount);
-  const inZmw = kind === "cash" && currency === "USD" ? value * data.settings.fxZmwPerUsd : value;
+  const inZmw = kind === "cash" ? toZmw(data, value, currency) : value;
+  // A currency with no exchange rate can't be compared with the budget or approved: say so instead of guessing.
+  const noRate = kind === "cash" && value > 0 && !Number.isFinite(inZmw);
   const over = inZmw > suggested + 0.001;
   const submit = async () => {
     if (await run({ type: "request.create", tripId: trip.id, kind, amount: value, currency: kind === "fuel" ? data.baseCurrency?.code ?? "ZMW" : currency, reason }, "Sent for approval.")) setReason("");
@@ -589,15 +574,15 @@ function FundCard({
                   <span>{unit}</span>
                 ) : (
                   <select className="currency" value={currency} onChange={(e) => setCurrency(e.target.value as Currency)} aria-label="Currency">
-                    <option>ZMW</option>
-                    <option>USD</option>
+                    {(data.currencies ?? []).map((c) => <option key={c.id}>{c.code}</option>)}
                   </select>
                 )}
               </span>
-              <Button tone="primary" disabled={!(value > 0) || (over && !reason.trim())} onClick={submit}>
+              <Button tone="primary" disabled={!(value > 0) || noRate || (over && !reason.trim())} onClick={submit}>
                 <Send /> Request
               </Button>
             </div>
+            {noRate && <p className="signin-error" role="alert">No exchange rate for {currency}. Add one under Masters → Exchange rates.</p>}
             <AnimatePresence>
               {over && value > 0 && (
                 <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="over">
@@ -1341,7 +1326,7 @@ export function ShortageCard({ consignment }: { consignment: Consignment }) {
           </tr>
           <tr className="total">
             <td>
-              At {s.rateUsd} USD per litre
+              At {zmw(s.pricePerL)} per litre
             </td>
             <td className="num">{zmw(s.amountZmw)}</td>
           </tr>
@@ -1455,7 +1440,7 @@ function SettlePanel({ trip }: { trip: Trip }) {
   const expenses = data.expenses.filter((e) => e.tripId === trip.id);
   const receipts = data.docs.filter((d) => d.tripId === trip.id && (d.kind === "expense" || d.kind === "fuel") && d.status === "new");
   const shortage = data.consignments.filter((c) => c.tripId === trip.id && c.shortage?.status === "charged");
-  const adv = advances.reduce((s, r) => s + (r.currency === "USD" ? r.amount * (r.fxAtIssue ?? data.settings.fxZmwPerUsd) : r.amount), 0);
+  const adv = advances.reduce((s, r) => s + toZmw(data, r.amount, r.currency, r.fxAtIssue), 0);
   const exp = expenses.filter((e) => e.status === "approved").reduce((s, e) => s + e.amountZmw, 0);
   const sh = shortage.reduce((s, c) => s + c.shortage!.amountZmw, 0);
   const finance = may("settlement.post");
@@ -1577,8 +1562,7 @@ export function ReceiptReview({ doc }: { doc: DriverDoc }) {
           </Field>
           <Field label="Currency">
             <select value={currency} onChange={(e) => setCurrency(e.target.value as Currency)} disabled={!finance}>
-              <option>ZMW</option>
-              <option>USD</option>
+              {(data.currencies ?? []).map((c) => <option key={c.id}>{c.code}</option>)}
             </select>
           </Field>
         </div>

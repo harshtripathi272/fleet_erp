@@ -78,8 +78,8 @@ export interface Product {
   fuelGroup?: "diesel" | "petrol" | "jet";
   /** Allowed transit loss in percent of the 20 °C loaded volume. */
   shortagePct?: number;
-  /** Charge per litre of shortage beyond the allowance, in USD. */
-  shortageRateUsd?: number;
+  /** Charge per litre of shortage beyond the allowance, in the base currency (from the product's price). */
+  shortagePricePerL?: number;
 }
 export interface ExpenseCategory {
   id: string;
@@ -90,7 +90,8 @@ export interface Settings {
   office: string;
   /** The head office's address, printed on documents. */
   officeAddress?: string;
-  fxZmwPerUsd: number;
+  /** Base-currency units for one unit of each currency that has an exchange rate (the base itself is 1). */
+  fx: Record<string, number>;
   /** Company trip settings: road km = straight line × this when no route gives the distance. */
   roadDistanceFactor: number;
   /** Company trip settings: average driving speed for times and ETAs. */
@@ -244,7 +245,8 @@ export interface Shortage {
   allowancePct: number;
   allowanceL: number;
   netShortL: number;
-  rateUsd: number;
+  /** Charge per litre, in the base currency. */
+  pricePerL: number;
   amountZmw: number;
   status: "pending" | "charged" | "waived" | "none";
   decidedAt?: string;

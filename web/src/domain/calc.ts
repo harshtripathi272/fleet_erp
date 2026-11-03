@@ -238,7 +238,8 @@ export function shortageFor(data: AppData, consignment: Consignment) {
   const pct = product.shortagePct ?? 0.3;
   const allowanceL = round((loaded * pct) / 100, 0);
   const netShortL = Math.max(0, round(lossL - allowanceL, 0));
-  const rateUsd = product.shortageRateUsd ?? 1.25;
+  // The product's shortage price; with none set, nothing is charged rather than a made-up rate.
+  const pricePerL = product.shortagePricePerL ?? 0;
   return {
     loaded20L: loaded,
     delivered20L: delivered,
@@ -246,17 +247,20 @@ export function shortageFor(data: AppData, consignment: Consignment) {
     allowancePct: pct,
     allowanceL,
     netShortL,
-    rateUsd,
-    amountZmw: round(netShortL * rateUsd * data.settings.fxZmwPerUsd, 0),
+    pricePerL,
+    amountZmw: round(netShortL * pricePerL, 0),
     status: netShortL > 0 ? ("pending" as const) : ("none" as const),
   };
 }
 
 /* ---------- Money ---------- */
 
-/** An amount in the base currency (shown as ZMW in the sample). `fx` is the rate the API used when it was paid. */
+/**
+ * An amount in the base currency. `fx` is the rate the API used when it was paid; otherwise the latest rate in
+ * the exchange-rates master. With no rate the result is NaN (shown as "—"): a figure is never guessed.
+ */
 export const toZmw = (data: AppData, amount: number, currency: string, fx?: number) =>
-  currency === (data.baseCurrency?.code ?? "ZMW") ? amount : amount * (fx ?? data.settings.fxZmwPerUsd);
+  currency === (data.baseCurrency?.code ?? "ZMW") ? amount : amount * (fx ?? data.settings.fx[currency] ?? Number.NaN);
 
 export interface LedgerEntry {
   id: string;

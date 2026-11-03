@@ -13,7 +13,7 @@ export const setBaseCurrencyCode = (code: string | undefined) => { if (code) bas
 export const baseCurrencyCode = () => baseCode;
 
 /** An amount in the company's base currency (named after the first client's kwacha). */
-export const zmw = (value: number | undefined | null) => (value == null ? "—" : `${num(Math.round(value))} ${baseCode}`);
+export const zmw = (value: number | undefined | null) => (value == null || Number.isNaN(value) ? "—" : `${num(Math.round(value))} ${baseCode}`);
 export const L = (value: number | undefined | null) => (value == null ? "—" : `${num(Math.round(value))} L`);
 export const km = (value: number | undefined | null) => (value == null ? "—" : `${num(Math.round(value))} km`);
 export const cash = (value: number, currency: string) =>

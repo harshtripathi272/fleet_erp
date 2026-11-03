@@ -87,14 +87,22 @@ export function toAppData(ref: Reference, ops: Operations): AppData {
   const toMajor = (minor: number | undefined, currencyId?: string) => (minor ?? 0) / 10 ** Number(currencies.get(String(currencyId ?? base.id))?.minorUnits ?? 2);
   const baseMajor = (minor: number | undefined) => (minor ?? 0) / baseUnits;
   const codeOf = (currencyId?: string) => String(currencies.get(String(currencyId))?.code ?? base.code);
-  const usd = ref.currencies.find((c) => c.code === "USD");
   const latestRate = (from: string, to: string) => ref.rates.filter((r) => r.baseCurrencyId === from && r.quoteCurrencyId === to && r.status === "active").sort((a, b) => String(b.effectiveDate).localeCompare(String(a.effectiveDate)))[0]?.rate as number | undefined;
-  const fx = usd ? latestRate(usd.id, base.id) ?? (latestRate(base.id, usd.id) ? 1 / latestRate(base.id, usd.id)! : undefined) ?? 1 : 1;
-  /** Base-currency amount of a money value, for the mock's "ZMW" figures. */
+  /** Base units for one unit of a currency, from the exchange-rates master (either direction); none when no rate exists. */
+  const rateToBase = (currencyId: string) => {
+    if (currencyId === base.id) return 1;
+    const direct = latestRate(currencyId, base.id);
+    if (direct) return direct;
+    const inverse = latestRate(base.id, currencyId);
+    return inverse ? 1 / inverse : undefined;
+  };
+  const fx: Record<string, number> = Object.fromEntries(ref.currencies.flatMap((c) => { const rate = rateToBase(String(c.id)); return rate ? [[String(c.code), rate]] : []; }));
+  /** Base-currency amount of a money value; NaN (shown as "—") when there is no rate, rather than a guess. */
   const inBase = (money?: Rec) => {
     if (!money) return 0;
     const major = toMajor(money.amountMinor, money.currencyId);
-    return money.currencyId === base.id ? major : codeOf(money.currencyId) === "USD" ? major * fx : major;
+    const rate = rateToBase(String(money.currencyId ?? base.id));
+    return rate ? major * rate : Number.NaN;
   };
 
   const cities = index(ref.cities);
@@ -170,7 +178,7 @@ export function toAppData(ref: Reference, ops: Operations): AppData {
       id: p.id, name: p.name, kind: p.volumeCorrected ? "fuel" : "general",
       unit: (p.volumeCorrected ? "L" : ["L", "t", "bags", "pallets"].includes(symbol) ? symbol : symbol.toLowerCase() === "kg" ? "t" : "t") as Unit,
       shortagePct: p.shortageAllowancePercent,
-      shortageRateUsd: price ? inBase(price) / fx : undefined,
+      shortagePricePerL: price ? inBase(price) : undefined,
     };
   });
   const categories: ExpenseCategory[] = ref.categories.filter((c) => c.status === "active").map((c) => ({ id: c.id, name: c.name }));
@@ -221,7 +229,7 @@ export function toAppData(ref: Reference, ops: Operations): AppData {
     shortage: c.shortage ? {
       loaded20L: c.shortage.loaded20L, delivered20L: c.shortage.delivered20L, lossL: c.shortage.lossL, allowancePct: c.shortage.allowancePercent,
       allowanceL: c.shortage.allowanceL, netShortL: c.shortage.netShortL,
-      rateUsd: c.shortage.pricePerL ? Math.round((inBase(c.shortage.pricePerL) / fx) * 100) / 100 : 0,
+      pricePerL: c.shortage.pricePerL ? Math.round(inBase(c.shortage.pricePerL) * 100) / 100 : 0,
       amountZmw: baseMajor(c.shortage.baseAmountMinor), status: c.shortage.status, decidedAt: c.shortage.decidedAt, note: c.shortage.note,
       mayWaive: c.shortage.status === "pending" ? mayDecideFinal(ref.me, c.shortage.approval) : undefined,
     } : undefined,
@@ -269,7 +277,7 @@ export function toAppData(ref: Reference, ops: Operations): AppData {
       officeAddress: hq?.address
         ? [hq.address.line1, hq.address.line2, cities.get(String(hq.address.cityId))?.name].filter(Boolean).join(", ")
         : undefined,
-      fxZmwPerUsd: fx,
+      fx,
       roadDistanceFactor: Number(ref.company?.operations?.roadDistanceFactor ?? 1.28),
       averageSpeedKmh: Number(ref.company?.operations?.averageSpeedKmh ?? 62),
       stopBeforeLoading: ref.company?.operations?.stopBeforeLoading !== false,
