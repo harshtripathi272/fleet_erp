@@ -283,6 +283,7 @@ Settings you may change:
 | `PORT` | `3000` | Another port |
 | `CORS_ORIGINS` | empty | A browser app's address, e.g. `http://localhost:5173`, when it calls the API directly |
 | `EXPOSE_RESET_TOKEN` | `false` | `true` to test "Forgot password" without e-mail; the token comes back in the response (refused in production) |
+| `OWNER_EMAIL` | empty | The first Owner's e-mail: that account is created at start-up and sent a set-password link (required in production) |
 | `REDIS_URL` | empty | A Redis address, to keep rate limits in Redis instead of memory |
 | `SMTP_HOST`, `SMTP_USER`, `SMTP_PASS` | empty | Real SMTP credentials, to send e-mail |
 
@@ -309,7 +310,7 @@ It loads once into an empty database. To start again, delete the `fleet_erp` dat
 | `EADDRINUSE` on port 3000 | Another `npm run dev` is running; close it, or set `PORT` in `.env` |
 | `running scripts is disabled on this system` | Run the `Set-ExecutionPolicy` line above |
 | `'node' is not recognized` | Open a new PowerShell after installing Node |
-| A new sign-up is only a Viewer | The first account already exists in this database; sign in as it, or start over with an empty database |
+| "Self sign-up is turned off" | The first account already exists in this database. Sign in as it and add people from Users, or turn on self sign-up in the company settings (they join as Viewers) |
 | The browser blocks the frontend's requests (CORS) | Use the Vite proxy in [Connecting](#connecting), or set `CORS_ORIGINS` and restart the API |
 
 ## The console
@@ -541,5 +542,17 @@ The same pieces work on AWS, Azure, DigitalOcean or any server that runs contain
 - Set `NODE_ENV=production`, a random `JWT_SECRET` of 32+ characters (e.g. `openssl rand -base64 48`) and the SMTP settings. The API refuses to start without them, and refuses `EXPOSE_RESET_TOKEN=true`.
 - Set `REDIS_URL` when running more than one API instance, so rate limits are shared.
 - Set `CORS_ORIGINS` to the frontend's address, and `TRUST_PROXY` when behind a reverse proxy.
-- Consider `CONSOLE_ENABLED=false` in production; it also removes the public `/meta/models` route.
+- Set `OWNER_EMAIL` to the company's first Owner. On first start that account is created and e-mailed a link to choose a password; nobody can claim the installation by signing up. If the e-mail does not arrive, "Forgot password" on the same address sends another.
+- Leave `CONSOLE_ENABLED=true` for now: password-reset and invitation links open the console. Turning it off also removes the public `/meta/models` route.
 - MongoDB runs as an ordinary standalone server; no replica set is needed.
+
+**What production refuses or adds** (checked in [#18](https://github.com/harshtripathi272/fleet_erp/issues/18), tests in `tests/hardening.test.ts`):
+
+- It will not start with: the development `JWT_SECRET`; no SMTP; `EXPOSE_RESET_TOKEN=true`; the simulators on; an `APP_URL` that is local or not `https://`; `TRUST_PROXY=true` (it trusts any `X-Forwarded-For`, so give the number of proxies); `CORS_ORIGINS` with a path, a `*` or `http://`; no `OWNER_EMAIL`.
+- Self sign-up is off unless the company turns it on; people are added from Users and get an invitation.
+- Sign-in: per-address and per-account rate limits, and the account locks after `LOGIN_MAX_FAILURES` wrong passwords, even when they are sent in parallel. A refresh token used twice signs out that device's whole chain.
+- Uploads: images and PDFs only, recognised by their content; at most `UPLOAD_MAX_MB` each and 60 per person per 10 minutes; a file is only served to the person who uploaded it, the driver it was filed for, or staff who can read driver documents.
+- Headers: a content security policy for the API, the console and the web app; `Cache-Control: no-store` on API answers; HSTS.
+- Logs and the audit trail never hold passwords, tokens or masked fields.
+
+**Backups.** On MongoDB Atlas, turn on its cloud backups (snapshots, with point-in-time restore on dedicated clusters) for each company's cluster. On one VM with Docker Compose, back up the `mongo-data` volume, for example a nightly `docker compose exec mongo mongodump --archive --gzip > backup.gz` copied off the machine. With `FILE_STORAGE=gcs`, turn on object versioning on the bucket; with `local`, back up `FILE_STORAGE_DIR` with the database.
