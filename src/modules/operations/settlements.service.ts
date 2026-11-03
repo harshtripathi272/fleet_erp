@@ -9,6 +9,7 @@ import { Consignment, DriverDocument } from './models/cargo.model.js';
 import { FundRequest } from './models/funding.model.js';
 import { DriverAccount, Expense, Settlement } from './models/money.model.js';
 import { TO_SETTLE, Trip } from './models/trip.model.js';
+import { announce, moneyValues } from './notices.js';
 import {
   activeDriver, baseCurrency, conflict, driverThread, formatMoney, log, need, nextNumber, post, present, queue, refuse, resolve, type OpsContext,
 } from './support.js';
@@ -148,6 +149,17 @@ export async function postSettlement(input: S.SettlementInput, ctx: OpsContext) 
   await post(queue('trips'), at, { title: `${driver.name} settled`, text: `${s.number} covers ${trips.length} trip${trips.length === 1 ? '' : 's'}. Trip sheets are final.` }, ctx);
   await log(ctx, at, `Settled ${driver.name}: ${s.number}, ${trips.length} trips, carry forward ${money(closing)}`, { entity: 'settlements', entityId: settlement._id });
   for (const t of trips) await log(ctx, at, `Settled in ${s.number}`, { tripId: t._id });
+  await announce('settlement.posted', null, ctx, {
+    driverId: driver._id,
+    variables: { ...(await moneyValues({ amountMinor: closing, currencyId: base.id })), 'trip.number': trips.map((t) => t.number).join(', '), 'document.number': String(s.number) },
+    ref: { kind: 'settlements', id: settlement._id },
+    // The driver statement goes with the e-mails; it is only made when one is going to someone.
+    attachments: async () => {
+      const { printoutFile } = await import('./printouts.js');
+      const file = await printoutFile('driver_statement', String(settlement._id), ctx.actorId);
+      return file ? [file] : null;
+    },
+  });
   return present(s);
 }
 

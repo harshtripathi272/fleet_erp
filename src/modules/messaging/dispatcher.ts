@@ -29,8 +29,11 @@ export interface DispatchInput {
   driverId?: string;
   /** The customer or other party: "party_contact" recipients, and customer.name. */
   partyId?: string;
-  /** Files sent with it: attached to e-mails; SMS and WhatsApp use the {{link}} placeholder instead. */
-  attachments?: Array<{ fileId: string }>;
+  /**
+   * Files sent with it: attached to e-mails; SMS and WhatsApp use the {{link}} placeholder instead.
+   * A function is called only when an e-mail is actually going to someone, so a printout is made only when needed.
+   */
+  attachments?: Array<{ fileId: string }> | (() => Promise<Array<{ fileId: string }> | null>);
   /** The record it is about, e.g. { kind: 'trips', id }, shown in the outbox. */
   ref?: { kind: string; id: string };
   actorId?: string;
@@ -92,15 +95,15 @@ async function valuesFor(input: DispatchInput): Promise<Record<string, string>> 
  * nothing is lost if a provider is down; failures retry with back-off. Never throws for a send that
  * fails; an action is never undone because a message could not go.
  */
-export async function dispatch(input: DispatchInput) {
+export async function dispatch(input: DispatchInput, { background = false }: { background?: boolean } = {}) {
   if (!(EVENTS as readonly string[]).includes(input.event)) throw new ValidationError(`Unknown event ${input.event}`);
   const rules = await NotificationRule.find({ event: input.event, status: 'active' }).lean() as Plain[];
   if (!rules.length) return [];
   const values = await valuesFor(input);
-  const attachments = await attachmentNames(input.attachments);
   const now = Date.now();
   const seen = new Set<string>();
-  const created: OutboundRecord[] = [];
+  // Who gets what first, then the records: an attachment is only made when an e-mail has somewhere to go.
+  const planned: Array<{ rule: Plain; template: Plain; channel: Channel; recipient: Recipient; to?: string }> = [];
   for (const rule of rules) {
     const recipients = await recipientsFor(rule, input);
     for (const entry of (rule.templates ?? []) as Array<{ channel: string; templateId?: unknown }>) {
@@ -113,30 +116,63 @@ export async function dispatch(input: DispatchInput) {
         const key = `${channel}:${to ?? recipient.name}`;
         if (seen.has(key)) continue;
         seen.add(key);
-        created.push((await OutboundMessage.create({
-          event: input.event, channel, to, toName: recipient.name,
-          subject: template.subject ? render(String(template.subject), values) : undefined,
-          body: render(String(template.body), values),
-          attachments: channel === 'email' && attachments.length ? attachments : undefined,
-          status: to ? 'queued' : 'skipped',
-          note: to ? undefined : `${recipient.name} has no ${channel === 'email' ? 'e-mail address' : 'phone number'}`,
-          nextAttemptAt: to ? new Date(now + Number(rule.delayMinutes ?? 0) * 60000) : undefined,
-          ruleId: rule._id as Types.ObjectId, templateId: template._id as Types.ObjectId, ref: input.ref, createdBy: input.actorId, at: new Date(now),
-        })).toObject());
+        planned.push({ rule, template, channel, recipient, to });
       }
     }
   }
-  for (const message of created) if (message.status === 'queued' && message.nextAttemptAt! <= new Date()) await deliver(message._id);
+  const attachments = planned.some((p) => p.channel === 'email' && p.to) ? await attachmentNames(input.attachments) : [];
+  const created: OutboundRecord[] = [];
+  for (const { rule, template, channel, recipient, to } of planned) {
+    created.push((await OutboundMessage.create({
+      event: input.event, channel, to, toName: recipient.name,
+      subject: template.subject ? render(String(template.subject), values) : undefined,
+      body: render(String(template.body), values),
+      attachments: channel === 'email' && attachments.length ? attachments : undefined,
+      status: to ? 'queued' : 'skipped',
+      note: to ? undefined : `${recipient.name} has no ${channel === 'email' ? 'e-mail address' : 'phone number'}`,
+      nextAttemptAt: to ? new Date(now + Number(rule.delayMinutes ?? 0) * 60000) : undefined,
+      ruleId: rule._id as Types.ObjectId, templateId: template._id as Types.ObjectId, ref: input.ref, createdBy: input.actorId, at: new Date(now),
+    })).toObject());
+  }
+  const due = created.filter((m) => m.status === 'queued' && m.nextAttemptAt! <= new Date());
+  if (background) {
+    track((async () => { for (const message of due) await deliver(message._id); })());
+    return created.map(present);
+  }
+  for (const message of due) await deliver(message._id);
   return Promise.all(created.map(async (m) => present((await OutboundMessage.findById(m._id).lean())!)));
 }
 
-/** Like dispatch, but only logs a failure: for actions that must not fail because a message could not be prepared. */
-export async function notify(input: DispatchInput): Promise<void> {
-  try { await dispatch(input); } catch (err) { logger.error({ err, event: input.event }, 'Messages for an event could not be prepared'); }
+/** Sends begun by notify() that have not finished yet. */
+const inFlight = new Set<Promise<void>>();
+function track(run: Promise<void>) {
+  const done: Promise<void> = run.catch((err: unknown) => { logger.error({ err }, 'Sending queued messages failed'); }).finally(() => { inFlight.delete(done); });
+  inFlight.add(done);
 }
 
-async function attachmentNames(list: DispatchInput['attachments']) {
+/** Waits for the sends notify() started: for tests, and for a clean shutdown. */
+export async function settleSends(): Promise<void> {
+  while (inFlight.size) await Promise.allSettled([...inFlight]);
+}
+
+/**
+ * For actions: records the event's messages in the outbox, then sends them without holding the action
+ * up. A slow or failing provider never fails the action; what does not go is retried by the worker.
+ * Only logs when the messages could not even be prepared.
+ */
+export async function notify(input: DispatchInput): Promise<void> {
+  try { await dispatch(input, { background: true }); } catch (err) { logger.error({ err, event: input.event }, 'Messages for an event could not be prepared'); }
+}
+
+async function attachmentNames(given: DispatchInput['attachments']) {
   const out: Array<{ fileId: Types.ObjectId; name: string }> = [];
+  let list: Array<{ fileId: string }> | null | undefined;
+  try {
+    list = typeof given === 'function' ? await given() : given;
+  } catch (err) {
+    // The messages still go, without the file; the log says why.
+    logger.error({ err }, 'An attachment could not be made');
+  }
   for (const a of list ?? []) {
     if (!Types.ObjectId.isValid(a.fileId)) continue;
     const file = await StoredFile.findById(a.fileId).select('name').lean();
