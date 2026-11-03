@@ -6,7 +6,7 @@ import { setSmtpTransportFactory } from '../src/core/mail/mailer.js';
 import { setFileStore } from '../src/core/storage/index.js';
 import { processDue, settleSends } from '../src/modules/messaging/dispatcher.js';
 import { OutboundMessage } from '../src/modules/messaging/models/connection.model.js';
-import { MessageTemplate } from '../src/modules/messaging/models/messaging.model.js';
+import { MessageTemplate, NotificationRule } from '../src/modules/messaging/models/messaging.model.js';
 import { renderPdf } from '../src/modules/operations/pdf.js';
 import { api, bearer, find, loadSample, resetDatabase, signUp, startDatabase, stopDatabase, userWithRole, type Session } from './helpers.js';
 
@@ -106,6 +106,8 @@ beforeEach(async () => {
     ['diesel', 'products', 'DIESEL-50'], ['ZMW', 'currencies', 'ZMW'], ['pmCash', 'payment-methods', 'CASH'], ['pmDepot', 'payment-methods', 'DEPOT'], ['ecRoad', 'expense-categories', 'ROAD'],
   ];
   for (const [key, master, search] of lookups) ids[key] = (await find(owner, master, search)).id;
+  // Only this file's rules: the installation's defaults (#43) are tested in message-defaults.test.ts.
+  await NotificationRule.deleteMany({ isDefault: true });
   await rulesForEveryEvent();
 });
 afterEach(() => setSmtpTransportFactory(null));
