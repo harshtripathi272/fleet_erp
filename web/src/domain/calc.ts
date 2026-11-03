@@ -40,8 +40,8 @@ export function leg(data: AppData, fromId: string, toId: string): { km: number; 
   const a = byId(data.places, fromId);
   const b = byId(data.places, toId);
   if (!a || !b) return { km: 0, hours: 0 };
-  const km = Math.round(haversineKm(a, b) * 1.28);
-  return { km, hours: round(km / 62, 1) };
+  const km = Math.round(haversineKm(a, b) * (data.settings.roadDistanceFactor || 1.28));
+  return { km, hours: round(km / (data.settings.averageSpeedKmh || 62), 1) };
 }
 
 /** Road geometry between two places as [lng, lat] points. */

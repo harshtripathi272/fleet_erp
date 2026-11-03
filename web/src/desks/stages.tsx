@@ -1055,7 +1055,7 @@ function LoadingPanel({ trip }: { trip: Trip }) {
 /* ================= Transit ================= */
 
 function TransitPanel({ trip }: { trip: Trip }) {
-  const { data, role, run, setOverlay } = useApp();
+  const { data, role, run, setOverlay, me } = useApp();
   const sim = useSim();
   const total = tripKm(trip);
   const at = trip.tracking?.km ?? 0;
@@ -1063,7 +1063,7 @@ function TransitPanel({ trip }: { trip: Trip }) {
   const nextIndex = cum.findIndex((k, i) => i > 0 && !trip.stops[i].arrivedAt);
   const next = trip.stops[nextIndex];
   const remainingKm = next ? cum[nextIndex] - at : 0;
-  const eta = next ? new Date(Date.now() + data.settings.clockOffsetMs + (remainingKm / 60) * 36e5).toISOString() : undefined;
+  const eta = next ? new Date(Date.now() + data.settings.clockOffsetMs + (remainingKm / (data.settings.averageSpeedKmh || 62)) * 36e5).toISOString() : undefined;
   const receipts = data.docs.filter((d) => d.tripId === trip.id && (d.kind === "expense" || d.kind === "fuel"));
   const running = sim.tripId === trip.id && sim.running;
   const ops = role === "operations" || role === "owner";
@@ -1105,6 +1105,7 @@ function TransitPanel({ trip }: { trip: Trip }) {
           <div>
             <span>Speed</span>
             <strong>{activeTrip(trip) ? `${Math.round(trip.tracking?.speed ?? 0)} km/h` : "Parked"}</strong>
+            {trip.tracking?.source === "simulator" && <span className="sim-tag">Simulated position</span>}
           </div>
           <div>
             <span>Next</span>
@@ -1121,9 +1122,11 @@ function TransitPanel({ trip }: { trip: Trip }) {
         </div>
         {ops && activeTrip(trip) && (
           <div className="sim-row">
-            <Button tone={running ? "secondary" : "primary"} onClick={() => (running ? sim.stop() : sim.start(trip.id))}>
-              {running ? <Pause /> : <Play />} {running ? "Pause" : "Simulate drive"}
-            </Button>
+            {me.simulators && (
+              <Button tone={running ? "secondary" : "primary"} onClick={() => (running ? sim.stop() : sim.start(trip.id))}>
+                {running ? <Pause /> : <Play />} {running ? "Pause" : "Simulate drive"}
+              </Button>
+            )}
             {next && !running && !blocked && (
               <Button tone="quiet" onClick={() => run({ type: "trip.arrive", tripId: trip.id, stopId: next.id }, `Marked at ${placeName(data, next.placeId)}.`)}>
                 Mark at {placeName(data, next.placeId)}

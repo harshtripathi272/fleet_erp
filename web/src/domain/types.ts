@@ -91,6 +91,10 @@ export interface Settings {
   /** The head office's address, printed on documents. */
   officeAddress?: string;
   fxZmwPerUsd: number;
+  /** Company trip settings: road km = straight line × this when no route gives the distance. */
+  roadDistanceFactor: number;
+  /** Company trip settings: average driving speed for times and ETAs. */
+  averageSpeedKmh: number;
   clockOffsetMs: number;
   seq: Record<string, number>;
   people: Record<Desk, string>;

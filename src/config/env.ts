@@ -50,7 +50,7 @@ export const envSchema = z.object({
 
   /** Shared secret Marichi Talks sends in `X-Webhook-Secret`; the inbound WhatsApp webhook is off without it. */
   MARICHI_TALKS_WEBHOOK_SECRET: z.string().trim().min(16, 'Use at least 16 characters').optional(),
-  /** Lets signed-in staff act as a driver's WhatsApp from the app (the simulated phone). On by default outside production; refused in production. */
+  /** The simulators: staff acting as a driver's WhatsApp (the simulated phone) and the drive simulator. On by default outside production; refused in production. */
   DRIVER_PHONE_SIMULATOR: z.enum(['true', 'false']).optional(),
 }).superRefine((value, ctx) => {
   if (value.FILE_STORAGE === 'gcs' && !value.GCS_BUCKET) {

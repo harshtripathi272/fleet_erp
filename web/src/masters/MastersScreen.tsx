@@ -8,6 +8,7 @@ import { can } from "../api/session";
 import { useApp } from "../store";
 import { Button, Drawer, Empty, Field, Status } from "../ui/kit";
 import { CompanyPanel } from "./CompanyPanel";
+import { DriverAccess } from "./DriverAccess";
 
 /**
  * One screen for every master, built from GET /meta/masters: groups, fields, links, choices and the
@@ -244,6 +245,7 @@ function Extras({ def, id, record }: { def: Def; id?: string; record?: Rec }) {
     return <div className="extra"><Button size="sm" onClick={async () => setPreview(`Next: ${(await api<Rec>(`/numbering-series/${id}/preview`)).next}`)}>Preview the next number</Button> <span className="mono">{preview}</span></div>;
   if (def.key === "message-templates")
     return <div className="extra"><Button size="sm" onClick={async () => { try { setPreview(JSON.stringify(await api(`/message-templates/${id}/preview`, { method: "POST", body: {} }))); } catch (e) { setPreview((e as Error).message); } }}>Preview with sample values</Button><pre className="mono preview">{preview}</pre></div>;
+  if (def.key === "drivers") return <DriverAccess driverId={id} phone={String(record.whatsapp ?? record.phone ?? "")} />;
   if (def.key === "vehicles" && can(me, "vehicle-states", "update")) {
     const truck = data.trucks.find((t) => t.id === id);
     return <TruckNow truckId={id} placeId={truck?.placeId ?? ""} fuelL={truck?.fuelL ?? 0} tankL={truck?.tankL ?? 0} places={data.places} onSave={(placeId, fuelL) => void saveState(id, placeId, fuelL, toast)} />;

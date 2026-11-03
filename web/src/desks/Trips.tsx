@@ -437,7 +437,7 @@ export function StopsTimeline({ trip }: { trip: Trip }) {
               </span>
             </div>
             <span className="stop-time">
-              {stop.arrivedAt ? `${day(stop.arrivedAt)}, ${hm(stop.arrivedAt)}` : cum > at && trip.dispatchedAt ? "" : ""}
+              {stop.arrivedAt ? `${day(stop.arrivedAt)}, ${hm(stop.arrivedAt)}${stop.arrivedVia === "simulator" ? " · simulated" : ""}` : ""}
             </span>
           </li>
         );

@@ -13,14 +13,18 @@ export interface Me {
   email: string;
   roles: string[];
   permissions: Permission[];
+  /** Set when this account is a driver's own: they get the driver app, not the desks. */
+  driverId?: string;
+  /** Whether this installation allows the simulators (simulated phones, drive and camera). */
+  simulators: boolean;
 }
 
 export const can = (me: Me | undefined, resource: string, action: string) =>
   Boolean(me?.permissions.some((p) => (p.resource === "*" || p.resource === resource) && (p.actions.includes("*") || p.actions.includes(action))));
 
-interface MeResponse { user: { id: string; name: string; email: string }; roles: { key: string; permissions: Permission[] }[] }
+interface MeResponse { simulators?: boolean; user: { id: string; name: string; email: string; driverId?: string }; roles: { key: string; permissions: Permission[] }[] }
 const toMe = (r: MeResponse): Me => ({
-  id: r.user.id, name: r.user.name, email: r.user.email,
+  id: r.user.id, name: r.user.name, email: r.user.email, driverId: r.user.driverId ?? undefined, simulators: r.simulators !== false,
   roles: r.roles.map((x) => x.key), permissions: r.roles.flatMap((x) => x.permissions ?? []),
 });
 
@@ -35,7 +39,7 @@ export interface Approver { level: number; roleKey?: string; userId?: string }
  * - Operations for anyone who plans or runs trips;
  * - Finance for anyone who approves, pays or settles (or is a first-level approver in a policy);
  * - the overview and approvals desk for anyone named at a higher policy level, or who holds every permission;
- * - the driver's phone (simulated WhatsApp) for anyone who may file driver documents.
+ * - the simulated driver phones for anyone who may file driver documents, where the installation allows simulators.
  * Someone with none of these reads the Operations desk.
  */
 export function desksFor(me: Me, approvers: Approver[] = []): Role[] {
@@ -45,7 +49,7 @@ export function desksFor(me: Me, approvers: Approver[] = []): Role[] {
   if (["trips", "nominations", "consignments", "fund-requests"].some((r) => can(me, r, "create"))) desks.push("operations");
   if (["fund-approvals", "payments", "expense-approvals", "settlements", "shortage-decisions"].some((r) => can(me, r, "create")) || approvers.some((a) => a.level === 1 && named(a))) desks.push("finance");
   if (!desks.length) desks.push("operations");
-  if (can(me, "driver-documents", "create")) desks.push("driver");
+  if (me.simulators && can(me, "driver-documents", "create")) desks.push("driver");
   return desks;
 }
 
@@ -57,6 +61,9 @@ export async function signOut() {
   }
   setTokens(null);
 }
+
+/** Drivers sign in with their phone number; everyone else with their e-mail. */
+const looksLikePhone = (value: string) => /^\+?[\d\s-]{7,}$/.test(value.trim());
 
 export function SignIn({ company, onSignedIn }: { company?: string; onSignedIn: () => void }) {
   const [mode, setMode] = useState<"in" | "up">("in");
@@ -72,7 +79,7 @@ export function SignIn({ company, onSignedIn }: { company?: string; onSignedIn: 
     setError("");
     try {
       const tokens = mode === "in"
-        ? await api<Tokens>("/auth/login", { method: "POST", body: { email, password }, anonymous: true })
+        ? await api<Tokens>("/auth/login", { method: "POST", body: { ...(looksLikePhone(email) ? { phone: email.replace(/[\s-]/g, "") } : { email: email.trim() }), password }, anonymous: true })
         : await api<Tokens>("/auth/register", { method: "POST", body: { name, email, password }, anonymous: true });
       setTokens(tokens);
       queryClient.clear();
@@ -97,8 +104,8 @@ export function SignIn({ company, onSignedIn }: { company?: string; onSignedIn: 
               <input value={name} onChange={(e) => setName(e.target.value)} autoComplete="name" required />
             </Field>
           )}
-          <Field label="E-mail">
-            <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" required />
+          <Field label={mode === "in" ? "E-mail or phone number" : "E-mail"}>
+            <input type={mode === "in" ? "text" : "email"} value={email} onChange={(e) => setEmail(e.target.value)} autoComplete={mode === "in" ? "username" : "email"} inputMode={mode === "in" && looksLikePhone(email) ? "tel" : undefined} required />
           </Field>
           <Field label="Password">
             <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete={mode === "in" ? "current-password" : "new-password"} required minLength={8} />

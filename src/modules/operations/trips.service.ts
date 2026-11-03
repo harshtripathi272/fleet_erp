@@ -1,5 +1,6 @@
 import { Types, type HydratedDocument } from 'mongoose';
-import { NotFoundError } from '../../core/errors/index.js';
+import { env } from '../../config/env.js';
+import { ForbiddenError, NotFoundError } from '../../core/errors/index.js';
 import type { Plain } from '../../core/masters/types.js';
 import { Branch } from '../organisation/models/branch.model.js';
 import { Product } from '../cargo/models/product.model.js';
@@ -458,6 +459,7 @@ export async function arriveAt(trip: HydratedDocument<any>, index: number, at: D
 /** A position report: kilometres along the route. The truck can't pass loading before the load is recorded, or offloading before delivery. */
 export async function reportPosition(id: string, input: S.PositionInput, ctx: OpsContext) {
   need(ctx, 'trips', 'update');
+  if (input.source === 'simulator' && !env.DRIVER_PHONE_SIMULATOR) throw new ForbiddenError('The drive simulator is switched off for this installation');
   const at = new Date();
   const trip = await tripDoc(id);
   if (!trip.get('dispatchedAt') || !activeTrip(trip.toObject())) throw conflict('Dispatch the trip to start tracking.');

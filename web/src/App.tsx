@@ -35,6 +35,7 @@ import { Nominations } from "./desks/Nominations";
 import { MastersScreen } from "./masters/MastersScreen";
 import { Overview } from "./desks/Overview";
 import { DriverDesk } from "./desks/DriverDesk";
+import { DriverPortal } from "./driver/DriverPortal";
 import { DeskPhone, MessageBanner } from "./phone/DeskPhone";
 import { DocumentOverlay } from "./docs/DocumentOverlay";
 import { SimProvider } from "./tracking/sim";
@@ -114,6 +115,7 @@ export default function App() {
   const me = useMe(signedIn);
   if (!signedIn) return <SignIn onSignedIn={() => setSignedIn(true)} />;
   if (!me.data) return <Waiting text={me.error ? `Could not load your account: ${(me.error as Error).message}` : "Signing in…"} />;
+  if (me.data.driverId) return <DriverPortal me={me.data} />;
   return <Desks me={me.data} />;
 }
 
@@ -329,7 +331,7 @@ function RolePicker({
         </div>
         {drivers.length > 0 && (
           <>
-            <h2>Driver's phone</h2>
+            <h2>Simulated driver phones</h2>
             <div className="picker-drivers">
               {drivers.slice(0, 8).map((driver) => (
                 <button key={driver.id} className="picker-driver" onClick={() => onPick("driver", driver.id)}>

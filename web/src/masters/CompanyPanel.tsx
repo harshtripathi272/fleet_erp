@@ -18,6 +18,7 @@ const MODULES: [string, string][] = [
   ["tracking", "Tracking"],
   ["maintenance", "Maintenance"],
   ["billing", "Billing"],
+  ["driver-app", "Driver web app (drivers sign in on their phone)"],
 ];
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 const DATE_FORMATS = ["DD/MM/YYYY", "MM/DD/YYYY", "YYYY-MM-DD"];

@@ -1,0 +1,255 @@
+/* ---------- Driver web app (a driver on their own phone) ---------- */
+
+.drv {
+  min-height: 100dvh;
+  background: var(--paper);
+}
+.drv-top {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: calc(10px + env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px)) 10px max(16px, env(safe-area-inset-left, 0px));
+  background: var(--pine-900);
+}
+.drv-out {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.08);
+  color: #e8f1ec;
+  font-size: 13.5px;
+}
+.drv-main {
+  display: grid;
+  gap: 12px;
+  max-width: 560px;
+  margin: 0 auto;
+  padding: 14px max(16px, env(safe-area-inset-right, 0px)) calc(32px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px));
+}
+.drv-hello {
+  margin: 0;
+  color: var(--ink-2);
+  font-weight: 560;
+}
+.drv-card {
+  display: grid;
+  gap: 10px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+  box-shadow: var(--shadow-1);
+  min-width: 0;
+}
+.drv-card h2 {
+  font-size: 19px;
+  font-weight: 640;
+  letter-spacing: -0.01em;
+  text-wrap: balance;
+}
+.drv-card h3 {
+  font-size: 15.5px;
+  font-weight: 640;
+}
+.drv-card h4 {
+  margin-top: 4px;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--ink-2);
+}
+.drv-card .btn-lg {
+  width: 100%;
+}
+.drv-trip-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 13px;
+}
+.drv-facts {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+}
+.drv-facts > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 14px;
+}
+.drv-facts dt {
+  color: var(--ink-3);
+}
+.drv-facts dd {
+  margin: 0;
+  text-align: right;
+  font-weight: 540;
+}
+.drv-stops {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.drv-stops li {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 0;
+  border-bottom: 1px dashed var(--line);
+}
+.drv-stops li:last-child {
+  border-bottom: 0;
+}
+.drv-stops li > span:nth-child(2) {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+}
+.drv-stops small {
+  color: var(--ink-3);
+}
+.drv-stop-dot {
+  width: 10px;
+  height: 10px;
+  flex: none;
+  border-radius: 50%;
+  border: 2px solid var(--line-2);
+  background: var(--surface);
+}
+.drv-stops li.drv-done .drv-stop-dot {
+  border-color: var(--pine-500);
+  background: var(--pine-500);
+}
+.drv-stops li.drv-next .drv-stop-dot {
+  border-color: var(--brass-2);
+}
+.drv-kinds {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 8px;
+}
+.drv-kinds .btn {
+  justify-content: flex-start;
+}
+.drv-docs,
+.drv-list {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.drv-docs li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 0;
+  border-top: 1px dashed var(--line);
+}
+.drv-docs li > span {
+  display: grid;
+  min-width: 0;
+}
+.drv-docs small {
+  color: var(--ink-3);
+}
+.drv-thumb {
+  width: 34px;
+  height: 44px;
+  flex: none;
+  border-radius: 6px;
+  object-fit: cover;
+  background: var(--paper-2);
+}
+.drv-list li {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 0;
+  border-top: 1px dashed var(--line);
+  font-size: 14px;
+}
+.drv-balance {
+  margin: 0;
+  font-size: 15px;
+}
+.drv-thread {
+  display: grid;
+  gap: 8px;
+  max-height: 420px;
+  overflow-y: auto;
+}
+.drv-msg {
+  display: grid;
+  gap: 4px;
+  justify-self: start;
+  max-width: 88%;
+  padding: 9px 11px;
+  border-radius: 10px;
+  background: var(--paper-2);
+  font-size: 14px;
+}
+.drv-msg.mine {
+  justify-self: end;
+  background: var(--pine-50);
+}
+.drv-msg p {
+  margin: 0;
+}
+.drv-msg dl {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  font-size: 13px;
+}
+.drv-msg dl > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+}
+.drv-msg dt {
+  color: var(--ink-3);
+}
+.drv-msg dd {
+  margin: 0;
+}
+.drv-msg small {
+  color: var(--ink-3);
+  font-size: 11.5px;
+}
+.drv-compose {
+  display: flex;
+  gap: 8px;
+}
+.drv-compose input {
+  flex: 1;
+  min-width: 0;
+  height: 40px;
+  padding: 0 12px;
+  border: 1px solid var(--line-2);
+  border-radius: 9px;
+  background: var(--surface);
+}
+.drv-ok,
+.drv-error {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  font-size: 14px;
+}
+.drv-ok {
+  background: var(--pine-50);
+  color: var(--pine-700);
+}
+.drv-error {
+  background: var(--rust-50);
+  color: var(--rust);
+}

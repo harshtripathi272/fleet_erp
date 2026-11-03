@@ -49,3 +49,4 @@ details.form-group summary { cursor: pointer; }
 .unit-input { display: flex; align-items: center; gap: 8px; }
 .unit-input input { flex: 1; min-width: 0; }
 .unit-input .muted { white-space: nowrap; font-size: 13px; }
+.row-actions { display: flex; flex-wrap: wrap; gap: 8px; }

@@ -1,4 +1,5 @@
 import type { Request } from 'express';
+import { env } from '../../config/env.js';
 import { ApiResponse } from '../../core/response/index.js';
 import { asyncHandler } from '../../utils/asyncHandler.js';
 import { clientIp } from '../../core/rateLimit/index.js';
@@ -25,7 +26,8 @@ export const logoutAll = asyncHandler(async (req, res) => {
   ApiResponse.noContent(res);
 });
 export const me = asyncHandler(async (req, res) => {
-  ApiResponse.success(res, { ...(await AuthService.me(auth(req).userId)), permissions: auth(req).permissions });
+  // `simulators`: whether this installation allows the simulated phone and drive, so screens can hide them.
+  ApiResponse.success(res, { ...(await AuthService.me(auth(req).userId)), permissions: auth(req).permissions, simulators: env.DRIVER_PHONE_SIMULATOR });
 });
 export const updateMe = asyncHandler(async (req, res) => {
   ApiResponse.success(res, await AuthService.updateMe(auth(req).userId, req.body), 'Profile updated');

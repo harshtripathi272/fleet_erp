@@ -263,6 +263,8 @@ export function toAppData(ref: Reference, ops: Operations): AppData {
         ? [hq.address.line1, hq.address.line2, cities.get(String(hq.address.cityId))?.name].filter(Boolean).join(", ")
         : undefined,
       fxZmwPerUsd: fx,
+      roadDistanceFactor: Number(ref.company?.operations?.roadDistanceFactor ?? 1.28),
+      averageSpeedKmh: Number(ref.company?.operations?.averageSpeedKmh ?? 62),
       clockOffsetMs: 0,
       seq: {},
       people: { owner: named("owner", "Owner"), operations: named("operations", "Operations"), finance: named("finance", "Finance") },

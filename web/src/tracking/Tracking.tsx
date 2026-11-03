@@ -33,7 +33,7 @@ function tint(map: MlMap) {
 }
 
 export default function Tracking({ tripId }: { tripId: string }) {
-  const { data, role, run, overlay, setOverlay } = useApp();
+  const { data, role, run, overlay, setOverlay, me } = useApp();
   const sim = useSim();
   const trip = byId(data.trips, tripId)!;
   const truck = byId(data.trucks, trip.truckId)!;
@@ -182,7 +182,7 @@ export default function Tracking({ tripId }: { tripId: string }) {
     (!loaded && nextIndex > trip.stops.findIndex((s) => s.kind === "load")) ||
     (!delivered && nextIndex > trip.stops.findIndex((s) => s.kind === "offload"));
   const toNext = next ? Math.max(0, cum[nextIndex] - at) : 0;
-  const eta = next ? clock(data) + (toNext / 60) * 36e5 : undefined;
+  const eta = next ? clock(data) + (toNext / (data.settings.averageSpeedKmh || 62)) * 36e5 : undefined;
   const total = tripKm(trip);
   const fuel = fuelNow(data, trip);
   return createPortal(
@@ -193,6 +193,7 @@ export default function Tracking({ tripId }: { tripId: string }) {
       {camera && (
         <motion.div className="dashcam-frame" initial={{ opacity: 0, scale: 0.94, y: 12 }} animate={{ opacity: 1, scale: 1, y: 0 }}>
           <Dashcam plate={truck.plate} speed={activeTrip(trip) ? trip.tracking?.speed ?? 0 : 0} time={clock(data)} coords={`${pos.lat.toFixed(4)}, ${pos.lng.toFixed(4)}`} />
+          <span className="sim-tag dashcam-sim">Simulated camera</span>
           <button className="dashcam-close" onClick={() => setCamera(false)} aria-label="Close camera">
             <X size={16} />
           </button>
@@ -239,7 +240,7 @@ export default function Tracking({ tripId }: { tripId: string }) {
         </div>
         <div className="track-progress-label">
           <span>{km(at)} driven</span>
-          <span>{km(total - at)} to go · about {hoursText((total - at) / 60)}</span>
+          <span>{km(total - at)} to go · about {hoursText((total - at) / (data.settings.averageSpeedKmh || 62))}</span>
         </div>
         <div className="track-controls">
           {ops && activeTrip(trip) && trip.dispatchedAt && (
@@ -256,9 +257,11 @@ export default function Tracking({ tripId }: { tripId: string }) {
               ))}
             </div>
           )}
-          <Button onClick={() => setCamera((c) => !c)}>
-            <Camera /> {camera ? "Hide camera" : "Peek camera"}
-          </Button>
+          {me.simulators && (
+            <Button onClick={() => setCamera((c) => !c)}>
+              <Camera /> {camera ? "Hide camera" : "Simulated camera"}
+            </Button>
+          )}
           <button className={`icon-btn ${follow ? "on" : ""}`} onClick={() => setFollow((f) => !f)} aria-label="Follow truck" title="Follow truck">
             <Crosshair size={18} />
           </button>

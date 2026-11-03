@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { after, before, beforeEach, describe, test } from 'node:test';
 import { PassThrough } from 'node:stream';
+import { env } from '../src/config/env.js';
 import { setFileStore, type FileStore } from '../src/core/storage/index.js';
 import { api, bearer, find, loadSample, resetDatabase, signUp, startDatabase, stopDatabase, userWithRole, type Session } from './helpers.js';
 
@@ -142,6 +143,19 @@ describe('real and simulated documents', () => {
     assert.equal(load.arrivedVia, 'simulator');
     const feed = ok(await as(ops).get('/activity', { tripId: trip.id }));
     assert.ok(feed.some((a: { text: string }) => /\(simulated\)/.test(a.text)), 'the activity feed marks simulated arrivals');
+  });
+
+  test('an installation with the simulators off refuses simulated positions and says so to the screens', async () => {
+    const trip = await newTrip();
+    assert.equal(ok(await as(ops).get('/auth/me')).simulators, true);
+    env.DRIVER_PHONE_SIMULATOR = false;
+    try {
+      assert.equal(ok(await as(ops).get('/auth/me')).simulators, false);
+      await as(ops).post(`/trips/${trip.id}/position`, { km: 50, speed: 60, source: 'simulator' }).expect(403);
+      await as(ops).post('/whatsapp/simulate', { driverId: ids.d1, kind: 'other', text: 'hello' }).expect(403);
+    } finally {
+      env.DRIVER_PHONE_SIMULATOR = true;
+    }
   });
 });
 

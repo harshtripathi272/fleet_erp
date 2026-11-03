@@ -8,9 +8,10 @@ import { useApp } from "../store";
  * sample picture. `pdf` files can't sit in an <img>; they open in a new tab instead.
  */
 export function useDocImage(doc?: { file?: Attachment; read?: Extracted; tripId?: string }) {
-  const { data } = useApp();
+  // The driver app has no desk data; there only uploaded files (and no sample pictures) are shown.
+  const data = useApp()?.data;
   const uploaded = useFileUrl(doc?.file?.fileId);
   if (!doc?.file) return { src: undefined, pdf: false, sample: false };
   if (doc.file.fileId) return { src: uploaded, pdf: isPdf(doc.file.mime), sample: false };
-  return { src: docImage(data, doc), pdf: false, sample: Boolean(doc.file.sampleId) };
+  return { src: data ? docImage(data, doc) : undefined, pdf: false, sample: Boolean(doc.file.sampleId) };
 }
