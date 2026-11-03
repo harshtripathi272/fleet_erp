@@ -215,6 +215,8 @@ export async function pair(input: { vehicleId: string; trailerId: string; from?:
     throw new ConflictError('This truck and trailer are already paired');
   }
   for (const p of current) {
+    // With no start given, "now" can fall a moment before a pairing another request has just made: that is a clash, not a bad date.
+    if (from < (p.from as Date) && !input.from) throw new ConflictError('Another pairing for this truck or trailer was just created. Reload and try again.');
     if (from < (p.from as Date)) throw new ValidationError('The new pairing starts before an existing one began', { from: [`Must be on or after ${(p.from as Date).toISOString()}`] });
   }
   for (const p of current) {

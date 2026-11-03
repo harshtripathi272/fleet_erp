@@ -23,11 +23,17 @@ const useMasters = () => useQuery({ queryKey: ["meta-masters"], queryFn: () => a
 const OBJECT_ID = "^[0-9a-fA-F]{24}$";
 const BASE_KEYS = new Set(["status", "validFrom", "validTo", "branchIds", "tags", "notes", "externalRefs", "attachments", "custom"]);
 
+/** The master last open in this tab, so a reload comes back to it. */
+const OPEN = "marichi.masters.open";
+const remembered = () => { try { return sessionStorage.getItem(OPEN); } catch { return null; } };
+const remember = (key: string) => { try { sessionStorage.setItem(OPEN, key); } catch { /* private mode: nothing to keep */ } };
+
 export function MastersScreen({ initialEntity }: { initialEntity?: string }) {
   const { me } = useApp();
   const masters = useMasters();
   const customMasters = useQuery({ queryKey: ["custom-masters"], queryFn: () => api<Rec[]>("/custom-masters", { query: { limit: 100 } }) });
-  const [selected, setSelected] = useState<string>(initialEntity && !initialEntity.includes(":") ? initialEntity : "vehicles");
+  const [selected, setSelectedState] = useState<string>(() => (initialEntity && !initialEntity.includes(":") ? initialEntity : remembered() ?? "vehicles"));
+  const setSelected = (key: string) => { setSelectedState(key); remember(key); };
   const [filter, setFilter] = useState("");
   const defs = (masters.data ?? []).filter((d) => d.key !== "custom-records" && d.permissions?.read);
   const groups = useMemo(() => {
@@ -162,6 +168,8 @@ function RecordDrawer({ def, defs, id, onClose }: { def: Def; defs: Def[]; id?: 
   const [tab, setTab] = useState<"details" | "usage" | "history">("details");
   const [draft, setDraft] = useState<Rec | null>(null);
   const [busy, setBusy] = useState(false);
+  const [asking, setAsking] = useState<null | "archive" | "delete">(null);
+  const [reason, setReason] = useState("");
   const canSensitive = Boolean(def.permissions?.sensitive);
   const writable = !id ? def.permissions?.create && !def.managed?.create : def.permissions?.update && !def.managed?.update && record.data?.status !== "archived";
   const base = id ? record.data : undefined;
@@ -178,6 +186,8 @@ function RecordDrawer({ def, defs, id, onClose }: { def: Def; defs: Def[]; id?: 
       await fn();
       await done(message);
       setDraft(null);
+      setAsking(null);
+      setReason("");
       if (close) onClose();
     } catch (err) {
       toast(err instanceof ApiError ? err.message : "That didn't work.", "error");
@@ -204,16 +214,30 @@ function RecordDrawer({ def, defs, id, onClose }: { def: Def; defs: Def[]; id?: 
       onClose={onClose}
       width={640}
       footer={
-        <>
-          {id && def.permissions?.archive && !def.managed?.archive && base && (base.status === "archived"
-            ? <Button tone="quiet" disabled={busy} onClick={() => act(() => api(`/${def.key}/${id}/restore`, { method: "POST" }), "Restored")}><RotateCcw size={15} /> Restore</Button>
-            : <Button tone="quiet" disabled={busy} onClick={() => act(() => api(`/${def.key}/${id}/archive`, { method: "POST", body: {} }), "Archived")}><Archive size={15} /> Archive</Button>)}
-          {id && def.permissions?.delete && !def.managed?.delete && (
-            <Button tone="danger" disabled={busy} onClick={() => confirm(`Delete this ${def.singular.toLowerCase()}? Only records nothing uses can be deleted.`) && act(() => api(`/${def.key}/${id}`, { method: "DELETE" }), "Deleted", true)}><Trash2 size={15} /> Delete</Button>
-          )}
-          <span className="spacer" />
-          {writable && <Button tone="primary" busy={busy} onClick={save}>{id ? "Save" : "Create"}</Button>}
-        </>
+        asking === "archive" ? (
+          <>
+            <input className="input drawer-reason" autoFocus value={reason} maxLength={500} onChange={(e) => setReason(e.target.value)} placeholder="Why is it being archived? (optional)" aria-label="Reason for archiving" />
+            <Button tone="quiet" disabled={busy} onClick={() => setAsking(null)}>Cancel</Button>
+            <Button tone="primary" busy={busy} onClick={() => act(() => api(`/${def.key}/${id}/archive`, { method: "POST", body: reason.trim() ? { reason: reason.trim() } : {} }), "Archived")}><Archive size={15} /> Archive</Button>
+          </>
+        ) : asking === "delete" ? (
+          <>
+            <span className="drawer-ask">Delete this {def.singular.toLowerCase()} for good? Only records nothing uses can be deleted.</span>
+            <Button tone="quiet" disabled={busy} onClick={() => setAsking(null)}>Cancel</Button>
+            <Button tone="danger" busy={busy} onClick={() => act(() => api(`/${def.key}/${id}`, { method: "DELETE" }), "Deleted", true)}><Trash2 size={15} /> Delete</Button>
+          </>
+        ) : (
+          <>
+            {id && def.permissions?.archive && !def.managed?.archive && base && (base.status === "archived"
+              ? <Button tone="quiet" disabled={busy} onClick={() => act(() => api(`/${def.key}/${id}/restore`, { method: "POST" }), "Restored")}><RotateCcw size={15} /> Restore</Button>
+              : <Button tone="quiet" disabled={busy} onClick={() => setAsking("archive")}><Archive size={15} /> Archive</Button>)}
+            {id && def.permissions?.delete && !def.managed?.delete && (
+              <Button tone="danger" disabled={busy} onClick={() => setAsking("delete")}><Trash2 size={15} /> Delete</Button>
+            )}
+            <span className="spacer" />
+            {writable && <Button tone="primary" busy={busy} onClick={save}>{id ? "Save" : "Create"}</Button>}
+          </>
+        )
       }
     >
       {id && (
@@ -224,6 +248,11 @@ function RecordDrawer({ def, defs, id, onClose }: { def: Def; defs: Def[]; id?: 
       {id && record.isLoading && <p className="muted">Loading…</p>}
       {tab === "details" && (!id || base) && (
         <>
+          {base?.status === "archived" && (
+            <p className="drawer-note">
+              Archived{base.archivedAt ? ` on ${new Date(String(base.archivedAt)).toLocaleDateString("en-GB")}` : ""}{base.archiveReason ? `: ${base.archiveReason}` : ""}. Restore it to make changes.
+            </p>
+          )}
           <Extras def={def} id={id} record={base} />
           <SchemaForm schema={def.createSchema} def={def} defs={defs} value={value} onChange={setDraft} readOnly={!writable} canSensitive={canSensitive} />
         </>
@@ -292,9 +321,9 @@ function HistoryList({ def, id }: { def: Def; id: string }) {
     <ol className="history">
       {history.data.map((h) => (
         <li key={h.id}>
-          <strong><History size={13} /> {label(h.action)}</strong> <span className="muted">{new Date(h.at).toLocaleString("en-GB")}</span>
+          <strong><History size={13} /> {label(h.action)}</strong> <span className="muted">{new Date(h.at).toLocaleString("en-GB")}{h.actorName ? ` · ${h.actorName}` : ""}</span>
           {h.summary && <div>{h.summary}</div>}
-          {(h.changes as Rec[]).slice(0, 8).map((c) => <div key={c.path} className="mono small">{c.path}: {short(c.from)} → {short(c.to)}</div>)}
+          {(h.changes as Rec[]).filter(shown).slice(0, 8).map((c) => <div key={c.path} className="small">{fieldName(String(c.path))}: {short(c.from)} → {short(c.to)}</div>)}
         </li>
       ))}
     </ol>
@@ -567,6 +596,11 @@ function Value({ value, field, defs }: { value: unknown; field: Rec; defs: Def[]
 
 const titleOf = (r: Rec, def?: Def) => String(r[def?.titleField ?? "name"] ?? r.name ?? r.code ?? r.registrationNumber ?? r.id);
 const get = (r: Rec, path: string) => path.split(".").reduce<unknown>((v, k) => (v && typeof v === "object" ? (v as Rec)[k] : undefined), r);
+/** Bookkeeping the server fills in itself, and changes from nothing to nothing, are left out of history. */
+const BOOKKEEPING = new Set(["createdBy", "updatedBy", "archivedBy", "archivedAt", "version"]);
+const empty = (v: unknown) => v === undefined || v === null || v === "" || (typeof v === "object" && Object.keys(v as object).length === 0);
+const shown = (c: Rec) => !BOOKKEEPING.has(String(c.path)) && !(empty(c.from) && empty(c.to));
+const fieldName = (path: string) => label(path.split(".").pop() ?? path);
 const short = (v: unknown) => { const s = typeof v === "string" ? v : JSON.stringify(v); return s && s.length > 60 ? `${s.slice(0, 57)}…` : s ?? "—"; };
 export const label = (key: string) => key.replace(/Id(s)?$/, "$1").replace(/_/g, " ").replace(/([a-z])([A-Z])/g, "$1 $2").replace(/^./, (c) => c.toUpperCase()).replace(/\bkm\b/i, "km").replace(/ Minor$/, "");
 

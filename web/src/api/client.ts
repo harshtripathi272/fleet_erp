@@ -161,7 +161,15 @@ function firstProblem(details: unknown): string | undefined {
     if (key === "currentVersion" || key === "usage") continue;
     if (typeof value === "string") return value;
     const nested = firstProblem(value);
-    if (nested) return key === "body" || key === "formErrors" || key === "fieldErrors" || key === "references" ? nested : `${key}: ${nested}`;
+    if (nested) return key === "body" || key === "formErrors" || key === "fieldErrors" || key === "references" ? nested : plain(key, nested);
   }
   return undefined;
+}
+
+/** "code" + Zod's "Invalid input: expected string, received undefined" reads as "Code is required". */
+function plain(key: string, problem: string) {
+  if (/^\d+$/.test(key)) return problem;
+  const name = key.replace(/Id(s)?$/, "$1").replace(/([a-z])([A-Z])/g, "$1 $2").toLowerCase().replace(/^./, (c) => c.toUpperCase());
+  if (/received (undefined|null)$/.test(problem) || problem === "Required") return `${name} is required`;
+  return `${name}: ${problem.replace(/^Invalid input: /, "")}`;
 }

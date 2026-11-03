@@ -272,8 +272,15 @@ export async function history(def: MasterDefinition, id: string, page: number, l
   }
   const filter = { entity: def.key, entityId: new Types.ObjectId(id) };
   const [rows, total] = await Promise.all([
-    AuditLog.find(filter).sort({ at: -1, _id: -1 }).skip((page - 1) * limit).limit(limit).lean(),
+    AuditLog.find(filter).sort({ at: -1, _id: -1 }).skip((page - 1) * limit).limit(limit).populate<{ actorId: { _id: Types.ObjectId; name?: string } | null }>('actorId', 'name').lean(),
     AuditLog.countDocuments(filter),
   ]);
-  return { data: rows.map((r) => { const { _id, ...rest } = comparable(r) as Plain; return { id: _id, ...rest }; }), total, page, limit };
+  // The person's name travels with each entry so screens never show a bare user id.
+  return {
+    data: rows.map(({ actorId: actor, ...r }) => {
+      const { _id, ...rest } = comparable(r) as Plain;
+      return { id: _id, ...rest, actorId: actor?._id ? String(actor._id) : undefined, actorName: actor?.name };
+    }),
+    total, page, limit,
+  };
 }
