@@ -3,6 +3,9 @@ import { z } from 'zod';
 
 const flag = (fallback: 'true' | 'false') => z.enum(['true', 'false']).default(fallback).transform((value) => value === 'true');
 const optionalText = z.string().trim().min(1).optional();
+/** A browser origin: scheme, host and optional port, nothing after it. */
+const ORIGIN = /^https?:\/\/[a-z0-9.-]+(:\d{1,5})?$/i;
+const isLoopback = (url: string) => /^https?:\/\/(localhost|127\.\d+\.\d+\.\d+|\[::1\]|0\.0\.0\.0)(:\d+)?(\/|$)/i.test(url);
 
 export const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
@@ -23,9 +26,15 @@ export const envSchema = z.object({
   LOGIN_LOCK_MINUTES: z.coerce.number().int().min(1).max(1440).default(15),
   PASSWORD_HASH_COST: z.coerce.number().int().min(10).max(17).default(15),
   EXPOSE_RESET_TOKEN: flag('false'),
+  /**
+   * The e-mail of the company's first Owner. When set, that account is created at start-up and sent a
+   * link to choose a password, and nobody can become the first Owner by signing up. Required in production.
+   */
+  OWNER_EMAIL: z.string().trim().toLowerCase().pipe(z.email()).optional(),
   CONSOLE_ENABLED: flag('true'),
   /** Comma-separated browser origins allowed to call the API, e.g. the React app. */
-  CORS_ORIGINS: z.string().default('').transform((v) => v.split(',').map((o) => o.trim()).filter(Boolean)),
+  CORS_ORIGINS: z.string().default('').transform((v) => v.split(',').map((o) => o.trim().replace(/\/$/, '')).filter(Boolean))
+    .refine((list) => list.every((o) => ORIGIN.test(o)), 'Each origin is a scheme and host, e.g. https://app.example.com, with no path and no *'),
   /** Express "trust proxy" setting when running behind a reverse proxy (e.g. 1 for one hop). */
   TRUST_PROXY: z.string().regex(/^(true|false|\d{1,2})$/).default('false').transform((v) => (v === 'true' ? true : v === 'false' ? false : Number(v))),
 
@@ -65,6 +74,18 @@ export const envSchema = z.object({
   }
   if (value.DRIVER_PHONE_SIMULATOR === 'true') {
     ctx.addIssue({ code: 'custom', path: ['DRIVER_PHONE_SIMULATOR'], message: 'The simulated driver phone cannot run in production' });
+  }
+  if (isLoopback(value.APP_URL) || !value.APP_URL.startsWith('https://')) {
+    ctx.addIssue({ code: 'custom', path: ['APP_URL'], message: 'Set APP_URL to the public https:// address in production; it is used in password links' });
+  }
+  if (value.TRUST_PROXY === true) {
+    ctx.addIssue({ code: 'custom', path: ['TRUST_PROXY'], message: 'Set TRUST_PROXY to the number of proxies (e.g. 1), not true: true lets clients choose their own address and slip past rate limits' });
+  }
+  if (value.CORS_ORIGINS.some((o) => o.startsWith('http://'))) {
+    ctx.addIssue({ code: 'custom', path: ['CORS_ORIGINS'], message: 'Browser origins must be https:// in production' });
+  }
+  if (!value.OWNER_EMAIL) {
+    ctx.addIssue({ code: 'custom', path: ['OWNER_EMAIL'], message: 'Set OWNER_EMAIL in production, so a stranger cannot claim the first Owner account' });
   }
   if (!value.SMTP_HOST) {
     ctx.addIssue({ code: 'custom', path: ['SMTP_HOST'], message: 'SMTP is required in production for password resets' });

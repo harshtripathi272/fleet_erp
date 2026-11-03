@@ -52,7 +52,7 @@ test('memory rate-limit store expires windows', async () => {
 });
 
 test('production configuration refuses unsafe settings', () => {
-  const prod = { NODE_ENV: 'production', SMTP_HOST: 'smtp.mandrillapp.com', JWT_SECRET: 'p'.repeat(40) };
+  const prod = { NODE_ENV: 'production', SMTP_HOST: 'smtp.mandrillapp.com', JWT_SECRET: 'p'.repeat(40), APP_URL: 'https://fleet.example.com', OWNER_EMAIL: 'owner@example.com' };
   assert.equal(envSchema.safeParse(prod).success, true);
   assert.equal(envSchema.safeParse({ ...prod, JWT_SECRET: undefined }).success, false);
   assert.equal(envSchema.safeParse({ ...prod, EXPOSE_RESET_TOKEN: 'true' }).success, false);
