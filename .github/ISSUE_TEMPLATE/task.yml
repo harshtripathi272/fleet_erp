@@ -1,19 +1,19 @@
-name: Task
-description: A piece of work for one agent or person, small enough for one pull request. See AGENTS.md.
+name: "Task"
+description: "A piece of work for one agent or person, small enough for one pull request. See AGENTS.md."
 labels: ["status: ready"]
 body:
   - type: textarea
     id: goal
     attributes:
-      label: Goal
-      description: What should be true when this is done, and why it matters. Plain words.
+      label: "Goal"
+      description: "What should be true when this is done, and why it matters. Plain words."
     validations:
       required: true
   - type: textarea
     id: acceptance
     attributes:
-      label: Acceptance criteria
-      description: Checkable items. The pull request is reviewed against these.
+      label: "Acceptance criteria"
+      description: "Checkable items. The pull request is reviewed against these."
       placeholder: |
         - [ ] ...
         - [ ] A test covers ...
@@ -23,17 +23,17 @@ body:
   - type: textarea
     id: area
     attributes:
-      label: Area and files
-      description: Which part of the code this touches (also set an `area:` label). Others avoid it while this is in progress.
+      label: "Area and files"
+      description: "Which part of the code this touches (also set an `area:` label). Others avoid it while this is in progress."
     validations:
       required: true
   - type: textarea
     id: out-of-scope
     attributes:
-      label: Out of scope
-      description: What not to do here (it belongs elsewhere or needs a decision first).
+      label: "Out of scope"
+      description: "What not to do here (it belongs elsewhere or needs a decision first)."
   - type: textarea
     id: decisions
     attributes:
-      label: Decisions needed
-      description: Questions for Lakshya, with the default to build meanwhile. Add `status: needs decision` if any.
+      label: "Decisions needed"
+      description: "Questions for Lakshya, with the default to build meanwhile. Add `status: needs decision` if any."
