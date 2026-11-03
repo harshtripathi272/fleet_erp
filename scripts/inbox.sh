@@ -29,7 +29,7 @@ echo
 
 echo "-- Your pull requests --"
 gh pr list -R "$repo" --label "agent:${name}" --state open --json number,title,isDraft,reviewDecision,headRefName,statusCheckRollup \
-  --jq '.[] | "#\(.number)  \(if .isDraft then "draft" else "ready" end) · review: \(.reviewDecision // "none yet") · CI: \(
+  --jq '.[] | "#\(.number)  \(if .isDraft then "draft" else "ready" end) · review: \(if (.reviewDecision // "") == "" then "none yet" else (.reviewDecision | ascii_downcase | gsub("_"; " ")) end) · CI: \(
       [.statusCheckRollup[]? | (.conclusion // .status)] | if length == 0 then "not run" elif any(. == "FAILURE") then "RED" elif all(. == "SUCCESS") then "green" else "running" end
     )  \(.title)  (\(.headRefName))"' | sed 's/^/  /' || true
 echo
