@@ -405,9 +405,12 @@
   min-width: 200px;
   max-width: 360px;
 }
+.drawer-foot:has(.drawer-reason, .drawer-ask) {
+  flex-wrap: wrap;
+}
 .drawer-reason,
 .drawer-ask {
-  flex: 1;
+  flex: 1 1 260px;
   min-width: 0;
 }
 .drawer-ask {
