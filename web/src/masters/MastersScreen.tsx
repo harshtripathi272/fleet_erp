@@ -404,6 +404,19 @@ function CustomRecords({ master, defs }: { master: Rec; defs: Def[] }) {
       toast((e as Error).message, "error");
     }
   };
+  const [sure, setSure] = useState(false);
+  /** Archive, restore or delete the open record; the list and drawer follow. */
+  const act = async (path: string, method: "POST" | "DELETE", done: string) => {
+    try {
+      await api(`/custom-masters/${master.id}${path}`, { method, ...(method === "POST" ? { body: {} } : {}) });
+      toast(done);
+      setOpen(null);
+      setSure(false);
+      await client.invalidateQueries({ queryKey: ["custom-records", master.id] });
+    } catch (e) {
+      toast((e as Error).message, "error");
+    }
+  };
   return (
     <div className="desk">
       <header className="masters-head">
@@ -415,7 +428,7 @@ function CustomRecords({ master, defs }: { master: Rec; defs: Def[] }) {
           <thead><tr>{fields.slice(0, 4).map((f) => <th key={f.key}>{f.label}</th>)}<th>Status</th></tr></thead>
           <tbody>
             {(rows.data ?? []).map((r) => (
-              <tr key={r.id} className="clickable" onClick={() => { setDraft(r.data ?? {}); setOpen(r); }}>
+              <tr key={r.id} className="clickable" onClick={() => { setDraft(r.data ?? {}); setSure(false); setOpen(r); }}>
                 {fields.slice(0, 4).map((f) => <td key={f.key}><Value value={r.data?.[f.key]} field={{ ref: f.referenceMaster, type: f.type }} defs={defs} /></td>)}
                 <td><Status tone={r.status === "active" ? "ok" : "mute"}>{r.status}</Status></td>
               </tr>
@@ -424,7 +437,19 @@ function CustomRecords({ master, defs }: { master: Rec; defs: Def[] }) {
         </table>
       </div>
       {open && (
-        <Drawer open title={open === "new" ? `New ${master.name.toLowerCase()} record` : master.name} onClose={() => setOpen(null)} footer={<><span className="spacer" /><Button tone="primary" onClick={save}>Save</Button></>}>
+        <Drawer open title={open === "new" ? `New record in ${master.name}` : master.name} onClose={() => setOpen(null)} footer={
+          <>
+            {open !== "new" && (open.status === "archived"
+              ? <Button tone="quiet" onClick={() => void act(`/records/${open.id}/restore`, "POST", "Restored")}><RotateCcw size={15} /> Restore</Button>
+              : <Button tone="quiet" onClick={() => void act(`/records/${open.id}/archive`, "POST", "Archived")}><Archive size={15} /> Archive</Button>)}
+            {open !== "new" && (sure
+              ? <Button tone="danger" onClick={() => void act(`/records/${open.id}`, "DELETE", "Deleted")}><Trash2 size={15} /> Delete for good</Button>
+              : <Button tone="danger" onClick={() => setSure(true)}><Trash2 size={15} /> Delete</Button>)}
+            <span className="spacer" />
+            {(open === "new" || open.status !== "archived") && <Button tone="primary" onClick={save}>Save</Button>}
+          </>
+        }>
+          {open !== "new" && open.status === "archived" && <p className="drawer-note">Archived. Restore it to make changes.</p>}
           <div className="grid-2">
             {fields.map((f) => (
               <Field key={f.key} label={`${f.label}${f.required ? " *" : ""}`}>
