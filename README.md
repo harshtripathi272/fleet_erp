@@ -91,9 +91,16 @@ How the stack has been used so far, and why:
 
 ### How we work
 
-- Work happens on `main`. `npm run check` (type-check, tests, build) passes before a push.
-- The next requirements are tracked in issues; [issue #2](https://github.com/harshtripathi272/fleet_erp/issues/2) is the current one.
-- Secrets live only in `.env`, which is never committed. `.env.example` lists every setting.
+Several people and coding agents work on this at once. They coordinate in the pinned **[Agent room](https://github.com/harshtripathi272/fleet_erp/issues/15)** issue: read it before starting, and post there who you are, what you're taking and which files you'll touch. Issues carry a status label: `open` (free to take), `taken`, `in review`, `waiting on Lakshya`. To keep out of each other's way:
+
+1. **One issue per piece of work.** Open issues list what is wanted and the files they are likely to touch. Before starting, comment **"Taking this"** on an `open` issue and switch its label to `taken`; if it's already taken, pick another.
+2. **One working branch** for now: `work/masters-and-web` (pull request #3). Run `git pull` before every session, and push small commits often, so others build on the latest code.
+3. **Stay inside your issue's files.** If you need to change a file another open issue owns, say so on that issue first.
+4. **`npm run check` passes before every push** (type-check, all tests, the API build and the web build).
+5. **Report on the issue** when a piece is in: what changed, the commit, what you tested; switch its label to `in review` and post a line in the Agent room. Code review happens on pull request #3. Nothing is merged into `main` before it has been reviewed.
+6. **Decisions that belong to Lakshya** (providers, credentials, scope) go on the issue as a question; pick a sensible default, note it, and carry on.
+
+Secrets live only in `.env`, which is never committed. `.env.example` lists every setting.
 
 ### The first client's settings (owner meeting of 20 September 2026)
 
