@@ -36,6 +36,9 @@ details.form-group summary { cursor: pointer; }
 .signin { display: grid; gap: 14px; max-width: 380px; }
 .signin-actions { display: flex; gap: 10px; flex-wrap: wrap; }
 .signin-error { color: var(--rust); margin: 0; }
+.signin-notice { color: var(--pine-700); margin: 0; }
+.account { display: grid; gap: 16px; }
+.account-who { display: grid; gap: 2px; margin: 0; }
 .picker-signout { margin-top: 28px; }
 @media (max-width: 760px) {
   .masters { grid-template-columns: 1fr; gap: 16px; }
@@ -59,3 +62,13 @@ details.form-group summary { cursor: pointer; }
 .unit-input input { flex: 1; min-width: 0; }
 .unit-input .muted { white-space: nowrap; font-size: 13px; }
 .row-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+
+/* A role's permissions: areas down, actions across. */
+.perm-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 10px; max-height: 460px; overflow-y: auto; }
+.perm { border-collapse: collapse; width: 100%; font-size: 13px; }
+.perm th, .perm td { padding: 6px 8px; border-bottom: 1px solid var(--line); text-align: center; }
+.perm th[scope="row"], .perm thead th:first-child { text-align: left; font-weight: 500; white-space: nowrap; }
+.perm thead th { position: sticky; top: 0; z-index: 1; background: var(--surface-2); font-weight: 600; white-space: nowrap; }
+.perm-group th { text-align: left; background: var(--paper-2); color: var(--ink-2); font-weight: 600; font-size: 12.5px; }
+.perm input[type="checkbox"] { width: 16px; height: 16px; min-height: 0; margin: 0; padding: 0; vertical-align: middle; }
+.perm td, .perm th { line-height: 1.25; }

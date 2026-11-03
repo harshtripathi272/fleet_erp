@@ -44,6 +44,8 @@ export interface MasterDefinition {
   sortFields: string[];
   defaultSort?: string;
   titleField?: string;
+  /** Columns the list shows after the title and code; screens choose their own when omitted. */
+  columns?: string[];
   filters?: Record<string, FilterSpec>;
   refs?: RefSpec[];
   /** Fields never returned by the API. */

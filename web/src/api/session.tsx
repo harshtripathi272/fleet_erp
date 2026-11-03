@@ -2,7 +2,7 @@ import { useState } from "react";
 import type { FormEvent } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Wordmark } from "../ui/brand";
-import { Button, Field } from "../ui/kit";
+import { Button, Field, Modal } from "../ui/kit";
 import type { Role } from "../domain/types";
 import { api, ApiError, hasSession, setTokens, type Tokens } from "./client";
 
@@ -65,19 +65,42 @@ export async function signOut() {
 /** Drivers sign in with their phone number; everyone else with their e-mail. */
 const looksLikePhone = (value: string) => /^\+?[\d\s-]{7,}$/.test(value.trim());
 
+interface SignInOptions { company: string | null; firstOwner: boolean; signUp: boolean }
+
+/** A "#reset=…" link from an invitation or reset e-mail opens the "choose your password" form. */
+const resetTokenInLink = () => (location.hash.startsWith("#reset=") ? decodeURIComponent(location.hash.slice(7)) : "");
+
 export function SignIn({ company, onSignedIn }: { company?: string; onSignedIn: () => void }) {
-  const [mode, setMode] = useState<"in" | "up">("in");
+  const [token] = useState(resetTokenInLink);
+  const [mode, setMode] = useState<"in" | "up" | "forgot" | "reset">(token ? "reset" : "in");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
   const queryClient = useQueryClient();
+  const options = useQuery({ queryKey: ["sign-in-options"], queryFn: () => api<SignInOptions>("/auth/options", { anonymous: true }), retry: false });
+  const go = (next: typeof mode) => { setMode(next); setError(""); setNotice(""); };
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     setBusy(true);
     setError("");
+    setNotice("");
     try {
+      if (mode === "forgot") {
+        await api("/auth/forgot-password", { method: "POST", body: { email: email.trim() }, anonymous: true });
+        setNotice("If an account uses this e-mail, a link to choose a new password is on its way. It works once.");
+        return;
+      }
+      if (mode === "reset") {
+        await api("/auth/reset-password", { method: "POST", body: { token, password }, anonymous: true });
+        history.replaceState(null, "", location.pathname + location.search);
+        setPassword("");
+        go("in");
+        setNotice("Your password is set. Sign in with it.");
+        return;
+      }
       const tokens = mode === "in"
         ? await api<Tokens>("/auth/login", { method: "POST", body: { ...(looksLikePhone(email) ? { phone: email.replace(/[\s-]/g, "") } : { email: email.trim() }), password }, anonymous: true })
         : await api<Tokens>("/auth/register", { method: "POST", body: { name, email, password }, anonymous: true });
@@ -90,36 +113,98 @@ export function SignIn({ company, onSignedIn }: { company?: string; onSignedIn: 
       setBusy(false);
     }
   };
+  const signUp = options.data?.signUp ?? false;
+  const heading = { in: "Sign in", up: options.data?.firstOwner ? "Set up the first account" : "Create account", forgot: "Forgot your password", reset: "Choose your password" }[mode];
   return (
     <div className="picker">
       <aside className="picker-side">
         <Wordmark />
-        <p className="picker-company">{company ?? "Marichi Fleet"}</p>
+        <p className="picker-company">{company ?? options.data?.company ?? "Marichi Fleet"}</p>
       </aside>
       <main className="picker-main">
-        <h1>{mode === "in" ? "Sign in" : "Create account"}</h1>
+        <h1>{heading}</h1>
         <form className="signin" onSubmit={submit}>
           {mode === "up" && (
             <Field label="Name">
               <input value={name} onChange={(e) => setName(e.target.value)} autoComplete="name" required />
             </Field>
           )}
-          <Field label={mode === "in" ? "E-mail or phone number" : "E-mail"}>
-            <input type={mode === "in" ? "text" : "email"} value={email} onChange={(e) => setEmail(e.target.value)} autoComplete={mode === "in" ? "username" : "email"} inputMode={mode === "in" && looksLikePhone(email) ? "tel" : undefined} required />
-          </Field>
-          <Field label="Password">
-            <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete={mode === "in" ? "current-password" : "new-password"} required minLength={8} />
-          </Field>
+          {mode !== "reset" && (
+            <Field label={mode === "in" ? "E-mail or phone number" : "E-mail"}>
+              <input type={mode === "in" ? "text" : "email"} value={email} onChange={(e) => setEmail(e.target.value)} autoComplete={mode === "in" ? "username" : "email"} inputMode={mode === "in" && looksLikePhone(email) ? "tel" : undefined} required />
+            </Field>
+          )}
+          {mode !== "forgot" && (
+            <Field label={mode === "reset" ? "New password" : "Password"} hint={mode === "in" ? undefined : "At least 8 characters, with a letter and a digit."}>
+              <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete={mode === "in" ? "current-password" : "new-password"} required minLength={8} />
+            </Field>
+          )}
           {error && <p className="signin-error" role="alert">{error}</p>}
+          {notice && <p className="signin-notice" role="status">{notice}</p>}
           <div className="signin-actions">
-            <Button tone="primary" type="submit" disabled={busy}>{mode === "in" ? "Sign in" : "Create account"}</Button>
-            <Button tone="quiet" type="button" onClick={() => { setMode(mode === "in" ? "up" : "in"); setError(""); }}>
-              {mode === "in" ? "Create an account" : "I have an account"}
+            <Button tone="primary" type="submit" busy={busy}>
+              {{ in: "Sign in", up: "Create account", forgot: "Send the link", reset: "Set password" }[mode]}
             </Button>
+            {mode === "in" && <Button tone="quiet" type="button" onClick={() => go("forgot")}>Forgot password?</Button>}
+            {mode === "in" && signUp && <Button tone="quiet" type="button" onClick={() => go("up")}>Create an account</Button>}
+            {mode !== "in" && <Button tone="quiet" type="button" onClick={() => go("in")}>Back to sign in</Button>}
           </div>
-          {mode === "up" && <p className="muted">On a new database the first account is the Owner.</p>}
+          {mode === "up" && options.data?.firstOwner && <p className="muted">This first account becomes the Owner.</p>}
+          {mode === "forgot" && <p className="muted">Drivers who sign in with a phone number: ask the office to set a new password.</p>}
         </form>
       </main>
     </div>
+  );
+}
+
+/** The signed-in person's own account: change the password, or sign out on every device. */
+export function AccountDialog({ me, onClose }: { me: Me; onClose: () => void }) {
+  const [current, setCurrent] = useState("");
+  const [next, setNext] = useState("");
+  const [busy, setBusy] = useState<"" | "password" | "all">("");
+  const [message, setMessage] = useState<{ text: string; bad?: boolean } | null>(null);
+  const attempt = async (key: "password" | "all", work: () => Promise<unknown>, done: string) => {
+    setBusy(key);
+    setMessage(null);
+    try {
+      await work();
+      setMessage({ text: done });
+    } catch (err) {
+      setMessage({ text: err instanceof ApiError ? err.message : "That didn't go through.", bad: true });
+    } finally {
+      setBusy("");
+    }
+  };
+  const change = (event: FormEvent) => {
+    event.preventDefault();
+    void attempt("password", async () => {
+      const tokens = await api<Partial<Tokens>>("/auth/change-password", { method: "POST", body: { currentPassword: current, newPassword: next } });
+      // Changing the password ends other sessions; when the API hands back fresh tokens, keep this one going.
+      if (tokens?.accessToken && tokens.refreshToken) setTokens(tokens as Tokens);
+      setCurrent("");
+      setNext("");
+    }, "Password changed. Other devices were signed out.");
+  };
+  return (
+    <Modal open title="Your account" onClose={onClose}>
+      <div className="account">
+        <p className="account-who"><strong>{me.name}</strong><span className="muted">{me.email}</span></p>
+        <form className="signin" onSubmit={change}>
+          <Field label="Current password">
+            <input type="password" value={current} onChange={(e) => setCurrent(e.target.value)} autoComplete="current-password" required />
+          </Field>
+          <Field label="New password" hint="At least 8 characters, with a letter and a digit.">
+            <input type="password" value={next} onChange={(e) => setNext(e.target.value)} autoComplete="new-password" required minLength={8} />
+          </Field>
+          <div className="signin-actions">
+            <Button tone="primary" type="submit" busy={busy === "password"}>Change password</Button>
+            <Button tone="quiet" type="button" busy={busy === "all"} onClick={() => void attempt("all", async () => { await api("/auth/logout-all", { method: "POST" }); setTokens(null); location.reload(); }, "Signed out everywhere.")}>
+              Sign out on every device
+            </Button>
+          </div>
+          {message && <p className={message.bad ? "signin-error" : "signin-notice"} role={message.bad ? "alert" : "status"}>{message.text}</p>}
+        </form>
+      </div>
+    </Modal>
   );
 }

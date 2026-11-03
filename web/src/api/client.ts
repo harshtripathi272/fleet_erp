@@ -151,7 +151,11 @@ export async function all<T>(path: string, query: Query = {}): Promise<T[]> {
 function messageOf(body: { error?: { message?: string; details?: unknown } }, fallback: string) {
   const message = body.error?.message ?? fallback;
   const first = firstProblem(body.error?.details);
-  return message === "Validation failed" && first ? first : first && !message.includes(first) && message.length < 40 ? `${message}: ${first}` : message;
+  if (!first) return message;
+  if (message === "Validation failed") return first;
+  // Add the field's problem only when the sentence does not already name that field.
+  const field = first.split(/:| is required/)[0]!.toLowerCase();
+  return !message.toLowerCase().includes(field) && message.length < 40 ? `${message}: ${first}` : message;
 }
 
 function firstProblem(details: unknown): string | undefined {

@@ -9,6 +9,8 @@ import { useApp } from "../store";
 import { Button, Drawer, Empty, Field, Status } from "../ui/kit";
 import { CompanyPanel } from "./CompanyPanel";
 import { DriverAccess } from "./DriverAccess";
+import { UserAccess } from "./UserAccess";
+import { PermissionMatrix } from "./PermissionMatrix";
 
 /**
  * One screen for every master, built from GET /meta/masters: groups, fields, links, choices and the
@@ -102,7 +104,7 @@ function Records({ def, defs }: { def: Def; defs: Def[] }) {
           <h2>{def.label}</h2>
           <p className="muted">{def.description}</p>
         </div>
-        {def.permissions?.create && !def.managed?.create && (
+        {creatable(def) && (
           <Button tone="primary" onClick={() => setOpen("new")}><Plus size={16} /> New {def.singular.toLowerCase()}</Button>
         )}
       </header>
@@ -155,9 +157,20 @@ function listColumns(def: Def) {
   const top = (p: string) => !p.includes(".");
   const title = fields.find((f) => f.path === def.titleField);
   const code = def.titleField !== "code" ? fields.find((f) => f.path === "code") : undefined;
-  const extra = fields.filter((f) => top(f.path) && f.group === "master" && !f.hidden && f.type !== "object" && !f.array && f.path !== def.titleField && f.path !== "code" && (f.required || f.ref || f.enum)).slice(0, 3);
-  return [title, code, ...extra].filter(Boolean).map((f) => ({ path: f!.path as string, label: label(f!.path), field: f! }));
+  // A master may name its own list columns; otherwise required fields and links to other masters.
+  const named = ((def.columns ?? []) as string[]).map((p) => fields.find((f) => f.path === p)).filter(Boolean) as Rec[];
+  const extra = named.length ? named : fields.filter((f) => top(f.path) && f.group === "master" && !f.hidden && f.type !== "object" && !f.array && f.path !== def.titleField && f.path !== "code" && (f.required || f.ref || f.enum)).slice(0, 3);
+  return [title, code, ...extra].filter(Boolean).map((f) => ({ path: f!.path as string, label: String(f!.path).split(".").map(label).join(" "), field: f! }));
 }
+
+/**
+ * Masters whose create is a custom endpoint at the same path that still takes the create schema
+ * (users: an empty password sends an invitation e-mail instead).
+ */
+const CREATES_AT_ROOT = new Set(["users"]);
+const creatable = (def: Def) => Boolean(def.permissions?.create && (!def.managed?.create || CREATES_AT_ROOT.has(def.key)));
+/** Write-only fields: offered when creating, never shown on an existing record. */
+const WRITE_ONLY = new Set(["password"]);
 
 /* ---------- One record ---------- */
 
@@ -171,7 +184,7 @@ function RecordDrawer({ def, defs, id, onClose }: { def: Def; defs: Def[]; id?: 
   const [asking, setAsking] = useState<null | "archive" | "delete">(null);
   const [reason, setReason] = useState("");
   const canSensitive = Boolean(def.permissions?.sensitive);
-  const writable = !id ? def.permissions?.create && !def.managed?.create : def.permissions?.update && !def.managed?.update && record.data?.status !== "archived";
+  const writable = !id ? creatable(def) : def.permissions?.update && !def.managed?.update && record.data?.status !== "archived" && !record.data?.isSystem;
   const base = id ? record.data : undefined;
   const value = draft ?? (base ? pick(base, def.createSchema) : {});
   const done = async (message: string) => {
@@ -180,11 +193,11 @@ function RecordDrawer({ def, defs, id, onClose }: { def: Def; defs: Def[]; id?: 
     await client.invalidateQueries({ queryKey: ["record", def.key, id] });
     refreshReference();
   };
-  const act = async (fn: () => Promise<unknown>, message: string, close = false) => {
+  const act = async (fn: () => Promise<unknown>, message: string | ((result: unknown) => string), close = false) => {
     setBusy(true);
     try {
-      await fn();
-      await done(message);
+      const result = await fn();
+      await done(typeof message === "string" ? message : message(result));
       setDraft(null);
       setAsking(null);
       setReason("");
@@ -197,7 +210,7 @@ function RecordDrawer({ def, defs, id, onClose }: { def: Def; defs: Def[]; id?: 
   };
   const save = () => act(async () => {
     const body = withoutHidden(clean(value), def, canSensitive);
-    if (!id) return api(`/${def.key}`, { method: "POST", body });
+    if (!id) return api<Rec>(`/${def.key}`, { method: "POST", body });
     const before = withoutHidden(clean(pick(base!, def.createSchema)), def, canSensitive);
     const changes: Rec = {};
     for (const key of new Set([...Object.keys(before), ...Object.keys(body)])) {
@@ -205,7 +218,14 @@ function RecordDrawer({ def, defs, id, onClose }: { def: Def; defs: Def[]; id?: 
     }
     if (!Object.keys(changes).length) return;
     return api(`/${def.key}/${id}`, { method: "PATCH", body: { ...changes, version: base!.version } });
-  }, id ? `${def.singular} saved` : `${def.singular} created`, !id);
+  }, (result) => {
+    if (id) return `${def.singular} saved`;
+    // A user created without a password is sent an invitation to set one.
+    const invitation = (result as Rec | undefined)?.invitation as Rec | undefined;
+    if (!invitation) return `${def.singular} created`;
+    return invitation.sent ? `${def.singular} created. An invitation to set a password went to ${String((result as Rec).user?.email ?? "them")}.`
+      : `${def.singular} created, but the invitation e-mail could not be sent. Open the user and set a password, or check the e-mail settings.`;
+  }, !id);
   const title = id ? String(base?.[def.titleField] ?? def.singular) : `New ${def.singular.toLowerCase()}`;
   return (
     <Drawer
@@ -228,10 +248,10 @@ function RecordDrawer({ def, defs, id, onClose }: { def: Def; defs: Def[]; id?: 
           </>
         ) : (
           <>
-            {id && def.permissions?.archive && !def.managed?.archive && base && (base.status === "archived"
+            {id && def.permissions?.archive && !def.managed?.archive && base && !base.isSystem && (base.status === "archived"
               ? <Button tone="quiet" disabled={busy} onClick={() => act(() => api(`/${def.key}/${id}/restore`, { method: "POST" }), "Restored")}><RotateCcw size={15} /> Restore</Button>
               : <Button tone="quiet" disabled={busy} onClick={() => setAsking("archive")}><Archive size={15} /> Archive</Button>)}
-            {id && def.permissions?.delete && !def.managed?.delete && (
+            {id && def.permissions?.delete && !def.managed?.delete && !base?.isSystem && (
               <Button tone="danger" disabled={busy} onClick={() => setAsking("delete")}><Trash2 size={15} /> Delete</Button>
             )}
             <span className="spacer" />
@@ -248,13 +268,14 @@ function RecordDrawer({ def, defs, id, onClose }: { def: Def; defs: Def[]; id?: 
       {id && record.isLoading && <p className="muted">Loading…</p>}
       {tab === "details" && (!id || base) && (
         <>
+          {base?.isSystem && <p className="drawer-note">A built-in role: it can't be changed. Make a copy to give a job its own permissions.</p>}
           {base?.status === "archived" && (
             <p className="drawer-note">
               Archived{base.archivedAt ? ` on ${new Date(String(base.archivedAt)).toLocaleDateString("en-GB")}` : ""}{base.archiveReason ? `: ${base.archiveReason}` : ""}. Restore it to make changes.
             </p>
           )}
           <Extras def={def} id={id} record={base} />
-          <SchemaForm schema={def.createSchema} def={def} defs={defs} value={value} onChange={setDraft} readOnly={!writable} canSensitive={canSensitive} />
+          <SchemaForm schema={id ? withoutWriteOnly(def.createSchema) : def.createSchema} def={def} defs={defs} value={value} onChange={setDraft} readOnly={!writable} canSensitive={canSensitive} editing={Boolean(id)} />
         </>
       )}
       {tab === "usage" && id && <Usage def={def} id={id} />}
@@ -266,6 +287,7 @@ function RecordDrawer({ def, defs, id, onClose }: { def: Def; defs: Def[]; id?: 
 /** Actions some masters add beyond create, edit, archive and delete. */
 function Extras({ def, id, record }: { def: Def; id?: string; record?: Rec }) {
   const { data, me, toast, refreshReference } = useApp();
+  const client = useQueryClient();
   const [preview, setPreview] = useState<string>("");
   if (!id || !record) return null;
   if (def.key === "pairings" && record.open !== false && !record.to)
@@ -274,6 +296,15 @@ function Extras({ def, id, record }: { def: Def; id?: string; record?: Rec }) {
     return <div className="extra"><Button size="sm" onClick={async () => setPreview(`Next: ${(await api<Rec>(`/numbering-series/${id}/preview`)).next}`)}>Preview the next number</Button> <span className="mono">{preview}</span></div>;
   if (def.key === "message-templates")
     return <div className="extra"><Button size="sm" onClick={async () => { try { setPreview(JSON.stringify(await api(`/message-templates/${id}/preview`, { method: "POST", body: {} }))); } catch (e) { setPreview((e as Error).message); } }}>Preview with sample values</Button><pre className="mono preview">{preview}</pre></div>;
+  if (def.key === "roles" && record.isSystem && def.permissions?.create)
+    return <div className="extra"><Button size="sm" onClick={async () => {
+      try {
+        const copy = await api<Rec>("/roles", { method: "POST", body: { key: `${record.key}-copy-${Date.now().toString(36).slice(-4)}`, name: `${record.name} (copy)`, description: record.description, permissions: record.permissions } });
+        toast(`"${copy.name}" created. Open it from the list to change its permissions.`);
+        await client.invalidateQueries({ queryKey: ["records", "roles"] });
+      } catch (e) { toast((e as Error).message, "error"); }
+    }}>Make a copy</Button></div>;
+  if (def.key === "users") return <UserAccess userId={id} record={record} />;
   if (def.key === "drivers") return <DriverAccess driverId={id} phone={String(record.whatsapp ?? record.phone ?? "")} />;
   if (def.key === "vehicles" && can(me, "vehicle-states", "update")) {
     const truck = data.trucks.find((t) => t.id === id);
@@ -390,6 +421,7 @@ function CustomRecords({ master, defs }: { master: Rec; defs: Def[] }) {
 
 /* ---------- Forms from the API's JSON schema ---------- */
 
+const withoutWriteOnly = (schema: Schema): Schema => ({ ...schema, properties: Object.fromEntries(Object.entries((schema.properties ?? {}) as Rec).filter(([k]) => !WRITE_ONLY.has(k))) });
 const refOf = (def: Def, path: string) => (def.fields as Rec[]).find((f) => f.path === path)?.ref as string | undefined;
 const fieldOf = (def: Def, path: string) => (def.fields as Rec[]).find((f) => f.path === path);
 const isSensitive = (def: Def, path: string) => (def.sensitive as string[]).some((s) => s === path || s.startsWith(`${path}.`));
@@ -405,7 +437,7 @@ function unwrap(schema: Schema): Schema {
   return schema ?? {};
 }
 
-function SchemaForm({ schema, def, defs, value, onChange, readOnly, canSensitive, path = "" }: { schema: Schema; def: Def; defs: Def[]; value: Rec; onChange: (v: Rec) => void; readOnly?: boolean; canSensitive: boolean; path?: string }) {
+function SchemaForm({ schema, def, defs, value, onChange, readOnly, canSensitive, path = "", editing }: { schema: Schema; def: Def; defs: Def[]; value: Rec; onChange: (v: Rec) => void; readOnly?: boolean; canSensitive: boolean; path?: string; editing?: boolean }) {
   const props = Object.entries((schema.properties ?? {}) as Record<string, Schema>);
   const required = new Set((schema.required ?? []) as string[]);
   const main = props.filter(([k]) => path || !BASE_KEYS.has(k));
@@ -414,9 +446,11 @@ function SchemaForm({ schema, def, defs, value, onChange, readOnly, canSensitive
   const render = ([key, raw]: [string, Schema]) => {
     const full = path ? `${path}.${key}` : key;
     const hidden = isSensitive(def, full) && !canSensitive;
+    // Fields fixed at creation (a role's key, for example) are shown but not editable afterwards.
+    const fixed = Boolean(editing && fieldOf(def, full)?.immutable);
     return (
       <FieldInput key={full} name={key} path={full} schema={unwrap(raw)} required={required.has(key)} def={def} defs={defs}
-        value={value[key]} onChange={(v) => set(key, v)} readOnly={readOnly || hidden} canSensitive={canSensitive} />
+        value={value[key]} onChange={(v) => set(key, v)} readOnly={readOnly || hidden || fixed} canSensitive={canSensitive} />
     );
   };
   return (
@@ -450,6 +484,8 @@ function FieldInput({ name, path, schema, required, def, defs, value, onChange, 
   const title = `${label(name)}${required ? " *" : ""}`;
   const ref = refOf(def, path);
   const info = fieldOf(def, path);
+  if (def.key === "roles" && path === "permissions")
+    return <Field label={title} wide><PermissionMatrix value={(value as { resource: string; actions: string[] }[]) ?? []} onChange={onChange} defs={defs} readOnly={readOnly} /></Field>;
   if (schema.type === "object" && schema.properties?.amountMinor && schema.properties?.currencyId)
     return <Field label={title}><MoneyInput value={value as Rec | undefined} onChange={onChange} disabled={readOnly} /></Field>;
   if (schema.type === "object")
@@ -490,6 +526,8 @@ function FieldInput({ name, path, schema, required, def, defs, value, onChange, 
     return <Field label={title} hint="Separate with commas" wide><input disabled={readOnly} value={list.join(", ")} onChange={(e) => onChange(e.target.value.split(",").map((s) => s.trim()).filter(Boolean))} /></Field>;
   }
   if (ref || schema.pattern === OBJECT_ID) return <Field label={title}><RefSelect target={ref ?? ""} defs={defs} value={(value as string) ?? ""} onChange={onChange} disabled={readOnly} /></Field>;
+  if (WRITE_ONLY.has(name))
+    return <Field label={title} hint="Leave empty to e-mail them an invitation to set their own."><input type="password" autoComplete="new-password" disabled={readOnly} value={(value as string) ?? ""} onChange={(e) => onChange(e.target.value || undefined)} /></Field>;
   if (schema.enum) return <Field label={title}><select disabled={readOnly} value={(value as string) ?? ""} onChange={(e) => onChange(e.target.value || undefined)}><option value="">—</option>{(schema.enum as string[]).map((o) => <option key={o} value={o}>{label(o)}</option>)}</select></Field>;
   const type = schema.type === "boolean" ? "boolean" : schema.type === "number" || schema.type === "integer" ? "number" : schema.format === "date" || schema.format === "date-time" || info?.type === "date" ? "date" : (schema.maxLength ?? 0) > 300 ? "longtext" : "text";
   return <Field label={title} wide={type === "longtext"}><ScalarInput type={type} value={value} onChange={onChange} disabled={readOnly} /></Field>;
@@ -585,6 +623,7 @@ function RefName({ target, id, defs }: { target: string; id: string; defs: Def[]
 function Value({ value, field, defs }: { value: unknown; field: Rec; defs: Def[] }): ReactNode {
   if (value === undefined || value === null || value === "") return <span className="muted">—</span>;
   if (field.ref && typeof value === "string") return <RefName target={field.ref} id={value} defs={defs} />;
+  if (field.ref && Array.isArray(value)) return value.length ? value.map((id, i) => <span key={String(id)}>{i ? ", " : ""}<RefName target={field.ref} id={String(id)} defs={defs} /></span>) : <span className="muted">—</span>;
   if (field.type === "date") return String(value).slice(0, 10);
   if (typeof value === "boolean") return value ? "Yes" : "No";
   if (Array.isArray(value)) return `${value.length} item${value.length === 1 ? "" : "s"}`;

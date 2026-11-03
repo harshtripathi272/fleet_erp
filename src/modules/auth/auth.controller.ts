@@ -36,6 +36,7 @@ export const changePassword = asyncHandler(async (req, res) => {
   const { currentPassword, newPassword } = req.body as { currentPassword: string; newPassword: string };
   ApiResponse.success(res, await AuthService.changePassword(auth(req).userId, currentPassword, newPassword, client(req)), 'Password changed; other sessions signed out');
 });
+export const options = asyncHandler(async (_req, res) => ApiResponse.success(res, await AuthService.signInOptions()));
 export const forgotPassword = asyncHandler(async (req, res) => {
   const extra = await AuthService.forgotPassword(req.body.email);
   ApiResponse.success(res, extra, 'If an account exists for this e-mail, a reset link has been sent');

@@ -17,6 +17,9 @@ const userShape = {
 export const createUserSchema = z.strictObject({ ...userShape, password: password.optional() });
 export const updateUserSchema = toUpdateSchema(userShape);
 
+/** An administrator sets someone's password (for example when e-mail is not set up). */
+export const setPasswordSchema = z.strictObject({ password });
+
 /** A driver's sign-in for the driver app. A new access needs a password; later changes may send only what changes. */
 export const driverAccessSchema = z.strictObject({ phone: phone.optional(), email: email.optional(), password: password.optional() })
   .refine((v) => Object.keys(v).length > 0, 'Send the phone, e-mail or password');

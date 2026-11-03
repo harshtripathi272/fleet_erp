@@ -1,4 +1,6 @@
+import { Types } from 'mongoose';
 import { ConflictError } from '../../core/errors/index.js';
+import { audit } from '../../core/masters/audit.js';
 import { GROUPS } from '../../core/masters/groups.js';
 import { create as createRecord, type ServiceContext } from '../../core/masters/service.js';
 import type { MasterDefinition, Plain } from '../../core/masters/types.js';
@@ -42,6 +44,7 @@ export const userDefinition: MasterDefinition = {
   createSchema: createUserSchema,
   updateSchema: updateUserSchema,
   searchFields: ['name', 'email', 'phone'],
+  columns: ['email', 'phone', 'roleIds'],
   sortFields: ['name', 'email', 'lastLoginAt', 'createdAt', 'updatedAt'],
   hidden: ['passwordHash', 'tokenVersion', 'failedLoginCount'],
   refs: [{ path: 'roleIds', target: 'roles' }],
@@ -79,6 +82,29 @@ export async function createUser(input: Plain, ctx: ServiceContext) {
   let invitation: { sent: boolean; resetToken?: string } | undefined;
   if (!password) invitation = await issuePasswordReset(String(user.email), 'invite');
   return { user, invitation };
+}
+
+/** An administrator sets a user's password; every session of that user is signed out. */
+export async function setPassword(id: string, password: string, ctx: ServiceContext) {
+  if (id === ctx.actorId) throw new ConflictError('Change your own password from your account, with your current password');
+  // Taking over an account is as strong as holding its roles: only someone who could grant them may do it.
+  const target = await User.findById(id).select('roleIds').lean();
+  await assertCanAssignRoles(ctx.actorId, [], (target?.roleIds ?? []) as unknown[]);
+  await User.updateOne({ _id: id }, {
+    $set: { passwordHash: await hashPassword(password), passwordChangedAt: new Date(), failedLoginCount: 0 },
+    $unset: { lockedUntil: 1 },
+  });
+  await revokeSessions(id);
+  await audit({ entity: 'users', entityId: new Types.ObjectId(id), action: 'custom', summary: 'Password set by an administrator; all sessions signed out', actorId: ctx.actorId, requestId: ctx.requestId });
+}
+
+/** Sends a fresh invitation (a link to choose a password); earlier links stop working. */
+export async function resendInvitation(id: string, ctx: ServiceContext) {
+  const user = await User.findById(id).select('email status roleIds').lean();
+  await assertCanAssignRoles(ctx.actorId, [], (user?.roleIds ?? []) as unknown[]);
+  if (!user?.email) throw new ConflictError('This user has no e-mail address. Set a password for them instead.');
+  if (user.status !== 'active') throw new ConflictError('Only active users can be invited');
+  return issuePasswordReset(user.email, 'invite');
 }
 
 export async function unlockUser(id: string) {

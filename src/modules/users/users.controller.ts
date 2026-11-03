@@ -17,6 +17,20 @@ export const revokeUserSessions = asyncHandler(async (req, res) => {
   ApiResponse.success(res, { revoked: true }, 'All sessions for this user were signed out');
 });
 
+export const setPassword = asyncHandler(async (req, res) => {
+  const { id } = req.params as { id: string };
+  await getById(UsersService.userDefinition, id);
+  await UsersService.setPassword(id, (req.body as { password: string }).password, contextOf(req, 'users'));
+  ApiResponse.success(res, { set: true }, 'Password set; they were signed out everywhere');
+});
+
+export const resendInvitation = asyncHandler(async (req, res) => {
+  const { id } = req.params as { id: string };
+  await getById(UsersService.userDefinition, id);
+  const invitation = await UsersService.resendInvitation(id, contextOf(req, 'users'));
+  ApiResponse.success(res, invitation, invitation.sent ? 'Invitation sent' : 'The invitation e-mail could not be sent');
+});
+
 export const unlockUser = asyncHandler(async (req, res) => {
   const { id } = req.params as { id: string };
   await getById(UsersService.userDefinition, id);

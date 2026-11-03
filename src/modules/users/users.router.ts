@@ -3,7 +3,7 @@ import { idParams } from '../../core/masters/zod.js';
 import { authorize } from '../../middleware/authorize.js';
 import { validate } from '../../middleware/validate.js';
 import * as UsersController from './users.controller.js';
-import { createUserSchema, driverAccessParams, driverAccessSchema } from './users.schema.js';
+import { createUserSchema, driverAccessParams, driverAccessSchema, setPasswordSchema } from './users.schema.js';
 import { userDefinition } from './users.service.js';
 
 export default createMasterRouter(userDefinition, (router) => {
@@ -13,5 +13,7 @@ export default createMasterRouter(userDefinition, (router) => {
   router.delete('/driver-access/:driverId', authorize('users', 'update'), validate({ params: driverAccessParams }), UsersController.removeDriverAccess);
   router.post('/', authorize('users', 'create'), validate({ body: createUserSchema }), UsersController.createUser);
   router.post('/:id/revoke-sessions', authorize('users', 'update'), validate({ params: idParams }), UsersController.revokeUserSessions);
+  router.post('/:id/password', authorize('users', 'update'), validate({ params: idParams, body: setPasswordSchema }), UsersController.setPassword);
+  router.post('/:id/invitation', authorize('users', 'update'), validate({ params: idParams }), UsersController.resendInvitation);
   router.post('/:id/unlock', authorize('users', 'update'), validate({ params: idParams }), UsersController.unlockUser);
 });

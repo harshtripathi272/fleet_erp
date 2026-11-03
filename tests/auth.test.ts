@@ -221,3 +221,45 @@ describe('password reset', () => {
     assert.ok(stored?.passwordHash.startsWith('scrypt$'));
   });
 });
+
+describe('sign-in options and accounts run by an administrator', () => {
+  test('the sign-in screen learns whether sign-up is open, before anyone signs in', async () => {
+    const empty = await api().get('/api/v1/auth/options').expect(200);
+    assert.equal(empty.body.data.firstOwner, true);
+    assert.equal(empty.body.data.signUp, true);
+    const owner = await signUp('Owner');
+    const closed = await api().get('/api/v1/auth/options').expect(200);
+    assert.deepEqual([closed.body.data.firstOwner, closed.body.data.signUp], [false, false]);
+    await api().put('/api/v1/company').set(bearer(owner)).send({ legalName: 'Marichi Connect', tradingName: 'Marichi Fleet', allowSelfRegistration: true }).expect(200);
+    const open = await api().get('/api/v1/auth/options').expect(200);
+    assert.deepEqual([open.body.data.signUp, open.body.data.company], [true, 'Marichi Fleet']);
+  });
+
+  test('password links open the web app, not the old console', async () => {
+    const owner = await signUp('Owner');
+    const roles = await api().get('/api/v1/roles').set(bearer(owner)).query({ search: 'viewer' });
+    const created = await api().post('/api/v1/users').set(bearer(owner)).send({ name: 'Invited', email: uniqueEmail('link'), roleIds: [roles.body.data[0].id] }).expect(201);
+    const again = await api().post(`/api/v1/users/${created.body.data.user.id}/invitation`).set(bearer(owner)).expect(200);
+    assert.ok(again.body.data.resetToken);
+    // The first invitation no longer works once a new one is sent.
+    await api().post('/api/v1/auth/reset-password').send({ token: created.body.data.invitation.resetToken, password: 'Invited123' }).expect(422);
+    await api().post('/api/v1/auth/reset-password').send({ token: again.body.data.resetToken, password: 'Invited123' }).expect(200);
+  });
+
+  test('an administrator sets a password, which signs the user out everywhere; nobody takes over a stronger account', async () => {
+    const owner = await signUp('Owner');
+    const ops = await userWithRole(owner, 'operations');
+    const viewer = await userWithRole(owner, 'viewer');
+    await api().post(`/api/v1/users/${viewer.userId}/password`).set(bearer(owner)).send({ password: 'short' }).expect(422);
+    await api().post(`/api/v1/users/${viewer.userId}/password`).set(bearer(owner)).send({ password: 'NewPassw0rd' }).expect(200);
+    await api().get('/api/v1/auth/me').set(bearer(viewer)).expect(401);
+    await api().post('/api/v1/auth/login').send({ email: viewer.email, password: 'NewPassw0rd' }).expect(200);
+    await api().post(`/api/v1/users/${owner.userId}/password`).set(bearer(owner)).send({ password: 'NewPassw0rd' }).expect(409);
+    // Operations cannot manage users at all; an administrator can, but not take over the owner.
+    await api().post(`/api/v1/users/${owner.userId}/password`).set(bearer(ops)).send({ password: 'NewPassw0rd' }).expect(403);
+    const admin = await userWithRole(owner, 'admin');
+    await api().post(`/api/v1/users/${viewer.userId}/password`).set(bearer(admin)).send({ password: 'Another1pass' }).expect(200);
+    await api().post(`/api/v1/users/${owner.userId}/password`).set(bearer(admin)).send({ password: 'NewPassw0rd' }).expect(403);
+    await api().post(`/api/v1/users/${owner.userId}/invitation`).set(bearer(admin)).expect(403);
+  });
+});

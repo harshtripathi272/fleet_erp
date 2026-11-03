@@ -45,7 +45,9 @@ function describeSchema(schema: Schema, def: MasterDefinition, keys: Map<string,
     const full = prefix ? `${prefix}.${path}` : path;
     const top = full.split('.')[0]!;
     const options = (type as unknown as { options: Plain }).options ?? {};
-    const caster = (type as unknown as { caster?: { instance?: string; options?: Plain } }).caster;
+    // Mongoose 9 keeps an array's element type on `embeddedSchemaType`; older versions used `caster`.
+    const caster = (type as unknown as { embeddedSchemaType?: { instance?: string; options?: Plain }; caster?: { instance?: string; options?: Plain } }).embeddedSchemaType
+      ?? (type as unknown as { caster?: { instance?: string; options?: Plain } }).caster;
     const subSchema = (type as unknown as { schema?: Schema }).schema;
     const instance = type.instance;
     const array = instance === 'Array' || instance === 'DocumentArray';
@@ -60,6 +62,7 @@ function describeSchema(schema: Schema, def: MasterDefinition, keys: Map<string,
     };
     if (enumValues?.length) info.enum = enumValues;
     if (refModel) info.ref = keys.get(refModel) ?? refModel;
+    else { const declared = refsOf(def).find((r) => r.path === full && !r.usageOnly); if (declared) info.ref = declared.target; }
     if (options.default !== undefined && typeof options.default !== 'function') info.default = options.default;
     if (typeof options.min === 'number') info.min = options.min;
     if (typeof options.max === 'number') info.max = options.max;
@@ -123,6 +126,7 @@ export async function describeMasters(auth?: AuthContext) {
     collection: def.model.collection.collectionName,
     basePath: `/api/v1/${def.key === 'custom-records' ? 'custom-masters/:masterId/records' : def.key}`,
     titleField: def.titleField ?? 'name',
+    columns: def.columns ?? [],
     searchFields: def.searchFields,
     sortFields: def.sortFields,
     defaultSort: def.defaultSort ?? null,

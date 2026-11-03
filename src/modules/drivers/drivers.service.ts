@@ -46,6 +46,7 @@ export const driverDefinition = defineMaster({
   description: 'Each driver with identity, licence, permits, medical, contacts, payout account and opening balance. National ID, passport, tax IDs and account numbers are sensitive.',
   model: Driver, createSchema: S.createDriverSchema, updateSchema: S.updateDriverSchema,
   searchFields: ['code', 'name', 'firstName', 'lastName', 'phone', 'licence.number', 'nationalId.number'],
+  columns: ['phone', 'licence.expiryDate', 'assignedVehicleId'],
   sortFields: ['code', 'name', 'joinedOn', 'licence.expiryDate', 'createdAt', 'updatedAt'],
   autoCode: true,
   sensitive: ['nationalId.number', 'passport.number', 'taxIds.tpin', 'taxIds.napsa', 'taxIds.nhima', 'payout.accountNumber', 'religion'],

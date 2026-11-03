@@ -231,7 +231,8 @@ export async function issuePasswordReset(emailAddress: string, purpose: 'reset' 
     userId: user._id, tokenHash: sha256(token), purpose,
     expiresAt: new Date(Date.now() + (purpose === 'invite' ? 72 * 60 : env.PASSWORD_RESET_TTL_MINUTES) * 60000),
   });
-  const link = `${env.APP_URL}/console/#reset=${token}`;
+  // The web app opens a "choose your password" screen for this link.
+  const link = `${env.APP_URL}/#reset=${token}`;
   const sent = await sendMail({
     to: user.email!,
     subject: purpose === 'invite' ? 'You have been invited to Marichi Fleet' : 'Reset your Marichi Fleet password',
@@ -245,6 +246,16 @@ export async function issuePasswordReset(emailAddress: string, purpose: 'reset' 
 export async function forgotPassword(emailAddress: string) {
   const result = await issuePasswordReset(emailAddress, 'reset');
   return env.EXPOSE_RESET_TOKEN && result.resetToken ? { resetToken: result.resetToken } : {};
+}
+
+/** What the sign-in screen may offer before anyone signs in: the company's name and whether sign-up is open. */
+export async function signInOptions() {
+  const [claimed, company] = await Promise.all([
+    SystemState.exists({ key: 'owner-claimed' }),
+    Company.findOne().select('tradingName legalName allowSelfRegistration').lean<{ tradingName?: string; legalName?: string; allowSelfRegistration?: boolean }>(),
+  ]);
+  const firstOwner = !env.OWNER_EMAIL && !claimed;
+  return { company: company?.tradingName || company?.legalName || null, firstOwner, signUp: firstOwner || company?.allowSelfRegistration === true };
 }
 
 export async function resetPassword(token: string, password: string) {

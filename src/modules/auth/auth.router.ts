@@ -16,6 +16,7 @@ const loginKey = (req: { body?: { email?: unknown; phone?: unknown } }) => email
 const empty = z.strictObject({});
 
 const router = Router();
+router.get('/options', rateLimit({ name: 'options', limit: 60, windowMs: MINUTE }), AuthController.options);
 router.post('/register', rateLimit({ name: 'register', limit: 10, windowMs: HOUR }), validate({ body: registerSchema }), AuthController.register);
 router.post('/login',
   rateLimit({ name: 'login-ip', limit: 30, windowMs: MINUTE }),

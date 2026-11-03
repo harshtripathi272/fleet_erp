@@ -10,6 +10,7 @@ import {
   Gauge,
   Inbox,
   LayoutGrid,
+  KeyRound,
   LogOut,
   MessageCircle,
   MoreHorizontal,
@@ -24,7 +25,7 @@ import type { Overlay, Toast } from "./store";
 import { forDesk } from "./api/adapter";
 import { ApiError, hasSession, onSignedOut } from "./api/client";
 import { Refusal } from "./api/commands";
-import { desksFor, signOut, SignIn, useMe, type Me } from "./api/session";
+import { AccountDialog, desksFor, signOut, SignIn, useMe, type Me } from "./api/session";
 import { queueFor } from "./domain/turn";
 import type { Action, Desk, Nav, Role } from "./domain/types";
 import { Wordmark } from "./ui/brand";
@@ -103,7 +104,8 @@ export const ROLE_LABEL: Record<Role, string> = {
 
 /** Signed out: the sign-in screen. Signed in: the desks the person's permissions allow. */
 export default function App() {
-  const [signedIn, setSignedIn] = useState(hasSession);
+  // A password link opens the sign-in screen's "choose your password" form, even in a browser already signed in.
+  const [signedIn, setSignedIn] = useState(() => hasSession() && !location.hash.startsWith("#reset="));
   useEffect(
     () =>
       onSignedOut(() => {
@@ -152,7 +154,8 @@ function Desks({ me }: { me: Me }) {
     setToasts((list) => [...list.slice(-2), { id, text, tone }]);
     window.setTimeout(() => setToasts((list) => list.filter((t) => t.id !== id)), tone === "error" ? 5200 : 2800);
   }, []);
-  const role = session.role && allowed.includes(session.role) ? session.role : undefined;
+  // With a single desk there is nothing to choose: open it.
+  const role = session.role && allowed.includes(session.role) ? session.role : allowed.length === 1 ? allowed[0] : undefined;
   // The desk's phone shows every work thread this person sees (the API already filtered them by permission).
   const data = useMemo(() => (shared && role ? forDesk(shared, role) : shared), [shared, role]);
   const run = useCallback(
@@ -233,6 +236,7 @@ function Desks({ me }: { me: Me }) {
           onView={(next) => setSession({ view: next })}
           onSwitch={() => setSession({ role: undefined, driverId: undefined })}
           onSignOut={() => void signOut()}
+          me={me}
         >
           {view === "trips" && (
             <TripsPage
@@ -393,8 +397,10 @@ function Shell({
   onView,
   onSwitch,
   onSignOut,
+  me,
   children,
 }: {
+  me: Me;
   role: Role;
   view: View;
   person: string;
@@ -405,6 +411,7 @@ function Shell({
   children: ReactNode;
 }) {
   const [more, setMore] = useState(false);
+  const [account, setAccount] = useState(false);
   const items = NAV[role];
   const current = items.find((i) => i.id === view);
   const main = useRef<HTMLElement>(null);
@@ -430,6 +437,9 @@ function Shell({
               <span>{ROLE_LABEL[role]}</span>
             </span>
             {canSwitch && <ArrowRightLeft size={16} />}
+          </button>
+          <button className="side-reset" onClick={() => setAccount(true)}>
+            <KeyRound size={14} /> Your account
           </button>
           <button className="side-reset" onClick={onSignOut}>
             <LogOut size={14} /> Sign out
@@ -481,11 +491,15 @@ function Shell({
               <BookUser size={18} /> Switch desk
             </button>
           )}
+          <button onClick={() => { setMore(false); setAccount(true); }}>
+            <KeyRound size={18} /> Your account
+          </button>
           <button onClick={onSignOut}>
             <LogOut size={18} /> Sign out
           </button>
         </div>
       </Modal>
+      {account && <AccountDialog me={me} onClose={() => setAccount(false)} />}
     </div>
   );
 }

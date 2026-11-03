@@ -33,6 +33,16 @@ describe('registry', () => {
     }
   });
 
+  test('lists of ids name the master they point at, so screens can show names', () => {
+    for (const m of masters) {
+      for (const f of m.fields) {
+        if (f.array && f.type === 'objectid') assert.ok(f.ref, `${m.key}.${f.path} has no ref`);
+      }
+    }
+    const users = masters.find((m) => m.key === 'users')!;
+    assert.equal(users.fields.find((f: { path: string }) => f.path === 'roleIds').ref, 'roles');
+  });
+
   test('sample data covers every master except a few optional ones', async () => {
     const stats = (await api().get('/api/v1/meta/stats').set(bearer(owner)).expect(200)).body.data as Array<{ key: string; total: number }>;
     const empty = stats.filter((s) => s.total === 0).map((s) => s.key).sort();
