@@ -1,4 +1,4 @@
-import { useEffect, useId } from "react";
+import { useEffect } from "react";
 import type { ButtonHTMLAttributes, ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "motion/react";
@@ -40,11 +40,11 @@ export function Field({
   wide?: boolean;
   className?: string;
 }) {
-  const id = useId();
+  // The wrapping <label> names the control inside it; no htmlFor, which would point it elsewhere.
   return (
-    <label className={`field ${wide ? "field-wide" : ""} ${className}`} htmlFor={id}>
+    <label className={`field ${wide ? "field-wide" : ""} ${className}`}>
       <span className="field-label">{label}</span>
-      <span className="field-control" id={id}>
+      <span className="field-control">
         {children}
       </span>
       {hint && <span className="field-hint">{hint}</span>}

@@ -1,6 +1,7 @@
 import { Schema } from 'mongoose';
 import { opsModel } from './model.js';
 import { ObjectId, moneySchema, schemaOptions } from '../../../core/masters/schema.js';
+import { approvalSchema } from './funding.model.js';
 
 export const DOC_KINDS = ['loading', 'delivery', 'expense', 'fuel', 'other'] as const;
 export const DOC_CHANNELS = ['whatsapp', 'app', 'operations'] as const;
@@ -93,6 +94,8 @@ const shortageSchema = new Schema({
   decidedAt: Date,
   decidedBy: { type: ObjectId, ref: 'User' },
   note: String,
+  /** Who may waive it, routed by the company's shortage-waiver policy when the delivery was recorded. */
+  approval: { type: approvalSchema, default: undefined },
 }, { _id: false, strict: 'throw' });
 
 /** What was loaded on a trip and what was delivered, with any shortage beyond the allowance. */

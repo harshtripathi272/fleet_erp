@@ -10,7 +10,7 @@ import { Currency } from '../finance/models/currency.model.js';
 import { Role } from '../roles/role.model.js';
 import { User } from '../users/user.model.js';
 import { redeem } from './actionTokens.js';
-import { decideShortage, recordDelivery, recordLoading, returnDocument, sendDocument } from './cargo.service.js';
+import { decideShortage, markDone, recordDelivery, recordLoading, returnDocument, sendDocument } from './cargo.service.js';
 import { decideExpense, recordExpense } from './expenses.service.js';
 import { decideRequest, issueRequest } from './funding.service.js';
 import { Trip } from './models/trip.model.js';
@@ -98,6 +98,7 @@ export async function executeCommand(command: Plain, ctx: OpsContext): Promise<u
       return recordExpense(parse(Schemas.expenseSchema, { driverId: command.driverId, tripId: command.tripId, categoryId: command.categoryId, amount, receiptNo: command.receiptNo, docId: command.docId }), ctx);
     }
     case 'shortage.decide': return decideShortage(String(command.consignmentId), parse(Schemas.shortageDecisionSchema, { charge: command.charge, note: command.note || undefined, ...via }), ctx);
+    case 'doc.done': return markDone(String(command.docId), ctx);
     case 'doc.return': return returnDocument(String(command.docId), parse(Schemas.reasonSchema, { reason: command.reason }), ctx);
     case 'load.record': {
       const { type: _type, ...rest } = command;

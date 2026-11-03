@@ -32,6 +32,23 @@ async function paidAdvance(tripId: string, amountMinor: number) {
   return r;
 }
 
+/** Funds, dispatches, loads and delivers a trip with 0.5 % lost at 20 °C, beyond the 0.3 % allowance. */
+async function deliveredShort() {
+  const trip = await newTrip();
+  const f = ok(await as(ops).get(`/trips/${trip.id}/funding`));
+  const fuel = ok(await as(ops).post('/fund-requests', { tripId: trip.id, kind: 'fuel', litres: f.fuel.suggested }), 201);
+  ok(await as(fin).post(`/fund-requests/${fuel.id}/decide`, { approve: true }));
+  ok(await as(fin).post(`/fund-requests/${fuel.id}/issue`, { paymentMethodId: ids.pmDepot, reference: 'DP-1', station: 'Lusaka fuel depot' }));
+  ok(await as(ops).post(`/trips/${trip.id}/dispatch`));
+  ok(await as(ops).post(`/trips/${trip.id}/position`, { km: 1961, speed: 0, source: 'simulator' }));
+  const load = ok(await as(ops).post('/consignments', { tripId: trip.id, productId: ids.diesel, invoiceNo: 'INV-1', qty: 38000, ambientL: 38000, tempC: 28, density: 835 }), 201);
+  ok(await as(ops).post(`/trips/${trip.id}/position`, { km: 9999, speed: 0, source: 'simulator' }));
+  const delivered20 = Math.round(load.load.std20L * 0.995);
+  const delivery = ok(await as(ops).post(`/consignments/${load.id}/delivery`, { podNo: 'POD-1', qty: 37800, ambientL: 37800, tempC: 20, density: 835, certStd20L: delivered20 }));
+  assert.equal(delivery.shortage.status, 'pending');
+  return delivery;
+}
+
 before(startDatabase);
 after(stopDatabase);
 beforeEach(async () => {
@@ -43,7 +60,7 @@ beforeEach(async () => {
   const lookups: Array<[string, string, string]> = [
     ['zambezi', 'parties', 'Zambezi'], ['v1', 'vehicles', 'ALC 4821'], ['v2', 'vehicles', 'BCA 9034'], ['t1', 'trailers', 'TAC 7821'], ['t2', 'trailers', 'TBL 6206'],
     ['d1', 'drivers', 'Joseph'], ['d2', 'drivers', 'Martha'], ['routeDar', 'routes', 'DAR-LSK'], ['depot', 'places', 'LSK-DEPOT'],
-    ['diesel', 'products', 'DIESEL-50'], ['ZMW', 'currencies', 'ZMW'], ['pmCash', 'payment-methods', 'CASH'],
+    ['diesel', 'products', 'DIESEL-50'], ['ZMW', 'currencies', 'ZMW'], ['pmCash', 'payment-methods', 'CASH'], ['pmDepot', 'payment-methods', 'DEPOT'],
   ];
   for (const [key, master, search] of lookups) ids[key] = (await find(owner, master, search)).id;
 });
@@ -83,5 +100,42 @@ describe('two people saving the same plan', () => {
     const stale = await as(ops).patch(`/trips/${trip.id}`, { version: trip.version, cashBudgetMinor: 7000_00 });
     assert.equal(stale.status, 409, JSON.stringify(stale.body));
     assert.equal(ok(await as(ops).get(`/trips/${trip.id}`)).cashBudget.amountMinor, 6000_00);
+  });
+});
+
+describe('waiving a shortage follows the shortage-waiver policy', () => {
+  test('a role the policy names may waive without the shortage permission, but not charge', async () => {
+    const opsRole = (await find(owner, 'roles', 'operations')).id;
+    ok(await as(owner).post('/approval-policies', { code: 'WAIVE', name: 'Shortage waivers', subject: 'shortage_waiver', currencyId: ids.ZMW, levels: [{ level: 1, minAmountMinor: 0, approverRoleId: opsRole }] }), 201);
+    const delivery = await deliveredShort();
+    assert.equal(delivery.shortage.approval.levels.at(-1).approverRoleKey, 'operations', 'the waiver is routed when the delivery is recorded');
+    await as(ops).post(`/consignments/${delivery.id}/shortage-decision`, { charge: true }).expect(403);
+    await as(fin).post(`/consignments/${delivery.id}/shortage-decision`, { charge: false, note: 'Meter fault at the depot' }).expect(403);
+    const waived = ok(await as(ops).post(`/consignments/${delivery.id}/shortage-decision`, { charge: false, note: 'Meter fault at the depot' }));
+    assert.equal(waived.shortage.status, 'waived');
+  });
+
+  test('without a policy, the shortage permission decides both', async () => {
+    const delivery = await deliveredShort();
+    await as(ops).post(`/consignments/${delivery.id}/shortage-decision`, { charge: false, note: 'No' }).expect(403);
+    assert.equal(ok(await as(fin).post(`/consignments/${delivery.id}/shortage-decision`, { charge: false, note: 'Meter fault' })).shortage.status, 'waived');
+  });
+});
+
+describe('messages from the driver', () => {
+  test('the office marks a message done; it then stops waiting, and documents to record cannot be marked done', async () => {
+    const trip = await newTrip();
+    const message = ok(await as(ops).post('/whatsapp/simulate', { driverId: ids.d1, text: 'Tyre burst near Mpika' }), 201);
+    assert.equal(message.kind, 'other');
+    const inbox = ok<any[]>(await as(ops).get('/messages?thread=queue:consignments'));
+    assert.ok(inbox.find((m) => m.refId === message.id).buttons.some((b: any) => b.action?.type === 'doc.done'), 'the message offers Done');
+    const viewer = await userWithRole(owner, 'viewer', 'Vera Viewer');
+    await as(viewer).post(`/driver-documents/${message.id}/done`).expect(403);
+    const done = ok(await as(ops).post(`/driver-documents/${message.id}/done`));
+    assert.equal(done.status, 'recorded');
+    await as(ops).post(`/driver-documents/${message.id}/done`).expect(409);
+    assert.equal(ok<any[]>(await as(ops).get('/messages?thread=queue:consignments')).find((m) => m.refId === message.id).resolved, 'Done by Olivia Ops');
+    const receipt = ok(await as(ops).post('/whatsapp/simulate', { driverId: ids.d1, tripId: trip.id, kind: 'expense', file: { name: 'r.jpg', mime: 'image/jpeg', sampleId: 'expense:1:0' } }), 201);
+    await as(ops).post(`/driver-documents/${receipt.id}/done`).expect(422);
   });
 });

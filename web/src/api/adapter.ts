@@ -67,6 +67,12 @@ function mayDecide(me: Reference["me"], approval?: Rec) {
   return (approval.levels as Rec[]).slice(approval.current ?? 0).some((l) =>
     l.fallbackResource ? can(l.fallbackResource) : l.approverUserId ? l.approverUserId === me.id : me.roles.includes(l.approverRoleKey));
 }
+/** Taking the final decision at once, as waiving a shortage does: the policy's last level decides. */
+function mayDecideFinal(me: Reference["me"], approval?: Rec) {
+  const last = (approval?.levels as Rec[] | undefined)?.at(-1);
+  if (!last) return undefined;
+  return mayDecide(me, { levels: [last], current: 0 });
+}
 const waitingLabel = (approval?: Rec) => approval?.levels?.[approval.current ?? 0]?.label as string | undefined;
 const positive = (...values: unknown[]) => values.find((v): v is number => typeof v === "number" && v > 0);
 const via = (v?: string): Decision["via"] => (v === "whatsapp" ? "WhatsApp" : "app");
@@ -217,6 +223,7 @@ export function toAppData(ref: Reference, ops: Operations): AppData {
       allowanceL: c.shortage.allowanceL, netShortL: c.shortage.netShortL,
       rateUsd: c.shortage.pricePerL ? Math.round((inBase(c.shortage.pricePerL) / fx) * 100) / 100 : 0,
       amountZmw: baseMajor(c.shortage.baseAmountMinor), status: c.shortage.status, decidedAt: c.shortage.decidedAt, note: c.shortage.note,
+      mayWaive: c.shortage.status === "pending" ? mayDecideFinal(ref.me, c.shortage.approval) : undefined,
     } : undefined,
   })).sort((a, b) => a.loadedAt.localeCompare(b.loadedAt));
 

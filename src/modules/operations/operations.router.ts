@@ -64,6 +64,7 @@ router.post('/fund-requests/:id/cancel', authorize('fund-requests', 'update'), v
 router.get('/driver-documents', authorize('driver-documents', 'read'), validate({ query: S.documentListQuery }), C.listDocuments);
 router.post('/driver-documents', authorize('driver-documents', 'create'), validate({ body: S.sendDocumentSchema }), C.sendDocument);
 router.get('/driver-documents/:id', authorize('driver-documents', 'read'), validate(id), C.getDocument);
+router.post('/driver-documents/:id/done', authorize('driver-documents', 'update'), validate(id), C.markDocumentDone);
 router.post('/driver-documents/:id/return', authorize('driver-documents', 'update'), validate({ ...id, body: S.reasonSchema }), C.returnDocument);
 
 router.get('/consignments', authorize('consignments', 'read'), validate({ query: S.consignmentListQuery }), C.listConsignments);

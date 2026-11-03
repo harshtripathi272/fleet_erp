@@ -1499,3 +1499,26 @@
   padding: 1px 4px;
   font-size: 10px;
 }
+
+/* ---------- Messages from the driver ---------- */
+.driver-message {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+.driver-message-text {
+  display: grid;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+}
+.driver-message-text p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.trip-row-message {
+  margin-top: 6px;
+  color: var(--brass);
+  font-size: 12.5px;
+  font-weight: 600;
+}

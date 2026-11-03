@@ -49,6 +49,7 @@ export const ACTION_PERMISSION: Record<Action["type"], [resource: string, action
   "request.cancel": ["fund-requests", "update"],
   "doc.send": ["driver-documents", "create"],
   "doc.return": ["driver-documents", "update"],
+  "doc.done": ["driver-documents", "update"],
   "load.record": ["consignments", "create"],
   "delivery.record": ["consignments", "update"],
   "shortage.decide": ["shortage-decisions", "create"],

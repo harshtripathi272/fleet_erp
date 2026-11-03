@@ -124,6 +124,7 @@ export async function runCommand(action: Action, ctx: { data: AppData; role: Rol
       }
       return;
     }
+    case "doc.done": await api(`/driver-documents/${action.docId}/done`, { method: "POST" }); return;
     case "doc.return": await api(`/driver-documents/${action.docId}/return`, { method: "POST", body: { reason: action.reason.trim() } }); return;
     case "load.record":
       await api("/consignments", {

@@ -48,6 +48,7 @@ export const cancelRequest = asyncHandler(async (req, res) => ApiResponse.succes
 export const listDocuments = asyncHandler(async (req, res) => paged(res, await Cargo.listDocuments(query(req))));
 export const getDocument = asyncHandler(async (req, res) => ApiResponse.success(res, await Cargo.getDocument(param(req))));
 export const sendDocument = asyncHandler(async (req, res) => ApiResponse.created(res, await Cargo.sendDocument(req.body, opsContext(req)), 'Document received'));
+export const markDocumentDone = asyncHandler(async (req, res) => ApiResponse.success(res, await Cargo.markDone(param(req), opsContext(req)), 'Done'));
 export const returnDocument = asyncHandler(async (req, res) => ApiResponse.success(res, await Cargo.returnDocument(param(req), req.body, opsContext(req)), 'Returned to the driver'));
 export const listConsignments = asyncHandler(async (req, res) => paged(res, await Cargo.listConsignments(query(req))));
 export const getConsignment = asyncHandler(async (req, res) => ApiResponse.success(res, await Cargo.getConsignment(param(req))));
