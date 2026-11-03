@@ -9,8 +9,13 @@ const MIN_BYTES = 1024;
  * 300 kB of JSON (the masters and /operations/sync), several seconds on a slow mobile network uncompressed
  * and a tenth of that compressed. Brotli at quality 5 takes a few milliseconds for that much. Files, streams
  * and anything not JSON are left alone.
+ *
+ * Sign-in answers (/api/v1/auth) are never compressed: they carry tokens next to what the client sent, the shape
+ * a compression attack (BREACH) needs. Tokens travel in a header, not a cookie, so it isn't exploitable today;
+ * this keeps it that way for little cost, since those answers are small.
  */
 export const compressJson: RequestHandler = (req, res, next) => {
+  if (/^\/api\/v1\/auth(\/|\?|$)/.test(req.originalUrl)) return next();
   const send = res.send.bind(res);
   res.send = (body?: unknown) => {
     const json = String(res.getHeader('Content-Type') ?? '').includes('json');

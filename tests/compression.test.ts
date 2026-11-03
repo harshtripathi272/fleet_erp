@@ -1,5 +1,8 @@
 import assert from 'node:assert/strict';
 import { after, before, test } from 'node:test';
+import express from 'express';
+import request from 'supertest';
+import { compressJson } from '../src/middleware/compressJson.js';
 import { api, bearer, loadSample, signUp, startDatabase, stopDatabase, type Session } from './helpers.js';
 
 let owner: Session;
@@ -30,6 +33,18 @@ test('gzip when that is all the browser takes, and the same data once unpacked',
   assert.equal(gz.headers['content-encoding'], 'gzip');
   assert.ok(Number(gz.headers['content-length']) < Buffer.byteLength(JSON.stringify(plain.body)));
   assert.deepEqual(gz.body, plain.body);
+});
+
+test('sign-in answers are never compressed, however big: they carry tokens', async () => {
+  const app = express();
+  const big = { data: Array.from({ length: 200 }, (_, i) => ({ token: `t${i}`, email: 'someone@example.test' })) };
+  app.use('/api', compressJson);
+  app.get('/api/v1/auth/me', (_req, res) => res.json(big));
+  app.get('/api/v1/places', (_req, res) => res.json(big));
+  const auth = await request(app).get('/api/v1/auth/me').set('Accept-Encoding', 'br').expect(200);
+  assert.equal(auth.headers['content-encoding'], undefined);
+  const other = await request(app).get('/api/v1/places').set('Accept-Encoding', 'br').expect(200);
+  assert.equal(other.headers['content-encoding'], 'br', 'the same answer elsewhere is compressed');
 });
 
 test('small answers and errors stay as they are', async () => {
