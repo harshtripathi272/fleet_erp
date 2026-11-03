@@ -139,3 +139,28 @@ describe('messages from the driver', () => {
     await as(ops).post(`/driver-documents/${receipt.id}/done`).expect(422);
   });
 });
+
+describe('delivered more than loaded', () => {
+  test('fuel is compared at 20 °C: a delivery over the allowed margin is refused even when the ambient litres look fine', async () => {
+    const trip = await newTrip();
+    const f = ok(await as(ops).get(`/trips/${trip.id}/funding`));
+    const fuel = ok(await as(ops).post('/fund-requests', { tripId: trip.id, kind: 'fuel', litres: f.fuel.suggested }), 201);
+    ok(await as(fin).post(`/fund-requests/${fuel.id}/decide`, { approve: true }));
+    ok(await as(fin).post(`/fund-requests/${fuel.id}/issue`, { paymentMethodId: ids.pmDepot, reference: 'DP-2', station: 'Lusaka fuel depot' }));
+    ok(await as(ops).post(`/trips/${trip.id}/dispatch`));
+    ok(await as(ops).post(`/trips/${trip.id}/position`, { km: 1961, speed: 0, source: 'simulator' }));
+    // Loaded warm (28 °C): 38,000 L ambient is about 37,750 L at 20 °C.
+    const load = ok(await as(ops).post('/consignments', { tripId: trip.id, productId: ids.diesel, invoiceNo: 'INV-2', qty: 38000, ambientL: 38000, tempC: 28, density: 835 }), 201);
+    ok(await as(ops).post(`/trips/${trip.id}/position`, { km: 9999, speed: 0, source: 'simulator' }));
+    const loaded20 = load.load.std20L as number;
+    // 38,600 L ambient is within 2 % of 38,000 ambient, but 38,600 L at 20 °C is 2.3 % over what was loaded.
+    const over = await as(ops).post(`/consignments/${load.id}/delivery`, { podNo: 'POD-OVER', qty: 38600, ambientL: 38600, tempC: 20, density: 835, certStd20L: 38600 });
+    assert.equal(over.status, 422, JSON.stringify(over.body));
+    assert.match(over.body.error.message, /more than loaded/);
+    // Within the margin (1 % over at 20 °C) is accepted, with no loss.
+    const fine = Math.round(loaded20 * 1.01);
+    const delivery = ok(await as(ops).post(`/consignments/${load.id}/delivery`, { podNo: 'POD-OK', qty: fine, ambientL: fine, tempC: 20, density: 835, certStd20L: fine }));
+    assert.equal(delivery.shortage.lossL, 0);
+  });
+});
+

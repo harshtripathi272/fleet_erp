@@ -306,12 +306,21 @@ export async function recordDelivery(id: string, input: S.DeliveryInput, ctx: Op
   const { product, unit, volumeCorrected } = await productFacts(consignment.get('productId'));
   if (volumeCorrected) await fuelChecks(input, ' at offloading');
   const load = consignment.get('load');
+  const measured = measure({ volumeCorrected, unit }, { qty: input.qty, ambientL: input.ambientL ?? (volumeCorrected ? input.qty : undefined), tempC: input.tempC, density: input.density, certStd20L: input.certStd20L });
+  // Fuel is compared at 20 °C, where it is comparable: ambient litres grow and shrink with the temperature,
+  // so a delivery can look fine warm and still be more than was loaded. Other cargo compares its quantity.
   const { deliveredOverLoadedPercent } = await operationsSettings();
-  if (input.qty > Number(load.ambientL ?? load.qty) * (1 + deliveredOverLoadedPercent / 100)) throw refuse('Delivered is more than loaded. Check the figures.');
+  const loaded20 = volume20(load as Measure);
+  const delivered20 = volume20(measured);
+  const [loadedQty, deliveredQty, at20] = loaded20 != null && delivered20 != null
+    ? [loaded20, delivered20, true] : [Number(load.ambientL ?? load.qty), input.qty, false];
+  const limit = loadedQty * (1 + deliveredOverLoadedPercent / 100);
+  if (deliveredQty > limit) {
+    throw refuse(`Delivered ${Math.round(deliveredQty).toLocaleString('en-GB')}${at20 ? ' L at 20 °C' : ''} is more than loaded (${Math.round(loadedQty).toLocaleString('en-GB')}) by over ${deliveredOverLoadedPercent}%. Check the figures.`);
+  }
   const stops = trip.get('stops') as Array<{ kind: string; legKm: number }>;
   const index = stops.findIndex((s) => s.kind === 'offload');
   await arriveAt(trip, index, at, ctx, 'office');
-  const measured = measure({ volumeCorrected, unit }, { qty: input.qty, ambientL: input.ambientL ?? (volumeCorrected ? input.qty : undefined), tempC: input.tempC, density: input.density, certStd20L: input.certStd20L });
   consignment.set({ delivered: { ...measured, at, podNo: input.podNo, docId: input.docId }, inTransit: false });
   const shortage = volumeCorrected ? await shortageFor(consignment.toObject() as Plain, measured) : undefined;
   if (shortage) consignment.set('shortage', shortage);
