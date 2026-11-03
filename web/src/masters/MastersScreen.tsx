@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Archive, History, Link2, Plus, RotateCcw, Search, Trash2 } from "lucide-react";
+import { Archive, History, Link2, Plus, RotateCcw, Search, Trash2, Upload } from "lucide-react";
 import { api, ApiError, request } from "../api/client";
 import type { Rec } from "../api/adapter";
 import { can } from "../api/session";
@@ -12,6 +12,7 @@ import { DriverAccess } from "./DriverAccess";
 import { UserAccess } from "./UserAccess";
 import { PermissionMatrix } from "./PermissionMatrix";
 import { RateFeed } from "./RateFeed";
+import { ImportDialog } from "./ImportDialog";
 import MessagingSettings from "../settings/MessagingSettings";
 
 /**
@@ -97,6 +98,7 @@ export function MastersScreen({ initialEntity }: { initialEntity?: string }) {
 
 function Records({ def, defs }: { def: Def; defs: Def[] }) {
   const [search, setSearch] = useState("");
+  const [importing, setImporting] = useState(false);
   const [status, setStatus] = useState("");
   const [sort, setSort] = useState<string>(def.defaultSort ?? def.sortFields[0]);
   const [page, setPage] = useState(1);
@@ -113,11 +115,15 @@ function Records({ def, defs }: { def: Def; defs: Def[] }) {
           <h2>{def.label}</h2>
           <p className="muted">{def.description}</p>
         </div>
-        {creatable(def) && (
-          <Button tone="primary" onClick={() => setOpen("new")}><Plus size={16} /> New {def.singular.toLowerCase()}</Button>
-        )}
+        <div className="row-actions">
+          {creatable(def) && !def.managed?.create && <Button onClick={() => setImporting(true)}><Upload size={15} /> Import</Button>}
+          {creatable(def) && (
+            <Button tone="primary" onClick={() => setOpen("new")}><Plus size={16} /> New {def.singular.toLowerCase()}</Button>
+          )}
+        </div>
       </header>
       {def.key === "exchange-rates" && <RateFeed />}
+      {importing && <ImportDialog master={def.key} label={def.label} onClose={() => setImporting(false)} />}
       <div className="desk-tools">
         <label className="search">
           <Search size={15} />
