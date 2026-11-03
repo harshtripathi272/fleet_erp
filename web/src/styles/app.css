@@ -289,6 +289,10 @@
 .main {
   min-width: 0;
 }
+/* In place of a screen while it downloads, the first time it's opened. */
+.screen-loading {
+  padding: 28px;
+}
 .topbar {
   position: sticky;
   top: 0;

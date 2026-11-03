@@ -20,7 +20,8 @@ import {
 } from "lucide-react";
 import { useApp } from "../store";
 import { can, useMay } from "../api/session";
-import { byId, carriedIn, cumulativeKm, driverBalance, fuelEstimate, fuelNow, funding, leg, legLoaded, measureFuel, shortageFor, toZmw, tripFuelUsed, tripHours, tripKm, validateStops, volume20 } from "../domain/calc";
+import { byId, carriedIn, cumulativeKm, driverBalance, fuelEstimate, fuelNow, funding, legLoaded, measureFuel, shortageFor, toZmw, tripFuelUsed, tripHours, tripKm, validateStops, volume20 } from "../domain/calc";
+import { leg } from "../domain/route";
 import { activeTrip, placeName } from "../domain/helpers";
 import type { NextStep, StageId } from "../domain/turn";
 import type {
