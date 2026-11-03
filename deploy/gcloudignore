@@ -1,0 +1,18 @@
+# What Cloud Build uploads to build the image (deploy/build-image.sh passes this file with --ignore-file).
+# Never upload local settings, data or dependencies; the Dockerfile installs dependencies itself.
+.git
+.gitignore
+.claude
+.env
+.env.*
+!.env.example
+node_modules/
+**/node_modules/
+dist/
+web/dist/
+data/
+tmp/
+coverage/
+tests/
+*.log
+deploy/companies/
