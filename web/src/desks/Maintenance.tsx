@@ -54,7 +54,7 @@ function ServicesDue() {
   const rows = (services.data ?? []).filter((r) => which === "all" || r.health !== "ok");
   const mayOpen = can(me, "work-orders", "create");
   return (
-    <Card title="Services" aside={<Segmented choice label="Which services" value={which} options={[{ value: "due", label: "Due and overdue" }, { value: "all", label: "Every service" }]} onChange={setWhich} />}>
+    <Card title="Services" aside={<Segmented choice label="Which services" value={which} options={[{ value: "due", label: "Due" }, { value: "all", label: "All" }]} onChange={setWhich} />}>
       {services.isLoading && <p className="muted">Loading…</p>}
       {services.error && <Empty title="Could not load the services">{(services.error as Error).message}</Empty>}
       {services.data && !services.data.length && (
@@ -155,7 +155,7 @@ function CostPerTruck() {
       {report.data && !report.data.rows.length && <Empty title="No costs or trips in this period" />}
       {report.data && report.data.rows.length > 0 && (
         <div className="table-frame">
-          <table className="table">
+          <table className="table maint-costs">
             <thead>
               <tr>
                 <th>Truck</th><th className="num">Work orders</th><th className="num">Their cost</th>

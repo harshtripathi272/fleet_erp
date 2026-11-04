@@ -723,7 +723,7 @@ function FieldInput({ name, path, schema, required, def, defs, value, onChange, 
       );
     return <Field label={title} hint="Separate with commas" wide><input disabled={readOnly} value={list.join(", ")} onChange={(e) => onChange(e.target.value.split(",").map((s) => s.trim()).filter(Boolean))} /></Field>;
   }
-  if (ref || schema.pattern === OBJECT_ID) return <Field label={title} hint={hint}><RefSelect target={ref ?? ""} defs={defs} value={(value as string) ?? ""} onChange={onChange} disabled={readOnly} /></Field>;
+  if (ref || schema.pattern === OBJECT_ID) return <Field label={title} hint={hint}><RefSelect target={ref ?? ""} defs={defs} value={(value as string) ?? ""} onChange={onChange} disabled={readOnly} partyRoles={(def.references as Rec[] | undefined)?.find((r) => r.path === path)?.partyRoles as string[] | undefined} /></Field>;
   if (WRITE_ONLY.has(name))
     return <Field label={title} hint="Leave empty to e-mail them an invitation to set their own."><input type="password" autoComplete="new-password" disabled={readOnly} value={(value as string) ?? ""} onChange={(e) => onChange(e.target.value || undefined)} /></Field>;
   if (specField !== undefined && name === "type" && schema.enum)
@@ -791,15 +791,16 @@ function useOptions(target: string, defs: Def[], search = "") {
   const def = defs.find((d) => d.key === target);
   return useQuery({
     queryKey: ["options", target, search],
-    queryFn: async () => (await api<Rec[]>(`/${target}`, { query: { status: "active", limit: 100, search: search || undefined } })).map((r) => ({ id: String(r.id), name: titleOf(r, def) })),
+    queryFn: async () => (await api<Rec[]>(`/${target}`, { query: { status: "active", limit: 100, search: search || undefined } })).map((r) => ({ id: String(r.id), roles: r.roles as string[] | undefined, name: titleOf(r, def) })),
     enabled: Boolean(target && def?.permissions?.read),
     staleTime: 30_000,
   });
 }
 
-function RefSelect({ target, defs, value, onChange, disabled }: { target: string; defs: Def[]; value: string; onChange: (v: unknown) => void; disabled?: boolean }) {
+function RefSelect({ target, defs, value, onChange, disabled, partyRoles }: { target: string; defs: Def[]; value: string; onChange: (v: unknown) => void; disabled?: boolean; partyRoles?: string[] }) {
   const options = useOptions(target, defs);
-  const list = options.data ?? [];
+  // A field that takes only some parties (a workshop) offers only those: the API refuses the rest.
+  const list = (options.data ?? []).filter((o) => !partyRoles || o.roles?.some((r) => partyRoles.includes(r)));
   return (
     <select disabled={disabled} value={value} onChange={(e) => onChange(e.target.value || undefined)}>
       <option value="">—</option>

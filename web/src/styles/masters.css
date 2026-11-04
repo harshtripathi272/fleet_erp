@@ -162,6 +162,7 @@ details.form-group summary { cursor: pointer; }
 
 /* The Maintenance desk's period, and the driver's defect form. */
 .audit-date-pair { display: inline-flex; flex-wrap: wrap; gap: 8px; }
+.maint-costs .num { text-align: right; }
 .drv-defect { display: grid; gap: 8px; }
 /* The master of masters (#65): how a company shapes one master. */
 .customise { display: grid; gap: 20px; }

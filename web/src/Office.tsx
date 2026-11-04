@@ -58,7 +58,6 @@ interface Session {
   stage?: string;
   accountDriverId?: string;
   masterEntity?: string;
-  masterId?: string;
 }
 const readSession = (): Session => {
   const params = new URLSearchParams(location.search);
@@ -151,6 +150,8 @@ export default function Desks({ me }: { me: Me }) {
     },
     [perform, role, toast],
   );
+  // A record to open in Masters, for this visit only: leaving or reloading doesn't reopen it.
+  const [masterId, setMasterId] = useState<string>();
   const nav = useCallback(
     (target: Nav) => {
       if (!role || !data) return;
@@ -174,7 +175,10 @@ export default function Desks({ me }: { me: Me }) {
         return;
       }
       if (target.view === "nominations") setSession({ view: "nominations" });
-      if (target.view === "masters" && role !== "driver") setSession({ view: "masters", masterEntity: target.masterEntity, masterId: target.masterId });
+      if (target.view === "masters" && role !== "driver") {
+        setMasterId(target.masterId);
+        setSession({ view: "masters", masterEntity: target.masterEntity });
+      }
       if (target.view === "maintenance" && role !== "driver") setSession({ view: "maintenance" });
       if (target.view === "finance" && role === "finance") setSession({ view: "today" });
       setOverlay({});
@@ -212,7 +216,10 @@ export default function Desks({ me }: { me: Me }) {
           view={view}
           person={role === "driver" ? data.drivers.find((d) => d.id === session.driverId)?.name ?? "Driver" : me.name}
           canSwitch={allowed.length > 1}
-          onView={(next) => setSession({ view: next })}
+          onView={(next) => {
+            setMasterId(undefined);
+            setSession({ view: next });
+          }}
           onSwitch={() => setSession({ role: undefined, driverId: undefined })}
           onSignOut={() => void signOut()}
           me={me}
@@ -232,7 +239,7 @@ export default function Desks({ me }: { me: Me }) {
               <Accounts driverId={session.accountDriverId} onDriver={(id) => setSession({ accountDriverId: id })} />
             )}
             {view === "maintenance" && <Maintenance />}
-            {view === "masters" && <MastersScreen key={`${session.masterEntity || "masters"}-${session.masterId ?? ""}`} initialEntity={session.masterEntity} initialId={session.masterId} />}
+            {view === "masters" && <MastersScreen key={`${session.masterEntity || "masters"}-${masterId ?? ""}`} initialEntity={session.masterEntity} initialId={masterId} />}
             {view === "driver" && <DriverDesk />}
           </Suspense>
         </Shell>
