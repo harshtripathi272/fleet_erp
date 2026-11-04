@@ -18,7 +18,7 @@ await ensureDefaultMessages();
 await connectRedis();
 // Retries and delayed messages go out from here: only in the server, so scripts and tests that load the app don't start it.
 startOutboxWorker();
-startEscalationWorker();
+if (env.IN_PROCESS_JOBS) startEscalationWorker();
 
 const server = app.listen(env.PORT, env.HOST, () => {
   logger.info({ host: env.HOST, port: env.PORT, environment: env.NODE_ENV }, 'Server started');

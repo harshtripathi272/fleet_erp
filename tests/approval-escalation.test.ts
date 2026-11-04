@@ -1,6 +1,8 @@
 // #53: a level that doesn't decide in time loses the request to the next one; SMS and e-mail reach approvers.
+import { spawnSync } from 'node:child_process';
 import assert from 'node:assert/strict';
 import { after, before, beforeEach, describe, test } from 'node:test';
+import mongoose from 'mongoose';
 import { env } from '../src/config/env.js';
 import { setSmtpTransportFactory } from '../src/core/mail/mailer.js';
 import { registerSmsAdapter } from '../src/core/sms/index.js';
@@ -184,6 +186,24 @@ describe('escalation', () => {
     assert.ok(entries.some((e) => /moved from/.test(e.summary ?? '') && e.title === expense.number));
     await as(fin).post(`/expenses/${expense.id}/decide`, { approve: true }).expect(403);
     assert.equal(ok(await as(owner).post(`/expenses/${expense.id}/decide`, { approve: true })).status, 'approved');
+  });
+});
+
+describe('the scheduled job', () => {
+  test('its entry point moves a due request, tells the next level, and exits', async () => {
+    await setLevel('FUEL-L', 1, { escalateAfterHours: 24 });
+    const raised = ok(await fuelRequest(await newTrip()), 201);
+    await FundRequest.updateOne({ _id: raised.id }, { $set: { 'approval.escalateAt': new Date(Date.now() - 1000) } });
+    const { host, port, name } = mongoose.connection;
+    const run = spawnSync(process.execPath, ['--import', 'tsx', 'src/jobs/escalate.ts'], {
+      env: { ...process.env, MONGODB_URI: `mongodb://${host}:${port}/${name}` }, encoding: 'utf8', timeout: 60_000,
+    });
+    assert.equal(run.status, 0, run.stderr || run.stdout);
+
+    const moved = ok(await as(owner).get(`/fund-requests/${raised.id}`));
+    assert.equal(moved.approval.current, 1);
+    assert.equal(moved.trail.at(-1).what, 'escalated');
+    assert.equal((await inThread('role:owner', raised.id)).length, 1);
   });
 });
 
