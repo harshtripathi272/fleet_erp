@@ -12,7 +12,7 @@ const loadOffice = () => import("./Office");
 const Office = lazy(loadOffice);
 
 // Which app this browser last opened. A returning office user's desks download while their account loads.
-const LAST_APP = "marichi.app";
+const LAST_APP = "fleet.app";
 try {
   if (hasSession() && localStorage.getItem(LAST_APP) === "office") void loadOffice();
 } catch {
@@ -22,9 +22,9 @@ try {
 // A tab left open across a deploy asks for screens by their old file names, which are gone: load the new
 // version instead. Once a minute at most, so a network that is really down shows the error, not a reload loop.
 window.addEventListener("vite:preloadError", (event) => {
-  const last = Number(sessionStorage.getItem("marichi.reloaded") ?? 0);
+  const last = Number(sessionStorage.getItem("fleet.reloaded") ?? 0);
   if (Date.now() - last < 60_000) return;
-  sessionStorage.setItem("marichi.reloaded", String(Date.now()));
+  sessionStorage.setItem("fleet.reloaded", String(Date.now()));
   event.preventDefault();
   location.reload();
 });

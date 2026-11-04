@@ -75,9 +75,11 @@ async function recipientsFor(rule: Plain, input: DispatchInput): Promise<Recipie
 }
 
 async function valuesFor(input: DispatchInput): Promise<Record<string, string>> {
-  const company = await Company.findOne().select('legalName tradingName').lean() as Plain | null;
+  const company = await Company.findOne().select('legalName tradingName brand').lean() as Plain | null;
   const values: Record<string, string> = { date: new Date().toISOString().slice(0, 10) };
   if (company) values['company.name'] = String(company.tradingName ?? company.legalName);
+  // The company's own sign-off for messages (#71), empty when it has none.
+  if (company) values['company.signature'] = String((company.brand as Plain | undefined)?.signature ?? '');
   if (input.driverId && Types.ObjectId.isValid(input.driverId)) {
     const d = await Driver.findById(input.driverId).select('name phone').lean() as Plain | null;
     if (d) { values['driver.name'] = String(d.name); values['driver.phone'] = String(d.phone ?? ''); }
