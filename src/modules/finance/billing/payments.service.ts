@@ -120,7 +120,7 @@ async function presentPayment(doc: Plain) {
   const currency = await currencyUnits((doc.amount as Plain).currencyId);
   const allocations = (doc.allocations ?? []) as Plain[];
   return {
-    ...present(doc), currency: currency.code, customer: await partyName(doc.customerId),
+    ...present(doc), currency: currency.code, minorUnits: currency.minorUnits, customer: await partyName(doc.customerId),
     gainLossBaseMinor: allocations.reduce((s, a) => s + Number(a.gainLossBaseMinor ?? 0), 0),
   };
 }

@@ -19,6 +19,7 @@ import {
   TriangleAlert,
   Wallet,
   X,
+  Receipt,
 } from "lucide-react";
 import { AppProvider, useApp, useSharedData } from "./store";
 import type { Overlay, Toast } from "./store";
@@ -39,6 +40,7 @@ import { wantsAuditLog } from "./masters/history";
 // Each screen is its own download, fetched the first time it's opened; the map only when a map is opened.
 const TripsPage = lazy(() => import("./desks/Trips").then((m) => ({ default: m.TripsPage })));
 const FinanceToday = lazy(() => import("./desks/Finance").then((m) => ({ default: m.FinanceToday })));
+const Billing = lazy(() => import("./billing/Billing").then((m) => ({ default: m.Billing })));
 const Accounts = lazy(() => import("./desks/Accounts").then((m) => ({ default: m.Accounts })));
 const Nominations = lazy(() => import("./desks/Nominations").then((m) => ({ default: m.Nominations })));
 const MastersScreen = lazy(() => import("./masters/MastersScreen").then((m) => ({ default: m.MastersScreen })));
@@ -46,7 +48,7 @@ const Overview = lazy(() => import("./desks/Overview").then((m) => ({ default: m
 const DriverDesk = lazy(() => import("./desks/DriverDesk").then((m) => ({ default: m.DriverDesk })));
 const Tracking = lazy(() => import("./tracking/Tracking"));
 
-type View = "overview" | "today" | "trips" | "nominations" | "accounts" | "masters" | "driver";
+type View = "overview" | "today" | "trips" | "nominations" | "accounts" | "billing" | "masters" | "driver";
 interface Session {
   role?: Role;
   driverId?: string;
@@ -86,6 +88,7 @@ const NAV: Record<Role, { id: View; label: string; short?: string; icon: typeof 
     { id: "today", label: "Approvals", icon: Inbox },
     { id: "trips", label: "Trips", icon: Truck },
     { id: "accounts", label: "Settlements", icon: Wallet },
+    { id: "billing", label: "Billing", icon: Receipt },
     { id: "masters", label: "Masters", icon: Settings2 },
   ],
   owner: [
@@ -93,10 +96,14 @@ const NAV: Record<Role, { id: View; label: string; short?: string; icon: typeof 
     { id: "trips", label: "Trips", icon: Truck },
     { id: "nominations", label: "Nominations", icon: ClipboardList },
     { id: "accounts", label: "Driver accounts", short: "Accounts", icon: Wallet },
+    { id: "billing", label: "Billing", icon: Receipt },
     { id: "masters", label: "Masters", icon: Settings2 },
   ],
   driver: [{ id: "driver", label: "My trip", icon: Truck }],
 };
+/** The menu, without the views of areas the company has switched off (Billing). */
+const AREA_VIEWS: Partial<Record<View, string>> = { billing: "billing" };
+const navFor = (role: Role, modules: string[] | undefined) => NAV[role].filter((n) => !AREA_VIEWS[n.id] || (modules ?? []).includes(AREA_VIEWS[n.id]!));
 const HOME: Record<Role, View> = { operations: "trips", finance: "today", owner: "overview", driver: "driver" };
 export const ROLE_LABEL: Record<Role, string> = {
   owner: "Owner",
@@ -194,7 +201,7 @@ export default function Desks({ me }: { me: Me }) {
       </>
     );
 
-  const view = session.view && NAV[role].some((n) => n.id === session.view) ? session.view : HOME[role];
+  const view = session.view && navFor(role, data.settings.modules).some((n) => n.id === session.view) ? session.view : HOME[role];
   return (
     <AppProvider value={ctx}>
       <SimProvider>
@@ -222,6 +229,7 @@ export default function Desks({ me }: { me: Me }) {
             {view === "accounts" && (
               <Accounts driverId={session.accountDriverId} onDriver={(id) => setSession({ accountDriverId: id })} />
             )}
+            {view === "billing" && <Billing />}
             {view === "masters" && <MastersScreen key={session.masterEntity || "masters"} initialEntity={session.masterEntity} />}
             {view === "driver" && <DriverDesk />}
           </Suspense>
@@ -350,7 +358,8 @@ function Shell({
 }) {
   const [more, setMore] = useState(false);
   const [account, setAccount] = useState(false);
-  const items = NAV[role];
+  const { data } = useApp();
+  const items = navFor(role, data.settings.modules);
   const current = items.find((i) => i.id === view);
   const main = useRef<HTMLElement>(null);
   useEffect(() => {

@@ -126,7 +126,7 @@ async function draftFor(group: Group, date: Date, settings: Awaited<ReturnType<t
 export async function presentInvoice(doc: Plain) {
   const currency = await currencyUnits(doc.currencyId);
   const out = present(doc);
-  return { ...out, currency: currency.code, customer: await partyName(doc.customerId), title: doc.number ?? (doc.kind === 'credit_note' ? 'Draft credit note' : 'Draft invoice') };
+  return { ...out, currency: currency.code, minorUnits: currency.minorUnits, customer: await partyName(doc.customerId), title: doc.number ?? (doc.kind === 'credit_note' ? 'Draft credit note' : 'Draft invoice') };
 }
 
 export async function listInvoices(query: S.InvoiceListQuery) {

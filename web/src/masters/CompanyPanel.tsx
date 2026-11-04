@@ -18,7 +18,7 @@ const MODULES: { key: string; name: string; description: string; live: boolean }
   { key: "tracking", name: "Tracking", description: "Where each truck is and how fast it moves, from the driver's phone or a tracker.", live: true },
   { key: "driver-app", name: "Driver app", description: "Drivers sign in on their phone to see their trip, send receipts and report arrivals.", live: true },
   { key: "maintenance", name: "Maintenance", description: "Services, repairs and parts for each truck.", live: false },
-  { key: "billing", name: "Billing", description: "Invoices to customers and payments received.", live: false },
+  { key: "billing", name: "Billing", description: "Customer rates, invoices, payments received and exchange gain or loss.", live: true },
 ];
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 const DATE_FORMATS = ["DD/MM/YYYY", "MM/DD/YYYY", "YYYY-MM-DD"];

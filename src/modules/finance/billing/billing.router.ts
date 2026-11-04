@@ -20,7 +20,8 @@ import * as Payments from './payments.service.js';
 const router = Router();
 const id = { params: idParams };
 
-router.use('/customer-rates', createMasterRouter(customerRateDefinition, (r) => { r.use(requireBilling); }));
+// Rates are kept even while Billing is off; with the areas registry (#56) the master will belong to Billing.
+router.use('/customer-rates', createMasterRouter(customerRateDefinition));
 router.use(['/invoices', '/payments-received', '/exchange-differences'], requireBilling);
 
 router.get('/invoices', authorize('invoices', 'read'), validate({ query: S.invoiceListQuery }), asyncHandler(async (req, res) => {

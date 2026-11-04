@@ -77,10 +77,10 @@ describe('billing is an area', () => {
     const res = await as(fin).get('/invoices');
     assert.equal(res.status, 403);
     assert.match(res.body.error.message, /Billing is switched off/);
-    assert.equal((await as(fin).get('/customer-rates')).status, 403);
+    assert.equal((await as(fin).post('/payments-received', {})).status, 403);
+    ok(await as(fin).get('/customer-rates')); // rates are kept while it is off
     await switchBillingOn();
     ok(await as(fin).get('/invoices'));
-    ok(await as(fin).get('/customer-rates'));
   });
 });
 
@@ -160,7 +160,7 @@ describe('invoices from closed trips', () => {
     assert.equal(now.paymentState, 'paid');
     assert.equal(now.payments.length, 2);
 
-    const differences = await ExchangeDifference.find({ invoiceId: invoice.id }).sort({ date: 1 }).lean();
+    const differences = await ExchangeDifference.find({ invoiceId: invoice.id }).sort({ date: 1 }).lean<Array<{ kind: string; amountMinor: number }>>();
     assert.deepEqual(differences.map((d) => [d.kind, d.amountMinor]), [['realised', 600_00], ['realised', -200_00]]);
     assert.equal(differences.reduce((s, d) => s + d.amountMinor, 0), 400_00, 'a net gain of ZMW 400.00');
     const listed = ok(await as(fin).get(`/exchange-differences?invoiceId=${invoice.id}`));

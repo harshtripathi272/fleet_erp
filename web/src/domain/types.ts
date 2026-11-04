@@ -100,6 +100,8 @@ export interface Settings {
   averageSpeedKmh: number;
   /** Company trip settings: a trip that left but never loaded may be stopped. */
   stopBeforeLoading: boolean;
+  /** The areas the company has switched on (Company → Areas switched on). */
+  modules?: string[];
   clockOffsetMs: number;
   seq: Record<string, number>;
   people: Record<Desk, string>;
