@@ -26,6 +26,7 @@ import { forDesk } from "./api/adapter";
 import { ApiError } from "./api/client";
 import { Refusal } from "./api/commands";
 import { AccountDialog, DESK_SESSION, desksFor, signOut, useMay, type Me } from "./api/session";
+import { useAreas, VIEW_AREA } from "./api/areas";
 import { nextStep, queueFor, type QueueItem } from "./domain/turn";
 import type { Action, Desk, Nav, Role } from "./domain/types";
 import { Waiting, Wordmark } from "./ui/brand";
@@ -111,7 +112,9 @@ export default function Desks({ me }: { me: Me }) {
   const [session, setSessionState] = useState<Session>(readSession);
   const [overlay, setOverlay] = useState<Overlay>({});
   const [toasts, setToasts] = useState<Toast[]>([]);
-  const allowed = useMemo(() => desksFor(me, approvers), [me, approvers]);
+  const areaOn = useAreas();
+  // A desk whose work is switched off for the company isn't offered (#56); Overview and Masters always are.
+  const allowed = useMemo(() => desksFor(me, approvers).filter((d) => (d === "finance" ? areaOn("finance") : d === "operations" ? areaOn("trips") : d === "driver" ? areaOn("driver-app") : true)), [me, approvers, areaOn]);
   const setSession = useCallback((patch: Session) => {
     setSessionState((current) => {
       const next = { ...current, ...patch };
@@ -350,7 +353,8 @@ function Shell({
 }) {
   const [more, setMore] = useState(false);
   const [account, setAccount] = useState(false);
-  const items = NAV[role];
+  const areaOn = useAreas();
+  const items = NAV[role].filter((i) => !VIEW_AREA[i.id] || areaOn(VIEW_AREA[i.id]!));
   const current = items.find((i) => i.id === view);
   const main = useRef<HTMLElement>(null);
   useEffect(() => {

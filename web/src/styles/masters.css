@@ -156,3 +156,4 @@ details.form-group summary { cursor: pointer; }
 }
 .audit-fields summary { cursor: pointer; color: var(--pine-600); font-size: 13px; font-weight: 560; }
 .audit-fields[open] summary { margin-bottom: 4px; }
+.area-early { margin-left: 8px; vertical-align: 1px; }
