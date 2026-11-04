@@ -161,9 +161,49 @@ const exchangeDifferenceSchema = new Schema<any>({
   amountMinor: { type: Number, required: true },
   bookedRate: Number,
   actualRate: Number,
+  /** The revaluation run that recorded it (unrealised and reversal entries). */
+  runId: { type: ObjectId, ref: 'RevaluationRun' },
+  /** A reversal's unrealised entry. */
+  reversesId: { type: ObjectId, ref: 'ExchangeDifference' },
   createdBy: { type: ObjectId, ref: 'User' },
 }, { ...schemaOptions, optimisticConcurrency: false });
 exchangeDifferenceSchema.index({ date: 1 });
 exchangeDifferenceSchema.index({ invoiceId: 1 });
+exchangeDifferenceSchema.index({ runId: 1 }, { sparse: true });
 
 export const ExchangeDifference = model<any>('ExchangeDifference', exchangeDifferenceSchema);
+
+/**
+ * One revaluation of open foreign-currency invoices at a month's or quarter's end (#62): each invoice's
+ * open amount at that day's rate against what it is booked at. The next run reverses it first.
+ */
+const revaluationRunSchema = new Schema<any>({
+  periodEnd: { type: Date, required: true },
+  at: { type: Date, required: true },
+  trigger: { type: String, enum: ['schedule', 'manual'], required: true },
+  invoices: { type: Number, default: 0 },
+  /** Net unrealised gain (positive) or loss in the base currency, and what was reversed from the run before. */
+  netMinor: { type: Number, default: 0 },
+  reversedMinor: { type: Number, default: 0 },
+  reversedRunId: { type: ObjectId, ref: 'RevaluationRun' },
+  /** Currencies with no rate on the day: their invoices were left as booked. */
+  missing: { type: [String], default: [] },
+  createdBy: { type: ObjectId, ref: 'User' },
+}, { versionKey: false, strict: 'throw' });
+revaluationRunSchema.index({ periodEnd: 1 }, { unique: true });
+
+export const RevaluationRun = model<any>('RevaluationRun', revaluationRunSchema);
+
+/** What each line of the accounting export posts to (#62). An account code names the ones it takes. */
+export const POSTING_ROLES = [
+  'receivables', 'revenue', 'tax', 'bank', 'exchange_gain', 'exchange_loss', 'unrealised_exchange', 'driver_advances', 'expenses',
+] as const;
+
+/** One of the company's own account codes, and the postings it takes in the accounting export. */
+const accountCodeSchema = masterSchema({
+  ...codeNameFields,
+  postsFor: { type: [{ type: String, enum: POSTING_ROLES }], default: [] },
+});
+uniqueIndex(accountCodeSchema, { code: 1 });
+
+export const AccountCode = masterModel('AccountCode', accountCodeSchema);

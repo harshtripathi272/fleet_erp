@@ -179,6 +179,11 @@ export async function loadSampleData(actorId?: string, size: SampleSize = 'full'
   await make('advance-policies', 'apRoute', { code: 'ROUTE-BUDGET', name: 'Advance from route budget', basis: 'route_budget', maxAmount: money(10_000_00), capOnCashHeld: money(2_000_00), approvalPolicyId: ids.advanceApproval, paymentMethodIds: [ids.pmCash, ids.pmAirtel] });
   // What a customer pays (#61): Copperbelt Minerals pays per tonne of cathodes, with a minimum per trip.
   await make('customer-rates', 'rateCopper', { code: 'CBM-CATH', name: 'Copperbelt cathodes per tonne', customerId: ids.copper, productId: ids.cuCathodes, basis: 'per_tonne', price: money(42_00, 'USD'), minimumCharge: money(1_200_00, 'USD'), validFrom: days(-365).toISOString().slice(0, 10) });
+  // The accounts the export posts to (#62).
+  for (const [code, name, postsFor] of [
+    ['1100', 'Trade debtors', ['receivables']], ['4000', 'Freight income', ['revenue']], ['2200', 'VAT output', ['tax']], ['1000', 'Bank', ['bank']],
+    ['7900', 'Exchange gains and losses', ['exchange_gain', 'exchange_loss', 'unrealised_exchange']], ['1300', 'Driver advances', ['driver_advances']], ['6100', 'Trip expenses', ['expenses']],
+  ] as const) await make('account-codes', `ac${code}`, { code, name, postsFor: [...postsFor] });
   await make('cancellation-reasons', 'crCustomer', { code: 'CUST-CANCEL', name: 'Customer cancelled', appliesTo: ['trip', 'order'], chargeableToCustomer: true });
 
   // Configuration
