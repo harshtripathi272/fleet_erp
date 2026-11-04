@@ -4,6 +4,7 @@ import { api } from "../api/client";
 import type { Rec } from "../api/adapter";
 import { can } from "../api/session";
 import { useApp } from "../store";
+import { useAreaList } from "../api/areas";
 import { Empty, Field, SaveBar, Segmented, SettingRow, SettingsSection, Switch, UnitInput } from "../ui/kit";
 
 /**
@@ -11,15 +12,6 @@ import { Empty, Field, SaveBar, Segmented, SettingRow, SettingsSection, Switch, 
  * switched on, self sign-up, and the trip settings that replace values once fixed in code.
  */
 
-/** The areas a company can switch on. `live: false` marks an area that isn't built yet: shown, never a switch that does nothing. */
-const MODULES: { key: string; name: string; description: string; live: boolean }[] = [
-  { key: "trips", name: "Trips and nominations", description: "Planning, dispatching and closing trips, and customers' nominations.", live: true },
-  { key: "finance", name: "Money", description: "Fuel and cash requests, expenses, and settling drivers.", live: true },
-  { key: "tracking", name: "Tracking", description: "Where each truck is and how fast it moves, from the driver's phone or a tracker.", live: true },
-  { key: "driver-app", name: "Driver app", description: "Drivers sign in on their phone to see their trip, send receipts and report arrivals.", live: true },
-  { key: "maintenance", name: "Maintenance", description: "Services, repairs and parts for each truck.", live: false },
-  { key: "billing", name: "Billing", description: "Customer rates, invoices, payments received and exchange gain or loss.", live: true },
-];
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 const DATE_FORMATS = ["DD/MM/YYYY", "MM/DD/YYYY", "YYYY-MM-DD"];
 const PERIODS: { value: string; label: string }[] = [{ value: "any", label: "Any time" }, { value: "weekly", label: "Weekly" }, { value: "fortnightly", label: "Fortnightly" }, { value: "monthly", label: "Monthly" }];
@@ -54,7 +46,7 @@ function formFrom(company: Rec | null): Form {
     email: company?.email ?? "",
     website: company?.website ?? "",
     allowSelfRegistration: Boolean(company?.allowSelfRegistration),
-    modules: company?.modules ?? ["masters", "trips"],
+    modules: company?.modules ?? ["masters", "trips", "finance", "tracking", "driver-app"],
     operations: {
       tripStartsFromTruck: ops.tripStartsFromTruck ?? true,
       stopBeforeLoading: ops.stopBeforeLoading ?? true,
@@ -70,6 +62,8 @@ const textOrNull = (v: unknown) => (String(v ?? "").trim() ? String(v).trim() : 
 export function CompanyPanel() {
   const { me, toast, refreshReference } = useApp();
   const client = useQueryClient();
+  // The areas come from the server's list, so a new area appears here without a change to this screen (#56).
+  const areas = useAreaList();
   const company = useQuery({ queryKey: ["company"], queryFn: () => api<Rec>("/company").catch(() => null) });
   const currencies = useQuery({ queryKey: ["company-currencies"], queryFn: () => api<Rec[]>("/currencies", { query: { limit: 100, status: "active" } }) });
   const countries = useQuery({ queryKey: ["company-countries"], queryFn: () => api<Rec[]>("/countries", { query: { limit: 100, status: "active" } }) });
@@ -100,6 +94,8 @@ export function CompanyPanel() {
       await api("/company", { method: "PUT", body });
       toast("Company saved.");
       await client.invalidateQueries({ queryKey: ["company"] });
+      await client.invalidateQueries({ queryKey: ["areas"] });
+      await client.invalidateQueries({ queryKey: ["meta-masters"] });
       refreshReference();
     } catch (error) {
       toast((error as Error).message, "error");
@@ -163,14 +159,11 @@ export function CompanyPanel() {
         </SettingsSection>
 
         <SettingsSection title="Areas switched on" description="Switch off what the company doesn't use. An area that is off accepts no new work; what was recorded in it is kept.">
-          <SettingRow title="Masters" description="Trucks, drivers, customers, places and every other list the work draws on.">
-            <span className="setting-fixed">Always on</span>
-          </SettingRow>
-          {MODULES.map((m) => (
-            <SettingRow key={m.key} title={m.name} description={m.description}>
-              {m.live
-                ? <Switch label={m.name} checked={has(m.key)} onChange={(on) => toggleModule(m.key, on)} />
-                : <span className="setting-fixed">Not built yet</span>}
+          {(areas.data ?? []).map((a) => (
+            <SettingRow key={a.key} title={<>{a.name}{a.state === "early" && <span className="status status-info area-early">Early</span>}</>} description={a.description}>
+              {a.always ? <span className="setting-fixed">Always on</span>
+                : a.state === "not-built" ? <span className="setting-fixed">Not built yet</span>
+                : <Switch label={a.name} checked={has(a.key)} onChange={(on) => toggleModule(a.key, on)} />}
             </SettingRow>
           ))}
         </SettingsSection>

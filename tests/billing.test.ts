@@ -76,9 +76,9 @@ describe('billing is an area', () => {
   test('it is off until the company switches it on', async () => {
     const res = await as(fin).get('/invoices');
     assert.equal(res.status, 403);
-    assert.match(res.body.error.message, /Billing is switched off/);
+    assert.match(res.body.error.message, /^Billing is switched off for this company\./);
     assert.equal((await as(fin).post('/payments-received', {})).status, 403);
-    ok(await as(fin).get('/customer-rates')); // rates are kept while it is off
+    assert.equal((await as(fin).get('/customer-rates')).status, 403);
     await switchBillingOn();
     ok(await as(fin).get('/invoices'));
   });

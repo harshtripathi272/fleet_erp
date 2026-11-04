@@ -20,7 +20,7 @@ import * as Payments from './payments.service.js';
 const router = Router();
 const id = { params: idParams };
 
-// Rates are kept even while Billing is off; with the areas registry (#56) the master will belong to Billing.
+// The master belongs to Billing: hidden and refused while the area is off, its rates kept.
 router.use('/customer-rates', createMasterRouter(customerRateDefinition));
 router.use(['/invoices', '/payments-received', '/exchange-differences'], requireBilling);
 

@@ -1,21 +1,17 @@
-import type { RequestHandler } from 'express';
 import { Types } from 'mongoose';
 import { z } from 'zod';
-import { ForbiddenError, ValidationError } from '../../../core/errors/index.js';
+import { ValidationError } from '../../../core/errors/index.js';
 import { defineMaster } from '../../../core/masters/define.js';
 import { GROUPS } from '../../../core/masters/groups.js';
 import { idQuery } from '../../../core/masters/query.js';
 import type { Plain } from '../../../core/masters/types.js';
-import { companySettings } from '../../operations/settings.js';
+import { isAreaOn, requireArea } from '../../company/areas.js';
 import { CustomerRate, RATE_BASES } from './billing.model.js';
 import * as S from './billing.schema.js';
 
-/** Billing is an area a company switches on (Company → modules); it starts off. */
-export const isBillingOn = async () => (await companySettings()).modules.includes('billing');
-export const requireBilling: RequestHandler = Object.assign<RequestHandler, { meta: object }>(async (_req, _res, next) => {
-  if (!(await isBillingOn())) throw new ForbiddenError('Billing is switched off for this company. An owner can switch it on in Company details.');
-  next();
-}, { meta: { module: 'billing' } });
+/** Billing is an area a company switches on (Company → Areas switched on); it starts off. */
+export const isBillingOn = () => isAreaOn('billing');
+export const requireBilling = requireArea('billing');
 
 export const BASIS_LABELS: Record<(typeof RATE_BASES)[number], string> = {
   per_trip: 'Per trip', per_tonne: 'Per tonne', per_litre_20: 'Per litre at 20 °C', per_km: 'Per km (loaded)',
@@ -24,7 +20,7 @@ export const BASIS_LABELS: Record<(typeof RATE_BASES)[number], string> = {
 const byId = (path: string, description: string) => ({ schema: idQuery, apply: (v: string) => ({ [path]: new Types.ObjectId(v) }), description });
 
 export const customerRateDefinition = defineMaster({
-  key: 'customer-rates', label: 'Customer rates', singular: 'Customer rate', group: GROUPS.money,
+  key: 'customer-rates', label: 'Customer rates', singular: 'Customer rate', group: GROUPS.money, module: 'billing',
   description: 'What a customer pays to move a load: per trip, tonne, litre at 20 °C or km, for a route and product, between dates, with a minimum charge.',
   model: CustomerRate, createSchema: S.createCustomerRateSchema, updateSchema: S.updateCustomerRateSchema,
   sortFields: ['code', 'name', 'validFrom', 'createdAt', 'updatedAt'],

@@ -27,6 +27,7 @@ import { forDesk } from "./api/adapter";
 import { ApiError } from "./api/client";
 import { Refusal } from "./api/commands";
 import { AccountDialog, DESK_SESSION, desksFor, signOut, useMay, type Me } from "./api/session";
+import { useAreas, VIEW_AREA } from "./api/areas";
 import { nextStep, queueFor, type QueueItem } from "./domain/turn";
 import type { Action, Desk, Nav, Role } from "./domain/types";
 import { Waiting, Wordmark } from "./ui/brand";
@@ -101,9 +102,6 @@ const NAV: Record<Role, { id: View; label: string; short?: string; icon: typeof 
   ],
   driver: [{ id: "driver", label: "My trip", icon: Truck }],
 };
-/** The menu, without the views of areas the company has switched off (Billing). */
-const AREA_VIEWS: Partial<Record<View, string>> = { billing: "billing" };
-const navFor = (role: Role, modules: string[] | undefined) => NAV[role].filter((n) => !AREA_VIEWS[n.id] || (modules ?? []).includes(AREA_VIEWS[n.id]!));
 const HOME: Record<Role, View> = { operations: "trips", finance: "today", owner: "overview", driver: "driver" };
 export const ROLE_LABEL: Record<Role, string> = {
   owner: "Owner",
@@ -118,7 +116,9 @@ export default function Desks({ me }: { me: Me }) {
   const [session, setSessionState] = useState<Session>(readSession);
   const [overlay, setOverlay] = useState<Overlay>({});
   const [toasts, setToasts] = useState<Toast[]>([]);
-  const allowed = useMemo(() => desksFor(me, approvers), [me, approvers]);
+  const areaOn = useAreas();
+  // A desk whose work is switched off for the company isn't offered (#56); Overview and Masters always are.
+  const allowed = useMemo(() => desksFor(me, approvers).filter((d) => (d === "finance" ? areaOn("finance") : d === "operations" ? areaOn("trips") : d === "driver" ? areaOn("driver-app") : true)), [me, approvers, areaOn]);
   const setSession = useCallback((patch: Session) => {
     setSessionState((current) => {
       const next = { ...current, ...patch };
@@ -201,7 +201,7 @@ export default function Desks({ me }: { me: Me }) {
       </>
     );
 
-  const view = session.view && navFor(role, data.settings.modules).some((n) => n.id === session.view) ? session.view : HOME[role];
+  const view = session.view && NAV[role].some((n) => n.id === session.view) ? session.view : HOME[role];
   return (
     <AppProvider value={ctx}>
       <SimProvider>
@@ -358,8 +358,8 @@ function Shell({
 }) {
   const [more, setMore] = useState(false);
   const [account, setAccount] = useState(false);
-  const { data } = useApp();
-  const items = navFor(role, data.settings.modules);
+  const areaOn = useAreas();
+  const items = NAV[role].filter((i) => !VIEW_AREA[i.id] || areaOn(VIEW_AREA[i.id]!));
   const current = items.find((i) => i.id === view);
   const main = useRef<HTMLElement>(null);
   useEffect(() => {

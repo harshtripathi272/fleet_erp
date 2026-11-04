@@ -29,7 +29,7 @@ When building anything, ask: *could another company want this differently?* If y
 ## Contents
 
 1. [The founding principle](#the-founding-principle-configurable-without-limits)
-2. [Where things stand](#where-things-stand)
+2. [Where things stand](#where-things-stand), and every feature in **[docs/FEATURES.md](docs/FEATURES.md)**
 3. [Project context](#project-context)
 4. [Set up and run](#set-up-and-run)
 5. [The console](#the-console)
@@ -43,19 +43,18 @@ When building anything, ask: *could another company want this differently?* If y
 
 All current work is on **`develop`**, the integration branch; `main` gets it through a release that Lakshya approves. Progress towards the first deployable version is the **[Deployable v1](https://github.com/harshtripathi272/fleet_erp/milestone/1)** milestone; who is on what is the **[Status board](https://github.com/harshtripathi272/fleet_erp/issues/15)**; open questions for Lakshya are **[Decisions for Lakshya](https://github.com/harshtripathi272/fleet_erp/issues/23)**.
 
-| Piece | State on `develop` |
+**Every feature, built or not, is in [docs/FEATURES.md](docs/FEATURES.md)**, one table per area, each row with its state (built, building, planned, proposed, needs work) and its issue. In short:
+
+| Area | State on `develop` |
 | --- | --- |
-| API: sign-in, roles and permissions, every MVP master, configuration (lists, custom fields, custom masters) | Done and tested |
-| Trips and money: nominations, trips, fuel and cash requests with approval policies, loading and delivery (20 °C), shortages, expenses, settlement | Done and tested; edge cases in #16 (one question open on #23) |
-| The web app (`web/`): the desks, every master, accounts and invitations, the permission grid, company and messaging settings | Done and tested in the browser |
-| Driver web app: a driver signs in on their phone; works on a weak connection | Done (#5, #31) |
-| Documents: real uploads to local disk or Google Cloud Storage | Done (#4) |
-| Messages by e-mail, SMS or WhatsApp, per action, with an outbox | Done (#19); the trip and money steps are being wired in (#29); a real SMS provider and real WhatsApp wait on #23 and #10 |
-| Exchange rates from a daily feed | Done (#22); the provider is a choice on #23; scheduling on Google Cloud is #26 |
-| Deploying a company's copy on Google Cloud | Runbook and scripts done (#14); the image is built and started in CI; set-up choices on #23 |
-| Fast loading on a phone; no mock data left | In progress (#27, #30) |
-| Audit log screen | In progress (#36) |
-| Forex gain or loss on invoices and payments | Waits on Lakshya's answers (#20) |
+| Masters, the master of masters (each company shapes every master), import, set-up page, audit log | Built (#12, #41, #45, #36, #65) |
+| Trips and money: nominations, trips, requests with approval levels, loading and delivery at 20 °C, shortages, expenses, settlement | Built; edge cases #16, #64 |
+| Driver app, documents, PDFs, messages by e-mail, SMS or WhatsApp | Built; real WhatsApp and SMS through connections (#59, #10) |
+| Areas on and off, white-label, connections for every outside service, billing and forex, maintenance | Being built (#56, #71, #59, #61, #63) |
+| Accounts with branch access and sign-in codes, regional settings, vocabulary and stages, languages, cargo in any unit, setup kit | Planned (#57, #58, #72, #73, #74, #75, #76) |
+| Deploying on Google Cloud | Runbook and scripts done (#14); other platforms and the setup kit in #76 |
+
+The rules every change follows: `docs/ui-rules.md` for screens, `docs/entities.md` for how record types are defined by data, and #55 for areas, connections and policies.
 
 Repositories:
 

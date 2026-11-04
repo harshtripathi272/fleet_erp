@@ -282,7 +282,6 @@ export function toAppData(ref: Reference, ops: Operations): AppData {
       roadDistanceFactor: Number(ref.company?.operations?.roadDistanceFactor ?? 1.28),
       averageSpeedKmh: Number(ref.company?.operations?.averageSpeedKmh ?? 62),
       stopBeforeLoading: ref.company?.operations?.stopBeforeLoading !== false,
-      modules: (ref.company?.modules as string[] | undefined) ?? ["masters", "trips"],
       clockOffsetMs: 0,
       seq: {},
       people: { owner: named("owner", "Owner"), operations: named("operations", "Operations"), finance: named("finance", "Finance") },
