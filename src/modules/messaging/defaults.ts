@@ -139,3 +139,49 @@ export async function ensureDefaultMessages(actorId?: string): Promise<{ created
   if (created) logger.info({ created }, 'Default message templates and rules created');
   return { created };
 }
+
+/* ---------- Billing (#61) ---------- */
+
+export const BILLING_TEMPLATES: DefaultTemplate[] = [
+  { code: 'EM-INVOICE', name: 'Invoice or credit note (e-mail to customer)', channel: 'email', event: 'invoice.sent', audience: 'customer', subject: '{{company.name}} {{invoice.kind}} {{invoice.number}}', body: `Hello,
+
+Please find attached our {{invoice.kind}} {{invoice.number}} for {{invoice.total}}. {{invoice.due}}
+
+Thank you for your business.${SIGN}` },
+  { code: 'EM-PAYMENT-RECEIVED', name: 'Payment received (e-mail to customer)', channel: 'email', event: 'payment.received', audience: 'customer', subject: 'Payment {{payment.number}} received', body: `Hello,
+
+Thank you: we received {{payment.amount}} (receipt {{payment.number}}) against {{payment.invoices}}.${SIGN}` },
+];
+export const BILLING_RULES: DefaultRule[] = [
+  { code: 'INVOICE-CUSTOMER', name: 'Send invoices and credit notes to the customer', event: 'invoice.sent', recipients: [customer], templates: [{ channel: 'email', template: 'EM-INVOICE' }] },
+  { code: 'PAYMENT-RECEIVED-CUSTOMER', name: 'Thank the customer for a payment', event: 'payment.received', recipients: [customer], templates: [{ channel: 'email', template: 'EM-PAYMENT-RECEIVED' }] },
+];
+const BILLING_MARK = 'billing-messages';
+
+/**
+ * The invoice and receipt messages, once per installation, also on one that has its own messages: nobody had
+ * a template for these events before billing existed. A code or event the company already covers is left alone.
+ */
+export async function ensureBillingMessages(actorId?: string): Promise<{ created: number }> {
+  if ((await defaultsMark.findById(BILLING_MARK).lean())?.state === 'done') return { created: 0 };
+  await defaultsMark.updateOne({ _id: BILLING_MARK }, { $setOnInsert: { state: 'creating', at: new Date() } }, { upsert: true });
+  let created = 0;
+  const templateIds = new Map<string, string>();
+  for (const t of BILLING_TEMPLATES) {
+    const own = await MessageTemplate.findOne({ $or: [{ code: t.code }, { event: t.event, channel: t.channel, audience: t.audience, language: 'en', status: 'active' }] }).select('_id').lean();
+    if (own) { templateIds.set(t.code, String(own._id)); continue; }
+    templateIds.set(t.code, await createIfMissing('message-templates', t.code, { ...t, language: 'en' }, actorId));
+    created += 1;
+  }
+  for (const r of BILLING_RULES) {
+    if (await NotificationRule.exists({ $or: [{ code: r.code }, { event: r.event }] })) continue;
+    await createIfMissing('notification-rules', r.code, {
+      code: r.code, name: r.name, event: r.event, recipients: r.recipients.map((x) => ({ kind: x.kind })),
+      templates: r.templates.map((t) => ({ channel: t.channel, templateId: templateIds.get(t.template!) })),
+    }, actorId);
+    created += 1;
+  }
+  await defaultsMark.updateOne({ _id: BILLING_MARK }, { $set: { state: 'done', at: new Date() } });
+  if (created) logger.info({ created }, 'Billing message templates and rules created');
+  return { created };
+}
