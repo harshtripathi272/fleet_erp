@@ -83,3 +83,4 @@ export const importRun = asyncHandler(async (req, res) => {
   const count = (s: string) => results.filter((r) => r.status === s).length;
   ApiResponse.success(res, { results, summary: { ready: count('ready'), exists: count('exists'), invalid: count('invalid'), created: count('created'), failed: count('failed') } });
 });
+export const areas = asyncHandler(async (_req, res) => ApiResponse.success(res, await MetaService.areas()));

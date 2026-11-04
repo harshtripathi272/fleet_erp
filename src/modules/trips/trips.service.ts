@@ -24,7 +24,7 @@ const push = (errors: Record<string, string[]>, key: string, message: string) =>
 const fail = (errors: Record<string, string[]>, message: string) => { if (Object.keys(errors).length) throw new ValidationError(message, errors); };
 
 export const tripTypeDefinition = defineMaster({
-  key: 'trip-types', label: 'Trip types', singular: 'Trip type', group: GROUPS.trips,
+  key: 'trip-types', label: 'Trip types', singular: 'Trip type', group: GROUPS.trips, module: 'trips',
   description: 'Fuel, general cargo, container, local delivery, empty run. Each has its own stages, required documents and trip sheet layout. One may be the default.',
   model: TripType, createSchema: S.createTripTypeSchema, updateSchema: S.updateTripTypeSchema,
   refs: [{ path: 'loadTypeId', target: 'load-types' }, { path: 'requiredDocumentTypeIds', target: 'document-types' }, { path: 'printLayoutId', target: 'print-layouts' }],
@@ -32,7 +32,7 @@ export const tripTypeDefinition = defineMaster({
 });
 
 export const tripStageDefinition = defineMaster({
-  key: 'trip-stages', label: 'Trip stages', singular: 'Trip stage', group: GROUPS.trips,
+  key: 'trip-stages', label: 'Trip stages', singular: 'Trip stage', group: GROUPS.trips, module: 'trips',
   description: 'The workflow of a trip type, in order. Each stage names who acts, what documents it needs and which message it sends. One stage is final.',
   model: TripStage, createSchema: S.createTripStageSchema, updateSchema: S.updateTripStageSchema,
   sortFields: ['order', 'code', 'name', 'createdAt'], defaultSort: 'order',
@@ -56,21 +56,21 @@ export const tripStageDefinition = defineMaster({
 });
 
 export const stopTypeDefinition = defineMaster({
-  key: 'stop-types', label: 'Stop types', singular: 'Stop type', group: GROUPS.trips,
+  key: 'stop-types', label: 'Stop types', singular: 'Stop type', group: GROUPS.trips, module: 'trips',
   description: 'Start, loading, offloading, border, fuel, rest, end: how waiting at each is counted and any document it needs.',
   model: StopType, createSchema: S.createStopTypeSchema, updateSchema: S.updateStopTypeSchema,
   refs: [{ path: 'requiresDocumentTypeId', target: 'document-types' }],
 });
 
 export const expenseCategoryDefinition = defineMaster({
-  key: 'expense-categories', label: 'Expense categories', singular: 'Expense category', group: GROUPS.trips,
+  key: 'expense-categories', label: 'Expense categories', singular: 'Expense category', group: GROUPS.trips, module: 'finance',
   description: 'Groups of trip costs with their ledger code, whether a receipt is required, and the amount payable without approval.',
   model: ExpenseCategory, createSchema: S.createExpenseCategorySchema, updateSchema: S.updateExpenseCategorySchema,
   refs: [{ path: 'maxWithoutApproval.currencyId', target: 'currencies' }],
 });
 
 export const expenseItemDefinition = defineMaster({
-  key: 'expense-items', label: 'Expense items', singular: 'Expense item', group: GROUPS.trips,
+  key: 'expense-items', label: 'Expense items', singular: 'Expense item', group: GROUPS.trips, module: 'finance',
   description: 'Each kind of cost: toll, border fee, meals, parking, repair. Usual amount and how it is counted (per trip, day, border, km).',
   model: ExpenseItem, createSchema: S.createExpenseItemSchema, updateSchema: S.updateExpenseItemSchema,
   refs: [{ path: 'categoryId', target: 'expense-categories' }, { path: 'defaultAmount.currencyId', target: 'currencies' }],
@@ -93,7 +93,7 @@ export const fuelTypeDefinition = defineMaster({
 });
 
 export const fuelNormDefinition = defineMaster({
-  key: 'fuel-norms', label: 'Fuel norms', singular: 'Fuel norm', group: GROUPS.trips,
+  key: 'fuel-norms', label: 'Fuel norms', singular: 'Fuel norm', group: GROUPS.trips, module: 'trips',
   description: 'km per litre loaded and empty for a vehicle type or model, with a safety reserve. A vehicle\'s own figures override its model, which overrides its type.',
   model: FuelNorm, createSchema: S.createFuelNormSchema, updateSchema: S.updateFuelNormSchema,
   searchFields: ['notes'], sortFields: ['kmPerLLoaded', 'kmPerLEmpty', 'createdAt', 'updatedAt'], defaultSort: '-createdAt', titleField: 'kmPerLLoaded',
@@ -119,7 +119,7 @@ async function assertSameCurrency(data: Plain, paths: string[], currencyId?: unk
 }
 
 export const tripBudgetDefinition = defineMaster({
-  key: 'trip-budgets', label: 'Trip budgets', singular: 'Trip budget', group: GROUPS.trips,
+  key: 'trip-budgets', label: 'Trip budgets', singular: 'Trip budget', group: GROUPS.trips, module: 'trips',
   description: 'Expected fuel and cash for a route, optionally per vehicle type. The cash total is calculated from the items. Use Estimate to combine it with fuel norms.',
   model: TripBudget, createSchema: S.createTripBudgetSchema, updateSchema: S.updateTripBudgetSchema,
   sortFields: ['code', 'name', 'totalCashMinor', 'createdAt', 'updatedAt'],
@@ -137,7 +137,7 @@ export const tripBudgetDefinition = defineMaster({
 });
 
 export const advancePolicyDefinition = defineMaster({
-  key: 'advance-policies', label: 'Advance policies', singular: 'Advance policy', group: GROUPS.trips,
+  key: 'advance-policies', label: 'Advance policies', singular: 'Advance policy', group: GROUPS.trips, module: 'finance',
   description: 'How much cash a driver may receive (from the route budget, per day, or a fixed sum), the ceiling, the cap on cash already held, and approvals.',
   model: AdvancePolicy, createSchema: S.createAdvancePolicySchema, updateSchema: S.updateAdvancePolicySchema,
   refs: [
@@ -162,7 +162,7 @@ export const advancePolicyDefinition = defineMaster({
 });
 
 export const cancellationReasonDefinition = defineMaster({
-  key: 'cancellation-reasons', label: 'Cancellation reasons', singular: 'Cancellation reason', group: GROUPS.trips,
+  key: 'cancellation-reasons', label: 'Cancellation reasons', singular: 'Cancellation reason', group: GROUPS.trips, module: 'trips',
   description: 'Why a trip, order or request was cancelled, and whether the customer is charged.',
   model: CancellationReason, createSchema: S.createCancellationReasonSchema, updateSchema: S.updateCancellationReasonSchema,
   filters: { appliesTo: { schema: z.enum(CANCEL_APPLIES), apply: (v: string) => ({ appliesTo: v }), description: 'Usable for' } },
