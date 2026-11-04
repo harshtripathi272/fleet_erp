@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { ConflictError, NotFoundError } from '../errors/index.js';
 import { fullLabel } from './labels.js';
+import { getLayout, systemRequired } from './layout.js';
 import { getMaster, getRefTarget, refsOf } from './registry.js';
 import { create, type ServiceContext } from './service.js';
 import type { MasterDefinition, Plain } from './types.js';
@@ -93,6 +94,30 @@ export function importColumns(def: MasterDefinition): ImportColumn[] {
   return out;
 }
 
+/**
+ * The columns as this company has shaped the master (#65): its names, its required fields, its choice names, and
+ * without the fields it hid or kept out of import. `aliases` keeps the code's own names, so older sheets still load.
+ */
+export async function companyColumns(def: MasterDefinition): Promise<(ImportColumn & { aliases: string[] })[]> {
+  const layout = await getLayout(def.key);
+  const byPath = new Map(layout.fields.map((f) => [f.path, f]));
+  const choices = new Map(layout.choices.map((c) => [c.path, c.values]));
+  const fixed = systemRequired(def);
+  return importColumns(def)
+    .filter((c) => { const l = byPath.get(c.path); return fixed.has(c.path) || !(l?.hidden || l?.inImport === false); })
+    .map((c) => {
+      const l = byPath.get(c.path);
+      const named = choices.get(c.path)?.filter((v) => v.label);
+      return {
+        ...c,
+        label: l?.label ?? c.label,
+        required: c.required || Boolean(l?.required),
+        aliases: l?.label && l.label !== c.label ? [c.label] : [],
+        ...(named?.length ? { choiceNames: { ...(c.choiceNames ?? {}), ...Object.fromEntries(named.map((v) => [v.value, v.label!])) } } : {}),
+      };
+    });
+}
+
 export function importableMaster(key: string): MasterDefinition {
   const def = getMaster(key);
   if (!def) throw new NotFoundError(`No master "${key}"`);
@@ -101,9 +126,9 @@ export function importableMaster(key: string): MasterDefinition {
 }
 
 /** A CSV header line for the master: the columns' labels, quoted where needed. */
-export function templateCsv(def: MasterDefinition) {
+export async function templateCsv(def: MasterDefinition) {
   const cell = (v: string) => (/[",;\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v);
-  return `${importColumns(def).map((c) => cell(`${c.label}${c.required ? ' *' : ''}`)).join(',')}\r\n`;
+  return `${(await companyColumns(def)).map((c) => cell(`${c.label}${c.required ? ' *' : ''}`)).join(',')}\r\n`;
 }
 
 const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -211,9 +236,9 @@ async function convert(columns: ImportColumn[], row: Record<string, string>, fin
  * A row whose code already exists is "exists", never a duplicate; nothing half-saved when a row fails.
  */
 export async function importRows(def: MasterDefinition, rows: Record<string, string>[], options: { dryRun: boolean; firstRow?: number; baseCurrencyId?: string }, ctx: ServiceContext): Promise<RowResult[]> {
-  const columns = importColumns(def);
+  const columns = await companyColumns(def);
   const byHeader = new Map<string, string>();
-  for (const c of columns) { byHeader.set(normal(c.path), c.path); byHeader.set(normal(c.label), c.path); }
+  for (const c of columns) for (const name of [c.path, c.label, ...c.aliases]) byHeader.set(normal(name), c.path);
   const find = referenceFinder();
   const currencies = getRefTarget('currencies');
   const currencyCache = new Map<string, { id: string; minorUnits: number } | null>();

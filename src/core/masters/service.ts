@@ -1,3 +1,4 @@
+import { applyDefaults, assertCompanyRules } from './layout.js';
 import { Types } from 'mongoose';
 import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from '../errors/index.js';
 import { logger } from '../logger/index.js';
@@ -175,6 +176,9 @@ export async function create(def: MasterDefinition, input: Plain, ctx: ServiceCo
   assertValidity(data);
   await assertReferences(def, data);
   data.custom = await validateCustom(def, data.custom as Plain | undefined, undefined);
+  // What this company added to the code's rules: its defaults, required fields and retired choices (#65).
+  await applyDefaults(def, data);
+  await assertCompanyRules(def, data);
   const context: MasterContext = { mode: 'create', actorId: ctx.actorId, requestId: ctx.requestId };
   const prepared = (await def.prepare?.(data, context)) ?? data;
   const doc = new def.model({ ...prepared, createdBy: ctx.actorId, updatedBy: ctx.actorId });
@@ -207,6 +211,7 @@ export async function update(def: MasterDefinition, id: string, input: Plain, ct
   }
   if ('custom' in changes) candidate.custom = await validateCustom(def, (changes.custom ?? {}) as Plain, (before.custom ?? {}) as Plain);
   assertValidity(candidate);
+  await assertCompanyRules(def, candidate, before);
   await assertReferences(def, candidate, new Set(Object.keys(changes)));
   const context: MasterContext = { mode: 'update', actorId: ctx.actorId, requestId: ctx.requestId, id, existing: before };
   const prepared = (await def.prepare?.(candidate, context)) ?? candidate;
