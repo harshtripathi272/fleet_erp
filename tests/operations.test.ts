@@ -407,7 +407,7 @@ describe('configuration, not code', () => {
   test('a company that switches a module off loses that area', async () => {
     const trip = await newTrip();
     await setCompany({ modules: ['masters', 'trips'] });
-    assert.match((await as(ops).post('/fund-requests', { tripId: trip.id, kind: 'fuel', litres: 10 })).body.error.message, /Finance module is switched off/);
+    assert.match((await as(ops).post('/fund-requests', { tripId: trip.id, kind: 'fuel', litres: 10 })).body.error.message, /Money is switched off for this company/);
     await as(ops).get('/driver-accounts').expect(403);
     ok(await as(ops).post(`/trips/${trip.id}/dispatch`));
     await as(ops).post(`/trips/${trip.id}/position`, { km: 10, speed: 50, source: 'simulator' }).expect(403);

@@ -7,6 +7,7 @@ import { mongoState } from '../../core/db/mongo.js';
 import { recentMail } from '../../core/mail/mailer.js';
 import { GROUPS } from '../../core/masters/groups.js';
 import { fieldPaths, getLayout, systemRequired, type Layout } from '../../core/masters/layout.js';
+import { AREAS, areasOn } from '../company/areas.js';
 import { pathLabel } from '../../core/masters/labels.js';
 import { listMasters as registered, refsOf } from '../../core/masters/registry.js';
 import { ACTIONS, type MasterDefinition, type Plain } from '../../core/masters/types.js';
@@ -143,9 +144,12 @@ function permissionsFor(def: MasterDefinition, auth?: AuthContext) {
 export async function describeMasters(auth?: AuthContext) {
   const keys = modelKeyMap();
   const customFields = await withChoices(await FieldDefinition.find({ status: 'active' }).sort({ order: 1 }).lean() as Plain[]);
+  // Masters of an area the company has switched off are not offered (#56).
+  const on = await areasOn();
+  const offered = listMasters().filter((def) => !def.module || on.has(def.module));
   // Each master as this company has shaped it: the code's definition with the company layer on top (#65).
-  const layouts = new Map((await Promise.all(listMasters().map(async (d) => [d.key, await getLayout(d.key)] as const))));
-  return listMasters().map((def) => {
+  const layouts = new Map((await Promise.all(offered.map(async (d) => [d.key, await getLayout(d.key)] as const))));
+  return offered.map((def) => {
     const layout = layouts.get(def.key)!;
     const fixed = systemRequired(def);
     return ({
@@ -261,4 +265,10 @@ export async function stats() {
     return { key: def.key, label: def.label, group: def.group, active: by.active ?? 0, inactive: by.inactive ?? 0, archived: by.archived ?? 0, total: groups.reduce((s, g) => s + g.n, 0) };
   }));
   return rows;
+}
+
+/** Every area of the business, whether this company has it on, and which masters belong to it (#56). */
+export async function areas() {
+  const on = await areasOn();
+  return AREAS.map((a) => ({ ...a, on: on.has(a.key), masters: listMasters().filter((d) => d.module === a.key).map((d) => d.key) }));
 }

@@ -178,7 +178,7 @@ export async function reserveSeries(id: string, actorId?: string, requestId?: st
 /* ---------- Approval policies ---------- */
 
 export const approvalPolicyDefinition = defineMaster({
-  key: 'approval-policies', label: 'Approval policies', singular: 'Approval policy', group: GROUPS.organisation, lockedChoices: ['subject', 'levels.measure'],
+  key: 'approval-policies', label: 'Approval policies', singular: 'Approval policy', group: GROUPS.organisation, module: 'finance', lockedChoices: ['subject', 'levels.measure'],
   description: 'Who approves what above which amount. Levels run 1, 2, 3… with rising thresholds; each names a role or a person.',
   model: ApprovalPolicy, createSchema: S.createApprovalPolicySchema, updateSchema: S.updateApprovalPolicySchema,
   searchFields: ['code', 'name', 'subject'],
