@@ -223,7 +223,7 @@ describe('approval channels', () => {
 
     assert.equal(sms.length, 1);
     assert.equal(sms[0]!.to, '+260971000001');
-    assert.match(sms[0]!.text, new RegExp(`${raised.number}.*Open the app to decide: ${env.APP_URL}`));
+    assert.equal(sms[0]!.text, `Fuel request ${raised.number}. Within the trip budget. Amount: 600 L. Open the app to decide: ${env.APP_URL}`);
     const mail = smtp.find((m) => m.to === fin.email)!;
     assert.match(mail.subject, new RegExp(raised.number));
     assert.match(mail.text, /Amount: 600 L/);

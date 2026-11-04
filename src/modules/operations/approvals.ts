@@ -140,11 +140,12 @@ export async function moveUp(approval: Approval, at: Date) {
   return { from, to: to! };
 }
 
-/** SMS and e-mail have no answer buttons: they say what is waiting and where to decide it. */
+/** SMS and e-mail have no answer buttons: they say what is waiting and where to decide it. An SMS is paid by length, so it keeps to the amount. */
 function outsideTheApp(message: Post, channel: 'sms' | 'email') {
-  const lines = [message.text, ...(message.rows ?? []).map(([name, value]) => `${name}: ${value}`)].filter(Boolean);
   const where = `Open the app to decide: ${env.APP_URL}`;
-  return channel === 'email' ? `${lines.join('\n')}\n\n${where}` : `${[message.title, ...lines].join('. ').slice(0, 240)}. ${where}`;
+  const rows = (message.rows ?? []).map(([name, value]) => `${name}: ${value}`);
+  if (channel === 'email') return [message.text, ...rows, '', where].join('\n');
+  return [`${message.title}.`, message.text, ...rows.filter((row) => row.startsWith('Amount:')).map((row) => `${row}.`), where].join(' ');
 }
 
 /**
