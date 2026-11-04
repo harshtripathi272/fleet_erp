@@ -774,6 +774,7 @@ select.input {
   padding-bottom: 72px;
 }
 .settings-section {
+  container-type: inline-size;
   border: 1px solid var(--line);
   border-radius: 12px;
   background: var(--surface);
@@ -847,6 +848,19 @@ select.input {
 .range-inputs .unit-box {
   flex: 1;
 }
+/* A narrow section (a small window, a phone) puts each control under its setting instead of squeezing the words. */
+@container (max-width: 620px) {
+  .setting-row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 10px;
+  }
+  .setting-control {
+    justify-content: flex-start;
+  }
+  .setting-control > .unit-box {
+    max-width: 220px;
+  }
+}
 .setting-fixed {
   color: var(--ink-3);
   font-size: 13.5px;
@@ -875,13 +889,6 @@ select.input {
   .grid-2,
   .grid-3 {
     grid-template-columns: 1fr;
-  }
-  .setting-row {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 10px;
-  }
-  .setting-control {
-    justify-content: flex-start;
   }
   .drawer {
     width: 100vw !important;
