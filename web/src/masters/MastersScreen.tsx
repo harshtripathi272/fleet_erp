@@ -13,6 +13,10 @@ import { UserAccess } from "./UserAccess";
 import { PermissionMatrix } from "./PermissionMatrix";
 import { RateFeed } from "./RateFeed";
 import MessagingSettings from "../settings/MessagingSettings";
+import { fieldName, label, short, shown } from "./history";
+import { AUDIT_VIEW, AuditLog, wantsAuditLog } from "./AuditLog";
+
+export { label };
 
 /**
  * One screen for every master, built from GET /meta/masters: groups, fields, links, choices and the
@@ -36,8 +40,16 @@ export function MastersScreen({ initialEntity }: { initialEntity?: string }) {
   const { me } = useApp();
   const masters = useMasters();
   const customMasters = useQuery({ queryKey: ["custom-masters"], queryFn: () => api<Rec[]>("/custom-masters", { query: { limit: 100 } }) });
-  const [selected, setSelectedState] = useState<string>(() => (initialEntity && !initialEntity.includes(":") ? initialEntity : remembered() ?? "vehicles"));
-  const setSelected = (key: string) => { setSelectedState(key); remember(key); };
+  const [selected, setSelectedState] = useState<string>(() => (wantsAuditLog() ? AUDIT_VIEW : initialEntity && !initialEntity.includes(":") ? initialEntity : remembered() ?? "vehicles"));
+  // A record opened from the audit log.
+  const [openId, setOpenId] = useState<string | undefined>();
+  const setSelected = (key: string, id?: string) => {
+    setSelectedState(key);
+    setOpenId(id);
+    remember(key);
+    // Leaving the audit log drops its filters from the address bar.
+    if (key !== AUDIT_VIEW && location.search) history.replaceState(null, "", location.pathname);
+  };
   const [filter, setFilter] = useState("");
   const defs = (masters.data ?? []).filter((d) => d.key !== "custom-records" && d.permissions?.read);
   const groups = useMemo(() => {
@@ -61,6 +73,7 @@ export function MastersScreen({ initialEntity }: { initialEntity?: string }) {
           const pages = [
             { key: "company", label: "Company", show: can(me, "company", "read") },
             { key: "messaging", label: "Sending messages", show: can(me, "message-connections", "read") },
+            { key: AUDIT_VIEW, label: "Audit log", show: can(me, "audit-logs", "read") },
           ].filter((p) => p.show && (!filter || p.label.toLowerCase().includes(filter.toLowerCase())));
           return pages.length > 0 && (
             <section>
@@ -87,7 +100,11 @@ export function MastersScreen({ initialEntity }: { initialEntity?: string }) {
         )}
       </aside>
       <section className="masters-main">
-        {selected === "company" ? <CompanyPanel /> : selected === "messaging" ? <MessagingSettings /> : custom ? <CustomRecords master={custom} defs={defs} /> : def ? <Records key={def.key} def={def} defs={defs} /> : null}
+        {selected === "company" ? <CompanyPanel />
+          : selected === "messaging" ? <MessagingSettings />
+          : selected === AUDIT_VIEW && can(me, "audit-logs", "read") ? <AuditLog onOpen={(entity, id) => setSelected(entity, id)} />
+          : custom ? <CustomRecords master={custom} defs={defs} />
+          : def ? <Records key={`${def.key}-${openId ?? ""}`} def={def} defs={defs} openId={openId} /> : null}
       </section>
     </div>
   );
@@ -95,12 +112,12 @@ export function MastersScreen({ initialEntity }: { initialEntity?: string }) {
 
 /* ---------- Lists ---------- */
 
-function Records({ def, defs }: { def: Def; defs: Def[] }) {
+function Records({ def, defs, openId }: { def: Def; defs: Def[]; openId?: string }) {
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("");
   const [sort, setSort] = useState<string>(def.defaultSort ?? def.sortFields[0]);
   const [page, setPage] = useState(1);
-  const [open, setOpen] = useState<string | "new" | null>(null);
+  const [open, setOpen] = useState<string | "new" | null>(openId ?? null);
   const rows = useQuery({
     queryKey: ["records", def.key, search, status, sort, page],
     queryFn: () => request<Rec[]>(`/${def.key}`, { query: { search: search.trim() || undefined, status: status || undefined, sort, page, limit: 25 } }),
@@ -736,13 +753,6 @@ const titleOf = (r: Rec, def?: Def) => {
   return /^\d{4}-\d{2}-\d{2}T/.test(value) ? new Date(value).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : value;
 };
 const get = (r: Rec, path: string) => path.split(".").reduce<unknown>((v, k) => (v && typeof v === "object" ? (v as Rec)[k] : undefined), r);
-/** Bookkeeping the server fills in itself, and changes from nothing to nothing, are left out of history. */
-const BOOKKEEPING = new Set(["createdBy", "updatedBy", "archivedBy", "archivedAt", "version"]);
-const empty = (v: unknown) => v === undefined || v === null || v === "" || (typeof v === "object" && Object.keys(v as object).length === 0);
-const shown = (c: Rec) => !BOOKKEEPING.has(String(c.path)) && !(empty(c.from) && empty(c.to));
-const fieldName = (path: string) => label(path.split(".").pop() ?? path);
-const short = (v: unknown) => { const s = typeof v === "string" ? v : JSON.stringify(v); return s && s.length > 60 ? `${s.slice(0, 57)}…` : s ?? "—"; };
-export const label = (key: string) => key.replace(/Id(s)?$/, "$1").replace(/_/g, " ").replace(/([a-z])([A-Z])/g, "$1 $2").replace(/^./, (c) => c.toUpperCase()).replace(/\bkm\b/i, "km").replace(/ Minor$/, "");
 
 /** The fields a form may send: those the create schema accepts. */
 function pick(record: Rec, schema: Schema): Rec {

@@ -35,6 +35,7 @@ import { FinanceToday } from "./desks/Finance";
 import { Accounts } from "./desks/Accounts";
 import { Nominations } from "./desks/Nominations";
 import { MastersScreen } from "./masters/MastersScreen";
+import { wantsAuditLog } from "./masters/AuditLog";
 import { Overview } from "./desks/Overview";
 import { DriverDesk } from "./desks/DriverDesk";
 import { DriverPortal } from "./driver/DriverPortal";
@@ -65,7 +66,9 @@ const readSession = (): Session => {
     return session;
   }
   try {
-    return JSON.parse(sessionStorage.getItem(SESSION) ?? "{}");
+    const session = JSON.parse(sessionStorage.getItem(SESSION) ?? "{}") as Session;
+    // A shared link to a filtered audit log opens Masters, which opens the log.
+    return wantsAuditLog() ? { ...session, view: "masters" } : session;
   } catch {
     return {};
   }
@@ -218,7 +221,7 @@ function Desks({ me }: { me: Me }) {
           me={me}
           desks={allowed.filter((d): d is Desk => d !== "driver")}
           drivers={allowed.includes("driver") ? data.drivers : []}
-          onPick={(nextRole, driverId) => setSession({ role: nextRole, driverId, view: HOME[nextRole] })}
+          onPick={(nextRole, driverId) => setSession({ role: nextRole, driverId, view: wantsAuditLog() && nextRole !== "driver" ? "masters" : HOME[nextRole] })}
         />
         <Toasts toasts={toasts} />
       </>

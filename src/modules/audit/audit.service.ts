@@ -1,4 +1,4 @@
-import { Types } from 'mongoose';
+import mongoose, { Types } from 'mongoose';
 import { AuditLog } from '../../core/masters/audit.model.js';
 import { comparable } from '../../core/masters/audit.js';
 import { getMaster, getRefTarget } from '../../core/masters/registry.js';
@@ -57,11 +57,16 @@ async function titles(rows: Row[]) {
   const byEntity = new Map<string, Set<string>>();
   for (const r of rows) byEntity.set(r.entity, (byEntity.get(r.entity) ?? new Set()).add(String(r.entityId)));
   await Promise.all([...byEntity].map(async ([entity, ids]) => {
+    // A master names its title field; other records (trips, requests, settlements) have a number.
     const target = getRefTarget(entity);
-    if (!target) return;
-    const field = target.titleField;
-    const docs = await target.model.find({ _id: { $in: [...ids] } }).select(`${field} code name`).lean() as Plain[];
-    for (const d of docs) out.set(`${entity}:${d._id}`, String(d[field] ?? d.name ?? d.code ?? ''));
+    const model = target?.model ?? Object.values(mongoose.models).find((m) => m.collection.collectionName === entity.replace(/-/g, ''));
+    if (!model) return;
+    const field = target?.titleField ?? 'number';
+    const docs = await model.find({ _id: { $in: [...ids] } }).select(`${field} number code name`).lean() as Plain[];
+    for (const d of docs) {
+      const title = d[field] ?? d.number ?? d.name ?? d.code;
+      if (title !== undefined && title !== null && title !== '') out.set(`${entity}:${d._id}`, String(title));
+    }
   }));
   for (const r of rows) {
     const key = `${r.entity}:${r.entityId}`;
