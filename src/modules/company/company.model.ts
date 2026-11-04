@@ -75,6 +75,36 @@ const companySchema = new Schema<any>({
   email: String,
   website: String,
   logoUrl: String,
+  /** How the product looks to everyone who uses it (#71): the company's name, logo, colour and message signature. */
+  brand: {
+    type: new Schema({
+      productName: String,
+      shortName: String,
+      /** Stored files (the files module): the logo for screens, a version for dark backgrounds, a square icon, and a JPEG for PDFs. */
+      logoFileId: { type: ObjectId, ref: 'StoredFile' },
+      logoDarkFileId: { type: ObjectId, ref: 'StoredFile' },
+      iconFileId: { type: ObjectId, ref: 'StoredFile' },
+      logoPdfFileId: { type: ObjectId, ref: 'StoredFile' },
+      accent: String,
+      emailSenderName: String,
+      signature: String,
+    }, { _id: false }),
+    default: () => ({}),
+  },
+  /** A mark across printed documents and previews (#71). */
+  watermark: {
+    type: new Schema({
+      mode: { type: String, enum: ['off', 'text', 'logo'], default: 'off' },
+      text: String,
+      opacity: { type: Number, min: 0.03, max: 0.5, default: 0.08 },
+      angle: { type: Number, min: -90, max: 90, default: 35 },
+      tripSheet: { type: Boolean, default: true },
+      statement: { type: Boolean, default: true },
+      invoice: { type: Boolean, default: true },
+      screens: { type: Boolean, default: false },
+    }, { _id: false }),
+    default: () => ({}),
+  },
   updatedBy: { type: ObjectId, ref: 'User' },
 }, { ...schemaOptions, minimize: true });
 companySchema.index({ singleton: 1 }, { unique: true });

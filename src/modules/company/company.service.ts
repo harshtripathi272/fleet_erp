@@ -38,6 +38,12 @@ export async function saveCompany(input: Plain, actorId?: string, requestId?: st
   for (const [key, value] of Object.entries(changes)) {
     // Operations settings merge, so saving one setting doesn't reset the others.
     if (key === 'operations' && value) existing.set(key, { ...((before.operations as Plain | undefined) ?? {}), ...(value as Plain) });
+    // Brand and watermark merge the same way; a null clears that one setting (a logo removed, say).
+    else if ((key === 'brand' || key === 'watermark') && value) {
+      const merged: Plain = { ...((before[key] as Plain | undefined) ?? {}) };
+      for (const [k, v] of Object.entries(value as Plain)) { if (v === null) delete merged[k]; else merged[k] = v; }
+      existing.set(key, merged);
+    }
     else existing.set(key, value === null ? undefined : value);
   }
   if (!existing.isModified()) return present(before);
