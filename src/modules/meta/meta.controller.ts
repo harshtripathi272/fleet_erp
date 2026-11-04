@@ -1,7 +1,9 @@
 import { env } from '../../config/env.js';
 import { ForbiddenError, NotFoundError } from '../../core/errors/index.js';
 import { contextOf } from '../../core/masters/controller.js';
-import { importableMaster, importColumns, importRows, templateCsv } from '../../core/masters/import.js';
+import { companyColumns, importableMaster, importRows, templateCsv } from '../../core/masters/import.js';
+import { getLayout as readLayout, saveLayout as writeLayout, type LayoutInput } from '../../core/masters/layout.js';
+import { getMaster } from '../../core/masters/registry.js';
 import { Company } from '../company/company.model.js';
 import { ApiResponse } from '../../core/response/index.js';
 import { asyncHandler } from '../../utils/asyncHandler.js';
@@ -67,13 +69,13 @@ const importable = (req: Parameters<Parameters<typeof asyncHandler>[0]>[0]) => {
 };
 export const importInfo = asyncHandler(async (req, res) => {
   const def = importable(req);
-  ApiResponse.success(res, { master: def.key, label: def.label, columns: importColumns(def) });
+  ApiResponse.success(res, { master: def.key, label: def.label, columns: await companyColumns(def) });
 });
 export const importTemplate = asyncHandler(async (req, res) => {
   const def = importable(req);
   res.setHeader('Content-Type', 'text/csv; charset=utf-8');
   res.setHeader('Content-Disposition', `attachment; filename="${def.key}-template.csv"`);
-  res.send(`\uFEFF${templateCsv(def)}`);
+  res.send(`\uFEFF${await templateCsv(def)}`);
 });
 export const importRun = asyncHandler(async (req, res) => {
   const def = importable(req);
@@ -84,3 +86,16 @@ export const importRun = asyncHandler(async (req, res) => {
   ApiResponse.success(res, { results, summary: { ready: count('ready'), exists: count('exists'), invalid: count('invalid'), created: count('created'), failed: count('failed') } });
 });
 export const areas = asyncHandler(async (_req, res) => ApiResponse.success(res, await MetaService.areas()));
+
+/** The master of masters (#65): this company's changes to one master's definition, for the Customise screen. */
+const masterOr404 = (key: string) => {
+  const def = getMaster(key);
+  if (!def) throw new NotFoundError(`No master "${key}"`);
+  return def;
+};
+export const getLayout = asyncHandler(async (req, res) => ApiResponse.success(res, await readLayout(masterOr404(String(req.params.master)).key)));
+export const saveLayout = asyncHandler(async (req, res) => {
+  const def = masterOr404(String(req.params.master));
+  const ctx = contextOf(req);
+  ApiResponse.success(res, await writeLayout(def, req.body as LayoutInput, { actorId: ctx.actorId, requestId: ctx.requestId }));
+});

@@ -29,7 +29,7 @@ export function smsSegments(text: string) {
 }
 
 export const messageTemplateDefinition = defineMaster({
-  key: 'message-templates', label: 'Message templates', singular: 'Message template', group: GROUPS.messaging,
+  key: 'message-templates', label: 'Message templates', singular: 'Message template', group: GROUPS.messaging, lockedChoices: ['channel', 'event', 'audience'],
   description: 'The WhatsApp or SMS message (sent through Marichi Talks) or e-mail (sent over SMTP) for each event, with {{placeholders}} and WhatsApp buttons.',
   model: MessageTemplate, createSchema: S.createMessageTemplateSchema, updateSchema: S.updateMessageTemplateSchema,
   searchFields: ['code', 'name', 'event', 'body'],
@@ -59,7 +59,7 @@ export const messageTemplateDefinition = defineMaster({
 });
 
 export const notificationRuleDefinition = defineMaster({
-  key: 'notification-rules', label: 'Notification rules', singular: 'Notification rule', group: GROUPS.messaging,
+  key: 'notification-rules', label: 'Notification rules', singular: 'Notification rule', group: GROUPS.messaging, lockedChoices: ['event', 'templates.channel', 'recipients.kind'],
   description: 'Who hears about an event, on which channels, with which template, after what delay, and how often to remind.',
   model: NotificationRule, createSchema: S.createNotificationRuleSchema, updateSchema: S.updateNotificationRuleSchema,
   searchFields: ['code', 'name', 'event'],
@@ -92,7 +92,7 @@ export const notificationRuleDefinition = defineMaster({
 });
 
 export const printLayoutDefinition = defineMaster({
-  key: 'print-layouts', label: 'Print layouts', singular: 'Print layout', group: GROUPS.messaging,
+  key: 'print-layouts', label: 'Print layouts', singular: 'Print layout', group: GROUPS.messaging, lockedChoices: ['document'],
   description: 'Layouts for the trip sheet, driver statement, invoice and nomination slip: paper, sections, signatures and footer. One default per document.',
   model: PrintLayout, createSchema: S.createPrintLayoutSchema, updateSchema: S.updatePrintLayoutSchema,
   filters: { document: { schema: z.enum(PRINT_DOCUMENTS), apply: (v: string) => ({ document: v }), description: 'Document' } },

@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { authorize } from '../../middleware/authorize.js';
 import { validate } from '../../middleware/validate.js';
 import { MAX_ROWS } from '../../core/masters/import.js';
+import { layoutInputSchema } from '../../core/masters/layout.js';
 import * as MetaController from './meta.controller.js';
 
 const router = Router();
@@ -22,6 +23,9 @@ const importBody = z.strictObject({
   dryRun: z.boolean().default(true),
   firstRow: z.number().int().min(2).max(1_000_000).optional(),
 });
+// The master of masters (#65): a company's own shape for each master.
+router.get('/layouts/:master', authorize('company', 'read'), validate({ params: importParams }), MetaController.getLayout);
+router.put('/layouts/:master', authorize('company', 'update'), validate({ params: importParams, body: layoutInputSchema }), MetaController.saveLayout);
 router.get('/import/:master', validate({ params: importParams }), MetaController.importInfo);
 router.get('/import/:master/template', validate({ params: importParams }), MetaController.importTemplate);
 router.post('/import/:master', validate({ params: importParams, body: importBody }), MetaController.importRun);

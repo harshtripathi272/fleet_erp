@@ -59,7 +59,7 @@ export function scrub(message: string, connection?: Plain): string {
 }
 
 export const connectionDefinition = defineMaster({
-  key: 'message-connections', label: 'Message connections', singular: 'Message connection', group: GROUPS.messaging,
+  key: 'message-connections', label: 'Message connections', singular: 'Message connection', group: GROUPS.messaging, lockedChoices: ['channel'],
   description: 'How this installation sends each channel: an SMTP server for e-mail, an SMS provider, WhatsApp. One switched on per channel. Passwords and keys stay in server settings; a connection names the setting that holds it.',
   model: MessageConnection, createSchema: createConnectionSchema, updateSchema: updateConnectionSchema,
   searchFields: ['code', 'name', 'channel', 'provider', 'host'],

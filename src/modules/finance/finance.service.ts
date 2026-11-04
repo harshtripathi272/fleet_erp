@@ -41,7 +41,7 @@ export const exchangeRateDefinition = defineMaster({
 });
 
 export const paymentMethodDefinition = defineMaster({
-  key: 'payment-methods', label: 'Payment methods', singular: 'Payment method', group: GROUPS.money,
+  key: 'payment-methods', label: 'Payment methods', singular: 'Payment method', group: GROUPS.money, lockedChoices: ['kind'],
   description: 'How cash and fuel reach a driver or supplier: cash, mobile money (Airtel Money, MTN MoMo), bank, fuel card, voucher, own depot.',
   model: PaymentMethod, createSchema: S.createPaymentMethodSchema, updateSchema: S.updatePaymentMethodSchema,
   refs: [{ path: 'currencyIds', target: 'currencies' }],

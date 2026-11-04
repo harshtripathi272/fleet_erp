@@ -32,7 +32,7 @@ export const tripTypeDefinition = defineMaster({
 });
 
 export const tripStageDefinition = defineMaster({
-  key: 'trip-stages', label: 'Trip stages', singular: 'Trip stage', group: GROUPS.trips, module: 'trips',
+  key: 'trip-stages', label: 'Trip stages', singular: 'Trip stage', group: GROUPS.trips, module: 'trips', lockedChoices: ['event'],
   description: 'The workflow of a trip type, in order. Each stage names who acts, what documents it needs and which message it sends. One stage is final.',
   model: TripStage, createSchema: S.createTripStageSchema, updateSchema: S.updateTripStageSchema,
   sortFields: ['order', 'code', 'name', 'createdAt'], defaultSort: 'order',
