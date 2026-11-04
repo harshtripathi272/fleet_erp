@@ -21,3 +21,16 @@
   .outbox-filters { flex-direction: column; }
 }
 .channel-why { display: block; margin-top: 4px; color: var(--ink-3); font-size: 13px; overflow-wrap: anywhere; }
+
+/* Masters → Connections (#59): one card per kind, its connections inside. */
+.connections-settings .card + .card { margin-top: 16px; }
+.connections-settings .card-head { align-items: flex-start; gap: 12px; }
+.kind-title { min-width: 0; }
+.kind-title p { margin: 4px 0 0; max-width: 70ch; }
+.kind-card .connection-facts { margin: 0; }
+.kind-card .connection-list { margin-top: 12px; }
+.connection-name { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; min-width: 0; }
+.connection-facts code, .mono-wrap { font-family: var(--mono); font-size: 13px; overflow-wrap: anywhere; }
+@media (max-width: 560px) {
+  .connections-settings .card-head { flex-direction: column; }
+}

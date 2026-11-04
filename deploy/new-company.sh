@@ -74,6 +74,20 @@ if [ -n "${RATE_FEED_API_KEY:-}" ]; then
 elif exists gcloud secrets describe "$COMPANY-rate-feed-key" --project "$PROJECT_ID"; then
   secrets="$secrets,RATE_FEED_API_KEY=$COMPANY-rate-feed-key:latest"
 fi
+# Connections' secrets (#59): each CONNECTION_* variable in the environment goes to Secret Manager as
+# <company>-connection-<name> (CONNECTION_TWILIO_TOKEN → acme-connection-twilio-token), and each one
+# stored on an earlier run is mounted again, so a re-run never drops a connection's key.
+connection_secrets=()
+for var in $(compgen -e | grep -E '^CONNECTION_[A-Z0-9_]{1,50}$' || true); do
+  put_secret "$COMPANY-connection-$(printf '%s' "${var#CONNECTION_}" | tr 'A-Z_' 'a-z-')" "${!var}"
+  connection_secrets+=("$var")
+done
+for stored in $(capture "" gcloud secrets list --project "$PROJECT_ID" --filter "name~^projects/.*/secrets/$COMPANY-connection-" --format 'value(name.basename())'); do
+  connection_secrets+=("CONNECTION_$(printf '%s' "${stored#"$COMPANY-connection-"}" | tr 'a-z-' 'A-Z_')")
+done
+for var in $(printf '%s\n' "${connection_secrets[@]}" | sort -u); do
+  secrets="$secrets,$var=$COMPANY-connection-$(printf '%s' "${var#CONNECTION_}" | tr 'A-Z_' 'a-z-'):latest"
+done
 
 egress_flags=()
 if [ "$EGRESS" = static ]; then
