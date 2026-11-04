@@ -1,72 +1,39 @@
-import { createReadStream } from 'node:fs';
-import { mkdir, rm, stat, writeFile } from 'node:fs/promises';
-import { dirname, resolve, sep } from 'node:path';
-import type { Readable } from 'node:stream';
 import { env } from '../../config/env.js';
-import { NotFoundError } from '../errors/index.js';
+import { gcsStore, localStore } from '../connections/providers/storage.js';
+import type { FileStore } from '../connections/types.js';
+
+export type { FileStore } from '../connections/types.js';
 
 /**
- * Where uploaded files live, chosen per installation by `FILE_STORAGE`: a folder on the server, or a
- * Google Cloud Storage bucket. Callers only see keys; nothing else depends on the backend chosen.
+ * Where uploaded files live. Callers only see keys. New files go where the storage connection says (#59);
+ * each file remembers the connection that stored it, so switching storage never strands older files.
+ * Without a storage connection, the server's own FILE_STORAGE setting is used, as it was before.
  */
-export interface FileStore {
-  put(key: string, body: Buffer, mime: string): Promise<void>;
-  open(key: string): Promise<Readable>;
-  remove(key: string): Promise<void>;
+export interface StoreResolver {
+  forNew(): Promise<{ store: FileStore; connectionId?: string }>;
+  forFile(connectionId?: string): Promise<FileStore>;
 }
 
-function localStore(root: string): FileStore {
-  const base = resolve(root);
-  const pathOf = (key: string) => {
-    const path = resolve(base, key);
-    if (!path.startsWith(base + sep)) throw new NotFoundError('File not found');
-    return path;
-  };
-  return {
-    async put(key, body) {
-      const path = pathOf(key);
-      await mkdir(dirname(path), { recursive: true });
-      await writeFile(path, body, { flag: 'wx' });
-    },
-    async open(key) {
-      const path = pathOf(key);
-      if (!(await stat(path).catch(() => null))?.isFile()) throw new NotFoundError('File not found');
-      return createReadStream(path);
-    },
-    async remove(key) {
-      await rm(pathOf(key), { force: true });
-    },
-  };
+let server: Promise<FileStore> | undefined;
+const serverStore = () => (server ??= env.FILE_STORAGE === 'gcs' ? gcsStore(env.GCS_BUCKET!) : Promise.resolve(localStore(env.FILE_STORAGE_DIR)));
+
+let resolver: StoreResolver = { forNew: async () => ({ store: await serverStore() }), forFile: () => serverStore() };
+/** The connections module puts its own resolver here when it loads. */
+export function setStoreResolver(next: StoreResolver) { resolver = next; }
+
+let override: FileStore | undefined;
+/** Lets tests keep every file in memory, whatever storage is set up. */
+export function setFileStore(next: FileStore) { override = next; }
+
+/** Where to put a new file, and the connection to record on it (none for the server's own storage). */
+export async function storeForNew(): Promise<{ store: FileStore; connectionId?: string }> {
+  return override ? { store: override } : resolver.forNew();
 }
 
-async function gcsStore(bucketName: string): Promise<FileStore> {
-  // Loaded only when an installation stores files on GCS.
-  const { Storage } = await import('@google-cloud/storage');
-  const bucket = new Storage().bucket(bucketName);
-  return {
-    async put(key, body, mime) {
-      await bucket.file(key).save(body, { contentType: mime, resumable: false, preconditionOpts: { ifGenerationMatch: 0 } });
-    },
-    async open(key) {
-      const file = bucket.file(key);
-      const [exists] = await file.exists();
-      if (!exists) throw new NotFoundError('File not found');
-      return file.createReadStream();
-    },
-    async remove(key) {
-      await bucket.file(key).delete({ ignoreNotFound: true });
-    },
-  };
+/** Where an existing file is, from the connection recorded on it. */
+export async function storeOf(file: { connectionId?: unknown }): Promise<FileStore> {
+  return override ?? resolver.forFile(file.connectionId ? String(file.connectionId) : undefined);
 }
 
-let store: Promise<FileStore> | undefined;
-
-export function fileStore(): Promise<FileStore> {
-  store ??= env.FILE_STORAGE === 'gcs' ? gcsStore(env.GCS_BUCKET!) : Promise.resolve(localStore(env.FILE_STORAGE_DIR));
-  return store;
-}
-
-/** Lets tests keep files in memory. */
-export function setFileStore(next: FileStore) {
-  store = Promise.resolve(next);
-}
+/** The server's own storage (FILE_STORAGE), for files stored before connections or with none switched on. */
+export const serverFileStore = () => override ?? serverStore();

@@ -5,12 +5,15 @@ import { connectMongo, disconnectMongo, syncIndexes } from './core/db/mongo.js';
 import { logger } from './core/logger/index.js';
 import { ensureFirstOwner } from './modules/auth/auth.service.js';
 import { ensureDefaultMessages } from './modules/messaging/defaults.js';
+import { migrateToConnections } from './modules/connections/migrate.js';
 import { settleSends, startOutboxWorker, stopOutboxWorker } from './modules/messaging/dispatcher.js';
 import { ensureSystemRoles } from './modules/roles/roles.service.js';
 
 await connectMongo();
 await syncIndexes();
 await ensureSystemRoles();
+// Message connections and the rate feed move onto connections, once (#59).
+await migrateToConnections();
 await ensureFirstOwner();
 // A new installation starts with the default message templates and rules, once (#43).
 await ensureDefaultMessages();

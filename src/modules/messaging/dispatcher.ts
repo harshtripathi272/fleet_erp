@@ -4,14 +4,16 @@ import { ConflictError, NotFoundError, ValidationError } from '../../core/errors
 import { logger } from '../../core/logger/index.js';
 import { type MailAttachment, type MailMessage, routeMail, sendOverSmtp, serverSmtp } from '../../core/mail/mailer.js';
 import type { Plain } from '../../core/masters/types.js';
-import { fileStore } from '../../core/storage/index.js';
+import { storeOf } from '../../core/storage/index.js';
 import { Company } from '../company/company.model.js';
 import { Driver } from '../drivers/models/driver.model.js';
 import { StoredFile } from '../files/file.model.js';
 import { Party } from '../parties/models/party.model.js';
 import { User } from '../users/user.model.js';
-import { type Channel, CHANNEL_LABEL, CHANNELS, connectionDefinition, isAddressFor, scrub, type Sender, senderFor, senderOn } from './connections.service.js';
-import { MessageConnection, OutboundMessage, type OutboundRecord } from './models/connection.model.js';
+import { Connection } from '../connections/connection.model.js';
+import { setMessageTest } from '../connections/connections.service.js';
+import { type Channel, CHANNEL_LABEL, CHANNELS, isAddressFor, scrub, type Sender, senderFor, senderOn } from './connections.service.js';
+import { OutboundMessage, type OutboundRecord } from './models/connection.model.js';
 import { EVENTS, MessageTemplate, NotificationRule } from './models/messaging.model.js';
 
 /** Waits after the 1st, 2nd, ... failed attempt; after the last one the message is marked failed. */
@@ -192,7 +194,7 @@ async function loadAttachments(list: OutboundRecord['attachments']): Promise<Mai
   for (const a of list ?? []) {
     const file = a.fileId ? await StoredFile.findById(a.fileId).lean() : null;
     if (!file) throw new Error(`Attachment ${a.name} is no longer available`);
-    out.push({ filename: file.name, contentType: file.mime, content: await readAll(await (await fileStore()).open(file.key)) });
+    out.push({ filename: file.name, contentType: file.mime, content: await readAll(await (await storeOf(file)).open(file.key)) });
   }
   return out;
 }
@@ -220,7 +222,7 @@ async function deliver(id: Types.ObjectId, { override, sender, once }: DeliverOp
       to: message.to!, subject: message.subject, text: override?.text ?? message.body,
       attachments: override?.attachments ?? (message.attachments?.length ? await loadAttachments(message.attachments) : undefined),
     });
-    if (connectionId) await MessageConnection.updateOne({ _id: connectionId }, { $set: { lastSentAt: new Date() } });
+    if (connectionId) await Connection.updateOne({ _id: connectionId }, { $set: { lastUsedAt: new Date() } });
     return OutboundMessage.findByIdAndUpdate(id, {
       $set: { status: result.simulated ? 'simulated' : 'sent', attempts, sentAt: new Date(), providerRef: result.providerRef, connectionId, ...(result.simulated ? { note: 'Sent through a simulated provider' } : {}) },
       $unset: { leaseUntil: 1, nextAttemptAt: 1, ...(result.simulated ? {} : { note: 1 }) },
@@ -228,7 +230,7 @@ async function deliver(id: Types.ObjectId, { override, sender, once }: DeliverOp
   } catch (err) {
     const error = scrub(err instanceof Error ? err.message : String(err), via.connection);
     const giveUp = once || attempts >= RETRY_MINUTES.length || Boolean(message.sensitive);
-    if (connectionId) await MessageConnection.updateOne({ _id: connectionId }, { $set: { lastError: { at: new Date(), message: error } } });
+    if (connectionId) await Connection.updateOne({ _id: connectionId }, { $set: { lastError: { at: new Date(), message: error } } });
     logger.warn({ outboxId: String(id), channel: message.channel, attempts, error }, giveUp ? 'Message failed; giving up' : 'Message failed; will retry');
     return OutboundMessage.findByIdAndUpdate(id, giveUp
       ? { $set: { status: 'failed', attempts, note: error, connectionId }, $unset: { leaseUntil: 1, nextAttemptAt: 1 } }
@@ -274,23 +276,23 @@ export async function resend(id: string, actorId?: string) {
 
 const TEST_TEXT = 'This is a test message from Marichi Fleet. If you received it, this connection works.';
 
-/** "Send a test message" on a connection, switched on or not. The result is kept on the connection and in the outbox. */
-export async function testConnection(id: string, to: string, actorId?: string) {
-  const connection = await MessageConnection.findById(id).lean() as Plain | null;
-  if (!connection) throw new NotFoundError('Message connection not found');
-  const channel = connection.channel as Channel;
+/** "Send a test message" on a message connection, switched on or not. The result is kept on the connection and in the outbox. */
+export async function testConnection(connection: Plain, to: string, actorId?: string) {
+  const channel = connection.kind as Channel;
   if (!isAddressFor(channel, to)) throw new ValidationError('Check the address', { to: [channel === 'email' ? 'An e-mail address' : 'A phone number with its country code, e.g. +260971234567'] });
   const message = await OutboundMessage.create({
     event: 'connection.test', channel, to, subject: channel === 'email' ? 'Marichi Fleet test message' : undefined, body: TEST_TEXT,
-    status: 'queued', nextAttemptAt: new Date(), connectionId: connection._id as Types.ObjectId, ref: { kind: 'message-connections', id }, createdBy: actorId, at: new Date(),
+    status: 'queued', nextAttemptAt: new Date(), connectionId: connection._id as Types.ObjectId, ref: { kind: 'connections', id: String(connection._id) }, createdBy: actorId, at: new Date(),
   });
   // One attempt, on this connection, whether or not it is switched on.
   const result = await deliver(message._id, { sender: senderOn(connection), once: true });
   const ok = result?.status === 'sent' || result?.status === 'simulated';
-  const lastTest = { at: new Date(), ok, to, error: ok ? undefined : result?.note };
-  await MessageConnection.updateOne({ _id: connection._id }, { $set: { lastTest } });
-  return { ok, status: ok ? result!.status : 'failed', note: result?.note, message: present((await OutboundMessage.findById(message._id).lean())!) };
+  const note = result?.note;
+  const lastTest = { at: new Date(), ok, to, message: ok ? (result!.status === 'simulated' ? `Simulated: ${note ?? 'nothing was sent'}` : `Sent to ${to}`) : note };
+  await Connection.updateOne({ _id: connection._id }, { $set: { lastTest } });
+  return { ok, status: ok ? result!.status : 'failed', note, message: present((await OutboundMessage.findById(message._id).lean())!) };
 }
+setMessageTest(testConnection);
 
 export function present(m: OutboundRecord) {
   return {
@@ -348,4 +350,3 @@ async function routeAccountMail(m: MailMessage): Promise<boolean> {
 }
 routeMail(routeAccountMail);
 
-export { connectionDefinition };

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { after, afterEach, before, beforeEach, describe, test } from 'node:test';
-import { env } from '../src/config/env.js';
-import { setRateProvider, type RateProvider } from '../src/core/rates/providers.js';
+import { z } from 'zod';
+import { registerProvider } from '../src/core/connections/index.js';
 import { companyDay, fetchIsDue, fetchRates } from '../src/modules/finance/rateFeed.service.js';
 import { api, bearer, find, loadSample, resetDatabase, signUp, startDatabase, stopDatabase, userWithRole, type Session } from './helpers.js';
 
@@ -12,20 +12,24 @@ let answer: Record<string, number> = {};
 let fail: Error | null = null;
 let calls = 0;
 
-const fake: RateProvider = {
-  key: 'openexchangerates', label: 'Open Exchange Rates', needsKey: true,
-  async fetch({ codes }) {
-    calls += 1;
-    if (fail) throw fail;
-    return { perBase: Object.fromEntries(codes.filter((c) => answer[c]).map((c) => [c, answer[c]!])), asOf: new Date('2026-11-03T05:00:00Z') };
-  },
-};
-const realKey = env.RATE_FEED_API_KEY;
+/** Stands in for Open Exchange Rates on the rates connection (#59), under the same key. */
+registerProvider({
+  kind: 'rates', key: 'openexchangerates', label: 'Open Exchange Rates', fields: z.strictObject({}),
+  secrets: [{ key: 'apiKey', label: 'App ID', required: true }],
+  test: async () => ({ ok: true, message: 'ready' }),
+  open: () => ({
+    async fetch({ codes }) {
+      calls += 1;
+      if (fail) throw fail;
+      return { perBase: Object.fromEntries(codes.filter((c) => answer[c]).map((c) => [c, answer[c]!])), asOf: new Date('2026-11-03T05:00:00Z') };
+    },
+  }),
+});
+const realKey = process.env.RATE_FEED_API_KEY;
 const rates = async (code: string) => (await api().get('/api/v1/exchange-rates').query({ currencyId: ids[code], status: 'all', limit: 50 }).set(bearer(owner)).expect(200)).body.data as Array<Record<string, any>>;
 
 before(async () => {
   await startDatabase();
-  setRateProvider(fake);
 });
 after(stopDatabase);
 beforeEach(async () => {
@@ -36,9 +40,9 @@ beforeEach(async () => {
   answer = { USD: 1 / 26.5, TZS: 2710 / 26.5 }; // per 1 ZMW
   fail = null;
   calls = 0;
-  env.RATE_FEED_API_KEY = 'test-key';
+  process.env.RATE_FEED_API_KEY = 'test-key';
 });
-afterEach(() => { env.RATE_FEED_API_KEY = realKey; });
+afterEach(() => { if (realKey === undefined) delete process.env.RATE_FEED_API_KEY; else process.env.RATE_FEED_API_KEY = realKey; });
 
 const switchOn = (body: Record<string, unknown> = { provider: 'openexchangerates' }) => api().put('/api/v1/exchange-rates/feed').set(bearer(owner)).send(body);
 
@@ -104,7 +108,7 @@ describe('exchange-rate feed', () => {
     delete answer.TZS;
     const partial = await fetchRates({ now: new Date('2026-11-08T08:00:00Z') });
     assert.deepEqual(partial.missing, ['TZS']);
-    env.RATE_FEED_API_KEY = undefined;
+    delete process.env.RATE_FEED_API_KEY;
     const noKey = await fetchRates({ now: new Date('2026-11-09T08:00:00Z') });
     assert.equal(noKey.outcome, 'failed');
     assert.match(noKey.error!, /RATE_FEED_API_KEY/);
