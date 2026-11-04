@@ -6,6 +6,7 @@ import { setSmtpTransportFactory, type SmtpSettings } from '../src/core/mail/mai
 import { registerSmsAdapter, simulatedSms } from '../src/core/sms/index.js';
 import { dispatch, processDue, RETRY_MINUTES } from '../src/modules/messaging/dispatcher.js';
 import { OutboundMessage } from '../src/modules/messaging/models/connection.model.js';
+import { NotificationRule } from '../src/modules/messaging/models/messaging.model.js';
 import { api, bearer, find, loadSample, resetDatabase, signUp, startDatabase, stopDatabase, userWithRole, type Session } from './helpers.js';
 
 const SECRET = 'smtp-pass-7Hq2-do-not-leak';
@@ -144,6 +145,9 @@ describe('connections', () => {
     assert.deepEqual(status.map((c: { via: string }) => c.via), ['simulated', 'simulated', 'simulated']);
     assert.deepEqual(status[0].providers.map((p: { key: string }) => p.key), ['smtp']);
     assert.ok(status[1].providers.some((p: { key: string; simulated: boolean }) => p.key === 'simulated' && p.simulated));
+    // Reasons are for the office: they never name a server setting.
+    for (const c of status) assert.doesNotMatch(c.simulated, /[A-Z]{2,}_[A-Z_]+|#\d+/, `${c.channel}: ${c.simulated}`);
+    assert.match(status[1].simulated, /test setup: phone messages are simulated, not sent/);
     await emailConnection();
     status = (await as(owner).get('/message-channels')).body.data;
     assert.equal(status[0].via, 'connection');
@@ -154,6 +158,7 @@ describe('connections', () => {
 describe('dispatching', () => {
   test('fans out to every channel and recipient of the rule, rendering each template', async () => {
     await loadSample(owner);
+    await NotificationRule.deleteMany({ isDefault: true }); // only this test's rules (the defaults have their own tests)
     const driver = await find(owner, 'drivers', 'Joseph');
     const financeUser = await userWithRole(owner, 'finance', 'Natasha Banda');
     await emailConnection();
@@ -173,7 +178,7 @@ describe('dispatching', () => {
     // Simulators are on in tests: phones get nothing, and the outbox says so.
     const sms = by('sms', 'Joseph Mwansa');
     assert.equal(sms.status, 'simulated');
-    assert.match(sms.note!, /Simulators are on/);
+    assert.match(sms.note!, /test setup: phone messages are simulated/);
     assert.equal(sms.body, 'Trip TRIP/26/0001 has left. https://fleet.example.com/t/1');
     assert.equal(by('sms', 'Natasha Banda').status, 'skipped');
     assert.equal(out.length, 4);
@@ -183,6 +188,7 @@ describe('dispatching', () => {
     env.DRIVER_PHONE_SIMULATOR = false;
     process.env.MESSAGING_SMS_KEY = 'sms-key-123';
     await loadSample(owner);
+    await NotificationRule.deleteMany({ isDefault: true }); // only this test's rules (the defaults have their own tests)
     const driver = await find(owner, 'drivers', 'Joseph');
     await as(owner).post('/message-connections', { code: 'SMS', name: 'SMS', channel: 'sms', provider: 'test-sms', enabled: true, user: 'marichi', senderId: 'MARICHI', secretEnv: 'MESSAGING_SMS_KEY' }).expect(201);
     await dispatchRule();
@@ -196,6 +202,7 @@ describe('dispatching', () => {
   test('a simulated SMS provider records the message as Simulated', async () => {
     env.DRIVER_PHONE_SIMULATOR = false;
     await loadSample(owner);
+    await NotificationRule.deleteMany({ isDefault: true }); // only this test's rules (the defaults have their own tests)
     const driver = await find(owner, 'drivers', 'Joseph');
     await as(owner).post('/message-connections', { code: 'SMS', name: 'SMS', channel: 'sms', provider: 'simulated', enabled: true }).expect(201);
     await dispatchRule();

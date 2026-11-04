@@ -130,6 +130,12 @@ jobs:
           [ "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:3000/console/)" = 404 ] || { echo "The console is on"; exit 1; }
           curl -fsS http://127.0.0.1:3000/api/v1/auth/options | grep -q '"signUp":false' || { echo "Self sign-up is on"; exit 1; }
           docker logs app 2>&1 | grep -q 'First Owner account created' || { echo "No first Owner from OWNER_EMAIL"; exit 1; }
+      - name: The hourly exchange-rate job runs in the image
+        # The feed is off by default (manual rates), so the job finds nothing due and exits 0.
+        run: |
+          out="$(docker run --rm --network host --env-file prod.env -e LOG_LEVEL=info fleet-erp:ci node dist/jobs/fetchRates.js 2>&1)"
+          echo "$out" | tail -5
+          echo "$out" | grep -q 'nothing to do' || { echo "The rate job did not run as expected"; exit 1; }
       - name: An unsafe setting stops the container
         run: |
           set +e

@@ -66,6 +66,8 @@ export interface RouteTemplate {
   id: string;
   name: string;
   stops: RouteStop[];
+  /** Road kilometres from the stop before to each stop, as the routes master has them (0 for the first). */
+  legKm: number[];
   cashBudgetZmw: number;
   /** Fixed fuel for the route. When empty the budget comes from distance and truck consumption. */
   fuelBudgetL?: number;

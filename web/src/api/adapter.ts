@@ -165,6 +165,7 @@ export function toAppData(ref: Reference, ops: Operations): AppData {
     return {
       id: r.id, name: r.name,
       stops: (r.stops ?? []).map((s: Rec) => ({ placeId: s.placeId, kind: s.kind })),
+      legKm: (r.stops ?? []).map((s: Rec) => Number(s.legKm ?? 0)),
       cashBudgetZmw: r.cashBudget ? inBase(r.cashBudget) : budget?.totalCashMinor ? inBase({ amountMinor: budget.totalCashMinor, currencyId: budget.currencyId }) : 0,
       fuelBudgetL: r.fuelBudgetL ?? budget?.fuelL,
     };

@@ -10,6 +10,8 @@ import { createCustomRecordSchema } from '../configuration/configuration.schema.
 import { pairSchema } from '../fleet/fleet.schema.js';
 import { createRecord } from '../configuration/configuration.service.js';
 import { pair } from '../fleet/fleet.service.js';
+import { ensureDefaultMessages } from '../messaging/defaults.js';
+import { MessageTemplate } from '../messaging/models/messaging.model.js';
 import { Role } from '../roles/role.model.js';
 import { loadSampleHistory } from './sampleHistory.js';
 
@@ -139,10 +141,10 @@ export async function loadSampleData(actorId?: string, size: SampleSize = 'full'
 
   // Messages and layouts
   await make('print-layouts', 'plTripSheet', { code: 'TRIP-SHEET', name: 'Trip sheet A4', document: 'trip_sheet', paperSize: 'A4', isDefault: true, sections: [{ key: 'trip', label: 'Trip', visible: true, order: 1 }, { key: 'load', label: 'Load', visible: true, order: 2 }, { key: 'movement', label: 'Vehicle movement', visible: true, order: 3 }, { key: 'money', label: 'Advances and expenses', visible: true, order: 4 }], signatureLines: ['Operations', 'Finance', 'Driver'] });
-  await make('message-templates', 'mtApproval', { code: 'WA-ADV-REQ', name: 'Advance request to Finance', channel: 'whatsapp', event: 'fund_request.created', audience: 'finance', body: '{{driver.name}} needs {{currency}} {{amount}} for {{trip.number}} ({{route.name}}). Reason: {{reason}}', buttons: [{ label: 'Approve', action: 'approve' }, { label: 'Reject', action: 'reject' }], providerTemplateId: 'advance_request_v1' });
-  await make('message-templates', 'mtDispatch', { code: 'SMS-DISPATCH', name: 'Dispatch SMS to driver', channel: 'sms', event: 'trip.dispatched', audience: 'driver', body: '{{trip.number}}: you are dispatched with {{vehicle.registration}} on {{route.name}}. Safe travels.' });
-  await make('message-templates', 'mtExpiry', { code: 'EMAIL-DOC-EXP', name: 'Document expiring e-mail', channel: 'email', event: 'document.expiring', audience: 'operations', subject: '{{document.name}} for {{vehicle.registration}} expires {{document.expiryDate}}', body: 'Hello,\n\n{{document.name}} {{document.number}} expires on {{document.expiryDate}}. Renew it to avoid blocking dispatch.\n\n{{company.name}}' });
-  await make('notification-rules', 'nrApproval', { code: 'ADV-REQUEST', name: 'Tell Finance about advance requests', event: 'fund_request.created', recipients: [{ kind: 'role', roleId: String(financeRole!._id) }], templates: [{ channel: 'whatsapp', templateId: ids.mtApproval }, { channel: 'app' }], repeatEveryMinutes: 60, maxRepeats: 3 });
+  // The installation's default templates and rules (#43): the sample uses the same set a new company starts with.
+  created += (await ensureDefaultMessages(actorId)).created;
+  const approvalTemplate = await MessageTemplate.findOne({ code: 'WA-ADV-REQ', status: 'active' }).select('_id').lean();
+  if (approvalTemplate) ids.mtApproval = String(approvalTemplate._id);
 
   // Trip operations
   await make('trip-types', 'ttFuel', { code: 'FUEL', name: 'Fuel haulage', cargoKind: 'liquid_bulk', loadTypeId: ids.ltBulk, requiredDocumentTypeIds: [ids.dtRoadTax], printLayoutId: ids.plTripSheet, isDefault: true });
@@ -150,7 +152,7 @@ export async function loadSampleData(actorId?: string, size: SampleSize = 'full'
   const stages = [['PLAN', 'Plan', 'operations', 'funding_requested'], ['FUNDING', 'Funding', 'finance', 'dispatched'], ['LOADING', 'Loading', 'operations', 'loaded'], ['TRANSIT', 'Transit', 'operations', 'arrived_offloading'], ['OFFLOAD', 'Offloading', 'operations', 'delivered'], ['CLOSE', 'Close', 'finance', 'ended']] as const;
   for (const [i, [code, name, role, completesOn]] of stages.entries()) {
     const roleId = String((await Role.findOne({ key: role }).lean())!._id);
-    await make('trip-stages', `stage${code}`, { tripTypeId: ids.ttFuel, code, name, order: i + 1, actorRoleId: roleId, isFinal: code === 'CLOSE', completesOn, ...(code === 'FUNDING' ? { notifyTemplateId: ids.mtApproval } : {}), ...(code === 'LOADING' ? { requiredDocumentTypeIds: [ids.dtCalibration], reopenable: true } : {}) });
+    await make('trip-stages', `stage${code}`, { tripTypeId: ids.ttFuel, code, name, order: i + 1, actorRoleId: roleId, isFinal: code === 'CLOSE', completesOn, ...(code === 'FUNDING' && ids.mtApproval ? { notifyTemplateId: ids.mtApproval } : {}), ...(code === 'LOADING' ? { requiredDocumentTypeIds: [ids.dtCalibration], reopenable: true } : {}) });
   }
   await make('stop-types', 'stBorder', { code: 'BORDER', name: 'Border crossing', waitingCountsAs: 'border' });
   await make('stop-types', 'stLoad', { code: 'LOAD', name: 'Loading', waitingCountsAs: 'loading' });

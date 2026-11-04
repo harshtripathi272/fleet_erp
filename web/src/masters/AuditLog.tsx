@@ -5,7 +5,7 @@ import { authorizedFetch, request } from "../api/client";
 import type { Rec } from "../api/adapter";
 import { useApp } from "../store";
 import { Button, Empty } from "../ui/kit";
-import { fieldName, label, short, shown } from "./history";
+import { AUDIT_VIEW, fieldName, label, short, shown } from "./history";
 
 /**
  * Masters → Organisation → Audit log (#36): every change in the company, newest first, with who made it.
@@ -17,10 +17,6 @@ const ACTION_LABEL: Record<string, string> = { create: "Created", update: "Chang
 const PARAMS = { entity: "audit-master", actorId: "audit-person", action: "audit-action", from: "audit-from", to: "audit-to", page: "audit-page" } as const;
 type Filters = { [K in keyof typeof PARAMS]?: string };
 const PAGE = 50;
-
-/** The address the screen opens at, for a link straight to a filtered audit log. */
-export const AUDIT_VIEW = "audit-log";
-export const wantsAuditLog = () => new URLSearchParams(location.search).get("view") === AUDIT_VIEW;
 
 const readFilters = (): Filters => {
   const params = new URLSearchParams(location.search);

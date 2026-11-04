@@ -104,7 +104,7 @@ export default function MessagingSettings() {
                     <td>{c.label}</td>
                     <td>
                       {c.via === "connection" && <Status tone="ok">{c.connectionName}</Status>}
-                      {c.via === "server-settings" && <Status tone="ok">The server's SMTP settings</Status>}
+                      {c.via === "server-settings" && <Status tone="ok">The server's e-mail settings</Status>}
                       {c.via === "simulated" && <><Status tone="info">Simulated</Status> <span className="channel-why">{c.simulated}</span></>}
                     </td>
                   </tr>
@@ -121,7 +121,7 @@ export default function MessagingSettings() {
           {connections.isLoading && <p className="muted">Loading…</p>}
           {connections.data && !connections.data.length && (
             <Empty title="No connections yet">
-              <p className="muted">Until one is added, e-mail uses the server's SMTP settings and phones get simulated messages.</p>
+              <p className="muted">Until one is added, e-mail uses the server's e-mail settings, if it has them, and phone messages are simulated.</p>
             </Empty>
           )}
           <div className="connection-list">
@@ -317,7 +317,7 @@ function ConnectionForm({ connection, providers, onClose }: { connection: Connec
         {form.channel === "email" && (
           <label className="check-line"><input type="checkbox" checked={form.secure} onChange={(e) => set("secure", e.target.checked)} /> Connect with TLS from the start (usually port 465)</label>
         )}
-        {form.channel === "whatsapp" && <p className="muted">WhatsApp goes to the simulator until Marichi Talks is connected.</p>}
+        {form.channel === "whatsapp" && <p className="muted">WhatsApp is not connected yet: its messages are simulated, not sent.</p>}
         <label className="check-line"><input type="checkbox" checked={form.enabled} onChange={(e) => set("enabled", e.target.checked)} /> Switched on (one per channel)</label>
       </fieldset>
     </Drawer>

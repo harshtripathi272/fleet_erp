@@ -37,7 +37,7 @@ SMTP_PASS_VALUE=""
 if [ -n "$SMTP_USER" ]; then SMTP_PASS_VALUE="$(read_secret SMTP_PASS 'SMTP password')"; fi
 
 say "APIs"
-apis="run.googleapis.com secretmanager.googleapis.com storage.googleapis.com iam.googleapis.com"
+apis="run.googleapis.com secretmanager.googleapis.com storage.googleapis.com iam.googleapis.com cloudscheduler.googleapis.com"
 if [ "$DOMAIN_MODE" = lb ] || [ "$EGRESS" = static ]; then apis="$apis compute.googleapis.com"; fi
 # shellcheck disable=SC2086
 run gcloud services enable $apis --project "$PROJECT_ID"
@@ -66,6 +66,13 @@ secrets="MONGODB_URI=$COMPANY-mongodb-uri:latest,JWT_SECRET=$COMPANY-jwt-secret:
 if [ -n "$SMTP_USER" ]; then
   put_secret "$COMPANY-smtp-pass" "$SMTP_PASS_VALUE"
   secrets="$secrets,SMTP_PASS=$COMPANY-smtp-pass:latest"
+fi
+# The exchange-rate provider's key, only when one is given (the provider itself is chosen in the app).
+if [ -n "${RATE_FEED_API_KEY:-}" ]; then
+  put_secret "$COMPANY-rate-feed-key" "$RATE_FEED_API_KEY"
+  secrets="$secrets,RATE_FEED_API_KEY=$COMPANY-rate-feed-key:latest"
+elif exists gcloud secrets describe "$COMPANY-rate-feed-key" --project "$PROJECT_ID"; then
+  secrets="$secrets,RATE_FEED_API_KEY=$COMPANY-rate-feed-key:latest"
 fi
 
 egress_flags=()
@@ -118,6 +125,25 @@ run gcloud run deploy "$SERVICE" --project "$PROJECT_ID" --region "$REGION" \
   --ingress "$ingress" --allow-unauthenticated \
   --startup-probe "httpGet.path=/api/v1/health/ready,initialDelaySeconds=5,periodSeconds=5,failureThreshold=24" \
   "${egress_flags[@]}"
+
+say "Daily exchange rates: Cloud Run job $RATES_JOB, started every hour by Cloud Scheduler ($SCHEDULER_REGION)"
+# The job fetches only when due (after the fetch time set in the app, until a fetch that day succeeds),
+# so starting it hourly keeps the app's setting the only fetch time and retries a failure the next hour.
+run gcloud run jobs deploy "$RATES_JOB" --project "$PROJECT_ID" --region "$REGION" \
+  --image "$IMAGE" --service-account "$SA_EMAIL" \
+  --env-vars-file "$env_file" --set-secrets "$secrets" \
+  --command node --args dist/jobs/fetchRates.js \
+  --tasks 1 --max-retries 0 --task-timeout 300s --cpu 1 --memory 512Mi \
+  "${egress_flags[@]}"
+# The scheduler starts the job as the company's own service account, which may start only this job.
+run gcloud run jobs add-iam-policy-binding "$RATES_JOB" --project "$PROJECT_ID" --region "$REGION" \
+  --member "serviceAccount:$SA_EMAIL" --role roles/run.invoker --quiet
+schedule_verb=create
+if exists gcloud scheduler jobs describe "$RATES_JOB-hourly" --location "$SCHEDULER_REGION" --project "$PROJECT_ID"; then schedule_verb=update; fi
+run gcloud scheduler jobs "$schedule_verb" http "$RATES_JOB-hourly" --project "$PROJECT_ID" --location "$SCHEDULER_REGION" \
+  --schedule "5 * * * *" --time-zone UTC --http-method POST \
+  --uri "https://run.googleapis.com/v2/projects/$PROJECT_ID/locations/$REGION/jobs/$RATES_JOB:run" \
+  --oauth-service-account-email "$SA_EMAIL" --oauth-token-scope https://www.googleapis.com/auth/cloud-platform
 
 dns=""
 if [ "$DOMAIN_MODE" = lb ]; then

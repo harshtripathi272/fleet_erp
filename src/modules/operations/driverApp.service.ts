@@ -11,6 +11,7 @@ import { Message } from './models/message.model.js';
 import { Settlement } from './models/money.model.js';
 import { Trip } from './models/trip.model.js';
 import type * as S from './operations.schema.js';
+import { statementPdf as settlementStatementPdf } from './printouts.js';
 import { baseCurrency, currencyInfo, driverThread, formatMoney, type OpsContext } from './support.js';
 import { arriveAtStop, partyName, placeName, plateOf, trailerPlate } from './trips.service.js';
 
@@ -137,4 +138,10 @@ export async function arrive(actor: DriverActor, stopId: string) {
   const trip = await ownTrip(actor.driverId);
   if (!trip) throw new NotFoundError('You have no trip on the road');
   return arriveAtStop(String(trip._id), stopId, driverContext(actor));
+}
+
+/** One of the driver's own settlement statements, the PDF the office prints. Someone else's is not found. */
+export async function statementPdf(actor: DriverActor, settlementId: string) {
+  if (!(await Settlement.exists({ _id: settlementId, driverId: actor.driverId }))) throw new NotFoundError('Settlement not found');
+  return settlementStatementPdf(settlementId);
 }

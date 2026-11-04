@@ -1,5 +1,9 @@
 import type { Rec } from "../api/adapter";
 
+/** The address the audit log opens at. Here, not in AuditLog.tsx, so the desks can check it without loading Masters. */
+export const AUDIT_VIEW = "audit-log";
+export const wantsAuditLog = () => new URLSearchParams(location.search).get("view") === AUDIT_VIEW;
+
 /** How a change reads, the same on a record's History tab and in the audit log. */
 
 /** Bookkeeping the server fills in itself, and changes from nothing to nothing, are left out of history. */

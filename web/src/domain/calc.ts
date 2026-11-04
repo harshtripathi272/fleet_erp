@@ -1,4 +1,3 @@
-import { ROAD_KM_HOURS, ROAD_SHAPES } from "./geo-data";
 import type {
   AppData,
   Consignment,
@@ -32,24 +31,44 @@ function haversineKm(a: Place, b: Place) {
   return 2 * r * Math.asin(Math.sqrt(h));
 }
 
-/** Road kilometres and driving hours between two places. */
-export function leg(data: AppData, fromId: string, toId: string): { km: number; hours: number } {
+/** Each pair of places a route master gives the road kilometres for, both ways; the first route wins. */
+const routeLegs = new WeakMap<AppData["routes"], Map<string, number>>();
+function knownLegs(routes: AppData["routes"]) {
+  let known = routeLegs.get(routes);
+  if (!known) {
+    known = new Map();
+    for (const route of routes)
+      for (let i = 1; i < route.stops.length; i++) {
+        const a = route.stops[i - 1].placeId, b = route.stops[i].placeId, km = route.legKm[i] ?? 0;
+        if (!known.has(`${a}-${b}`)) known.set(`${a}-${b}`, km);
+        if (!known.has(`${b}-${a}`)) known.set(`${b}-${a}`, km);
+      }
+    routeLegs.set(routes, known);
+  }
+  return known;
+}
+
+/**
+ * Road kilometres and driving hours between two places, by the same rules the API plans a trip with
+ * (`buildStops` in src/modules/operations/trips.service.ts): the trip's own stops when there is a trip, then the
+ * routes master, then straight line × the company's road distance factor. Hours are at the company's average speed.
+ */
+export function leg(data: AppData, fromId: string, toId: string, trip?: Pick<Trip, "stops">): { km: number; hours: number } {
   if (fromId === toId) return { km: 0, hours: 0 };
-  const known = ROAD_KM_HOURS[`${fromId}-${toId}`];
-  if (known) return { km: known[0], hours: known[1] };
+  const hours = (km: number) => round(km / (data.settings.averageSpeedKmh || 62), 1);
+  const own = trip?.stops.findIndex((s, i) => i > 0 && trip.stops[i - 1].placeId === fromId && s.placeId === toId) ?? -1;
+  if (own > 0) return { km: trip!.stops[own].legKm, hours: hours(trip!.stops[own].legKm) };
+  const known = knownLegs(data.routes).get(`${fromId}-${toId}`);
+  if (known !== undefined) return { km: known, hours: hours(known) };
   const a = byId(data.places, fromId);
   const b = byId(data.places, toId);
   if (!a || !b) return { km: 0, hours: 0 };
   const km = Math.round(haversineKm(a, b) * (data.settings.roadDistanceFactor || 1.28));
-  return { km, hours: round(km / (data.settings.averageSpeedKmh || 62), 1) };
+  return { km, hours: hours(km) };
 }
 
-/** Road geometry between two places as [lng, lat] points. */
+/** The line drawn between two places on a map: straight for now (road-following shapes need a routing provider, #23). */
 export function legShape(data: AppData, fromId: string, toId: string): [number, number][] {
-  const known = ROAD_SHAPES[`${fromId}-${toId}`];
-  if (known) return known;
-  const reverse = ROAD_SHAPES[`${toId}-${fromId}`];
-  if (reverse) return [...reverse].reverse();
   const a = byId(data.places, fromId);
   const b = byId(data.places, toId);
   if (!a || !b) return [];

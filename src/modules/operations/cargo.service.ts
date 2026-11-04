@@ -11,6 +11,7 @@ import { assertStageAllows, recordEvent } from './stages.js';
 import { cumulativeKm, measure, round, shortageLitres, volume20, type Measure } from './calc.js';
 import { Consignment, DriverDocument } from './models/cargo.model.js';
 import { Trip } from './models/trip.model.js';
+import { announce } from './notices.js';
 import {
   activeDriver, activeRecord, baseCurrency, conflict, currencyInfo, driverThread, formatMoney, litres, loadOr404, log, need, nextNumber,
   post, present, queue, refuse, resolve, save, toBase, type MessageButton, type OpsContext,
@@ -263,6 +264,10 @@ export async function recordLoading(input: S.LoadingInput, ctx: OpsContext) {
     await post(driverThread(trip.get('driverId')), at, { title: 'Loading confirmed', text: `${qty}. Drive safe to ${await placeName(offload?.placeId)}.`, rows: [['Consignment', consignment.get('number')], ['Invoice', input.invoiceNo]] }, ctx);
   }
   await log(ctx, at, `Loaded ${qty} · ${consignment.get('number')}`, { tripId: trip._id });
+  await announce('trip.loaded', trip.toObject() as Plain, ctx, {
+    variables: { 'place.name': await placeName((stops[index] as { placeId?: unknown } | undefined)?.placeId), 'document.number': input.invoiceNo },
+    ref: { kind: 'consignments', id: consignment._id },
+  });
   return present(consignment.toObject());
 }
 
@@ -365,6 +370,10 @@ export async function recordDelivery(id: string, input: S.DeliveryInput, ctx: Op
     }, ctx);
   }
   await log(ctx, at, `Delivered · ${input.podNo}${shortage ? ` · ${litres(shortage.lossL)} transit loss` : ''}`, { tripId: trip._id });
+  await announce('trip.delivered', trip.toObject() as Plain, ctx, {
+    variables: { 'place.name': await placeName((stops[index] as { placeId?: unknown } | undefined)?.placeId), 'document.number': input.podNo },
+    ref: { kind: 'consignments', id: consignment._id },
+  });
   return present(consignment.toObject());
 }
 

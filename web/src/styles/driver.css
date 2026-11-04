@@ -177,6 +177,22 @@
   border-top: 1px dashed var(--line);
   font-size: 14px;
 }
+/* A statement's PDF, at the end of its settlement's line: a large enough target for a thumb. */
+.drv-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 32px;
+  padding: 0 4px;
+  border: 0;
+  background: none;
+  color: var(--pine-700);
+  font: 600 14px/1 var(--ui);
+  cursor: pointer;
+}
+.drv-link:disabled {
+  color: var(--ink-3);
+}
 .drv-balance {
   margin: 0;
   font-size: 15px;

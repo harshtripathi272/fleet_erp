@@ -43,3 +43,20 @@ export function useFileUrl(fileId: string | undefined) {
 }
 
 export const isPdf = (mime?: string) => mime === "application/pdf";
+
+/**
+ * Fetches a PDF the API makes (a trip sheet, a statement) with the session and hands it to the browser as a
+ * file: saved, or opened in the phone's PDF viewer. A plain link can't carry the token, so it goes through here.
+ */
+export async function downloadPdf(path: string, fallbackName: string) {
+  const res = await authorizedFetch(path);
+  const named = /filename\*=UTF-8''([^;]+)/.exec(res.headers.get("Content-Disposition") ?? "")?.[1];
+  const url = URL.createObjectURL(await res.blob());
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = named ? decodeURIComponent(named) : fallbackName;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+}

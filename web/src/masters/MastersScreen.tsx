@@ -1,7 +1,7 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Archive, History, Link2, Plus, RotateCcw, Search, Trash2 } from "lucide-react";
+import { Archive, History, Link2, Plus, RotateCcw, Search, Trash2, Upload } from "lucide-react";
 import { api, ApiError, request } from "../api/client";
 import type { Rec } from "../api/adapter";
 import { can } from "../api/session";
@@ -12,9 +12,11 @@ import { DriverAccess } from "./DriverAccess";
 import { UserAccess } from "./UserAccess";
 import { PermissionMatrix } from "./PermissionMatrix";
 import { RateFeed } from "./RateFeed";
+import { ImportDialog } from "./ImportDialog";
+import { CompanySetup, useReadiness } from "./CompanySetup";
 import MessagingSettings from "../settings/MessagingSettings";
-import { fieldName, label, short, shown } from "./history";
-import { AUDIT_VIEW, AuditLog, wantsAuditLog } from "./AuditLog";
+import { AUDIT_VIEW, fieldName, label, short, shown, wantsAuditLog } from "./history";
+import { AuditLog } from "./AuditLog";
 
 export { label };
 
@@ -43,10 +45,17 @@ export function MastersScreen({ initialEntity }: { initialEntity?: string }) {
   const [selected, setSelectedState] = useState<string>(() => (wantsAuditLog() ? AUDIT_VIEW : initialEntity && !initialEntity.includes(":") ? initialEntity : remembered() ?? "vehicles"));
   // A record opened from the audit log.
   const [openId, setOpenId] = useState<string | undefined>();
+  // A company that isn't ready for its first trip opens on "Set up the company", unless someone chose a page or followed a link.
+  const readiness = useReadiness();
+  const [opened, setOpened] = useState(Boolean(initialEntity || remembered() || wantsAuditLog()));
+  useEffect(() => {
+    if (!opened && readiness.data && !readiness.data.ready && can(me, "company", "read")) { setSelectedState("setup"); setOpened(true); }
+  }, [opened, readiness.data, me]);
   const setSelected = (key: string, id?: string) => {
     setSelectedState(key);
     setOpenId(id);
     remember(key);
+    setOpened(true);
     // Leaving the audit log drops its filters from the address bar.
     if (key !== AUDIT_VIEW && location.search) history.replaceState(null, "", location.pathname);
   };
@@ -71,6 +80,7 @@ export function MastersScreen({ initialEntity }: { initialEntity?: string }) {
         {(() => {
           // Settings pages that are not masters: the company, and how messages are sent (#19).
           const pages = [
+            { key: "setup", label: "Set up the company", badge: readiness.data?.missing.length ?? 0, show: can(me, "company", "read") },
             { key: "company", label: "Company", show: can(me, "company", "read") },
             { key: "messaging", label: "Sending messages", show: can(me, "message-connections", "read") },
             { key: AUDIT_VIEW, label: "Audit log", show: can(me, "audit-logs", "read") },
@@ -78,7 +88,11 @@ export function MastersScreen({ initialEntity }: { initialEntity?: string }) {
           return pages.length > 0 && (
             <section>
               <h3>Organisation</h3>
-              {pages.map((p) => <button key={p.key} className={selected === p.key ? "on" : ""} onClick={() => setSelected(p.key)}>{p.label}</button>)}
+              {pages.map((p) => (
+                <button key={p.key} className={selected === p.key ? "on" : ""} onClick={() => setSelected(p.key)}>
+                  {p.label}{"badge" in p && p.badge ? <b className="setup-badge" aria-label={`${p.badge} steps missing`}>{p.badge}</b> : null}
+                </button>
+              ))}
             </section>
           );
         })()}
@@ -100,7 +114,8 @@ export function MastersScreen({ initialEntity }: { initialEntity?: string }) {
         )}
       </aside>
       <section className="masters-main">
-        {selected === "company" ? <CompanyPanel />
+        {selected === "setup" ? <CompanySetup defs={defs} onOpen={(key) => setSelected(key)} />
+          : selected === "company" ? <CompanyPanel />
           : selected === "messaging" ? <MessagingSettings />
           : selected === AUDIT_VIEW && can(me, "audit-logs", "read") ? <AuditLog onOpen={(entity, id) => setSelected(entity, id)} />
           : custom ? <CustomRecords master={custom} defs={defs} />
@@ -114,6 +129,7 @@ export function MastersScreen({ initialEntity }: { initialEntity?: string }) {
 
 function Records({ def, defs, openId }: { def: Def; defs: Def[]; openId?: string }) {
   const [search, setSearch] = useState("");
+  const [importing, setImporting] = useState(false);
   const [status, setStatus] = useState("");
   const [sort, setSort] = useState<string>(def.defaultSort ?? def.sortFields[0]);
   const [page, setPage] = useState(1);
@@ -130,11 +146,15 @@ function Records({ def, defs, openId }: { def: Def; defs: Def[]; openId?: string
           <h2>{def.label}</h2>
           <p className="muted">{def.description}</p>
         </div>
-        {creatable(def) && (
-          <Button tone="primary" onClick={() => setOpen("new")}><Plus size={16} /> New {def.singular.toLowerCase()}</Button>
-        )}
+        <div className="row-actions">
+          {creatable(def) && !def.managed?.create && <Button onClick={() => setImporting(true)}><Upload size={15} /> Import</Button>}
+          {creatable(def) && (
+            <Button tone="primary" onClick={() => setOpen("new")}><Plus size={16} /> New {def.singular.toLowerCase()}</Button>
+          )}
+        </div>
       </header>
       {def.key === "exchange-rates" && <RateFeed />}
+      {importing && <ImportDialog master={def.key} label={def.label} onClose={() => setImporting(false)} />}
       <div className="desk-tools">
         <label className="search">
           <Search size={15} />
