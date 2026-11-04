@@ -25,6 +25,14 @@ const companyShape = {
   website: z.url().max(300).nullable().optional(),
   logoUrl: z.url().max(2000).nullable().optional(),
   /** Only the settings sent change; the rest keep their values. */
+  maintenance: z.strictObject({
+    workOrderStopsTruck: z.boolean().optional(),
+    defectStopsTruck: z.boolean().optional(),
+    dueSoonKm: z.number().min(0).max(100_000).optional(),
+    dueSoonDays: z.number().min(0).max(365).optional(),
+    dueSoonHours: z.number().min(0).max(10_000).optional(),
+  }).optional(),
+  /** Only the settings sent change; the rest keep their values. */
   operations: z.strictObject({
     tripStartsFromTruck: z.boolean().optional(),
     roadDistanceFactor: z.number().min(1).max(3).optional(),

@@ -48,6 +48,7 @@ export const DEFAULT_TEMPLATES: DefaultTemplate[] = [
   { code: 'EM-FUND-PAID', name: 'Paid (e-mail to Operations)', channel: 'email', event: 'fund_request.paid', audience: 'operations', subject: '{{trip.number}}: {{amount}} {{currency}} paid', body: `{{amount}} {{currency}} for trip {{trip.number}} was paid (reference {{document.number}}).${SIGN}` },
   // Expenses
   { code: 'EM-EXPENSE-SUBMITTED', name: 'Expense to approve (e-mail to Finance)', channel: 'email', event: 'expense.submitted', audience: 'finance', subject: 'Expense to approve: {{document.name}} {{amount}} {{currency}}', body: `{{driver.name}} has a {{document.name}} expense of {{amount}} {{currency}} on trip {{trip.number}} (receipt {{document.number}}) waiting for approval.\n\n{{link}}${SIGN}` },
+  { code: 'EM-SERVICE-DUE', name: 'Service due (e-mail to Operations)', channel: 'email', event: 'service.due', audience: 'operations', subject: 'Service due: {{vehicle.registration}}', body: `{{document.name}} on {{vehicle.registration}}: {{reason}}.${SIGN}` },
   { code: 'SMS-EXPENSE-APPROVED', name: 'Expense approved (SMS to driver)', channel: 'sms', event: 'expense.approved', audience: 'driver', body: 'Your {{document.name}} expense of {{amount}} {{currency}} is approved. It is off your balance.' },
   { code: 'SMS-EXPENSE-REJECTED', name: 'Expense rejected (SMS to driver)', channel: 'sms', event: 'expense.rejected', audience: 'driver', body: 'Your {{document.name}} expense of {{amount}} {{currency}} was not accepted: {{reason}}' },
   // Settlement
@@ -80,6 +81,7 @@ export const DEFAULT_RULES: DefaultRule[] = [
   { code: 'FUND-PAID-DRIVER', name: 'Tell the driver money is issued', event: 'fund_request.paid', recipients: [driver], templates: [{ channel: 'sms', template: 'SMS-FUND-PAID' }] },
   { code: 'FUND-PAID-OPS', name: 'Tell Operations a request is paid', event: 'fund_request.paid', recipients: [role('operations')], templates: [{ channel: 'email', template: 'EM-FUND-PAID' }] },
   { code: 'EXPENSE-SUBMITTED-FINANCE', name: 'Tell Finance about expenses to approve', event: 'expense.submitted', recipients: [role('finance')], templates: [{ channel: 'email', template: 'EM-EXPENSE-SUBMITTED' }] },
+  { code: 'SERVICE-DUE-OPERATIONS', name: 'Tell Operations a service is due', event: 'service.due', recipients: [role('operations')], templates: [{ channel: 'email', template: 'EM-SERVICE-DUE' }] },
   { code: 'EXPENSE-APPROVED-DRIVER', name: 'Tell the driver an expense is approved', event: 'expense.approved', recipients: [driver], templates: [{ channel: 'sms', template: 'SMS-EXPENSE-APPROVED' }] },
   { code: 'EXPENSE-REJECTED-DRIVER', name: 'Tell the driver an expense is rejected', event: 'expense.rejected', recipients: [driver], templates: [{ channel: 'sms', template: 'SMS-EXPENSE-REJECTED' }] },
   { code: 'SETTLEMENT-DRIVER', name: 'Send the driver their statement', event: 'settlement.posted', recipients: [driver], templates: [{ channel: 'sms', template: 'SMS-SETTLEMENT' }, { channel: 'email', template: 'EM-SETTLEMENT' }] },

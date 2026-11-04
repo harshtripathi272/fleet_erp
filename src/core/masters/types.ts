@@ -54,6 +54,8 @@ export interface MasterDefinition {
   labels?: Record<string, string>;
   /** The area of the business this master belongs to (#56); while the company has it off, the master is hidden and refuses. */
   module?: string;
+  /** Fields that belong to an area of their own inside the master: hidden while it is off ({ parts: 'parts' }). */
+  fieldModules?: Record<string, string>;
   /** Names for a choice field's stored values ({ event: { "trip.loaded": "A truck is loaded" } }); values without one are named from the value. */
   choiceLabels?: Record<string, Record<string, string>>;
   /** One line under a field saying what to put in it, where its name alone doesn't ("{SEQ} is the running number"). */

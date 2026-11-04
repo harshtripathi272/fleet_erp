@@ -27,7 +27,8 @@ export const areaOfEvent = (event: string) => EVENT_AREAS.find(([re]) => re.test
 export async function areasOn(): Promise<Set<string>> {
   const company = await Company.findOne().select('modules').lean<{ modules?: string[] }>();
   const chosen = company?.modules ?? DEFAULT_AREAS;
-  return new Set(AREAS.filter((a) => ('always' in a && a.always) || (a.state !== 'not-built' && chosen.includes(a.key))).map((a) => a.key));
+  const on = (a: (typeof AREAS)[number]) => ('always' in a && a.always) || (a.state !== 'not-built' && chosen.includes(a.key));
+  return new Set(AREAS.filter((a) => on(a) && (!('within' in a) || chosen.includes(a.within))).map((a) => a.key));
 }
 export const isAreaOn = async (key: string) => (await areasOn()).has(key);
 

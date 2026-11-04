@@ -24,7 +24,7 @@ export function systemRoles() {
     { key: 'admin', name: 'Administrator', description: 'Full access to every master, users and roles.', permissions: [{ resource: '*', actions: ['*'] }] },
     {
       key: 'operations', name: 'Operations', description: 'Reads everything; maintains fleet, drivers, places, cargo and trip settings; plans and runs trips.',
-      permissions: [{ resource: '*', actions: ['read'] }, ...write(groupKeys(GROUPS.geography, GROUPS.fleet, GROUPS.drivers, GROUPS.compliance, GROUPS.cargo, GROUPS.trips, GROUPS.parties)), ...write(OPERATIONS_DESK)],
+      permissions: [{ resource: '*', actions: ['read'] }, ...write(groupKeys(GROUPS.geography, GROUPS.fleet, GROUPS.maintenance, GROUPS.drivers, GROUPS.compliance, GROUPS.cargo, GROUPS.trips, GROUPS.parties)), ...write(OPERATIONS_DESK)],
     },
     {
       key: 'finance', name: 'Finance', description: 'Reads everything including sensitive fields; maintains money, parties and trip budgets; approves, pays and settles.',
