@@ -58,19 +58,8 @@
 }
 .mr-truck-halo {
   fill: rgba(29, 77, 63, 0.18);
-  animation: halo 2.2s var(--ease) infinite;
   transform-origin: center;
   transform-box: fill-box;
-}
-@keyframes halo {
-  0% {
-    transform: scale(0.6);
-    opacity: 0.9;
-  }
-  100% {
-    transform: scale(1.6);
-    opacity: 0;
-  }
 }
 
 /* ---------- Fleet map ---------- */
@@ -79,7 +68,7 @@
   width: 100%;
   height: auto;
   border-radius: 10px;
-  background: radial-gradient(80% 90% at 50% 40%, #f7f6f0, #ecebe3);
+  background: var(--surface-2);
 }
 .fm-route {
   fill: none;
@@ -140,6 +129,7 @@
   position: relative;
   min-height: 0;
 }
+/* ui-allow: placeholder while the map loads */
 .map-loading {
   position: absolute;
   inset: 0;
@@ -153,6 +143,7 @@
     background-position: -150% 0;
   }
 }
+/* ui-allow: shows that the map is loading */
 .map-loading-ring {
   width: 34px;
   height: 34px;
@@ -188,6 +179,7 @@
   grid-template-columns: repeat(3, 1fr);
   gap: 8px;
 }
+/* ui-allow: the simulated dashcam: a real device */
 .gauge {
   position: relative;
   display: grid;
@@ -225,6 +217,7 @@
   border-radius: 2px;
   background: rgba(255, 255, 255, 0.12);
 }
+/* ui-allow: the simulated dashcam: a real device */
 .gauge-bar b {
   display: block;
   height: 100%;
@@ -241,7 +234,7 @@
   display: block;
   height: 100%;
   border-radius: 4px;
-  background: linear-gradient(90deg, var(--pine-500), var(--pine-700));
+  background: var(--pine-600);
   transition: width 0.45s var(--ease);
 }
 .track-progress-label {
@@ -279,6 +272,7 @@
   width: 0;
   height: 0;
 }
+/* ui-allow: a truck marker on the live map */
 .tm-body {
   position: absolute;
   left: -18px;
@@ -306,9 +300,6 @@
   background: rgba(29, 77, 63, 0.22);
   opacity: 0;
 }
-.truck-marker.moving .tm-pulse {
-  animation: halo 1.8s var(--ease) infinite;
-}
 .tm-plate {
   position: absolute;
   left: 22px;
@@ -321,6 +312,7 @@
   white-space: nowrap;
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
 }
+/* ui-allow: the simulated dashcam: a real device */
 .dashcam-frame {
   position: fixed;
   left: 20px;
@@ -364,7 +356,7 @@
   }
   .track-panel {
     box-shadow: 0 -20px 40px -24px rgba(0, 0, 0, 0.35);
-    border-radius: 18px 18px 0 0;
+    border-radius: 12px 12px 0 0;
     margin-top: -18px;
     z-index: 2;
   }

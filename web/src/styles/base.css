@@ -142,7 +142,7 @@ img {
   flex: none;
 }
 .btn:active:not(:disabled) {
-  transform: translateY(1px);
+  filter: brightness(0.96);
 }
 .btn-sm {
   --h: 32px;
@@ -157,7 +157,7 @@ img {
   border-radius: 11px;
 }
 .btn-primary {
-  background: linear-gradient(180deg, var(--pine-600), var(--pine-700));
+  background: var(--pine-700);
   border-color: #163f33;
   color: #fff;
   box-shadow:
@@ -165,10 +165,10 @@ img {
     0 1px 2px rgba(13, 26, 23, 0.25);
 }
 .btn-primary:hover:not(:disabled) {
-  background: linear-gradient(180deg, #2a7059, var(--pine-600));
+  background: var(--pine-600);
 }
 .btn-brass {
-  background: linear-gradient(180deg, #c99a3d, #a87417);
+  background: var(--brass);
   border-color: #8b5f10;
   color: #fff;
   box-shadow:
@@ -212,6 +212,7 @@ img {
   inset: 0;
   margin: auto;
 }
+/* ui-allow: shows that something is loading */
 .spinner {
   width: 16px;
   height: 16px;
@@ -357,39 +358,60 @@ select.input {
 
 /* ---------- Segmented ---------- */
 
+/* Views of one list (Mine, Active, Closed): tabs with an underline. */
 .segmented {
   display: inline-flex;
-  gap: 2px;
-  padding: 3px;
-  border-radius: 10px;
-  background: var(--paper-2);
-  box-shadow: inset 0 1px 2px rgba(20, 27, 25, 0.08);
+  gap: 4px;
   max-width: 100%;
   overflow-x: auto;
+  border-bottom: 1px solid var(--line-2);
   scrollbar-width: none;
 }
 .segmented button {
   display: inline-flex;
   align-items: center;
   gap: 7px;
-  height: 32px;
+  height: 36px;
+  margin-bottom: -1px;
   padding: 0 12px;
   border: 0;
-  border-radius: 8px;
+  border-bottom: 2px solid transparent;
   background: transparent;
-  color: var(--ink-2);
-  font-weight: 540;
+  color: var(--ink-3);
+  font-weight: 560;
   font-size: 13.5px;
   white-space: nowrap;
+  transition: color 0.12s, border-color 0.12s;
+}
+.segmented button:hover:not(:disabled) {
+  color: var(--ink);
 }
 .segmented button.on {
-  background: var(--surface);
+  border-bottom-color: var(--pine-700);
   color: var(--ink);
-  box-shadow: var(--shadow-1);
+}
+/* A setting's value from a few options: a plain group of buttons, the chosen one filled. */
+.segmented-choice {
+  gap: 0;
+  border: 1px solid var(--line-2);
+  border-radius: 8px;
+  background: var(--surface);
 }
 .segmented-choice button {
   flex: 1 1 auto;
   justify-content: center;
+  height: 34px;
+  margin: 0;
+  border-bottom: 0;
+  box-shadow: -1px 0 0 var(--line);
+  color: var(--ink-2);
+}
+.segmented-choice button:first-child {
+  box-shadow: none;
+}
+.segmented-choice button.on {
+  background: var(--pine-50);
+  color: var(--pine-700);
 }
 .segmented button:disabled {
   color: var(--ink-4);
@@ -439,39 +461,37 @@ select.input {
 .status {
   display: inline-flex;
   align-items: center;
-  gap: 7px;
-  font-size: 13px;
-  font-weight: 540;
+  min-height: 22px;
+  padding: 0 8px;
+  border-radius: 6px;
+  background: var(--paper-2);
   color: var(--ink-2);
+  font-size: 12.5px;
+  font-weight: 560;
   white-space: nowrap;
 }
-.status i {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: currentColor;
-  flex: none;
-}
 .status-ok {
+  background: var(--pine-50);
   color: var(--ok);
 }
 .status-wait {
-  color: #8a6415;
+  background: var(--brass-50);
+  color: #7d5a12;
 }
 .status-bad {
+  background: var(--rust-50);
   color: var(--rust);
 }
 .status-info {
+  background: var(--sky-50);
   color: var(--sky);
 }
 .status-mute {
   color: var(--ink-3);
 }
 .status-you {
+  background: var(--brass-50);
   color: var(--brass);
-}
-.status-you i {
-  box-shadow: 0 0 0 3px var(--brass-50);
 }
 .empty {
   display: grid;
@@ -539,6 +559,7 @@ select.input {
 .meter-issued {
   background: var(--pine-600);
 }
+/* ui-allow: hatching marks an amount still open */
 .meter-open {
   background: repeating-linear-gradient(135deg, var(--brass-2) 0 5px, #d9ad55 5px 10px);
 }
@@ -570,7 +591,6 @@ select.input {
   position: absolute;
   inset: 0;
   background: rgba(13, 22, 20, 0.36);
-  backdrop-filter: blur(2px);
 }
 .drawer {
   position: relative;
@@ -736,10 +756,6 @@ select.input {
   border-color: var(--pine-500);
   background: var(--pine-50);
   color: var(--pine-700);
-}
-.choice-chips button.on::before {
-  content: "✓";
-  font-size: 12px;
 }
 .choice-chips button:disabled {
   cursor: default;

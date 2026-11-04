@@ -69,10 +69,9 @@ function NominationCard({ n, onEdit, onConvert }: { n: Nomination; onEdit: () =>
     <article className={`nom nom-${n.status}`}>
       <header className="nom-head">
         <div>
-          <span className="mono muted">{n.no}</span>
           <h3>{customer.name}</h3>
           <span className="muted">
-            {n.source}
+            <span className="mono">{n.no}</span> · {n.source}
             {n.reference ? ` · ${n.reference}` : ""} · created {ago(data, n.createdAt)} ago
           </span>
         </div>

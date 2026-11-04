@@ -21,41 +21,20 @@
 
 /* ---------- Role picker ---------- */
 
+/* One column: a slim bar with the brand and the company, then the desks. No empty panel. */
 .picker {
   display: grid;
-  grid-template-columns: minmax(300px, 420px) 1fr;
+  grid-template-rows: auto 1fr;
   min-height: 100dvh;
 }
 .picker-side {
-  position: relative;
   display: flex;
-  flex-direction: column;
+  align-items: center;
   justify-content: space-between;
-  padding: 32px;
-  overflow: hidden;
-  background:
-    radial-gradient(120% 70% at 20% 0%, rgba(59, 142, 115, 0.28), transparent 60%),
-    linear-gradient(180deg, var(--pine-900), var(--pine-950));
+  gap: 16px;
+  padding: 12px 24px;
+  background: var(--pine-900);
   color: #dfeae5;
-}
-.picker-art {
-  position: absolute;
-  inset: 90px 0 70px;
-  display: grid;
-  place-items: center;
-  pointer-events: none;
-}
-.road-art {
-  width: 100%;
-  height: 100%;
-}
-.road-dash {
-  animation: road 2.4s linear infinite;
-}
-@keyframes road {
-  to {
-    stroke-dashoffset: -44;
-  }
 }
 .picker-company {
   position: relative;
@@ -65,9 +44,9 @@
 .picker-main {
   display: flex;
   flex-direction: column;
-  justify-content: center;
-  width: min(620px, 100%);
-  padding: 48px 56px;
+  justify-self: center;
+  width: min(640px, 100%);
+  padding: 56px 24px 48px;
 }
 .picker-main h1 {
   font: 600 38px/1.1 var(--serif);
@@ -90,7 +69,7 @@
   gap: 16px;
   padding: 16px 18px;
   border: 1px solid var(--line);
-  border-radius: 14px;
+  border-radius: 12px;
   background: var(--surface);
   box-shadow: var(--shadow-1);
   text-align: left;
@@ -105,12 +84,7 @@
 .picker-icon {
   display: grid;
   place-items: center;
-  width: 42px;
-  height: 42px;
-  border-radius: 11px;
-  background: var(--pine-50);
   color: var(--pine-700);
-  box-shadow: inset 0 0 0 1px rgba(29, 77, 63, 0.08);
 }
 .picker-text {
   display: grid;
@@ -172,8 +146,7 @@
   height: 100dvh;
   padding: 18px 12px 14px;
   background:
-    radial-gradient(140% 50% at 0% 0%, rgba(59, 142, 115, 0.2), transparent 60%),
-    linear-gradient(180deg, var(--pine-900), var(--pine-950));
+    var(--pine-900);
   color: #cfe0d8;
 }
 .side-brand {
@@ -205,19 +178,9 @@
   color: #fff;
 }
 .side-link.on {
-  background: rgba(255, 255, 255, 0.09);
+  background: rgba(255, 255, 255, 0.1);
   color: #fff;
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
-}
-.side-link.on::before {
-  content: "";
-  position: absolute;
-  left: -12px;
-  top: 10px;
-  bottom: 10px;
-  width: 3px;
-  border-radius: 0 3px 3px 0;
-  background: var(--brass-2);
+  font-weight: 600;
 }
 .nav-count {
   margin-left: auto;
@@ -297,8 +260,7 @@
   gap: 12px;
   height: 64px;
   padding: 0 28px;
-  background: rgba(243, 242, 236, 0.86);
-  backdrop-filter: saturate(1.4) blur(10px);
+  background: var(--paper);
   border-bottom: 1px solid rgba(0, 0, 0, 0.05);
 }
 .topbar h1 {
@@ -314,7 +276,7 @@
   height: 38px;
   padding: 0 14px 0 12px;
   border: 1px solid var(--line-2);
-  border-radius: 20px;
+  border-radius: 8px;
   background: var(--surface);
   color: var(--ink);
   font-weight: 560;
@@ -470,9 +432,6 @@
 }
 .card-mine {
   border-color: #e7cf9b;
-  box-shadow:
-    0 0 0 3px rgba(196, 144, 44, 0.12),
-    var(--shadow-1);
 }
 .card-quiet {
   background: var(--surface-2);
@@ -499,31 +458,29 @@
 .card-body > .rows:first-child {
   margin-top: -6px;
 }
+/* The day's figures: one framed line, divided by rules, like the summary line of a ledger. Not a grid of cards. */
 .kpis {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-  gap: 12px;
-}
-.kpi {
-  display: grid;
-  gap: 4px;
-  padding: 14px 16px;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
   border: 1px solid var(--line);
   border-radius: var(--radius);
   background: var(--surface);
-  box-shadow: var(--shadow-1);
+  overflow: hidden;
+}
+.kpi {
+  display: grid;
+  gap: 2px;
+  padding: 12px 18px;
+  box-shadow: -1px 0 0 var(--line);
 }
 .kpi span {
   color: var(--ink-3);
   font-size: 13px;
 }
 .kpi strong {
-  font: 600 25px/1.1 var(--serif);
-  letter-spacing: -0.01em;
-}
-.kpi-you {
-  border-color: #ebd6a8;
-  background: linear-gradient(180deg, #fffdf7, var(--brass-50));
+  font-size: 20px;
+  font-weight: 620;
+  line-height: 1.25;
 }
 .kpi-you strong {
   color: var(--brass);
@@ -599,7 +556,7 @@
   padding: 1px 7px;
   border: 1px solid var(--line-2);
   border-radius: 5px;
-  background: linear-gradient(180deg, #fff, #f5f3ec);
+  background: var(--surface);
   font: 600 12.5px/1.5 var(--mono);
   letter-spacing: 0.02em;
 }
@@ -610,7 +567,7 @@
   height: 30px;
   padding: 0 11px;
   border: 1px solid var(--line);
-  border-radius: 15px;
+  border-radius: 6px;
   background: var(--surface);
   font-size: 13.5px;
   white-space: nowrap;
@@ -715,7 +672,7 @@
   margin-top: 6px;
 }
 .approval.picked {
-  background: linear-gradient(90deg, var(--pine-50), transparent 60%);
+  background: var(--pine-50);
 }
 .approval-main {
   display: grid;
@@ -772,19 +729,17 @@
   padding: 0 10px;
   font-size: 13px;
 }
+/* What is being asked for, as a plain icon in its colour: no tile behind it. */
 .req-kind {
   display: grid;
   place-items: center;
   width: 32px;
   height: 32px;
-  border-radius: 9px;
 }
 .req-kind.fuel {
-  background: var(--sky-50);
   color: var(--sky);
 }
 .req-kind.cash {
-  background: var(--brass-50);
   color: var(--brass);
 }
 .labelled {
@@ -846,7 +801,7 @@
   height: calc(100dvh - 64px);
   padding: 16px 14px 16px 28px;
   border-right: 1px solid var(--line);
-  background: linear-gradient(180deg, var(--paper), #efede6);
+  background: var(--paper);
 }
 .acc-list,
 .trip-list {
@@ -960,6 +915,7 @@
 .trip-pick-text strong {
   font-weight: 580;
 }
+/* ui-allow: ruled lines of a paper statement */
 .statement-paper {
   position: sticky;
   top: 84px;
@@ -975,6 +931,7 @@
   background-image: linear-gradient(transparent 31px, rgba(29, 77, 63, 0.035) 32px);
   background-size: 100% 32px;
 }
+/* ui-allow: the torn edge of a paper statement */
 .statement-paper::before {
   content: "";
   position: absolute;
@@ -1072,7 +1029,7 @@
   gap: 14px;
   padding: 18px 20px;
   border: 1px solid var(--line);
-  border-radius: 14px;
+  border-radius: 12px;
   background: var(--surface);
   box-shadow: var(--shadow-1);
 }
@@ -1081,9 +1038,6 @@
 }
 .nom-accepted {
   border-color: #e7cf9b;
-  box-shadow:
-    0 0 0 3px rgba(196, 144, 44, 0.1),
-    var(--shadow-1);
 }
 .nom-head {
   display: flex;
@@ -1320,7 +1274,7 @@
   display: block;
   height: 100%;
   border-radius: 4px;
-  background: linear-gradient(90deg, var(--pine-500), var(--pine-700));
+  background: var(--pine-600);
   transition: width 0.6s var(--ease);
 }
 .desk-waits {
@@ -1427,7 +1381,6 @@
     display: flex;
     padding: 6px 6px calc(6px + env(safe-area-inset-bottom));
     background: rgba(13, 26, 23, 0.97);
-    backdrop-filter: blur(10px);
   }
   .tab {
     position: relative;
@@ -1489,16 +1442,8 @@
     margin-bottom: 2px;
     padding: 0 12px 0 0;
   }
-  .picker {
-    grid-template-columns: 1fr;
-  }
   .picker-side {
-    min-height: 150px;
-    padding: 22px;
-  }
-  .picker-art {
-    inset: 30px -40px -80px 40%;
-    opacity: 0.7;
+    padding: 12px 16px;
   }
   .picker-main {
     padding: 28px 18px 48px;

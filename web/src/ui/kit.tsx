@@ -2,7 +2,7 @@ import { useEffect } from "react";
 import type { ButtonHTMLAttributes, ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "motion/react";
-import { X } from "lucide-react";
+import { Check, X } from "lucide-react";
 import { initials } from "./format";
 
 type Tone = "primary" | "secondary" | "quiet" | "danger" | "brass";
@@ -99,7 +99,6 @@ export function Avatar({ name, tone = "pine", size = 32 }: { name: string; tone?
 export function Status({ tone, children }: { tone: "ok" | "wait" | "bad" | "info" | "mute" | "you"; children: ReactNode }) {
   return (
     <span className={`status status-${tone}`}>
-      <i />
       {children}
     </span>
   );
@@ -341,6 +340,7 @@ export function ChoiceChips<T extends string>({ options, value, onChange, disabl
         return (
           <button key={o.value} type="button" aria-pressed={on} className={on ? "on" : ""} disabled={disabled}
             onClick={() => onChange(on ? value.filter((v) => v !== o.value) : [...value, o.value])}>
+            {on && <Check size={14} aria-hidden />}
             {o.label}
           </button>
         );

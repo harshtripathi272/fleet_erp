@@ -66,8 +66,31 @@ Every choice the company can make is a setting. Most settings are changed once, 
 - **Text contrast** is at least 4.5:1 against its background. `--ink-3` is the lightest grey allowed for text; `--ink-4` is for borders and disabled text only.
 - **Corners:** cards 12 px or less, buttons and inputs 8–10 px. No pill-shaped buttons, except for small status chips.
 - **Spacing** comes from the 4 / 8 / 12 / 16 / 24 / 32 scale.
-- **No decoration:** no gradients, glass or blur, glow, pulsing "live" dots, emojis or decorative illustration on working screens. No movement on hover, only a change of colour.
 - **Colours** come from the tokens in `styles/base.css`. Don't write a new hex value in a component.
+
+### What reads as generated UI, and is not used
+
+These are the defaults AI tools produce. Lakshya rejects them on sight. The list comes from Impeccable's "craft floor" and the no-slop-ui skill, both in his shelf. `npm run check:ui` (`web/scripts/check-ui.mjs`, run in CI) fails on the ones a stylesheet can show.
+
+| Don't | Do |
+|---|---|
+| A coloured bar on one edge of a selected item, card or callout (`border-left: 3px`, `inset 2px 0 0`, a `::before` stripe) | A flat tint and heavier text for the selected item. Callouts use a tinted background or a full 1px border. |
+| A hovered row that becomes a floating white card | A slight darkening of the row's background |
+| Gradients on buttons, panels, cards, progress bars or backgrounds | Solid colours from the tokens |
+| Glass, blur, or a coloured halo ring around a card | A solid background and a 1px border; the border colour carries the state |
+| Pill buttons and bubbles (corners above 12px) | 8–10px on controls, 12px on cards; small status badges 6px |
+| Tabs with a raised pill in a grey track | An underline under the selected tab |
+| A dot in front of a status word | The word in a tinted badge |
+| An icon in a tinted tile beside every title | The icon alone, in its colour; a person's avatar is fine |
+| A row of metric cards at the top of a dashboard | The figures in one framed line divided by rules |
+| A small label or number above a heading (an eyebrow) | The heading first, with its identifiers on the line below |
+| Cards inside cards | One level of framing; entries inside a drawer are cards, but their list is not boxed again |
+| Pulsing, breathing or endlessly moving decoration ("live" dots, halos, animated art) | Still marks; only spinners and loading placeholders move |
+| Movement on hover or press (lift, tilt, slide) | A change of colour |
+| Decorative drawings or empty panels to fill space | Nothing; the content sets the layout |
+| A Unicode glyph standing in for an icon (✓) | The icon from lucide-react |
+
+**Exceptions.** Things that imitate a real object keep their look: the simulated phone and WhatsApp, the printed trip sheet and statement, a fuel ticket, number plates and the dashcam. In CSS, each such rule says so in a comment directly above it: `/* ui-allow: a paper fuel ticket with punched edges */`. Without that comment, the check fails.
 
 ## Checking a change
 

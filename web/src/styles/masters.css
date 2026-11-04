@@ -3,9 +3,9 @@
 .masters-nav { position: sticky; top: 0; max-height: calc(100vh - 120px); overflow: auto; display: grid; gap: 14px; padding-right: 6px; }
 .masters-nav h3 { margin: 0 0 4px; font-size: 12.5px; color: var(--ink-3); font-weight: 560; }
 .masters-nav section { display: grid; gap: 1px; }
-.masters-nav button { border: 0; background: transparent; text-align: left; padding: 6px 10px; border-radius: 8px; color: var(--ink-2); font-size: 14px; }
-.masters-nav button:hover { background: var(--surface); }
-.masters-nav button.on { background: var(--surface); color: var(--ink); font-weight: 560; box-shadow: inset 2px 0 0 var(--pine-700); }
+.masters-nav button { border: 0; background: transparent; text-align: left; padding: 6px 10px; border-radius: 6px; color: var(--ink-2); font-size: 14px; transition: background 0.12s, color 0.12s; }
+.masters-nav button:hover { background: rgba(20, 27, 25, 0.05); color: var(--ink); }
+.masters-nav button.on { background: rgba(20, 27, 25, 0.08); color: var(--ink); font-weight: 600; }
 .masters-main { min-width: 0; }
 .masters-head { display: flex; gap: 16px; align-items: center; justify-content: space-between; flex-wrap: wrap; margin-bottom: 12px; }
 .masters-head h2 { margin: 0; min-width: 0; text-wrap: balance; }
@@ -29,7 +29,8 @@
 .form-group legend, .form-group summary { font-weight: 560; color: var(--ink-2); padding: 0 4px; cursor: default; }
 details.form-group summary { cursor: pointer; }
 /* Repeating entries (an approval policy's levels): numbered cards, each removed from its own header. */
-.item-list { gap: 12px; }
+.form-group.item-list { gap: 12px; padding: 0; border: 0; }
+.form-group.item-list > legend { padding: 0 0 4px; color: var(--ink); font-weight: 600; }
 .item-card { display: grid; gap: 12px; padding: 12px 14px 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-2); }
 .item-card > header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .item-card > header strong { font-weight: 600; }
@@ -60,7 +61,7 @@ details.form-group summary { cursor: pointer; }
   .masters-nav section { padding: 4px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }
   .masters-nav h3 { padding: 8px 10px 2px; }
   .masters-nav button { min-height: 44px; }
-  .masters-nav button.on { background: var(--paper-2); box-shadow: none; }
+  .masters-nav button.on { background: var(--paper-2); }
   .masters-back { display: inline-flex; align-items: center; gap: 4px; min-height: 40px; margin-bottom: 4px; }
 }
 @media (max-width: 560px) {

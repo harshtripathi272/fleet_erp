@@ -231,12 +231,12 @@ function TripView({
       </button>
       <header className="trip-head">
         <div className="trip-head-main">
+          <h2>{trip.stops.length ? routeLabel(data, trip) : "New trip"}</h2>
           <div className="trip-head-meta">
             <span className="mono">{trip.no}</span>
             <span>{customer?.name}</span>
             {nomination && <span>{nomination.no}</span>}
           </div>
-          <h2>{trip.stops.length ? routeLabel(data, trip) : "New trip"}</h2>
           <div className="trip-chips">
             <span className="chip">
               <TruckIcon size={15} /> <b>{truck.plate}</b>
@@ -364,11 +364,11 @@ function NextStepBar({ trip, step, onGo, viewing }: { trip: Trip; step: NextStep
         )}
       </div>
       <div className="next-text">
+        <strong>{mine || actor === "done" || actor === "road" ? step.title : step.waiting}</strong>
         <span className="next-label">
           {mine ? "Your turn" : actor === "done" ? "Complete" : actor === "road" ? "On the road" : `${ACTOR_NAME[actor]}'s turn`}
           {step.since && actor !== "done" && <span className="muted"> · {ago(data, step.since)}</span>}
         </span>
-        <strong>{mine || actor === "done" || actor === "road" ? step.title : step.waiting}</strong>
         {step.detail && <span className="next-detail">{step.detail}</span>}
       </div>
       <div className="next-actions">
