@@ -1,5 +1,5 @@
-import type { RequestHandler } from 'express';
-import { ForbiddenError } from '../../core/errors/index.js';
+import { requireArea } from '../company/areas.js';
+import { DEFAULT_AREAS } from '../company/areaList.js';
 import { Company, OPERATIONS_DEFAULTS } from '../company/company.model.js';
 
 export type OperationsSettings = { -readonly [K in keyof typeof OPERATIONS_DEFAULTS]: (typeof OPERATIONS_DEFAULTS)[K] extends boolean ? boolean : (typeof OPERATIONS_DEFAULTS)[K] extends number ? number : string };
@@ -8,18 +8,12 @@ export type OperationsSettings = { -readonly [K in keyof typeof OPERATIONS_DEFAU
 export async function companySettings(): Promise<{ modules: string[]; operations: OperationsSettings }> {
   const company = await Company.findOne().select('modules operations').lean();
   return {
-    modules: (company?.modules as string[] | undefined) ?? ['masters', 'trips'],
+    modules: (company?.modules as string[] | undefined) ?? DEFAULT_AREAS,
     operations: { ...OPERATIONS_DEFAULTS, ...((company?.operations as Partial<OperationsSettings> | undefined) ?? {}) },
   };
 }
 
 export const operationsSettings = async () => (await companySettings()).operations;
 
-const MODULE_NAMES: Record<string, string> = { trips: 'Trips', finance: 'Finance', tracking: 'Tracking', 'driver-app': 'Driver app' };
-
-/** Refuses requests to an area whose module the company has switched off (company `modules`). */
-export const requireModule = (module: 'trips' | 'finance' | 'tracking' | 'driver-app'): RequestHandler => Object.assign<RequestHandler, { meta: object }>(async (_req, _res, next) => {
-  const { modules } = await companySettings();
-  if (!modules.includes(module)) throw new ForbiddenError(`The ${MODULE_NAMES[module]} module is switched off for this company`);
-  next();
-}, { meta: { module } });
+/** Refuses requests to an area the company has switched off (#56). */
+export const requireModule = (module: 'trips' | 'finance' | 'tracking' | 'driver-app') => requireArea(module);

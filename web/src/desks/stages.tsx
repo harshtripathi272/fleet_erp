@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useAreas } from "../api/areas";
 import type { ReactNode } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { ArrowRight, Check, CircleDollarSign, Clock, Droplets, FileText, Fuel, MapPin, Pause, Play, Plus, RotateCcw, Send, Trash2, Undo2, Upload } from "lucide-react";
@@ -1090,6 +1091,7 @@ function LoadingPanel({ trip }: { trip: Trip }) {
 /* ================= Transit ================= */
 
 function TransitPanel({ trip }: { trip: Trip }) {
+  const tracking = useAreas()("tracking");
   const { data, run, setOverlay, me } = useApp();
   const may = useMay();
   const sim = useSim();
@@ -1117,11 +1119,11 @@ function TransitPanel({ trip }: { trip: Trip }) {
     <div className="stack">
       <Card
         title="Live"
-        aside={
+        aside={tracking ? (
           <Button size="sm" onClick={() => setOverlay({ tracking: trip.id })}>
             <MapPin /> Open map
           </Button>
-        }
+        ) : undefined}
       >
         <div className="progress-line" aria-label={`${Math.round(at)} of ${Math.round(total)} km`}>
           <div className="progress-track">

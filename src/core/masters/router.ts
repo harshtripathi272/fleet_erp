@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { authorize } from '../../middleware/authorize.js';
+import { areaGuard } from './areaCheck.js';
 import { validate } from '../../middleware/validate.js';
 import { createMasterController } from './controller.js';
 import { listQuerySchema, pageQuery } from './query.js';
@@ -15,6 +16,8 @@ export function createMasterRouter(def: MasterDefinition, extend?: (router: Rout
   registerMaster(def);
   const router = Router();
   const c = createMasterController(def);
+  // A master of an area the company has switched off refuses everything, its own endpoints included.
+  if (def.module) router.use(areaGuard(def.module));
   extend?.(router);
   router.get('/', authorize(def.key, 'read'), validate({ query: listQuerySchema(def) }), c.list);
   if (!def.managed?.create) router.post('/', authorize(def.key, 'create'), validate({ body: def.createSchema }), c.create);

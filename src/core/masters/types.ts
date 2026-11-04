@@ -52,6 +52,12 @@ export interface MasterDefinition {
   hidden?: string[];
   /** Names for fields whose key doesn't read well on screen ("levels.minAmountMinor" → "Applies from"); others are named from their key. */
   labels?: Record<string, string>;
+  /** The area of the business this master belongs to (#56); while the company has it off, the master is hidden and refuses. */
+  module?: string;
+  /** Fields the app's logic reads beyond the required ones: a company may rename and move them but not hide them (#65). */
+  fixedFields?: string[];
+  /** Choice lists the app acts on: a company may rename and reorder their values but not retire them (#65). */
+  lockedChoices?: string[];
   /** Names for a choice field's stored values ({ event: { "trip.loaded": "A truck is loaded" } }); values without one are named from the value. */
   choiceLabels?: Record<string, Record<string, string>>;
   /** One line under a field saying what to put in it, where its name alone doesn't ("{SEQ} is the running number"). */
