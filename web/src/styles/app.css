@@ -246,7 +246,7 @@
   border-top: 1px solid rgba(255, 255, 255, 0.07);
   color: #e8f1ec;
 }
-.side-user > span {
+.side-user > span:not(.avatar) {
   display: grid;
   flex: 1;
   min-width: 0;
@@ -358,7 +358,7 @@
   gap: 12px;
   margin-bottom: 12px;
 }
-.more-person > span {
+.more-person > span:not(.avatar) {
   display: grid;
 }
 .more-person strong {
@@ -1052,7 +1052,7 @@
 .history-row:last-child {
   border-bottom: 0;
 }
-.history-row > span {
+.history-row > span:not(.avatar) {
   display: grid;
   flex: 1;
 }
