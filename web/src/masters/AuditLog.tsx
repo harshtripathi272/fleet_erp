@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Download } from "lucide-react";
 import { authorizedFetch, request } from "../api/client";
 import type { Rec } from "../api/adapter";
@@ -46,6 +46,8 @@ export function AuditLog({ onOpen }: { onOpen: (entity: string, id: string) => v
     setFiltersState(next);
     writeFilters(next);
   };
+  // The masters' field labels, already loaded by the masters screen this log sits in.
+  const defs = useQueryClient().getQueryData<Rec[]>(["meta-masters"]) ?? [];
   const people = useQuery({ queryKey: ["audit-people"], queryFn: async () => (await request<Rec[]>("/audit-logs/people")).data });
   const entities = useQuery({ queryKey: ["audit-entities"], queryFn: async () => (await request<Rec[]>("/audit-logs/entities")).data });
   const rows = useQuery({
@@ -118,7 +120,7 @@ export function AuditLog({ onOpen }: { onOpen: (entity: string, id: string) => v
                   {changes.length > 0 && (() => {
                     const list = (
                       <ul className="audit-changes">
-                        {changes.map((c) => <li key={String(c.path)}><span>{fieldName(String(c.path))}:</span> {e.action === "create" ? short(c.to) : e.action === "delete" ? short(c.from) : <>{short(c.from)} → {short(c.to)}</>}</li>)}
+                        {changes.map((c) => <li key={String(c.path)}><span>{fieldName(String(c.path), defs.find((d) => d.key === e.entity))}:</span> {e.action === "create" ? short(c.to) : e.action === "delete" ? short(c.from) : <>{short(c.from)} → {short(c.to)}</>}</li>)}
                       </ul>
                     );
                     // A new or deleted record lists every field: folded away, so the changes stand out.

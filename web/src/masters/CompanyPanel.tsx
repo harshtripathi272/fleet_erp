@@ -109,10 +109,7 @@ export function CompanyPanel() {
   return (
     <div className="desk">
       <header className="masters-head">
-        <div>
-          <h2>Company</h2>
-          <p className="muted">Details, currency, the areas switched on, and the trip settings this company works with.</p>
-        </div>
+        <h2>Company</h2>
         {writable && <Button tone="primary" busy={busy} onClick={save}>Save</Button>}
       </header>
       {company.error && <Empty title="Could not load the company">{(company.error as Error).message}</Empty>}

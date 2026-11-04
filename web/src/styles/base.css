@@ -604,7 +604,7 @@ select.input {
   max-height: calc(100dvh - 40px);
   display: flex;
   flex-direction: column;
-  border-radius: 16px;
+  border-radius: 12px;
   background: var(--surface);
   box-shadow: var(--shadow-3);
   overflow: hidden;
@@ -651,13 +651,10 @@ select.input {
   color: #f0a38f;
 }
 
-@media (max-width: 760px) {
+@media (max-width: 560px) {
   .grid-2,
   .grid-3 {
     grid-template-columns: 1fr;
-  }
-  .toasts {
-    bottom: 84px;
   }
   .drawer {
     width: 100vw !important;
@@ -686,6 +683,10 @@ select.input {
   .link-btn {
     padding-block: 9px;
     margin-block: -9px;
+  }
+  /* Above the tab bar. */
+  .toasts {
+    bottom: 84px;
   }
 }
 @media (prefers-reduced-motion: reduce) {

@@ -95,12 +95,10 @@
   box-shadow: var(--shadow-1);
   text-align: left;
   transition:
-    transform 0.18s var(--ease),
-    box-shadow 0.18s,
-    border-color 0.18s;
+    box-shadow 0.15s,
+    border-color 0.15s;
 }
 .picker-desk:hover {
-  transform: translateY(-1px);
   border-color: var(--pine-200);
   box-shadow: var(--shadow-2);
 }
@@ -110,7 +108,7 @@
   width: 42px;
   height: 42px;
   border-radius: 11px;
-  background: linear-gradient(180deg, var(--pine-50), var(--pine-100));
+  background: var(--pine-50);
   color: var(--pine-700);
   box-shadow: inset 0 0 0 1px rgba(29, 77, 63, 0.08);
 }
@@ -122,15 +120,11 @@
   font-size: 16px;
   font-weight: 620;
 }
-.picker-text span {
-  color: var(--ink-3);
-}
 .picker-chev {
   color: var(--ink-4);
-  transition: transform 0.18s var(--ease);
+  transition: color 0.15s;
 }
 .picker-desk:hover .picker-chev {
-  transform: translateX(3px);
   color: var(--pine-600);
 }
 .picker-drivers {
@@ -248,14 +242,9 @@
   align-items: center;
   gap: 10px;
   padding: 10px;
-  border: 1px solid rgba(255, 255, 255, 0.07);
-  border-radius: 12px;
-  background: rgba(255, 255, 255, 0.04);
+  margin-bottom: 4px;
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
   color: #e8f1ec;
-  text-align: left;
-}
-.side-user:hover {
-  background: rgba(255, 255, 255, 0.08);
 }
 .side-user > span {
   display: grid;
@@ -263,8 +252,11 @@
   min-width: 0;
 }
 .side-user strong {
+  overflow: hidden;
   font-weight: 600;
   line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .side-user span span {
   color: rgba(222, 236, 229, 0.55);
@@ -276,15 +268,18 @@
 .side-reset {
   display: flex;
   align-items: center;
-  gap: 7px;
+  gap: 8px;
+  min-height: 34px;
   padding: 6px 10px;
   border: 0;
+  border-radius: 8px;
   background: transparent;
-  color: rgba(222, 236, 229, 0.45);
-  font-size: 12.5px;
+  color: rgba(222, 236, 229, 0.72);
+  font-size: 13.5px;
 }
 .side-reset:hover {
-  color: rgba(222, 236, 229, 0.85);
+  background: rgba(255, 255, 255, 0.06);
+  color: #e8f1ec;
 }
 .main {
   min-width: 0;
@@ -408,6 +403,11 @@
   flex: 1;
   min-width: 200px;
   max-width: 360px;
+}
+.desk-tools .input {
+  flex: 0 1 auto;
+  width: auto;
+  min-width: 0;
 }
 .drawer-foot:has(.drawer-reason, .drawer-ask) {
   flex-wrap: wrap;
@@ -1064,6 +1064,7 @@
 
 .nom-list {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 14px;
 }
 .nom {
@@ -1074,6 +1075,9 @@
   border-radius: 14px;
   background: var(--surface);
   box-shadow: var(--shadow-1);
+}
+.nom > * {
+  min-width: 0;
 }
 .nom-accepted {
   border-color: #e7cf9b;
@@ -1094,7 +1098,8 @@
 }
 .nom-steps {
   display: flex;
-  gap: 0;
+  flex-wrap: wrap;
+  gap: 6px 0;
   margin: 0;
   padding: 0;
   list-style: none;
@@ -1111,11 +1116,12 @@
   font-weight: 540;
   white-space: nowrap;
 }
-.nom-steps li + li::before {
+/* The connector trails each step, so a wrapped second line starts with a step, not a dash. */
+.nom-steps li:not(:last-child)::after {
   content: "";
   width: 14px;
   height: 1.5px;
-  margin-right: 8px;
+  margin-left: 8px;
   background: var(--line-2);
 }
 .nom-steps i {
@@ -1521,5 +1527,25 @@
   }
   .table-wrap {
     margin: -6px -18px -18px;
+  }
+}
+
+/* A page title on a phone uses the tab's one-word name, so the WhatsApp button never squeezes it. */
+.topbar .title-short {
+  display: none;
+}
+@media (max-width: 560px) {
+  .topbar .title-long:has(+ .title-short) {
+    display: none;
+  }
+  .topbar .title-short {
+    display: inline;
+  }
+  .desk-tools .search {
+    flex: 1 1 100%;
+    max-width: none;
+  }
+  .desk-tools .input {
+    flex: 1 1 0;
   }
 }

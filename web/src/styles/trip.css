@@ -160,34 +160,6 @@
   align-items: flex-start;
   gap: 8px;
 }
-.live-dot {
-  position: relative;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: #1faa53;
-  display: inline-block;
-}
-.live-dot::after {
-  content: "";
-  position: absolute;
-  inset: -4px;
-  border-radius: 50%;
-  border: 2px solid #1faa53;
-  opacity: 0;
-  animation: ping 2s var(--ease) infinite;
-}
-@keyframes ping {
-  0% {
-    transform: scale(0.5);
-    opacity: 0.7;
-  }
-  100% {
-    transform: scale(1.6);
-    opacity: 0;
-  }
-}
-
 /* Stepper drawn like a road with stops. */
 .stepper {
   display: grid;
@@ -1189,30 +1161,22 @@
   width: 100%;
   background: linear-gradient(180deg, #f6f5ef, #efede4);
 }
-.map-card-open {
-  position: absolute;
-  top: 8px;
-  right: 8px;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  height: 32px;
-  padding: 0 10px;
-  font-size: 13px;
-  font-weight: 560;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.9);
-  color: var(--ink-2);
-}
 .map-card-foot {
   display: flex;
   align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
   gap: 8px;
   padding: 9px 12px;
   border-top: 1px solid var(--line);
   font-size: 13px;
   color: var(--ink-2);
+}
+.map-card-foot .link-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
 }
 .aside-money {
   display: grid;
@@ -1291,6 +1255,7 @@
 }
 .truck-tile {
   display: grid;
+  align-content: start;
   gap: 2px;
   padding: 11px 12px;
   border: 1px solid var(--line);
@@ -1320,10 +1285,11 @@
   .trip-body {
     grid-template-columns: 1fr;
   }
+  /* As many cards across as fit at a readable width: three on a wide screen, two or one beside the trip list. */
   .trip-aside {
     position: relative;
     top: 0;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
     align-items: start;
   }
   .trip-aside .aside-card:last-child {

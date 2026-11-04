@@ -13,8 +13,10 @@
 .outbox-note { max-width: 28ch; overflow-wrap: anywhere; }
 .outbox-pages { display: flex; align-items: center; justify-content: center; gap: 12px; margin-top: 12px; }
 .outbox-body { white-space: pre-wrap; font: inherit; background: var(--paper-2); padding: 12px; border-radius: var(--radius-sm); margin-top: 12px; }
-.link-btn { background: none; border: 0; padding: 0; color: inherit; text-decoration: underline; cursor: pointer; text-align: left; font: inherit; }
-@media (max-width: 640px) {
+.messaging-settings .link-btn { color: inherit; text-decoration: underline; text-align: left; font: inherit; }
+/* A sent message's subject: one line, cut, with the full text a click away. */
+.messaging-settings td .link-btn { display: block; max-width: 40ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media (max-width: 560px) {
   .outbox-filters { flex-direction: column; }
 }
 .channel-why { display: block; margin-top: 4px; color: var(--ink-3); font-size: 13px; overflow-wrap: anywhere; }

@@ -10,8 +10,13 @@ export const wantsAuditLog = () => new URLSearchParams(location.search).get("vie
 const BOOKKEEPING = new Set(["createdBy", "updatedBy", "archivedBy", "archivedAt", "version"]);
 const empty = (v: unknown) => v === undefined || v === null || v === "" || (typeof v === "object" && Object.keys(v as object).length === 0);
 export const shown = (c: Rec) => !BOOKKEEPING.has(String(c.path)) && !(empty(c.from) && empty(c.to));
-export const label = (key: string) => key.replace(/Id(s)?$/, "$1").replace(/_/g, " ").replace(/([a-z])([A-Z])/g, "$1 $2").replace(/^./, (c) => c.toUpperCase()).replace(/\bkm\b/i, "km").replace(/ Minor$/, "");
-export const fieldName = (path: string) => label(path.split(".").pop() ?? path);
+/** A key or a stored value in sentence case: "mobile_money" → "Mobile money", "homeBranchId" → "Home branch". Field names come from the server (`label` in /meta/masters); this is for values and anything without one. */
+export const label = (key: string) => key.replace(/Id(s)?$/, "$1").replace(/Minor$/, "").replace(/_/g, " ").replace(/([a-z0-9])([A-Z])/g, (_, a: string, b: string) => `${a} ${b.toLowerCase()}`).trim().replace(/^./, (c) => c.toUpperCase());
+/** A field's name as the server gives it, falling back to its key. */
+export const fieldTitle = (def: Rec, path: string, key = path.split(".").pop() ?? path) =>
+  String((def.fields as Rec[] | undefined)?.find((f) => f.path === path)?.label ?? label(key));
+/** A changed field's name: the master's own label when the master is known. */
+export const fieldName = (path: string, def?: Rec) => (def ? fieldTitle(def, path) : label(path.split(".").pop() ?? path));
 /** A value as a person reads it: dates as dates, a link to another record as such, long values cut. */
 export const short = (v: unknown): string => {
   if (v === undefined || v === null || v === "") return "—";

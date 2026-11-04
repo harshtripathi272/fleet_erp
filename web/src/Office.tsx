@@ -300,7 +300,6 @@ function RolePicker({
                 </span>
                 <span className="picker-text">
                   <strong>{title}</strong>
-                  <span>{me.email}</span>
                 </span>
                 <ChevronRight size={18} className="picker-chev" />
               </button>
@@ -402,14 +401,18 @@ function Shell({
           ))}
         </nav>
         <div className="side-foot">
-          <button className="side-user" onClick={canSwitch ? onSwitch : undefined} title={canSwitch ? "Switch desk" : undefined} disabled={!canSwitch}>
+          <div className="side-user">
             <Avatar name={person} tone="dark" size={34} />
             <span>
-              <strong>{person}</strong>
+              <strong title={person}>{person}</strong>
               <span>{ROLE_LABEL[role]}</span>
             </span>
-            {canSwitch && <ArrowRightLeft size={16} />}
-          </button>
+          </div>
+          {canSwitch && (
+            <button className="side-reset" onClick={onSwitch}>
+              <ArrowRightLeft size={14} /> Switch desk
+            </button>
+          )}
           <button className="side-reset" onClick={() => setAccount(true)}>
             <KeyRound size={14} /> Your account
           </button>
@@ -421,7 +424,10 @@ function Shell({
       <main className="main" ref={main}>
         {role !== "driver" && (
           <header className="topbar">
-            <h1>{current?.label}</h1>
+            <h1>
+              <span className="title-long">{current?.label}</span>
+              {current?.short && <span className="title-short">{current.short}</span>}
+            </h1>
             <PhoneButton />
           </header>
         )}

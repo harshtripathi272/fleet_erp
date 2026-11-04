@@ -16,7 +16,7 @@ import { useApp } from "../store";
 import { useMay } from "../api/session";
 import { useMine } from "./mine";
 import { byId, tripKm } from "../domain/calc";
-import { activeTrip, placeName, routeLabel } from "../domain/helpers";
+import { placeName, routeLabel } from "../domain/helpers";
 import { ACTOR_NAME, nextStep, STAGES, stageIndex, stageTimes } from "../domain/turn";
 import type { Move, NextStep, StageId } from "../domain/turn";
 import type { Action, Desk, Trip } from "../domain/types";
@@ -252,12 +252,6 @@ function TripView({
           </div>
         </div>
         <div className="trip-head-actions">
-          {trip.dispatchedAt && (
-            <Button onClick={() => setOverlay({ tracking: trip.id })}>
-              {activeTrip(trip) && <span className="live-dot" aria-hidden />}
-              <MapPinned /> Track
-            </Button>
-          )}
           <Button onClick={() => setOverlay({ document: { kind: "trip-sheet", id: trip.id } })}>
             <FileText /> Trip sheet
           </Button>

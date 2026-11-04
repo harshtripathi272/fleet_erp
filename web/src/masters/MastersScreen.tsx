@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Archive, History, Link2, Plus, RotateCcw, Search, Trash2, Upload } from "lucide-react";
+import { Archive, ChevronLeft, History, Link2, Plus, RotateCcw, Search, Trash2, Upload } from "lucide-react";
 import { api, ApiError, request } from "../api/client";
 import type { Rec } from "../api/adapter";
 import { can } from "../api/session";
@@ -15,7 +15,7 @@ import { RateFeed } from "./RateFeed";
 import { ImportDialog } from "./ImportDialog";
 import { CompanySetup, useReadiness } from "./CompanySetup";
 import MessagingSettings from "../settings/MessagingSettings";
-import { AUDIT_VIEW, fieldName, label, short, shown, wantsAuditLog } from "./history";
+import { AUDIT_VIEW, fieldName, fieldTitle, label, short, shown, wantsAuditLog } from "./history";
 import { AuditLog } from "./AuditLog";
 
 export { label };
@@ -48,14 +48,17 @@ export function MastersScreen({ initialEntity }: { initialEntity?: string }) {
   // A company that isn't ready for its first trip opens on "Set up the company", unless someone chose a page or followed a link.
   const readiness = useReadiness();
   const [opened, setOpened] = useState(Boolean(initialEntity || remembered() || wantsAuditLog()));
+  // On a phone the list of masters is a page of its own; choosing one shows it full width, with a way back.
+  const [browsing, setBrowsing] = useState(!initialEntity && !wantsAuditLog());
   useEffect(() => {
-    if (!opened && readiness.data && !readiness.data.ready && can(me, "company", "read")) { setSelectedState("setup"); setOpened(true); }
+    if (!opened && readiness.data && !readiness.data.ready && can(me, "company", "read")) { setSelectedState("setup"); setOpened(true); setBrowsing(false); }
   }, [opened, readiness.data, me]);
   const setSelected = (key: string, id?: string) => {
     setSelectedState(key);
     setOpenId(id);
     remember(key);
     setOpened(true);
+    setBrowsing(false);
     // Leaving the audit log drops its filters from the address bar.
     if (key !== AUDIT_VIEW && location.search) history.replaceState(null, "", location.pathname);
   };
@@ -71,7 +74,7 @@ export function MastersScreen({ initialEntity }: { initialEntity?: string }) {
   const custom = selected.startsWith("custom:") ? customMasters.data?.find((c) => `custom:${c.id}` === selected) : undefined;
   const def = defs.find((d) => d.key === selected) ?? defs[0];
   return (
-    <div className="masters">
+    <div className={browsing ? "masters browsing" : "masters"}>
       <aside className="masters-nav" aria-label="Masters">
         <label className="search">
           <Search size={15} />
@@ -114,6 +117,7 @@ export function MastersScreen({ initialEntity }: { initialEntity?: string }) {
         )}
       </aside>
       <section className="masters-main">
+        <button className="masters-back link-btn" onClick={() => { setBrowsing(true); window.scrollTo({ top: 0 }); }}><ChevronLeft size={16} /> All masters</button>
         {selected === "setup" ? <CompanySetup defs={defs} onOpen={(key) => setSelected(key)} />
           : selected === "company" ? <CompanyPanel />
           : selected === "messaging" ? <MessagingSettings />
@@ -143,10 +147,7 @@ function Records({ def, defs, openId }: { def: Def; defs: Def[]; openId?: string
   return (
     <div className="desk">
       <header className="masters-head">
-        <div>
-          <h2>{def.label}</h2>
-          <p className="muted">{def.description}</p>
-        </div>
+        <h2>{def.label}</h2>
         <div className="row-actions">
           {creatable(def) && !def.managed?.create && <Button onClick={() => setImporting(true)}><Upload size={15} /> Import</Button>}
           {creatable(def) && (
@@ -180,7 +181,7 @@ function Records({ def, defs, openId }: { def: Def; defs: Def[]; openId?: string
               {(rows.data?.data ?? []).map((r) => (
                 <tr key={r.id} onClick={() => setOpen(r.id)} className="clickable">
                   {columns.map((c) => <td key={c.path}><Value value={get(r, c.path)} field={c.field} defs={defs} /></td>)}
-                  <td><Status tone={r.status === "active" ? "ok" : r.status === "archived" ? "mute" : "wait"}>{r.status}</Status></td>
+                  <td><Status tone={r.status === "active" ? "ok" : r.status === "archived" ? "mute" : "wait"}>{label(String(r.status))}</Status></td>
                 </tr>
               ))}
               {rows.data && !rows.data.data.length && <tr><td colSpan={columns.length + 1} className="muted">Nothing here yet.</td></tr>}
@@ -208,7 +209,7 @@ function listColumns(def: Def) {
   // A master may name its own list columns; otherwise required fields and links to other masters.
   const named = ((def.columns ?? []) as string[]).map((p) => fields.find((f) => f.path === p)).filter(Boolean) as Rec[];
   const extra = named.length ? named : fields.filter((f) => top(f.path) && f.group === "master" && !f.hidden && f.type !== "object" && !f.array && f.path !== def.titleField && f.path !== "code" && (f.required || f.ref || f.enum)).slice(0, 3);
-  return [title, code, ...extra].filter(Boolean).map((f) => ({ path: f!.path as string, label: (def.key === "field-definitions" && SPEC_LABEL[String(f!.path)]) || String(f!.path).split(".").map(label).join(" "), field: f! }));
+  return [title, code, ...extra].filter(Boolean).map((f) => ({ path: f!.path as string, label: (def.key === "field-definitions" && SPEC_LABEL[String(f!.path)]) || String(f!.label ?? f!.path.split(".").map(label).join(" ")), field: f! }));
 }
 
 /**
@@ -423,7 +424,7 @@ function HistoryList({ def, id }: { def: Def; id: string }) {
         <li key={h.id}>
           <strong><History size={13} /> {label(h.action)}</strong> <span className="muted">{new Date(h.at).toLocaleString("en-GB")}{h.actorName ? ` · ${h.actorName}` : ""}</span>
           {h.summary && <div>{h.summary}</div>}
-          {(h.changes as Rec[]).filter(shown).slice(0, 8).map((c) => <div key={c.path} className="small">{fieldName(String(c.path))}: {short(c.from)} → {short(c.to)}</div>)}
+          {(h.changes as Rec[]).filter(shown).slice(0, 8).map((c) => <div key={c.path} className="small">{fieldName(String(c.path), def)}: {short(c.from)} → {short(c.to)}</div>)}
         </li>
       ))}
     </ol>
@@ -468,7 +469,7 @@ function CustomRecords({ master, defs }: { master: Rec; defs: Def[] }) {
   return (
     <div className="desk">
       <header className="masters-head">
-        <div><h2>{master.name}</h2><p className="muted">{master.description}</p></div>
+        <h2>{master.name}</h2>
         <Button tone="primary" onClick={() => { setDraft({}); setOpen("new"); }}><Plus size={16} /> New record</Button>
       </header>
       <div className="table-frame">
@@ -478,7 +479,7 @@ function CustomRecords({ master, defs }: { master: Rec; defs: Def[] }) {
             {(rows.data ?? []).map((r) => (
               <tr key={r.id} className="clickable" onClick={() => { setDraft(r.data ?? {}); setSure(false); setOpen(r); }}>
                 {fields.slice(0, 4).map((f) => <td key={f.key}><Value value={r.data?.[f.key]} field={{ ref: f.referenceMaster, type: f.type }} defs={defs} /></td>)}
-                <td><Status tone={r.status === "active" ? "ok" : "mute"}>{r.status}</Status></td>
+                <td><Status tone={r.status === "active" ? "ok" : "mute"}>{label(String(r.status))}</Status></td>
               </tr>
             ))}
           </tbody>
@@ -599,7 +600,7 @@ function SchemaForm({ schema, def, defs, value, onChange, readOnly, canSensitive
 function FieldInput({ name, path, schema, required, def, defs, value, onChange, readOnly, canSensitive }: { name: string; path: string; schema: Schema; required: boolean; def: Def; defs: Def[]; value: unknown; onChange: (v: unknown) => void; readOnly?: boolean; canSensitive: boolean }) {
   const isSpecMaster = def.key === "field-definitions" || def.key === "custom-masters";
   const specField = isSpecMaster ? SPEC_LABEL[name] ?? "" : undefined;
-  const title = `${specField || label(name)}${required ? " *" : ""}`;
+  const title = `${specField || fieldTitle(def, path, name)}${required ? " *" : ""}`;
   // Which master a custom field belongs to, or links to: chosen from the masters, not typed as a key.
   if ((def.key === "field-definitions" && name === "entity") || ((def.key === "field-definitions" || def.key === "custom-masters") && name === "referenceMaster")) {
     const choices = defs.filter((d) => d.key !== "custom-records" && (name !== "entity" || d.customFieldsAllowed !== false));

@@ -12,20 +12,23 @@ let baseCode = "ZMW";
 export const setBaseCurrencyCode = (code: string | undefined) => { if (code) baseCode = code; };
 export const baseCurrencyCode = () => baseCode;
 
+/** Joins a figure and its unit, or a date's parts, so a line never breaks inside them ("12,500 ZMW", "4 Nov, 15:56"). */
+const keep = (text: string) => text.replace(/ /g, "\u00a0");
+
 /** An amount in the company's base currency (named after the first client's kwacha). */
-export const zmw = (value: number | undefined | null) => (value == null || Number.isNaN(value) ? "—" : `${num(Math.round(value))} ${baseCode}`);
-export const L = (value: number | undefined | null) => (value == null ? "—" : `${num(Math.round(value))} L`);
-export const km = (value: number | undefined | null) => (value == null ? "—" : `${num(Math.round(value))} km`);
+export const zmw = (value: number | undefined | null) => (value == null || Number.isNaN(value) ? "—" : keep(`${num(Math.round(value))} ${baseCode}`));
+export const L = (value: number | undefined | null) => (value == null ? "—" : keep(`${num(Math.round(value))} L`));
+export const km = (value: number | undefined | null) => (value == null ? "—" : keep(`${num(Math.round(value))} km`));
 export const cash = (value: number, currency: string) =>
-  `${value.toLocaleString("en-GB", { maximumFractionDigits: 2 })} ${currency}`;
+  keep(`${value.toLocaleString("en-GB", { maximumFractionDigits: 2 })} ${currency}`);
 
 export function day(iso?: string) {
   if (!iso) return "—";
-  return new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short" });
+  return keep(new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short" }));
 }
 export function dayYear(iso?: string) {
   if (!iso) return "—";
-  return new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
+  return keep(new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }));
 }
 export function hm(iso?: string) {
   if (!iso) return "—";
@@ -33,25 +36,25 @@ export function hm(iso?: string) {
 }
 export function stamp(iso?: string) {
   if (!iso) return "—";
-  return new Date(iso).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+  return keep(new Date(iso).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }));
 }
 
 /** "12 min", "3 h", "2 days" relative to the demo clock. */
 export function ago(data: AppData, iso?: string) {
   if (!iso) return "";
   const minutes = Math.max(0, Math.round((clock(data) - Date.parse(iso)) / 60000));
-  if (minutes < 1) return "1 min";
-  if (minutes < 60) return `${minutes} min`;
+  if (minutes < 1) return keep("1 min");
+  if (minutes < 60) return keep(`${minutes} min`);
   const hours = Math.round(minutes / 60);
-  if (hours < 36) return `${hours} h`;
-  return `${Math.round(hours / 24)} days`;
+  if (hours < 36) return keep(`${hours} h`);
+  return keep(`${Math.round(hours / 24)} days`);
 }
 
 export function hoursText(hours: number) {
-  if (hours < 1) return `${Math.round(hours * 60)} min`;
+  if (hours < 1) return keep(`${Math.round(hours * 60)} min`);
   const h = Math.floor(hours);
   const m = Math.round((hours - h) * 60);
-  return m ? `${h} h ${m} min` : `${h} h`;
+  return keep(m ? `${h} h ${m} min` : `${h} h`);
 }
 
 /** Local date-time value for <input type="datetime-local">. */

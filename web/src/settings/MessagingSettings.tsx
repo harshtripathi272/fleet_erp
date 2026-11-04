@@ -85,10 +85,7 @@ export default function MessagingSettings() {
   return (
     <div className="desk messaging-settings">
       <header className="masters-head">
-        <div>
-          <h2>Messages</h2>
-          <p className="muted">How e-mail, SMS and WhatsApp go out, and everything sent.</p>
-        </div>
+        <h2>Sending messages</h2>
         {creatable && <Button tone="primary" onClick={() => setEditing("new")}>New connection</Button>}
       </header>
 
