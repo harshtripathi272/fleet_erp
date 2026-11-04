@@ -11,7 +11,7 @@ export function Statement({ id }: { id: string }) {
   const driver = byId(data.drivers, s.driverId)!;
   const trips = s.tripIds.map((t) => byId(data.trips, t)!).filter(Boolean);
   const lines = driverLedger(data, driver.id).filter((e) => e.tripId && s.tripIds.includes(e.tripId));
-  const before = s.openingZmw + s.advancesZmw - s.expensesZmw + s.shortagesZmw;
+  const before = s.openingZmw + s.advancesZmw - s.expensesZmw + s.shortagesZmw + s.writeOffsZmw;
   return (
     <article className="paper statement">
       <header className="sheet-head">
@@ -125,6 +125,12 @@ export function Statement({ id }: { id: string }) {
           <span>Shortage charged</span>
           <strong>{num(s.shortagesZmw)}</strong>
         </div>
+        {s.writeOffsZmw > 0 && (
+          <div>
+            <span>Load written off</span>
+            <strong>{num(s.writeOffsZmw)}</strong>
+          </div>
+        )}
         <div className="final">
           <span>Carried forward</span>
           <strong>{num(s.closingZmw)}</strong>

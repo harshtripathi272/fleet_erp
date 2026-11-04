@@ -178,6 +178,7 @@ export async function loadSampleData(actorId?: string, size: SampleSize = 'full'
   await make('payment-methods', 'pmDepot', { code: 'DEPOT', name: 'Own depot fuel', kind: 'own_depot', forFuel: true, forCash: false, referenceRequired: true });
   await make('advance-policies', 'apRoute', { code: 'ROUTE-BUDGET', name: 'Advance from route budget', basis: 'route_budget', maxAmount: money(10_000_00), capOnCashHeld: money(2_000_00), approvalPolicyId: ids.advanceApproval, paymentMethodIds: [ids.pmCash, ids.pmAirtel] });
   await make('cancellation-reasons', 'crCustomer', { code: 'CUST-CANCEL', name: 'Customer cancelled', appliesTo: ['trip', 'order'], chargeableToCustomer: true });
+  await make('cancellation-reasons', 'crAccident', { code: 'ACCIDENT', name: 'Accident on the road', appliesTo: ['trip'] });
 
   // Configuration
   await make('lists', 'listUnions', { code: 'UNIONS', name: 'Driver unions', values: [{ value: 'ztu', label: 'Zambia Transport Union' }, { value: 'none', label: 'Not a member' }] });

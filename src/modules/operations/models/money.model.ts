@@ -50,6 +50,7 @@ const settlementSchema = new Schema<any>({
   advancesMinor: { type: Number, required: true },
   expensesMinor: { type: Number, required: true },
   shortagesMinor: { type: Number, required: true },
+  writeOffsMinor: { type: Number, default: 0 },
   cashMinor: { type: Number, required: true },
   closingMinor: { type: Number, required: true },
   note: String,

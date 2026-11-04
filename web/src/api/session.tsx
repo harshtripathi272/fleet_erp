@@ -46,6 +46,8 @@ export const ACTION_PERMISSION: Record<Action["type"], [resource: string, action
   "trip.arrive": ["trips", "update"],
   "trip.end": ["trips", "update"],
   "trip.stop": ["trips", "update"],
+  "trip.undelivered": ["trips", "update"],
+  "writeoff.decide": ["consignments", "read"],
   "trip.remind": ["messages", "create"],
   "request.create": ["fund-requests", "create"],
   "request.decide": ["fund-requests", "read"],
