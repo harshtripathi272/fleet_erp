@@ -1,3 +1,4 @@
+import { DEFAULT_AREAS } from './areaList.js';
 import { Schema, model } from 'mongoose';
 import { ObjectId, schemaOptions } from '../../core/masters/schema.js';
 
@@ -67,7 +68,7 @@ const companySchema = new Schema<any>({
   fiscalYearStartMonth: { type: Number, min: 1, max: 12, default: 1 },
   dateFormat: { type: String, enum: ['DD/MM/YYYY', 'MM/DD/YYYY', 'YYYY-MM-DD'], default: 'DD/MM/YYYY' },
   allowSelfRegistration: { type: Boolean, default: false },
-  modules: { type: [String], default: ['masters', 'trips'] },
+  modules: { type: [String], default: () => [...DEFAULT_AREAS] },
   operations: { type: operationsSchema, default: () => ({}) },
   rateFeed: { type: rateFeedSchema, default: () => ({}) },
   address: { line1: String, line2: String, city: String, postalCode: String },

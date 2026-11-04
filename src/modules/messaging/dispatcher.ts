@@ -1,3 +1,4 @@
+import { areaOfEvent, isAreaOn } from '../company/areas.js';
 import { productName } from '../company/brand.service.js';
 import type { Readable } from 'node:stream';
 import mongoose, { Types } from 'mongoose';
@@ -100,6 +101,9 @@ async function valuesFor(input: DispatchInput): Promise<Record<string, string>> 
  */
 export async function dispatch(input: DispatchInput, { background = false }: { background?: boolean } = {}) {
   if (!(EVENTS as readonly string[]).includes(input.event)) throw new ValidationError(`Unknown event ${input.event}`);
+  // An event of an area the company has switched off sends nothing (#56).
+  const area = areaOfEvent(input.event);
+  if (area && !(await isAreaOn(area))) return [];
   const rules = await NotificationRule.find({ event: input.event, status: 'active' }).lean() as Plain[];
   if (!rules.length) return [];
   const values = await valuesFor(input);

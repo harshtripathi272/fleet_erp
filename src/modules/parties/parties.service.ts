@@ -42,7 +42,7 @@ export const partyDefinition = defineMaster({
 });
 
 export const orderSourceDefinition = defineMaster({
-  key: 'order-sources', label: 'Order sources', singular: 'Order source', group: GROUPS.parties,
+  key: 'order-sources', label: 'Order sources', singular: 'Order source', group: GROUPS.parties, module: 'trips',
   description: 'Where a job came from: direct, broker, tender, portal. Some require a reference number.',
   model: OrderSource, createSchema: S.createOrderSourceSchema, updateSchema: S.updateOrderSourceSchema,
 });

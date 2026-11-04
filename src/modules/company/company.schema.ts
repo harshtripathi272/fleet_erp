@@ -2,7 +2,9 @@ import { z } from 'zod';
 import { email, objectId, phone, text } from '../../core/masters/zod.js';
 import { SETTLEMENT_PERIODS } from './company.model.js';
 
-export const MODULES = ['masters', 'trips', 'finance', 'maintenance', 'tracking', 'billing', 'driver-app'] as const;
+import { AREA_KEYS } from './areaList.js';
+
+export const MODULES = AREA_KEYS;
 const timezone = z.string().refine((tz) => Intl.supportedValuesOf('timeZone').includes(tz) || tz === 'UTC', 'Unknown time zone');
 
 const companyShape = {

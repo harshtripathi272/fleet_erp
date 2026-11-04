@@ -85,6 +85,7 @@ export const importRun = asyncHandler(async (req, res) => {
   const count = (s: string) => results.filter((r) => r.status === s).length;
   ApiResponse.success(res, { results, summary: { ready: count('ready'), exists: count('exists'), invalid: count('invalid'), created: count('created'), failed: count('failed') } });
 });
+export const areas = asyncHandler(async (_req, res) => ApiResponse.success(res, await MetaService.areas()));
 
 /** The master of masters (#65): this company's changes to one master's definition, for the Customise screen. */
 const masterOr404 = (key: string) => {

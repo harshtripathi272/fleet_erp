@@ -126,7 +126,7 @@ export const driverDefinition = defineMaster({
 });
 
 export const recoveryRuleDefinition = defineMaster({
-  key: 'recovery-rules', label: 'Driver recovery rules', singular: 'Recovery rule', group: GROUPS.drivers,
+  key: 'recovery-rules', label: 'Driver recovery rules', singular: 'Recovery rule', group: GROUPS.drivers, module: 'finance',
   description: 'What may be recovered from a driver (shortage, damage, loan, unreturned advance, fine) and the maximum per settlement.',
   model: RecoveryRule, createSchema: S.createRecoveryRuleSchema, updateSchema: S.updateRecoveryRuleSchema,
   refs: [{ path: 'maxAmountPerSettlement.currencyId', target: 'currencies' }, { path: 'approvalPolicyId', target: 'approval-policies' }],
