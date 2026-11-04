@@ -25,6 +25,8 @@
 .table-frame tr.clickable:hover td { background: var(--surface-2); }
 .pager { display: flex; gap: 12px; align-items: center; justify-content: flex-end; margin-top: 10px; }
 .schema-form { display: grid; gap: 14px; }
+.form-section { display: grid; gap: 10px; padding-top: 14px; border-top: 1px solid var(--line); }
+.form-section > h4 { margin: 0; font-size: 14.5px; font-weight: 620; }
 .form-group { border: 1px solid var(--line-2); border-radius: 10px; padding: 10px 12px 12px; display: grid; gap: 10px; }
 .form-group legend, .form-group summary { font-weight: 560; color: var(--ink-2); padding: 0 4px; cursor: default; }
 details.form-group summary { cursor: pointer; }
@@ -156,3 +158,27 @@ details.form-group summary { cursor: pointer; }
 }
 .audit-fields summary { cursor: pointer; color: var(--pine-600); font-size: 13px; font-weight: 560; }
 .audit-fields[open] summary { margin-bottom: 4px; }
+
+/* The master of masters (#65): how a company shapes one master. */
+.customise { display: grid; gap: 20px; }
+.cust-table-wrap { overflow-x: auto; }
+.cust-table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+.cust-table th { padding: 8px 10px; border-bottom: 1px solid var(--line); color: var(--ink-3); font-size: 12.5px; font-weight: 600; text-align: left; white-space: nowrap; }
+.cust-table td { padding: 6px 10px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+.cust-table tr:last-child td { border-bottom: 0; }
+.cust-table td:first-child { min-width: 220px; }
+.cust-table td:nth-child(2) { min-width: 200px; }
+.cust-table .input { min-height: 34px; padding: 5px 9px; }
+.cust-child td:first-child { padding-left: 30px; }
+.cust-path { display: block; margin-top: 2px; color: var(--ink-3); font: 12px var(--mono); }
+.cust-move { white-space: nowrap; }
+.cust-move .icon-btn { width: 28px; height: 28px; }
+.cust-sections { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: flex-end; }
+.cust-sections .chip button { border: 0; background: transparent; margin-left: 4px; padding: 0; color: var(--ink-3); }
+.cust-add { display: inline-flex; gap: 6px; align-items: center; }
+.cust-add .input { width: 220px; min-height: 34px; }
+.cust-choices { display: grid; gap: 6px; padding: 12px 20px; border-top: 1px solid var(--line); }
+.cust-choices:first-child { border-top: 0; }
+.cust-choices h4 { margin: 0 0 4px; font-size: 14px; font-weight: 600; }
+.cust-choice { display: grid; grid-template-columns: minmax(0, 320px) auto auto; gap: 12px; align-items: center; }
+.cust-choice .input { min-height: 34px; padding: 5px 9px; }

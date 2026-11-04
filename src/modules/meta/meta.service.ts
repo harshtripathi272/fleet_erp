@@ -6,7 +6,7 @@ import { getRedis } from '../../core/cache/redis.js';
 import { mongoState } from '../../core/db/mongo.js';
 import { recentMail } from '../../core/mail/mailer.js';
 import { GROUPS } from '../../core/masters/groups.js';
-import { getLayout, systemRequired, type Layout } from '../../core/masters/layout.js';
+import { fieldPaths, getLayout, systemRequired, type Layout } from '../../core/masters/layout.js';
 import { pathLabel } from '../../core/masters/labels.js';
 import { listMasters as registered, refsOf } from '../../core/masters/registry.js';
 import { ACTIONS, type MasterDefinition, type Plain } from '../../core/masters/types.js';
@@ -40,6 +40,10 @@ interface FieldInfo {
   searchable?: boolean;
   inImport?: boolean;
   retiredChoices?: string[];
+  codeLabel?: string;
+  codeChoiceLabels?: Record<string, string>;
+  /** Typed in on the form, rather than worked out or filled in by the app; only these can be shaped. */
+  entered?: boolean;
   type: string;
   array: boolean;
   required: boolean;
@@ -151,6 +155,8 @@ export async function describeMasters(auth?: AuthContext) {
     group: layout.master.group ?? def.group,
     description: layout.master.description ?? def.description,
     hidden: Boolean(layout.master.hidden),
+    codeLabel: def.label,
+    codeSingular: def.singular,
     sections: layout.sections,
     layoutRevision: layout.revision,
     lockedChoices: def.lockedChoices ?? [],
@@ -169,9 +175,9 @@ export async function describeMasters(auth?: AuthContext) {
     immutable: def.immutable ?? [],
     filters: Object.entries(def.filters ?? {}).map(([key, f]) => ({ key, description: f.description, schema: toJson(f.schema) })),
     references: refsOf(def).map((r) => ({ path: r.path, target: r.target, ...(r.partyRoles ? { partyRoles: r.partyRoles } : {}), ...(r.usageOnly ? { usageOnly: true } : {}) })),
-    fields: withLayout(describeSchema(def.model.schema, def, keys), layout, fixed),
+    fields: withLayout(describeSchema(def.model.schema, def, keys), layout, fixed, fieldPaths(def)),
     customFields: customFields.filter((f) => f.entity === def.key).map((f) => ({
-      key: f.key, label: f.label, type: f.type, required: f.required,
+      id: String(f._id), key: f.key, label: f.label, type: f.type, required: f.required,
       ...(f.choices ? { choices: f.choices } : {}), ...(f.referenceMaster ? { referenceMaster: f.referenceMaster } : {}), ...(f.helpText ? { helpText: f.helpText } : {}),
     })),
     indexes: def.model.schema.indexes().map(([fields, options]) => ({ fields, unique: Boolean(options.unique), partial: options.partialFilterExpression ?? null })),
@@ -190,13 +196,14 @@ const layoutColumns = (layout: Layout) => {
 };
 
 /** A master's fields with this company's names, hints, visibility, requirements, defaults, order and choice names. */
-function withLayout(fields: FieldInfo[], layout: Layout, fixed: Set<string>): FieldInfo[] {
+function withLayout(fields: FieldInfo[], layout: Layout, fixed: Set<string>, entered: Map<string, unknown>): FieldInfo[] {
   const byPath = new Map(layout.fields.map((f) => [f.path, f]));
   const choices = new Map(layout.choices.map((c) => [c.path, c.values]));
   return fields.map((f, i) => {
     const l = byPath.get(f.path);
     const values = choices.get(f.path);
-    const out: FieldInfo = { ...f, order: l?.order ?? i, systemRequired: fixed.has(f.path) };
+    // The code's own names stay alongside, so the Customise screen can show them and reset to them.
+    const out: FieldInfo = { ...f, order: l?.order ?? i, systemRequired: fixed.has(f.path), entered: entered.has(f.path), codeLabel: f.label, ...(f.choiceLabels ? { codeChoiceLabels: f.choiceLabels } : {}) };
     if (l?.label) out.label = l.label;
     if (l?.hint) out.hint = l.hint;
     if (l?.hidden) out.companyHidden = true;

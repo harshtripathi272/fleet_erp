@@ -11,7 +11,7 @@ before(async () => {
 });
 after(stopDatabase);
 
-const save = (master: string, body: unknown, who = owner) => api().put(`/api/v1/meta/layouts/${master}`).set(bearer(who)).send(body);
+const save = (master: string, body: object, who = owner) => api().put(`/api/v1/meta/layouts/${master}`).set(bearer(who)).send(body);
 const meta = async (key: string) => ((await api().get('/api/v1/meta/masters').set(bearer(owner)).expect(200)).body.data as { key: string; label: string; fields: Record<string, any>[] }[]).find((m) => m.key === key)!;
 const field = (m: { fields: Record<string, any>[] }, path: string) => m.fields.find((f) => f.path === path)!;
 const newDriver = (extra: Record<string, unknown> = {}) => api().post('/api/v1/drivers').set(bearer(owner))
