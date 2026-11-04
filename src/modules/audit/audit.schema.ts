@@ -12,3 +12,7 @@ export const auditQuerySchema = z.strictObject({
   to: isoDate.optional(),
 });
 export type AuditQuery = z.infer<typeof auditQuerySchema>;
+
+/** The same filters, without paging: the download carries every matching entry (up to 10,000). */
+export const auditExportSchema = auditQuerySchema.omit({ page: true, limit: true });
+export type AuditExportQuery = z.infer<typeof auditExportSchema>;

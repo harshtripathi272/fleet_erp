@@ -34,6 +34,7 @@ import { useMine } from "./desks/mine";
 import { DeskPhone, MessageBanner } from "./phone/DeskPhone";
 import { DocumentOverlay } from "./docs/DocumentOverlay";
 import { SimProvider } from "./tracking/sim";
+import { wantsAuditLog } from "./masters/history";
 
 // Each screen is its own download, fetched the first time it's opened; the map only when a map is opened.
 const TripsPage = lazy(() => import("./desks/Trips").then((m) => ({ default: m.TripsPage })));
@@ -65,7 +66,9 @@ const readSession = (): Session => {
     return session;
   }
   try {
-    return JSON.parse(sessionStorage.getItem(DESK_SESSION) ?? "{}");
+    const session = JSON.parse(sessionStorage.getItem(DESK_SESSION) ?? "{}") as Session;
+    // A shared link to a filtered audit log opens Masters, which opens the log.
+    return wantsAuditLog() ? { ...session, view: "masters" } : session;
   } catch {
     return {};
   }
@@ -185,7 +188,7 @@ export default function Desks({ me }: { me: Me }) {
           me={me}
           desks={allowed.filter((d): d is Desk => d !== "driver")}
           drivers={allowed.includes("driver") ? data.drivers : []}
-          onPick={(nextRole, driverId) => setSession({ role: nextRole, driverId, view: HOME[nextRole] })}
+          onPick={(nextRole, driverId) => setSession({ role: nextRole, driverId, view: wantsAuditLog() && nextRole !== "driver" ? "masters" : HOME[nextRole] })}
         />
         <Toasts toasts={toasts} />
       </>
