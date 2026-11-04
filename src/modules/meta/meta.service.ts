@@ -6,6 +6,7 @@ import { getRedis } from '../../core/cache/redis.js';
 import { mongoState } from '../../core/db/mongo.js';
 import { recentMail } from '../../core/mail/mailer.js';
 import { GROUPS } from '../../core/masters/groups.js';
+import { fieldPaths, getLayout, systemRequired, type Layout } from '../../core/masters/layout.js';
 import { pathLabel } from '../../core/masters/labels.js';
 import { listMasters as registered, refsOf } from '../../core/masters/registry.js';
 import { ACTIONS, type MasterDefinition, type Plain } from '../../core/masters/types.js';
@@ -28,6 +29,21 @@ interface FieldInfo {
   choiceLabels?: Record<string, string>;
   /** What to put in the field, when the master says. */
   hint?: string;
+  /** The company layer (#65): where the field sits, whether it shows, and what the company added to its rules. */
+  order?: number;
+  section?: string;
+  /** The company hid it from its forms, lists and import; values are kept and still accepted. */
+  companyHidden?: boolean;
+  systemRequired?: boolean;
+  companyRequired?: boolean;
+  companyDefault?: unknown;
+  searchable?: boolean;
+  inImport?: boolean;
+  retiredChoices?: string[];
+  codeLabel?: string;
+  codeChoiceLabels?: Record<string, string>;
+  /** Typed in on the form, rather than worked out or filled in by the app; only these can be shaped. */
+  entered?: boolean;
   type: string;
   array: boolean;
   required: boolean;
@@ -127,16 +143,28 @@ function permissionsFor(def: MasterDefinition, auth?: AuthContext) {
 export async function describeMasters(auth?: AuthContext) {
   const keys = modelKeyMap();
   const customFields = await withChoices(await FieldDefinition.find({ status: 'active' }).sort({ order: 1 }).lean() as Plain[]);
-  return listMasters().map((def) => ({
+  // Each master as this company has shaped it: the code's definition with the company layer on top (#65).
+  const layouts = new Map((await Promise.all(listMasters().map(async (d) => [d.key, await getLayout(d.key)] as const))));
+  return listMasters().map((def) => {
+    const layout = layouts.get(def.key)!;
+    const fixed = systemRequired(def);
+    return ({
     key: def.key,
-    label: def.label,
-    singular: def.singular,
-    group: def.group,
-    description: def.description,
+    label: layout.master.label ?? def.label,
+    singular: layout.master.singular ?? def.singular,
+    group: layout.master.group ?? def.group,
+    description: layout.master.description ?? def.description,
+    hidden: Boolean(layout.master.hidden),
+    codeLabel: def.label,
+    codeSingular: def.singular,
+    sections: layout.sections,
+    layoutRevision: layout.revision,
+    lockedChoices: def.lockedChoices ?? [],
+    fixedFields: [...fixed],
     collection: def.model.collection.collectionName,
     basePath: `/api/v1/${def.key === 'custom-records' ? 'custom-masters/:masterId/records' : def.key}`,
     titleField: def.titleField ?? 'name',
-    columns: def.columns ?? [],
+    columns: layoutColumns(layout) ?? def.columns ?? [],
     searchFields: def.searchFields,
     sortFields: def.sortFields,
     defaultSort: def.defaultSort ?? null,
@@ -147,9 +175,9 @@ export async function describeMasters(auth?: AuthContext) {
     immutable: def.immutable ?? [],
     filters: Object.entries(def.filters ?? {}).map(([key, f]) => ({ key, description: f.description, schema: toJson(f.schema) })),
     references: refsOf(def).map((r) => ({ path: r.path, target: r.target, ...(r.partyRoles ? { partyRoles: r.partyRoles } : {}), ...(r.usageOnly ? { usageOnly: true } : {}) })),
-    fields: describeSchema(def.model.schema, def, keys),
+    fields: withLayout(describeSchema(def.model.schema, def, keys), layout, fixed, fieldPaths(def)),
     customFields: customFields.filter((f) => f.entity === def.key).map((f) => ({
-      key: f.key, label: f.label, type: f.type, required: f.required,
+      id: String(f._id), key: f.key, label: f.label, type: f.type, required: f.required,
       ...(f.choices ? { choices: f.choices } : {}), ...(f.referenceMaster ? { referenceMaster: f.referenceMaster } : {}), ...(f.helpText ? { helpText: f.helpText } : {}),
     })),
     indexes: def.model.schema.indexes().map(([fields, options]) => ({ fields, unique: Boolean(options.unique), partial: options.partialFilterExpression ?? null })),
@@ -157,7 +185,43 @@ export async function describeMasters(auth?: AuthContext) {
     updateSchema: toJson(def.updateSchema),
     endpoints: def.router ? endpointsOf(def.router, `/api/v1/${def.key}`, true) : [],
     permissions: permissionsFor(def, auth),
-  }));
+  });
+  });
+}
+
+/** The company's list columns, when it chose any, in its order. */
+const layoutColumns = (layout: Layout) => {
+  const chosen = layout.fields.filter((f) => f.column).sort((a, b) => (a.columnOrder ?? 0) - (b.columnOrder ?? 0)).map((f) => f.path);
+  return chosen.length ? chosen : undefined;
+};
+
+/** A master's fields with this company's names, hints, visibility, requirements, defaults, order and choice names. */
+function withLayout(fields: FieldInfo[], layout: Layout, fixed: Set<string>, entered: Map<string, unknown>): FieldInfo[] {
+  const byPath = new Map(layout.fields.map((f) => [f.path, f]));
+  const choices = new Map(layout.choices.map((c) => [c.path, c.values]));
+  return fields.map((f, i) => {
+    const l = byPath.get(f.path);
+    const values = choices.get(f.path);
+    // The code's own names stay alongside, so the Customise screen can show them and reset to them.
+    const out: FieldInfo = { ...f, order: l?.order ?? i, systemRequired: fixed.has(f.path), entered: entered.has(f.path), codeLabel: f.label, ...(f.choiceLabels ? { codeChoiceLabels: f.choiceLabels } : {}) };
+    if (l?.label) out.label = l.label;
+    if (l?.hint) out.hint = l.hint;
+    if (l?.hidden) out.companyHidden = true;
+    if (l?.required) out.companyRequired = true;
+    if (l?.defaultValue !== undefined) out.companyDefault = l.defaultValue;
+    if (l?.section) out.section = l.section;
+    if (l?.searchable !== undefined) out.searchable = l.searchable;
+    if (l?.inImport === false) out.inImport = false;
+    if (values?.length && f.enum) {
+      const named = Object.fromEntries(values.filter((v) => v.label).map((v) => [v.value, v.label!]));
+      out.choiceLabels = { ...(f.choiceLabels ?? {}), ...named };
+      const rank = new Map(values.map((v, j) => [v.value, v.order ?? j]));
+      out.enum = [...f.enum].sort((a, b) => (rank.get(a) ?? 999) - (rank.get(b) ?? 999));
+      const retired = values.filter((v) => v.retired).map((v) => v.value);
+      if (retired.length) out.retiredChoices = retired;
+    }
+    return out;
+  });
 }
 
 export function limits() {
