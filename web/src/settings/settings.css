@@ -10,7 +10,8 @@
 .connection-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
 .connection-actions .input { flex: 1 1 220px; min-width: 0; }
 .outbox-filters { display: flex; gap: 8px; }
-.outbox-note { max-width: 28ch; overflow-wrap: anywhere; }
+.outbox-filters .input { width: auto; }
+.outbox-note { margin-top: 4px; max-width: 36ch; color: var(--rust); font-size: 13px; white-space: normal; overflow-wrap: anywhere; }
 .outbox-pages { display: flex; align-items: center; justify-content: center; gap: 12px; margin-top: 12px; }
 .outbox-body { white-space: pre-wrap; font: inherit; background: var(--paper-2); padding: 12px; border-radius: var(--radius-sm); margin-top: 12px; }
 .messaging-settings .link-btn { color: inherit; text-decoration: underline; text-align: left; font: inherit; }

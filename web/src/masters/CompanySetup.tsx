@@ -31,6 +31,7 @@ export function CompanySetup({ defs, onOpen }: { defs: Rec[]; onOpen: (key: stri
         {c.done ? <CheckCircle2 className="setup-icon ok" size={20} aria-label="Done" /> : <Circle className="setup-icon" size={20} aria-label="To do" />}
         <div className="setup-text">
           <strong>{i + 1}. {c.label}{!c.required && <span className="muted"> · optional</span>}</strong>
+          <span className="setup-why">{c.why}</span>
           {c.master && <span className="setup-count">{c.count === 0 ? "None yet" : `${c.count} ${c.count === 1 ? "record" : "records"}`}{c.min > 1 && !c.done ? ` (at least ${c.min})` : ""}</span>}
         </div>
         <div className="row-actions">
@@ -43,7 +44,10 @@ export function CompanySetup({ defs, onOpen }: { defs: Rec[]; onOpen: (key: stri
   return (
     <div className="desk">
       <header className="masters-head">
-        <h2>Set up the company</h2>
+        <div className="masters-title">
+          <h2>Set up the company</h2>
+          <p>Everything a first trip needs, in the order to add it. Any step can be done later.</p>
+        </div>
       </header>
       <p className={ready ? "setup-banner ok" : "setup-banner"}>
         {ready

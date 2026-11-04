@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, request } from "../api/client";
 import { can } from "../api/session";
 import { useApp } from "../store";
-import { Button, Drawer, Empty, Field, Status } from "../ui/kit";
+import { Button, Drawer, Empty, Field, Status, SwitchField } from "../ui/kit";
 import { stamp } from "../ui/format";
 import "./settings.css";
 
@@ -85,7 +85,10 @@ export default function MessagingSettings() {
   return (
     <div className="desk messaging-settings">
       <header className="masters-head">
-        <h2>Sending messages</h2>
+        <div className="masters-title">
+          <h2>Sending messages</h2>
+          <p>How e-mail, SMS and WhatsApp go out, and everything sent.</p>
+        </div>
         {creatable && <Button tone="primary" onClick={() => setEditing("new")}>New connection</Button>}
       </header>
 
@@ -312,10 +315,10 @@ function ConnectionForm({ connection, providers, onClose }: { connection: Connec
           </Field>
         )}
         {form.channel === "email" && (
-          <label className="check-line"><input type="checkbox" checked={form.secure} onChange={(e) => set("secure", e.target.checked)} /> Connect with TLS from the start (usually port 465)</label>
+          <SwitchField label="Connect securely from the start" hint="TLS from the first byte, usually on port 465. Off: the connection is upgraded after it opens, usually on port 587." checked={form.secure} onChange={(on) => set("secure", on)} />
         )}
         {form.channel === "whatsapp" && <p className="muted">WhatsApp is not connected yet: its messages are simulated, not sent.</p>}
-        <label className="check-line"><input type="checkbox" checked={form.enabled} onChange={(e) => set("enabled", e.target.checked)} /> Switched on (one per channel)</label>
+        <SwitchField label="Use this connection" hint="Only one connection per channel can be in use. To change provider, switch the current one off first." checked={form.enabled} onChange={(on) => set("enabled", on)} />
       </fieldset>
     </Drawer>
   );
@@ -369,7 +372,8 @@ function Outbox({ writable }: { writable: boolean }) {
                   <td><button type="button" className="link-btn" onClick={() => setOpen(m)}>{m.subject ?? m.body.slice(0, 60)}</button><div className="muted">{m.event}</div></td>
                   <td>
                     <Status tone={STATUS_TONE[m.status]}>{STATUS_LABEL[m.status]}</Status>
-                    {m.note && <div className="muted outbox-note">{m.note}</div>}
+                    {/* A failed or skipped message says why on its row; the reason a message was simulated is the same for every row, so it is in Channels above and in the message itself. */}
+                    {m.note && (m.status === "failed" || m.status === "skipped") && <div className="outbox-note">{m.note}</div>}
                     {m.status === "queued" && m.nextAttemptAt && <div className="muted">Next try {stamp(m.nextAttemptAt)}</div>}
                   </td>
                   <td>{writable && m.resendable && <Button size="sm" busy={resend.isPending && resend.variables === m.id} onClick={() => resend.mutate(m.id)}>Send again</Button>}</td>

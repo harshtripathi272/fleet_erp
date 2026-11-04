@@ -18,6 +18,8 @@ export interface ImportColumn {
   kind: Kind;
   required: boolean;
   choices?: string[];
+  /** How each choice is named on screen; a cell may give the name or the stored value. */
+  choiceNames?: Record<string, string>;
   /** The master a reference column points at; the cell holds its code or name. */
   target?: string;
   /** What a list holds: references, choices or plain text, separated by ";" in the cell. */
@@ -44,21 +46,24 @@ const unwrap = (s: Json): Json => {
   return s;
 };
 const normal = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
+/** A cell's choice by its stored value or by the name the screens show. */
+const pickChoice = (c: ImportColumn, text: string) => c.choices!.find((o) => normal(o) === normal(text) || (c.choiceNames?.[o] && normal(c.choiceNames[o]!) === normal(text)));
+const choiceList = (c: ImportColumn) => c.choices!.map((o) => c.choiceNames?.[o] ?? o).join(', ');
 
 function columnFor(def: MasterDefinition, path: string, raw: Json, required: boolean): ImportColumn | undefined {
   const s = unwrap(raw);
   const target = refsOf(def).find((r) => r.path === path && !r.usageOnly)?.target;
-  const base = { path, label: fullLabel(path, Boolean(target)), required };
+  const base = { path, label: def.labels?.[path] ?? fullLabel(path, Boolean(target)), required };
   if (s.type === 'object' && s.properties?.amountMinor && s.properties?.currencyId) return { ...base, kind: 'money' };
   if (s.type === 'array') {
     const item = unwrap(s.items ?? {});
     if (item.type === 'object') return undefined;
     if (target || item.pattern === OBJECT_ID) return target ? { ...base, kind: 'list', of: 'ref', target } : undefined;
-    if (item.enum) return { ...base, kind: 'list', of: 'choice', choices: item.enum as string[] };
+    if (item.enum) return { ...base, kind: 'list', of: 'choice', choices: item.enum as string[], choiceNames: def.choiceLabels?.[path] };
     return { ...base, kind: 'list', of: 'text' };
   }
   if (target || s.pattern === OBJECT_ID) return target ? { ...base, kind: 'ref', target } : undefined;
-  if (s.enum) return { ...base, kind: 'choice', choices: s.enum as string[] };
+  if (s.enum) return { ...base, kind: 'choice', choices: s.enum as string[], choiceNames: def.choiceLabels?.[path] };
   if (s.type === 'boolean') return { ...base, kind: 'boolean' };
   if (s.type === 'number' || s.type === 'integer') return { ...base, kind: 'number' };
   if (s.format === 'date' || s.format === 'date-time' || (raw.anyOf ?? []).some((o: Json) => o.format === 'date')) return { ...base, kind: 'date' };
@@ -166,8 +171,8 @@ async function convert(columns: ImportColumn[], row: Record<string, string>, fin
         break;
       }
       case 'choice': {
-        const hit = c.choices!.find((o) => normal(o) === normal(text));
-        if (hit) setPath(data, c.path, hit); else bad(`"${text}" isn't one of: ${c.choices!.join(', ')}`);
+        const hit = pickChoice(c, text);
+        if (hit) setPath(data, c.path, hit); else bad(`"${text}" isn't one of: ${choiceList(c)}`);
         break;
       }
       case 'ref': {
@@ -180,7 +185,7 @@ async function convert(columns: ImportColumn[], row: Record<string, string>, fin
         const values: string[] = [];
         for (const p of parts) {
           if (c.of === 'ref') { const id = await find(c.target!, p); if (id) values.push(id); else bad(`No ${c.label.toLowerCase()} "${p}"`); }
-          else if (c.of === 'choice') { const hit = c.choices!.find((o) => normal(o) === normal(p)); if (hit) values.push(hit); else bad(`"${p}" isn't one of: ${c.choices!.join(', ')}`); }
+          else if (c.of === 'choice') { const hit = pickChoice(c, p); if (hit) values.push(hit); else bad(`"${p}" isn't one of: ${choiceList(c)}`); }
           else values.push(p);
         }
         setPath(data, c.path, values);

@@ -24,6 +24,10 @@ describe('field labels', () => {
       ['tareKg', undefined, 'Tare (kg)'],
       ['kmPerLLoaded', undefined, 'Km per L loaded'],
       ['status', undefined, 'Status'],
+      ['email', undefined, 'E-mail'],
+      ['contactEmail', undefined, 'Contact e-mail'],
+      ['minAmountMinor', undefined, 'Minimum amount'],
+      ['maxPercentPerSettlement', undefined, 'Maximum percent per settlement'],
     ];
     for (const [key, link, want] of cases) assert.equal(fieldLabel(key, link), want, key);
   });
@@ -48,5 +52,13 @@ describe('masters metadata carries the labels', () => {
     assert.ok(masters.every((m) => m.fields.every((f) => typeof f.label === 'string' && f.label.length > 0)));
     const template = (await api().get('/api/v1/meta/import/vehicles/template').set(bearer(owner)).expect(200)).text;
     assert.ok(template.includes('Registration number *'));
+  });
+
+  test('a master can name its fields and its choices', async () => {
+    const masters = (await api().get('/api/v1/meta/masters').set(bearer(owner)).expect(200)).body.data as { key: string; fields: { path: string; label: string; choiceLabels?: Record<string, string> }[] }[];
+    const field = (key: string, path: string) => masters.find((m) => m.key === key)!.fields.find((f) => f.path === path)!;
+    assert.equal(field('approval-policies', 'levels.minAmountMinor').label, 'Applies from');
+    assert.equal(field('message-templates', 'event').choiceLabels?.['trip.loaded'], 'A truck is loaded');
+    assert.equal(field('message-templates', 'channel').choiceLabels?.whatsapp, 'WhatsApp');
   });
 });

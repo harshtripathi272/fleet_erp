@@ -1,6 +1,7 @@
 import mongoose, { Types } from 'mongoose';
 import { AuditLog } from '../../core/masters/audit.model.js';
 import { comparable } from '../../core/masters/audit.js';
+import { singular } from '../../core/masters/labels.js';
 import { getMaster, getRefTarget } from '../../core/masters/registry.js';
 import type { Action, Plain } from '../../core/masters/types.js';
 import { User } from '../users/user.model.js';
@@ -42,7 +43,7 @@ function endOfDay(value: Date | string) {
 const humanise = (key: string) => key.replace(/-/g, ' ').replace(/^./, (c) => c.toUpperCase());
 
 /** "Drivers" → the master's singular ("Driver"); records that are not masters get a readable name from their key. */
-export const entityLabel = (entity: string) => getMaster(entity)?.singular ?? getRefTarget(entity)?.label ?? humanise(entity);
+export const entityLabel = (entity: string) => getMaster(entity)?.singular ?? singular(getRefTarget(entity)?.label ?? humanise(entity));
 
 /** Does this path hold a value the reader may not see? */
 function masked(entity: string, path: string, reader: AuditReader) {
@@ -122,7 +123,7 @@ export async function auditPeople() {
 /** The masters (and other records) that appear in the log, for the screen's filter. */
 export async function auditEntities() {
   const keys = (await AuditLog.distinct('entity')) as string[];
-  return keys.map((key) => ({ key, label: getMaster(key)?.label ?? entityLabel(key) })).sort((a, b) => a.label.localeCompare(b.label));
+  return keys.map((key) => ({ key, label: getMaster(key)?.label ?? getRefTarget(key)?.label ?? humanise(key) })).sort((a, b) => a.label.localeCompare(b.label));
 }
 
 const cell = (value: unknown) => {

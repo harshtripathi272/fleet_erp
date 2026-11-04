@@ -6,6 +6,9 @@
 /** "currency" → "currencies", "branch" → "branches", "class" → "classes", "make" → "makes". */
 export const plural = (w: string) => (/[^aeiou]y$/.test(w) ? `${w.slice(0, -1)}ies` : /(s|x|z|ch|sh)$/.test(w) ? `${w}es` : `${w}s`);
 
+/** "Nominations" → "Nomination", "Batteries" → "Battery", "Expenses" → "Expense": for names kept only in the plural. */
+export const singular = (w: string) => (/ies$/.test(w) ? `${w.slice(0, -3)}y` : /(ss|x|ch|sh)es$/.test(w) ? w.slice(0, -2) : /s$/.test(w) && !/ss$/.test(w) ? w.slice(0, -1) : w);
+
 /** Units written at the end of a field name, shown in brackets. Longest first. */
 const UNITS: [RegExp, string][] = [
   [/KgPerL$/, 'kg/L'],
@@ -17,6 +20,8 @@ const UNITS: [RegExp, string][] = [
   [/C$/, '°C'],
 ];
 /** Words that are written in capitals. */
+/** Short words written out. */
+const WORDS: Record<string, string> = { min: 'minimum', max: 'maximum', email: 'e-mail' };
 const ACRONYMS = new Set(['vin', 'gps', 'url', 'id', 'sms', 'pdf', 'eta', 'tin', 'vat', 'pod', 'po', 'api', 'smtp', 'ip']);
 
 /**
@@ -26,7 +31,8 @@ const ACRONYMS = new Set(['vin', 'gps', 'url', 'id', 'sms', 'pdf', 'eta', 'tin',
  */
 export function fieldLabel(key: string, link = /Ids?$/.test(key) && key !== 'id'): string {
   const list = link && key.endsWith('Ids');
-  let base = link ? key.replace(/Ids?$/, '') : key;
+  // Money is stored in minor units ("amountMinor") but typed in the currency, so the suffix is not part of its name.
+  let base = (link ? key.replace(/Ids?$/, '') : key).replace(/(.)Minor$/, '$1');
   let unit = '';
   for (const [pattern, text] of UNITS) {
     // Only a capitalised suffix after a lower-case letter is a unit ("fuelL", not "total" or "L").
@@ -38,7 +44,8 @@ export function fieldLabel(key: string, link = /Ids?$/.test(key) && key !== 'id'
   }
   // "kmPerLLoaded" → "km per L loaded": split before every capital, keeping a lone "L" (litres) a capital.
   let words = base.replace(/_/g, ' ').replace(/([a-z0-9])([A-Z])/g, '$1 $2').replace(/([A-Z])([A-Z][a-z])/g, '$1 $2').trim().split(/\s+/)
-    .map((w) => (w === 'L' ? w : w.toLowerCase()));
+    .map((w) => (w === 'L' ? w : w.toLowerCase()))
+    .map((w) => WORDS[w] ?? w);
   if (list) words = [...words.slice(0, -1), plural(words.at(-1)!)];
   const text = words.map((w) => (ACRONYMS.has(w) ? w.toUpperCase() : w)).join(' ');
   const sentence = text.charAt(0).toUpperCase() + text.slice(1);

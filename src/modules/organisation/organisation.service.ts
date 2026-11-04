@@ -96,6 +96,13 @@ export const numberingSeriesDefinition = defineMaster({
   searchFields: ['code', 'name', 'entity'],
   sortFields: ['code', 'name', 'entity', 'createdAt', 'updatedAt'],
   refs: [{ path: 'branchId', target: 'branches' }],
+  labels: { entity: 'Numbers', padding: 'Digits in the running number', nextNumber: 'Next running number' },
+  hints: {
+    entity: 'What it numbers: a master such as drivers, or a document such as trips.',
+    pattern: '{PREFIX} the prefix, {YYYY} or {YY} the year, {MM} the month, {BR} the branch code, {SEQ} the running number. DRV/{YY}/{SEQ} gives DRV/26/0001.',
+    padding: 'The running number is filled with zeros to this many digits: 4 gives 0001.',
+    resetPolicy: 'When the running number starts again from 1.',
+  },
   filters: { entity: { schema: z.string().regex(/^[a-z][a-z0-9-]{1,39}$/), apply: (v: string) => ({ entity: v }), description: 'Series for this master or document' } },
   customFields: false,
   async prepare(data: Plain) {
@@ -176,6 +183,13 @@ export const approvalPolicyDefinition = defineMaster({
   model: ApprovalPolicy, createSchema: S.createApprovalPolicySchema, updateSchema: S.updateApprovalPolicySchema,
   searchFields: ['code', 'name', 'subject'],
   refs: [{ path: 'currencyId', target: 'currencies' }, { path: 'levels.approverRoleId', target: 'roles' }, { path: 'levels.approverUserId', target: 'users' }],
+  choiceLabels: { 'levels.channels': { app: 'In the app', whatsapp: 'WhatsApp', sms: 'SMS', email: 'E-mail' } },
+  hints: {
+    'levels.minAmountMinor': 'The level applies to requests from this amount (or these litres) up. Level 1 usually starts at 0.',
+    'levels.escalateAfterHours': 'Kept for escalation, which is not built yet: today a request waits at its level until someone decides.',
+    'levels.channels': 'Approvers always see a waiting request in the app; WhatsApp also sends them Approve and Reject buttons. SMS and e-mail are not sent for approvals yet.',
+  },
+  labels: { 'levels.minAmountMinor': 'Applies from', 'levels.measure': 'Measured in', 'levels.escalateAfterHours': 'Escalate after (hours)', 'levels.approverUserId': 'Approver (a person instead of a role)' },
   filters: { subject: { schema: z.enum(APPROVAL_SUBJECTS), apply: (v: string) => ({ subject: v }), description: 'What is being approved' } },
   async prepare(data: Plain) {
     const levels = data.levels as Array<{ level: number; minAmountMinor: number; approverRoleId?: unknown; approverUserId?: unknown }>;

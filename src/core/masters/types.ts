@@ -50,6 +50,12 @@ export interface MasterDefinition {
   refs?: RefSpec[];
   /** Fields never returned by the API. */
   hidden?: string[];
+  /** Names for fields whose key doesn't read well on screen ("levels.minAmountMinor" → "Applies from"); others are named from their key. */
+  labels?: Record<string, string>;
+  /** Names for a choice field's stored values ({ event: { "trip.loaded": "A truck is loaded" } }); values without one are named from the value. */
+  choiceLabels?: Record<string, Record<string, string>>;
+  /** One line under a field saying what to put in it, where its name alone doesn't ("{SEQ} is the running number"). */
+  hints?: Record<string, string>;
   /** Paths masked unless the caller holds the "sensitive" permission. */
   sensitive?: string[];
   /** Fields that cannot change after creation. */

@@ -57,21 +57,27 @@ export function Segmented<T extends string>({
   options,
   onChange,
   label,
+  choice,
+  disabled,
 }: {
   value: T;
-  options: { value: T; label: ReactNode; count?: number }[];
+  options: { value: T; label: ReactNode; count?: number; disabled?: boolean }[];
   onChange: (value: T) => void;
   label: string;
+  /** A setting's value rather than a view: radio semantics instead of tabs. */
+  choice?: boolean;
+  disabled?: boolean;
 }) {
   return (
-    <div className="segmented" role="tablist" aria-label={label}>
+    <div className={choice ? "segmented segmented-choice" : "segmented"} role={choice ? "radiogroup" : "tablist"} aria-label={label}>
       {options.map((option) => (
         <button
           key={option.value}
-          role="tab"
+          role={choice ? "radio" : "tab"}
           type="button"
-          aria-selected={value === option.value}
+          {...(choice ? { "aria-checked": value === option.value } : { "aria-selected": value === option.value })}
           className={value === option.value ? "on" : ""}
+          disabled={disabled || option.disabled}
           onClick={() => onChange(option.value)}
         >
           {option.label}
@@ -298,6 +304,106 @@ export function Meter({
         ) : null,
       )}
       {sum > total && total > 0 && <span className="meter-limit" style={{ left: `${(total / scale) * 100}%` }} />}
+    </div>
+  );
+}
+
+/* ---------- Settings: how people change how the company works ---------- */
+
+/** An on/off setting. A button with role="switch", so a wrapping <label> or the row it sits in can name it. */
+export function Switch({ checked, onChange, disabled, label }: { checked: boolean; onChange: (on: boolean) => void; disabled?: boolean; label?: string }) {
+  return (
+    <button type="button" role="switch" aria-checked={checked} aria-label={label} className="switch" disabled={disabled} onClick={() => onChange(!checked)}>
+      <span className="switch-knob" aria-hidden />
+    </button>
+  );
+}
+
+/** A yes/no field inside a form grid: its name, an optional line on what it does, and the switch. */
+export function SwitchField({ label, hint, checked, onChange, disabled }: { label: string; hint?: ReactNode; checked: boolean; onChange: (on: boolean) => void; disabled?: boolean }) {
+  return (
+    <label className="switch-field">
+      <span className="switch-text">
+        <span className="field-label">{label}</span>
+        {hint && <span className="field-hint">{hint}</span>}
+      </span>
+      <Switch checked={checked} onChange={onChange} disabled={disabled} />
+    </label>
+  );
+}
+
+/** Several choices from a short list, each a labelled button that is on or off. */
+export function ChoiceChips<T extends string>({ options, value, onChange, disabled, label }: { options: { value: T; label: ReactNode }[]; value: T[]; onChange: (next: T[]) => void; disabled?: boolean; label: string }) {
+  return (
+    <div className="choice-chips" role="group" aria-label={label}>
+      {options.map((o) => {
+        const on = value.includes(o.value);
+        return (
+          <button key={o.value} type="button" aria-pressed={on} className={on ? "on" : ""} disabled={disabled}
+            onClick={() => onChange(on ? value.filter((v) => v !== o.value) : [...value, o.value])}>
+            {o.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+/** A field whose control is a group of buttons: named by a heading, not a <label>, which can hold one control only. */
+export function FieldGroup({ label, hint, children, wide }: { label: string; hint?: ReactNode; children: ReactNode; wide?: boolean }) {
+  return (
+    <div className={`field ${wide ? "field-wide" : ""}`} role="group" aria-label={label}>
+      <span className="field-label">{label}</span>
+      <div className="field-control">{children}</div>
+      {hint && <span className="field-hint">{hint}</span>}
+    </div>
+  );
+}
+
+/** A number with its unit inside the box ("62 km/h"), so a row of them lines up. */
+export function UnitInput({ value, onChange, unit, step, disabled, label }: { value: number | string | undefined; onChange: (v: string) => void; unit: string; step?: number; disabled?: boolean; label?: string }) {
+  return (
+    <span className="unit-box">
+      <input className="input" type="number" inputMode="decimal" step={step ?? "any"} aria-label={label} disabled={disabled} value={value ?? ""} onChange={(e) => onChange(e.target.value)} />
+      <span className="unit-box-unit" aria-hidden>{unit}</span>
+    </span>
+  );
+}
+
+/** A titled group of settings on a settings page. */
+export function SettingsSection({ title, description, children }: { title: string; description?: ReactNode; children: ReactNode }) {
+  return (
+    <section className="settings-section">
+      <header>
+        <h3>{title}</h3>
+        {description && <p>{description}</p>}
+      </header>
+      <div className="settings-rows">{children}</div>
+    </section>
+  );
+}
+
+/** One setting: what it is and what it changes on the left, its control on the right. */
+export function SettingRow({ title, description, children, htmlFor }: { title: ReactNode; description?: ReactNode; children: ReactNode; htmlFor?: string }) {
+  return (
+    <div className="setting-row">
+      <div className="setting-text">
+        {htmlFor ? <label htmlFor={htmlFor} className="setting-title">{title}</label> : <span className="setting-title">{title}</span>}
+        {description && <p>{description}</p>}
+      </div>
+      <div className="setting-control">{children}</div>
+    </div>
+  );
+}
+
+/** Shown while a settings page has changes that aren't saved: the one place to save or throw them away. */
+export function SaveBar({ dirty, busy, onSave, onDiscard }: { dirty: boolean; busy?: boolean; onSave: () => void; onDiscard: () => void }) {
+  if (!dirty) return null;
+  return (
+    <div className="save-bar" role="region" aria-label="Unsaved changes">
+      <span>You have changes that aren't saved.</span>
+      <Button tone="quiet" disabled={busy} onClick={onDiscard}>Discard</Button>
+      <Button tone="primary" busy={busy} onClick={onSave}>Save changes</Button>
     </div>
   );
 }

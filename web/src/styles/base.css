@@ -5,7 +5,7 @@
   --surface-2: #faf9f5;
   --ink: #141b19;
   --ink-2: #414d49;
-  --ink-3: #6f7b77;
+  --ink-3: #626f6a;
   --ink-4: #9aa39f;
   --line: #e2e0d7;
   --line-2: #cfccc0;
@@ -387,6 +387,14 @@ select.input {
   color: var(--ink);
   box-shadow: var(--shadow-1);
 }
+.segmented-choice button {
+  flex: 1 1 auto;
+  justify-content: center;
+}
+.segmented button:disabled {
+  color: var(--ink-4);
+  cursor: default;
+}
 .segmented .count {
   min-width: 20px;
   height: 20px;
@@ -651,10 +659,229 @@ select.input {
   color: #f0a38f;
 }
 
+/* ---------- Settings controls ---------- */
+
+.switch {
+  position: relative;
+  flex: none;
+  width: 36px;
+  height: 20px;
+  padding: 0;
+  border: 0;
+  border-radius: 10px;
+  background: var(--line-2);
+  transition: background 0.15s;
+}
+.switch-knob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--surface);
+  box-shadow: 0 1px 2px rgba(20, 27, 25, 0.25);
+  transition: left 0.15s var(--ease);
+}
+.switch[aria-checked="true"] {
+  background: var(--pine-600);
+}
+.switch[aria-checked="true"] .switch-knob {
+  left: 18px;
+}
+.switch:disabled {
+  opacity: 0.5;
+}
+.switch-field {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 40px;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--surface);
+  cursor: pointer;
+}
+.switch-text {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.switch-text .field-label {
+  color: var(--ink);
+  font-size: 14px;
+}
+.choice-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.choice-chips button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 34px;
+  padding: 0 12px;
+  border: 1px solid var(--line-2);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--ink-2);
+  font-size: 13.5px;
+  font-weight: 540;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+.choice-chips button.on {
+  border-color: var(--pine-500);
+  background: var(--pine-50);
+  color: var(--pine-700);
+}
+.choice-chips button.on::before {
+  content: "✓";
+  font-size: 12px;
+}
+.choice-chips button:disabled {
+  cursor: default;
+  opacity: 0.7;
+}
+.unit-box {
+  position: relative;
+  display: block;
+}
+.unit-box .input {
+  padding-right: calc(var(--unit-room, 64px) + 8px);
+  font-variant-numeric: tabular-nums;
+}
+.unit-box-unit {
+  position: absolute;
+  top: 50%;
+  right: 12px;
+  transform: translateY(-50%);
+  max-width: var(--unit-room, 64px);
+  overflow: hidden;
+  color: var(--ink-3);
+  font-size: 13px;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+/* A settings page: titled sections of rows, each a setting and its control. */
+.settings-page {
+  display: grid;
+  gap: 24px;
+  max-width: 920px;
+  padding-bottom: 72px;
+}
+.settings-section {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+}
+.settings-section > header {
+  display: grid;
+  gap: 4px;
+  padding: 16px 20px 12px;
+  border-bottom: 1px solid var(--line);
+}
+.settings-section h3 {
+  font-size: 15.5px;
+  font-weight: 620;
+}
+.settings-section > header p {
+  max-width: 70ch;
+  color: var(--ink-2);
+  font-size: 14px;
+}
+.settings-rows > .grid-2 {
+  padding: 16px 20px 20px;
+}
+.setting-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(200px, 340px);
+  gap: 24px;
+  align-items: center;
+  padding: 14px 20px;
+}
+.setting-row + .setting-row {
+  border-top: 1px solid var(--line);
+}
+.setting-text {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+.setting-title {
+  color: var(--ink);
+  font-weight: 560;
+}
+.setting-text p {
+  max-width: 62ch;
+  color: var(--ink-2);
+  font-size: 13.5px;
+  line-height: 1.5;
+  text-wrap: pretty;
+}
+.setting-control {
+  display: flex;
+  justify-content: flex-end;
+  min-width: 0;
+}
+.setting-control .input,
+.setting-control .unit-box {
+  width: 100%;
+}
+.setting-control > .unit-box {
+  max-width: 180px;
+}
+.setting-control .segmented {
+  width: 100%;
+}
+.range-inputs {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  color: var(--ink-3);
+}
+.range-inputs .unit-box {
+  flex: 1;
+}
+.setting-fixed {
+  color: var(--ink-3);
+  font-size: 13.5px;
+}
+.save-bar {
+  position: sticky;
+  bottom: 16px;
+  z-index: 15;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  max-width: 920px;
+  margin-top: -56px;
+  padding: 10px 12px 10px 18px;
+  border: 1px solid var(--line-2);
+  border-radius: 12px;
+  background: var(--surface);
+  box-shadow: var(--shadow-2);
+}
+.save-bar > span {
+  flex: 1;
+  color: var(--ink-2);
+}
+
 @media (max-width: 560px) {
   .grid-2,
   .grid-3 {
     grid-template-columns: 1fr;
+  }
+  .setting-row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 10px;
+  }
+  .setting-control {
+    justify-content: flex-start;
   }
   .drawer {
     width: 100vw !important;

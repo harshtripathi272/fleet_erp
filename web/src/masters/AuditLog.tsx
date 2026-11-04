@@ -13,7 +13,7 @@ import { AUDIT_VIEW, fieldName, label, short, shown } from "./history";
  */
 
 const ACTIONS = ["create", "update", "archive", "restore", "delete", "custom"] as const;
-const ACTION_LABEL: Record<string, string> = { create: "Created", update: "Changed", archive: "Archived", restore: "Restored", delete: "Deleted", custom: "Other" };
+const ACTION_LABEL: Record<string, string> = { create: "Created", update: "Changed", archive: "Archived", restore: "Restored", delete: "Deleted", custom: "Operations" };
 const PARAMS = { entity: "audit-master", actorId: "audit-person", action: "audit-action", from: "audit-from", to: "audit-to", page: "audit-page" } as const;
 type Filters = { [K in keyof typeof PARAMS]?: string };
 const PAGE = 50;
@@ -91,8 +91,10 @@ export function AuditLog({ onOpen }: { onOpen: (entity: string, id: string) => v
           <option value="">Every action</option>
           {ACTIONS.map((a) => <option key={a} value={a}>{ACTION_LABEL[a]}</option>)}
         </select>
-        <label className="audit-date">From <input className="input" type="date" value={filters.from ?? ""} max={filters.to} onChange={(e) => setFilters({ from: e.target.value || undefined })} /></label>
-        <label className="audit-date">To <input className="input" type="date" value={filters.to ?? ""} min={filters.from} onChange={(e) => setFilters({ to: e.target.value || undefined })} /></label>
+        <span className="audit-date">
+          <label>From <input className="input" type="date" value={filters.from ?? ""} max={filters.to} onChange={(e) => setFilters({ from: e.target.value || undefined })} /></label>
+          <label>to <input className="input" type="date" value={filters.to ?? ""} min={filters.from} onChange={(e) => setFilters({ to: e.target.value || undefined })} /></label>
+        </span>
       </div>
       {rows.isLoading && <p className="muted">Loading the log…</p>}
       {rows.error && <Empty title="Could not load the audit log">{(rows.error as Error).message}</Empty>}
@@ -110,7 +112,8 @@ export function AuditLog({ onOpen }: { onOpen: (entity: string, id: string) => v
                 </div>
                 <div className="audit-what">
                   <div>
-                    <span className={`audit-action audit-${e.action}`}>{ACTION_LABEL[String(e.action)] ?? label(String(e.action))}</span>{" "}
+                    {/* An operation (a trip dispatched, fuel issued) is named by its summary below, so it needs no verb of its own. */}
+                    {e.action !== "custom" && <><span className={`audit-action audit-${e.action}`}>{ACTION_LABEL[String(e.action)] ?? label(String(e.action))}</span>{" "}</>}
                     <span className="muted">{String(e.entityLabel)}</span>{" "}
                     {name && (e.openable
                       ? <button className="link-btn" onClick={() => onOpen(String(e.entity), String(e.entityId))}>{name}</button>
