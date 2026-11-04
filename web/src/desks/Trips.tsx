@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useAreas } from "../api/areas";
 import { AnimatePresence, motion } from "motion/react";
 import {
   ArrowLeft,
@@ -321,6 +322,7 @@ function Stepper({
 }
 
 function NextStepBar({ trip, step, onGo, viewing }: { trip: Trip; step: NextStep; onGo: (stage: StageId) => void; viewing: StageId }) {
+  const tracking = useAreas()("tracking");
   const { data, run, setOverlay } = useApp();
   const may = useMay();
   const mine = useMine()(trip, step);
@@ -377,7 +379,7 @@ function NextStepBar({ trip, step, onGo, viewing }: { trip: Trip; step: NextStep
             {verb[step.move]}
           </Button>
         )}
-        {actor === "road" && (
+        {actor === "road" && tracking && (
           <Button size="lg" onClick={() => setOverlay({ tracking: trip.id })}>
             <MapPinned /> Track
           </Button>
