@@ -103,7 +103,7 @@ else
 fi
 # Production refuses to start without these (see the refusals in docs/deploy-gcp.md).
 env_vars="APP_URL=$APP_URL,OWNER_EMAIL=$OWNER_EMAIL,TRUST_PROXY=$TRUST_PROXY,FILE_STORAGE=gcs,GCS_BUCKET=$BUCKET"
-env_vars="$env_vars,SMTP_HOST=$SMTP_HOST,SMTP_PORT=$SMTP_PORT,SMTP_SECURE=$SMTP_SECURE,CONSOLE_ENABLED=$CONSOLE_ENABLED,UPLOAD_MAX_MB=$UPLOAD_MAX_MB"
+env_vars="$env_vars,SMTP_HOST=$SMTP_HOST,SMTP_PORT=$SMTP_PORT,SMTP_SECURE=$SMTP_SECURE,CONSOLE_ENABLED=$CONSOLE_ENABLED,IN_PROCESS_JOBS=false,UPLOAD_MAX_MB=$UPLOAD_MAX_MB"
 [ -z "$SMTP_USER" ] || env_vars="$env_vars,SMTP_USER=$SMTP_USER"
 [ -z "$REDIS_URL" ] || env_vars="$env_vars,REDIS_URL=$REDIS_URL"
 # The settings go in a YAML file, since values such as SMTP_FROM hold spaces and angle brackets.
@@ -144,6 +144,31 @@ run gcloud scheduler jobs "$schedule_verb" http "$RATES_JOB-hourly" --project "$
   --schedule "5 * * * *" --time-zone UTC --http-method POST \
   --uri "https://run.googleapis.com/v2/projects/$PROJECT_ID/locations/$REGION/jobs/$RATES_JOB:run" \
   --oauth-service-account-email "$SA_EMAIL" --oauth-token-scope https://www.googleapis.com/auth/cloud-platform
+
+# Work the service would do on a timer if it stayed awake. It scales to zero when idle, so a scheduler starts these.
+scheduled_job() {
+  local job="$1" script="$2" trigger="$3" schedule="$4"
+  run gcloud run jobs deploy "$job" --project "$PROJECT_ID" --region "$REGION" \
+    --image "$IMAGE" --service-account "$SA_EMAIL" \
+    --env-vars-file "$env_file" --set-secrets "$secrets" \
+    --command node --args "$script" \
+    --tasks 1 --max-retries 0 --task-timeout 300s --cpu 1 --memory 512Mi \
+    "${egress_flags[@]}"
+  run gcloud run jobs add-iam-policy-binding "$job" --project "$PROJECT_ID" --region "$REGION" \
+    --member "serviceAccount:$SA_EMAIL" --role roles/run.invoker --quiet
+  local verb=create
+  if exists gcloud scheduler jobs describe "$trigger" --location "$SCHEDULER_REGION" --project "$PROJECT_ID"; then verb=update; fi
+  run gcloud scheduler jobs "$verb" http "$trigger" --project "$PROJECT_ID" --location "$SCHEDULER_REGION" \
+    --schedule "$schedule" --time-zone UTC --http-method POST \
+    --uri "https://run.googleapis.com/v2/projects/$PROJECT_ID/locations/$REGION/jobs/$job:run" \
+    --oauth-service-account-email "$SA_EMAIL" --oauth-token-scope https://www.googleapis.com/auth/cloud-platform
+}
+
+say "Approval escalation: Cloud Run job $ESCALATION_JOB, started every 15 minutes by Cloud Scheduler ($SCHEDULER_REGION)"
+scheduled_job "$ESCALATION_JOB" dist/jobs/escalate.js "$ESCALATION_JOB-15min" "*/15 * * * *"
+
+say "Service reminders: Cloud Run job $REMINDERS_JOB, started every hour by Cloud Scheduler ($SCHEDULER_REGION)"
+scheduled_job "$REMINDERS_JOB" dist/jobs/serviceReminders.js "$REMINDERS_JOB-hourly" "20 * * * *"
 
 dns=""
 if [ "$DOMAIN_MODE" = lb ]; then

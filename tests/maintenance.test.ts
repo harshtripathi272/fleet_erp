@@ -1,6 +1,8 @@
 // #63: the Maintenance area: service plans, what is due, work orders that hold a truck, tyres and cost per truck.
+import { spawnSync } from 'node:child_process';
 import assert from 'node:assert/strict';
 import { after, before, beforeEach, describe, test } from 'node:test';
+import mongoose from 'mongoose';
 import { settleSends } from '../src/modules/messaging/dispatcher.js';
 import { OutboundMessage } from '../src/modules/messaging/models/connection.model.js';
 import { Vehicle } from '../src/modules/fleet/models/vehicle.model.js';
@@ -187,6 +189,35 @@ describe('what is due', () => {
     ok(await as(ops).post(`/trips/${trip.id}/stop`, { reason: 'Truck broke down', closingFuelL: 100 }));
     assert.equal(ok(await as(owner).get(`/vehicles/${ids.v1}`)).odometerKm, 100_000 + driven);
     assert.equal((await rowOf(id)).odometerKm, 100_000 + driven, 'not counted twice');
+  });
+});
+
+describe('the scheduled job', () => {
+  beforeEach(() => setAreas('maintenance'));
+
+  const runJob = () => {
+    const { host, port, name } = mongoose.connection;
+    return spawnSync(process.execPath, ['--import', 'tsx', 'src/jobs/serviceReminders.ts'], { env: { ...process.env, MONGODB_URI: `mongodb://${host}:${port}/${name}` }, encoding: 'utf8', timeout: 60_000 });
+  };
+
+  test('its entry point fires the reminder and sends it, once; with Maintenance off it does nothing', async () => {
+    await setOdometer(100_000);
+    const { id } = ok(await plan(), 201);
+    await rowOf(id);
+    await setOdometer(112_000);
+
+    await setAreas();
+    assert.equal(runJob().status, 0);
+    assert.equal(await OutboundMessage.countDocuments({ event: 'service.due' }), 0);
+
+    await setAreas('maintenance');
+    const first = runJob();
+    assert.equal(first.status, 0, first.stderr || first.stdout);
+    const sent = await OutboundMessage.find({ event: 'service.due' }).lean();
+    assert.ok(sent.length > 0);
+    assert.ok(sent.every((m) => m.status !== 'queued' && m.status !== 'sending'), 'the job waited for the sends before it ended');
+    assert.equal(runJob().status, 0);
+    assert.equal(await OutboundMessage.countDocuments({ event: 'service.due' }), sent.length, 'not twice');
   });
 });
 

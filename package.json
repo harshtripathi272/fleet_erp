@@ -18,6 +18,10 @@
     "seed": "tsx scripts/seed.ts",
     "rates:fetch": "node dist/jobs/fetchRates.js",
     "rates:fetch:dev": "tsx src/jobs/fetchRates.ts",
+    "approvals:escalate": "node dist/jobs/escalate.js",
+    "approvals:escalate:dev": "tsx src/jobs/escalate.ts",
+    "maintenance:remind": "node dist/jobs/serviceReminders.js",
+    "maintenance:remind:dev": "tsx src/jobs/serviceReminders.ts",
     "build:web": "cd web && npm install --no-audit --no-fund && npm run build"
   },
   "dependencies": {

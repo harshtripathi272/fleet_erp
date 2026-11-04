@@ -30,6 +30,12 @@ update_one() {
     if [ "$DRY_RUN" = 1 ] || exists gcloud run jobs describe "$RATES_JOB" --project "$PROJECT_ID" --region "$REGION"; then
       run gcloud run jobs update "$RATES_JOB" --project "$PROJECT_ID" --region "$REGION" --image "$image"
     fi
+    if [ "$DRY_RUN" = 1 ] || exists gcloud run jobs describe "$ESCALATION_JOB" --project "$PROJECT_ID" --region "$REGION"; then
+      run gcloud run jobs update "$ESCALATION_JOB" --project "$PROJECT_ID" --region "$REGION" --image "$image"
+    fi
+    if [ "$DRY_RUN" = 1 ] || exists gcloud run jobs describe "$REMINDERS_JOB" --project "$PROJECT_ID" --region "$REGION"; then
+      run gcloud run jobs update "$REMINDERS_JOB" --project "$PROJECT_ID" --region "$REGION" --image "$image"
+    fi
   )
 }
 

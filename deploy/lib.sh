@@ -75,6 +75,10 @@ load_company() {
   # The daily exchange-rate fetch. Cloud Scheduler isn't offered in every region (not africa-south1, as far as
   # we know: check with `gcloud scheduler locations list`); a trigger elsewhere still starts the job here.
   RATES_JOB="${RATES_JOB:-$SERVICE-rates}"
+  # Moving up approvals that waited too long: the service scales to zero, so a timer inside it wouldn't run overnight.
+  ESCALATION_JOB="${ESCALATION_JOB:-$SERVICE-escalate}"
+  # The same for "Service due" reminders (the Maintenance area).
+  REMINDERS_JOB="${REMINDERS_JOB:-$SERVICE-service-reminders}"
   SCHEDULER_REGION="${SCHEDULER_REGION:-$([ "$REGION" = africa-south1 ] && echo europe-west1 || echo "$REGION")}"
 }
 
