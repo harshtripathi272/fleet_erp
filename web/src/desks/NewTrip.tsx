@@ -1,3 +1,4 @@
+import { useHeldTrucks } from "../api/areas";
 import { useEffect, useMemo, useState } from "react";
 import { Check } from "lucide-react";
 import { api } from "../api/client";
@@ -5,7 +6,7 @@ import { useApp } from "../store";
 import { byId, fuelEstimate, leg, stopsFromTruck, validateStops } from "../domain/calc";
 import { activeTrip, placeName } from "../domain/helpers";
 import type { RouteStop, Truck } from "../domain/types";
-import { Button, Drawer, Field } from "../ui/kit";
+import { Button, Drawer, Field, Status } from "../ui/kit";
 import { fromLocalInput, km, L, localInput, zmw } from "../ui/format";
 import { StopEditor } from "./stages";
 import { MiniRoute } from "../tracking/MiniRoute";
@@ -15,6 +16,7 @@ export function NewTrip({ open, onClose, onCreated }: { open: boolean; onClose: 
   const { data, run } = useApp();
   const busy = useMemo(() => new Set(data.trips.filter(activeTrip).flatMap((t) => [t.truckId, t.driverId, t.trailerId])), [data.trips]);
   const free = data.trucks.filter((t) => !busy.has(t.id));
+  const held = useHeldTrucks();
   const [truckId, setTruckId] = useState("");
   const truck = byId(data.trucks, truckId) as Truck | undefined;
   const [driverId, setDriverId] = useState("");
@@ -97,12 +99,16 @@ export function NewTrip({ open, onClose, onCreated }: { open: boolean; onClose: 
       <div className="stack">
         <div className="truck-pick" role="radiogroup" aria-label="Truck">
           {free.map((t) => (
-            <button key={t.id} role="radio" aria-checked={t.id === truckId} className={`truck-tile ${t.id === truckId ? "on" : ""}`} onClick={() => pickTruck(t.id)}>
+            <button key={t.id} role="radio" aria-checked={t.id === truckId} disabled={held.has(t.id)} className={`truck-tile ${t.id === truckId ? "on" : ""}`} onClick={() => pickTruck(t.id)}>
               <strong>{t.plate}</strong>
               <span>{placeName(data, t.placeId)}</span>
-              <span className="muted">
-                {byId(data.trailers, t.trailerId)?.type ?? "No trailer"} · {L(t.fuelL)}
-              </span>
+              {held.has(t.id) ? (
+                <Status tone="wait">Held by {held.get(t.id)}</Status>
+              ) : (
+                <span className="muted">
+                  {byId(data.trailers, t.trailerId)?.type ?? "No trailer"} · {L(t.fuelL)}
+                </span>
+              )}
             </button>
           ))}
         </div>

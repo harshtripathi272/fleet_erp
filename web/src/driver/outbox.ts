@@ -17,7 +17,7 @@ export interface OutboxItem {
   at: string;
   /** What the driver sees in "Waiting to send". */
   label: string;
-  type: "send" | "arrive";
+  type: "send" | "arrive" | "defect";
   kind?: DocKind;
   note?: string;
   stopId?: string;
@@ -84,6 +84,10 @@ async function deliver(item: OutboxItem) {
   const headers = { "Idempotency-Key": item.id };
   if (item.type === "arrive") {
     await api(`/driver-app/stops/${item.stopId}/arrive`, { method: "POST", headers });
+    return;
+  }
+  if (item.type === "defect") {
+    await api("/driver-app/defects", { method: "POST", headers, body: { note: item.note } });
     return;
   }
   let fileId = item.fileId;

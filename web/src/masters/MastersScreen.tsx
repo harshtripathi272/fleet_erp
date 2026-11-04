@@ -42,13 +42,13 @@ const OPEN = "marichi.masters.open";
 const remembered = () => { try { return sessionStorage.getItem(OPEN); } catch { return null; } };
 const remember = (key: string) => { try { sessionStorage.setItem(OPEN, key); } catch { /* private mode: nothing to keep */ } };
 
-export function MastersScreen({ initialEntity }: { initialEntity?: string }) {
+export function MastersScreen({ initialEntity, initialId }: { initialEntity?: string; initialId?: string }) {
   const { me } = useApp();
   const masters = useMasters();
   const customMasters = useQuery({ queryKey: ["custom-masters"], queryFn: () => api<Rec[]>("/custom-masters", { query: { limit: 100 } }) });
   const [selected, setSelectedState] = useState<string>(() => (wantsAuditLog() ? AUDIT_VIEW : initialEntity && !initialEntity.includes(":") ? initialEntity : remembered() ?? "vehicles"));
-  // A record opened from the audit log.
-  const [openId, setOpenId] = useState<string | undefined>();
+  // A record opened from the audit log or the Maintenance desk.
+  const [openId, setOpenId] = useState<string | undefined>(initialId);
   // A company that isn't ready for its first trip opens on "Set up the company", unless someone chose a page or followed a link.
   const readiness = useReadiness();
   const [opened, setOpened] = useState(Boolean(initialEntity || remembered() || wantsAuditLog()));

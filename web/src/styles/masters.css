@@ -157,3 +157,7 @@ details.form-group summary { cursor: pointer; }
 .audit-fields summary { cursor: pointer; color: var(--pine-600); font-size: 13px; font-weight: 560; }
 .audit-fields[open] summary { margin-bottom: 4px; }
 .area-early { margin-left: 8px; vertical-align: 1px; }
+
+/* The Maintenance desk's period, and the driver's defect form. */
+.audit-date-pair { display: inline-flex; flex-wrap: wrap; gap: 8px; }
+.drv-defect { display: grid; gap: 8px; }

@@ -13,6 +13,7 @@ import {
   KeyRound,
   LogOut,
   MessageCircle,
+  Wrench,
   MoreHorizontal,
   Settings2,
   Truck,
@@ -42,12 +43,13 @@ const TripsPage = lazy(() => import("./desks/Trips").then((m) => ({ default: m.T
 const FinanceToday = lazy(() => import("./desks/Finance").then((m) => ({ default: m.FinanceToday })));
 const Accounts = lazy(() => import("./desks/Accounts").then((m) => ({ default: m.Accounts })));
 const Nominations = lazy(() => import("./desks/Nominations").then((m) => ({ default: m.Nominations })));
+const Maintenance = lazy(() => import("./desks/Maintenance").then((m) => ({ default: m.Maintenance })));
 const MastersScreen = lazy(() => import("./masters/MastersScreen").then((m) => ({ default: m.MastersScreen })));
 const Overview = lazy(() => import("./desks/Overview").then((m) => ({ default: m.Overview })));
 const DriverDesk = lazy(() => import("./desks/DriverDesk").then((m) => ({ default: m.DriverDesk })));
 const Tracking = lazy(() => import("./tracking/Tracking"));
 
-type View = "overview" | "today" | "trips" | "nominations" | "accounts" | "masters" | "driver";
+type View = "overview" | "today" | "trips" | "nominations" | "accounts" | "maintenance" | "masters" | "driver";
 interface Session {
   role?: Role;
   driverId?: string;
@@ -56,6 +58,7 @@ interface Session {
   stage?: string;
   accountDriverId?: string;
   masterEntity?: string;
+  masterId?: string;
 }
 const readSession = (): Session => {
   const params = new URLSearchParams(location.search);
@@ -81,6 +84,7 @@ const NAV: Record<Role, { id: View; label: string; short?: string; icon: typeof 
     { id: "trips", label: "Trips", icon: Truck },
     { id: "nominations", label: "Nominations", icon: ClipboardList },
     { id: "accounts", label: "Driver accounts", short: "Accounts", icon: Wallet },
+    { id: "maintenance", label: "Maintenance", icon: Wrench },
     { id: "masters", label: "Masters", icon: Settings2 },
   ],
   finance: [
@@ -94,6 +98,7 @@ const NAV: Record<Role, { id: View; label: string; short?: string; icon: typeof 
     { id: "trips", label: "Trips", icon: Truck },
     { id: "nominations", label: "Nominations", icon: ClipboardList },
     { id: "accounts", label: "Driver accounts", short: "Accounts", icon: Wallet },
+    { id: "maintenance", label: "Maintenance", icon: Wrench },
     { id: "masters", label: "Masters", icon: Settings2 },
   ],
   driver: [{ id: "driver", label: "My trip", icon: Truck }],
@@ -169,7 +174,8 @@ export default function Desks({ me }: { me: Me }) {
         return;
       }
       if (target.view === "nominations") setSession({ view: "nominations" });
-      if (target.view === "masters" && role !== "driver") setSession({ view: "masters", masterEntity: target.masterEntity });
+      if (target.view === "masters" && role !== "driver") setSession({ view: "masters", masterEntity: target.masterEntity, masterId: target.masterId });
+      if (target.view === "maintenance" && role !== "driver") setSession({ view: "maintenance" });
       if (target.view === "finance" && role === "finance") setSession({ view: "today" });
       setOverlay({});
     },
@@ -225,7 +231,8 @@ export default function Desks({ me }: { me: Me }) {
             {view === "accounts" && (
               <Accounts driverId={session.accountDriverId} onDriver={(id) => setSession({ accountDriverId: id })} />
             )}
-            {view === "masters" && <MastersScreen key={session.masterEntity || "masters"} initialEntity={session.masterEntity} />}
+            {view === "maintenance" && <Maintenance />}
+            {view === "masters" && <MastersScreen key={`${session.masterEntity || "masters"}-${session.masterId ?? ""}`} initialEntity={session.masterEntity} initialId={session.masterId} />}
             {view === "driver" && <DriverDesk />}
           </Suspense>
         </Shell>

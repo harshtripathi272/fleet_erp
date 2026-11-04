@@ -25,6 +25,7 @@ const STOP_LABEL: Record<string, string> = { start: "Start", load: "Loading", vi
 interface Stop { id: string; kind: string; place: string; legKm?: number; arrivedAt?: string; arrivedVia?: string }
 interface Doc { id: string; kind: Kind; status: string; at: string; note?: string; returnReason?: string; simulated?: boolean; file?: { fileId?: string; name?: string; mime?: string; sampleId?: string } }
 interface Home {
+  canReportDefect?: boolean;
   driver: { id: string; name: string; code?: string };
   trip: null | {
     id: string; number: string; truck: string; trailer?: string; customer: string; product: string; dispatchedAt?: string;
@@ -199,6 +200,8 @@ export function DriverPortal({ me }: { me: Me }) {
         )}
       </section>
 
+      {h.canReportDefect && trip && <ReportDefect />}
+
       <Conversation
         messages={messages.data ?? []}
         waiting={outbox.items.filter((i) => i.type === "send" && i.note && !i.file).map((i) => ({ id: i.id, text: i.note!, at: i.at }))}
@@ -267,6 +270,25 @@ function Conversation({ messages, waiting, onPick, onSend }: { messages: Msg[]; 
       <form className="drv-compose" onSubmit={submit}>
         <input value={text} onChange={(e) => setText(e.target.value)} placeholder="Write to the office" aria-label="Message to the office" maxLength={1000} />
         <Button tone="primary" type="submit" aria-label="Send"><Send /></Button>
+      </form>
+    </section>
+  );
+}
+
+function ReportDefect() {
+  const [text, setText] = useState("");
+  const submit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!text.trim()) return;
+    void enqueue({ type: "defect", note: text.trim(), label: "Problem with the truck" });
+    setText("");
+  };
+  return (
+    <section className="drv-card">
+      <h3>Report a problem with the truck</h3>
+      <form className="drv-defect" onSubmit={submit}>
+        <textarea className="input" rows={2} value={text} onChange={(e) => setText(e.target.value)} placeholder="What is wrong?" aria-label="What is wrong with the truck" />
+        <Button type="submit" disabled={!text.trim()}>Send to the office</Button>
       </form>
     </section>
   );

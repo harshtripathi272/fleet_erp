@@ -332,7 +332,7 @@ export interface Nomination {
   tripIds: string[];
 }
 
-export type Nav = { tripId?: string; view?: string; docId?: string; driverId?: string; masterEntity?: string };
+export type Nav = { masterId?: string; tripId?: string; view?: string; docId?: string; driverId?: string; masterEntity?: string };
 export interface MsgButton {
   label: string;
   action?: Action;

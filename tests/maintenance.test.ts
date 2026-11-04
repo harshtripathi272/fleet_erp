@@ -4,6 +4,7 @@ import { after, before, beforeEach, describe, test } from 'node:test';
 import { settleSends } from '../src/modules/messaging/dispatcher.js';
 import { OutboundMessage } from '../src/modules/messaging/models/connection.model.js';
 import { Vehicle } from '../src/modules/fleet/models/vehicle.model.js';
+import { ServicePlan } from '../src/modules/maintenance/models/maintenance.model.js';
 import { remindDueServices, serviceStatus } from '../src/modules/maintenance/maintenance.service.js';
 import { api, bearer, find, loadSample, resetDatabase, signUp, startDatabase, stopDatabase, userWithRole, type Session } from './helpers.js';
 
@@ -51,6 +52,7 @@ beforeEach(async () => {
   for (const [key, master, search] of lookups) ids[key] = (await find(owner, master, search)).id;
   ok(await as(ops).put(`/vehicle-states/${ids.v1}`, { placeId: ids.depot, fuelL: 200 }));
   await Vehicle.updateOne({ _id: ids.v1 }, { $set: { odometerKm: 100_000 } });
+  await ServicePlan.deleteMany({}); // only this test's plans, not the sample's
 });
 
 describe('the area', () => {
@@ -225,7 +227,7 @@ describe('work orders', () => {
 
   test('a finished order records its reading, costs its labour and parts, and stays finished', async () => {
     await setOdometer(100_000);
-    const workshop = ok(await as(owner).post('/parties', { name: 'Kafue Truck Repairs', roles: ['workshop'], countryId: (await find(owner, 'countries', 'ZM')).id }), 201);
+    const workshop = ok(await as(owner).post('/parties', { name: 'Mumbwa Truck Repairs', roles: ['workshop'], countryId: (await find(owner, 'countries', 'ZM')).id }), 201);
     assert.equal((await as(ops).post('/work-orders', { vehicleId: ids.v1, workshopPartyId: ids.zambezi })).status, 422, 'a customer is not a workshop');
     const order = ok(await as(ops).post('/work-orders', {
       vehicleId: ids.v1, workshopPartyId: workshop.id, labour: { amountMinor: 500_00, currencyId: ids.ZMW },

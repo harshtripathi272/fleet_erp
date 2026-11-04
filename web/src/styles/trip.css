@@ -1233,6 +1233,10 @@
 .truck-tile span {
   font-size: 13px;
 }
+.truck-tile:disabled {
+  cursor: not-allowed;
+  background: var(--surface-2);
+}
 .truck-tile:hover {
   border-color: var(--pine-200);
 }
