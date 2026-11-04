@@ -10,7 +10,7 @@ import { PARTY_ROLES, Party } from './models/party.model.js';
 import * as S from './parties.schema.js';
 
 export const partyDefinition = defineMaster({
-  key: 'parties', label: 'Parties', singular: 'Party', group: GROUPS.parties,
+  key: 'parties', label: 'Parties', singular: 'Party', group: GROUPS.parties, lockedChoices: ['roles'],
   description: 'Every company or person you deal with: customers, consignors, consignees, suppliers, brokers, clearing agents, hired transporters. One record, many roles, one balance.',
   model: Party, createSchema: S.createPartySchema, updateSchema: S.updatePartySchema,
   searchFields: ['code', 'name', 'tradingName', 'taxId', 'contacts.name', 'contacts.email', 'contacts.phone'],
@@ -42,7 +42,7 @@ export const partyDefinition = defineMaster({
 });
 
 export const orderSourceDefinition = defineMaster({
-  key: 'order-sources', label: 'Order sources', singular: 'Order source', group: GROUPS.parties,
+  key: 'order-sources', label: 'Order sources', singular: 'Order source', group: GROUPS.parties, module: 'trips',
   description: 'Where a job came from: direct, broker, tender, portal. Some require a reference number.',
   model: OrderSource, createSchema: S.createOrderSourceSchema, updateSchema: S.updateOrderSourceSchema,
 });

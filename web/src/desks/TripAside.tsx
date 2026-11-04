@@ -1,4 +1,5 @@
 import { Maximize2, Phone } from "lucide-react";
+import { useAreas } from "../api/areas";
 import { useApp } from "../store";
 import { byId, driverLedger, funding, fuelNow } from "../domain/calc";
 import { activeTrip } from "../domain/helpers";
@@ -8,6 +9,7 @@ import { ago, L, zmw } from "../ui/format";
 import { Avatar } from "../ui/kit";
 
 export function TripAside({ trip }: { trip: Trip }) {
+  const tracking = useAreas()("tracking");
   const { data, setOverlay } = useApp();
   const f = funding(data, trip);
   // Unsettled: what the driver holds now, the Driver accounts figure. Settled: this trip's advances less its approved receipts.
@@ -23,7 +25,7 @@ export function TripAside({ trip }: { trip: Trip }) {
       {trip.stops.length > 0 && (
         <section className="aside-card map-card">
           <MiniRoute stops={trip.stops} trip={trip} height={170} />
-          {trip.dispatchedAt && (
+          {trip.dispatchedAt && tracking && (
             <div className="map-card-foot">
               <span>{live ? <>{Math.round(trip.tracking?.speed ?? 0) > 0 ? `${Math.round(trip.tracking?.speed ?? 0)} km/h` : "Stopped"} · {L(fuelNow(data, trip))} in the tank</> : null}</span>
               <button className="link-btn" onClick={() => setOverlay({ tracking: trip.id })}>

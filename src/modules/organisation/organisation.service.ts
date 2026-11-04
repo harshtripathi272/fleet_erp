@@ -30,7 +30,7 @@ async function assertNoCycle(id: string | undefined, parentId: unknown) {
 }
 
 export const branchDefinition = defineMaster({
-  key: 'branches', label: 'Branches', singular: 'Branch', group: GROUPS.organisation,
+  key: 'branches', label: 'Branches', singular: 'Branch', group: GROUPS.organisation, lockedChoices: ['type'],
   description: 'Head office, branches, yards, workshops and depots. Only one active head office; parents cannot form loops.',
   model: Branch, createSchema: S.createBranchSchema, updateSchema: S.updateBranchSchema,
   refs: [
@@ -90,7 +90,7 @@ function checkPattern(data: Plain) {
 }
 
 export const numberingSeriesDefinition = defineMaster({
-  key: 'numbering-series', label: 'Numbering series', singular: 'Numbering series', group: GROUPS.organisation,
+  key: 'numbering-series', label: 'Numbering series', singular: 'Numbering series', group: GROUPS.organisation, lockedChoices: ['resetPolicy'],
   description: 'How codes and document numbers are generated, e.g. {PREFIX}/{YY}/{SEQ} → DRV/26/0001. Resets yearly, monthly or never.',
   model: NumberingSeries, createSchema: S.createNumberingSeriesSchema, updateSchema: S.updateNumberingSeriesSchema,
   searchFields: ['code', 'name', 'entity'],
@@ -178,7 +178,7 @@ export async function reserveSeries(id: string, actorId?: string, requestId?: st
 /* ---------- Approval policies ---------- */
 
 export const approvalPolicyDefinition = defineMaster({
-  key: 'approval-policies', label: 'Approval policies', singular: 'Approval policy', group: GROUPS.organisation,
+  key: 'approval-policies', label: 'Approval policies', singular: 'Approval policy', group: GROUPS.organisation, module: 'finance', lockedChoices: ['subject', 'levels.measure'],
   description: 'Who approves what above which amount. Levels run 1, 2, 3… with rising thresholds; each names a role or a person.',
   model: ApprovalPolicy, createSchema: S.createApprovalPolicySchema, updateSchema: S.updateApprovalPolicySchema,
   searchFields: ['code', 'name', 'subject'],

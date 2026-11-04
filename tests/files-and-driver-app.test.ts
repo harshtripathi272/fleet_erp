@@ -215,7 +215,7 @@ describe('driver app', () => {
 
     const company = ok(await as(owner).get('/company'));
     ok(await as(owner).put('/company', { modules: ['masters', 'trips', 'finance', 'tracking'], version: company.version }));
-    assert.match((await as(joseph).get('/driver-app/home')).body.error.message, /Driver app module is switched off/);
+    assert.match((await as(joseph).get('/driver-app/home')).body.error.message, /Driver app is switched off for this company/);
 
     ok(await as(owner).delete(`/users/driver-access/${ids.d1}`));
     await as(joseph).get('/auth/me').expect(401);
