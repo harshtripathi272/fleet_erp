@@ -119,7 +119,8 @@ export function MastersScreen({ initialEntity }: { initialEntity?: string }) {
           : selected === "messaging" ? <MessagingSettings />
           : selected === AUDIT_VIEW && can(me, "audit-logs", "read") ? <AuditLog onOpen={(entity, id) => setSelected(entity, id)} />
           : custom ? <CustomRecords master={custom} defs={defs} />
-          : def ? <Records key={`${def.key}-${openId ?? ""}`} def={def} defs={defs} openId={openId} /> : null}
+          : def ? <Records key={`${def.key}-${openId ?? ""}`} def={def} defs={defs} openId={openId} />
+          : can(me, "audit-logs", "read") ? <AuditLog onOpen={(entity, id) => setSelected(entity, id)} /> : null}
       </section>
     </div>
   );

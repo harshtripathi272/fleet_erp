@@ -73,10 +73,7 @@ export function AuditLog({ onOpen }: { onOpen: (entity: string, id: string) => v
   return (
     <div className="desk">
       <header className="masters-head">
-        <div>
-          <h2>Audit log</h2>
-          <p className="muted">Every change in the company: who made it, when, and from what to what.</p>
-        </div>
+        <h2>Audit log</h2>
         <Button onClick={() => void download()} busy={downloading}><Download size={16} /> Download as CSV</Button>
       </header>
       <div className="desk-tools audit-filters">

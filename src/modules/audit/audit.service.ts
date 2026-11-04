@@ -96,8 +96,8 @@ async function present(rows: Row[], reader: AuditReader): Promise<Entry[]> {
       actorName: r.actorId ? names.get(String(r.actorId)) ?? 'A removed user' : null,
       entityLabel: entityLabel(r.entity),
       title: named.get(`${r.entity}:${r.entityId}`) ?? null,
-      // Masters open in Masters; other records (trips, documents) are shown by name only.
-      openable: Boolean(getMaster(r.entity)) && r.action !== 'delete',
+      // Masters the reader may open; other records (trips, documents) are shown by name only.
+      openable: Boolean(getMaster(r.entity)) && r.action !== 'delete' && reader.can(r.entity, 'read'),
       changes: changes.map((c) => (masked(r.entity, c.path, reader) ? { ...c, from: c.from === undefined ? undefined : HIDDEN, to: c.to === undefined ? undefined : HIDDEN } : c)),
     };
   });

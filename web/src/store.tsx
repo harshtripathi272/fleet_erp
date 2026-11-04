@@ -48,7 +48,11 @@ let synced: Synced | null = null;
 async function syncOperations(userId: string): Promise<Operations> {
   if (synced?.userId !== userId) synced = { userId, maps: Object.fromEntries(COLLECTIONS.map((c) => [c, new Map()])) as Synced["maps"], reads: [] };
   const state = synced;
-  const res = await api<Rec>("/operations/sync", { query: { since: state.since } });
+  // Like the lists above: someone who may not read trips (an auditor, say) still gets the app, with no trips in it.
+  const res = await api<Rec>("/operations/sync", { query: { since: state.since } }).catch((error: unknown) => {
+    if (error instanceof ApiError && error.status === 403) return {} as Rec;
+    throw error;
+  });
   for (const c of COLLECTIONS) for (const row of (res[c] ?? []) as Rec[]) state.maps[c].set(String(row.id), row);
   state.reads = res.reads ?? [];
   state.since = res.serverTime;

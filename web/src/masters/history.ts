@@ -23,6 +23,9 @@ export const short = (v: unknown): string => {
   }
   if (Array.isArray(v) && v.every((x) => typeof x === "string" && /^[0-9a-f]{24}$/.test(x))) return v.length === 1 ? "1 linked record" : `${v.length} linked records`;
   if (typeof v === "boolean") return v ? "Yes" : "No";
-  const s = typeof v === "string" ? v : JSON.stringify(v);
-  return s.length > 60 ? `${s.slice(0, 57)}…` : s;
+  // An object reads as its parts, never as raw JSON with ids in it.
+  const s = v && typeof v === "object" && !Array.isArray(v)
+    ? Object.entries(v as Rec).filter(([, x]) => !empty(x)).map(([k, x]) => `${label(k)}: ${short(x)}`).join(", ")
+    : typeof v === "string" ? v : Array.isArray(v) ? v.map(short).join(", ") : String(v);
+  return s.length > 60 ? `${s.slice(0, 57)}…` : s || "—";
 };

@@ -90,6 +90,17 @@ describe('the audit log', () => {
     assert.ok(lines.slice(1).every((l) => l.includes('"Olga Owner"')));
   });
 
+  test('an auditor who cannot read a master sees its changes but gets no link into it', async () => {
+    const role = ok(await api().post('/api/v1/roles').set(bearer(owner)).send({ key: 'auditor', name: 'Auditor', permissions: [{ resource: 'audit-logs', actions: ['read'] }] }), 201);
+    const email = `auditor-${Date.now()}@example.test`;
+    ok(await api().post('/api/v1/users').set(bearer(owner)).send({ name: 'Ada Auditor', email, password: 'Passw0rd!', roleIds: [role.id] }), 201);
+    const auditor = { token: ok<{ accessToken: string }>(await api().post('/api/v1/auth/login').send({ email, password: 'Passw0rd!' })).accessToken } as Session;
+    const entries = ok<any[]>(await get(auditor, '/audit-logs', { entity: 'drivers', limit: 3 }));
+    assert.ok(entries.length > 0);
+    assert.ok(entries.every((e) => e.openable === false));
+    assert.ok(entries.every((e) => e.title), 'the record is still named');
+  });
+
   test('a role without audit-logs:read gets no log', async () => {
     const role = ok(await api().post('/api/v1/roles').set(bearer(owner)).send({ key: 'driver-clerk', name: 'Driver clerk', permissions: [{ resource: 'drivers', actions: ['read'] }] }), 201);
     const email = `clerk-${Date.now()}@example.test`;
