@@ -53,7 +53,7 @@ export const cityDefinition = defineMaster({
 });
 
 export const placeDefinition = defineMaster({
-  key: 'places', label: 'Places', singular: 'Place', group: GROUPS.geography,
+  key: 'places', label: 'Places', singular: 'Place', group: GROUPS.geography, lockedChoices: ['kind'],
   description: 'Any point a truck starts, stops or ends at: depots, terminals, mines, ports, customer sites, borders.',
   model: Place, createSchema: S.createPlaceSchema, updateSchema: S.updatePlaceSchema,
   refs: [{ path: 'cityId', target: 'cities' }, { path: 'address.cityId', target: 'cities' }, { path: 'ownerPartyId', target: 'parties' }],

@@ -43,6 +43,7 @@ export const servicePlanDefinition = defineMaster({
   description: 'What a truck type or one truck needs, and how often: every so many km, days or engine hours, whichever comes first.',
   model: ServicePlan, createSchema: S.createServicePlanSchema, updateSchema: S.updateServicePlanSchema,
   columns: ['vehicleTypeId', 'vehicleId', 'everyKm', 'everyDays', 'everyEngineHours'],
+  fixedFields: ['vehicleTypeId', 'vehicleId', 'everyKm', 'everyDays', 'everyEngineHours'],
   labels: { everyKm: 'Every (km)', everyDays: 'Every (days)', everyEngineHours: 'Every (engine hours)', vehicleId: 'One truck', vehicleTypeId: 'Truck type' },
   hints: {
     vehicleTypeId: 'Every truck of this type follows the plan. Choose a type or one truck, not both.',
@@ -70,6 +71,8 @@ export const workOrderDefinition = defineMaster({
   defaultSort: '-createdAt',
   titleField: 'number',
   columns: ['vehicleId', 'stage', 'stopsTruck', 'workshopPartyId', 'startedAt', 'endedAt'],
+  fixedFields: ['stage', 'stopsTruck', 'source', 'servicePlanId', 'odometerKm', 'engineHours', 'startedAt', 'endedAt', 'labour'],
+  lockedChoices: ['stage', 'source'],
   hidden: ['costBaseMinor'],
   immutable: ['vehicleId'],
   labels: { vehicleId: 'Truck', servicePlanId: 'Service', workshopPartyId: 'Workshop', stopsTruck: 'Stops the truck', source: 'Opened from', 'parts.unitCost': 'Unit cost' },

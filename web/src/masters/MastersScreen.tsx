@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Archive, ChevronLeft, History, Link2, Plus, RotateCcw, Search, Trash2, Upload } from "lucide-react";
+import { Archive, ChevronLeft, History, Link2, Plus, RotateCcw, Search, Settings2, Trash2, Upload } from "lucide-react";
 import { api, ApiError, request } from "../api/client";
 import type { Rec } from "../api/adapter";
 import { can } from "../api/session";
@@ -17,6 +17,7 @@ import { CompanySetup, useReadiness } from "./CompanySetup";
 import MessagingSettings from "../settings/MessagingSettings";
 import { AUDIT_VIEW, choiceName, fieldName, fieldTitle, label, short, shown, singular, wantsAuditLog } from "./history";
 import { AuditLog } from "./AuditLog";
+import { Customise } from "./Customise";
 
 export { label };
 
@@ -31,6 +32,24 @@ type Schema = Rec;
 
 const useMasters = () => useQuery({ queryKey: ["meta-masters"], queryFn: () => api<Def[]>("/meta/masters"), staleTime: 5 * 60_000 });
 const OBJECT_ID = "^[0-9a-fA-F]{24}$";
+/** A list's choices in the company's order, without the ones it retired, except any the record already holds. */
+const offeredChoices = (info: Rec | undefined, codeOrder: string[], current: unknown) => {
+  const held = new Set((Array.isArray(current) ? current : [current]).filter((v): v is string => typeof v === "string"));
+  const retired = new Set((info?.retiredChoices as string[] | undefined) ?? []);
+  return ((info?.enum as string[] | undefined) ?? codeOrder).filter((o) => !retired.has(o) || held.has(o));
+};
+/** A new record starts with the company's default values (#65), nested ones included. */
+const companyDefaults = (def: Def): Rec => {
+  const out: Rec = {};
+  for (const f of (def.fields as Rec[]) ?? []) {
+    if (f.companyDefault === undefined) continue;
+    const parts = String(f.path).split(".");
+    let node = out;
+    for (const p of parts.slice(0, -1)) node = (node[p] ??= {}) as Rec;
+    node[parts.at(-1)!] = f.companyDefault;
+  }
+  return out;
+};
 /** Free text that runs to sentences or paragraphs: a box several lines tall, whatever its length limit. */
 const LONG_TEXT = new Set(["body", "description", "notes", "address", "instructions", "message"]);
 /** In a list of entries, the field that holds an entry's position (1, 2, 3…), filled in from its place in the list. */
@@ -67,7 +86,8 @@ export function MastersScreen({ initialEntity, initialId }: { initialEntity?: st
     if (key !== AUDIT_VIEW && location.search) history.replaceState(null, "", location.pathname);
   };
   const [filter, setFilter] = useState("");
-  const defs = (masters.data ?? []).filter((d) => d.key !== "custom-records" && d.permissions?.read);
+  // A master the company hid stays reachable for whoever can customise it, so it can be shown again.
+  const defs = (masters.data ?? []).filter((d) => d.key !== "custom-records" && d.permissions?.read && (!d.hidden || can(me, "company", "update")));
   const groups = useMemo(() => {
     const out = new Map<string, Def[]>();
     for (const d of defs) if (!filter || `${d.label} ${d.description}`.toLowerCase().includes(filter.toLowerCase())) out.set(d.group, [...(out.get(d.group) ?? []), d]);
@@ -107,7 +127,7 @@ export function MastersScreen({ initialEntity, initialId }: { initialEntity?: st
           <section key={group}>
             <h3>{group}</h3>
             {list.map((d) => (
-              <button key={d.key} className={d.key === selected ? "on" : ""} onClick={() => setSelected(d.key)}>{d.label}</button>
+              <button key={d.key} className={d.key === selected ? "on" : ""} onClick={() => setSelected(d.key)}>{d.label}{d.hidden && <span className="muted"> · hidden</span>}</button>
             ))}
           </section>
         ))}
@@ -143,6 +163,11 @@ function Records({ def, defs, openId }: { def: Def; defs: Def[]; openId?: string
   const [sort, setSort] = useState<string>(def.defaultSort ?? def.sortFields[0]);
   const [page, setPage] = useState(1);
   const [open, setOpen] = useState<string | "new" | null>(openId ?? null);
+  const { me } = useApp();
+  // The master of masters (#65): shaping this master, and adding or editing the company's own fields on it.
+  const [customising, setCustomising] = useState(false);
+  const [fieldEdit, setFieldEdit] = useState<{ id?: string } | null>(null);
+  const fieldDefs = defs.find((d) => d.key === "field-definitions");
   const rows = useQuery({
     queryKey: ["records", def.key, search, status, sort, page],
     queryFn: () => request<Rec[]>(`/${def.key}`, { query: { search: search.trim() || undefined, status: status || undefined, sort, page, limit: 25 } }),
@@ -156,6 +181,7 @@ function Records({ def, defs, openId }: { def: Def; defs: Def[]; openId?: string
           {def.description && <p>{def.description}</p>}
         </div>
         <div className="row-actions">
+          {can(me, "company", "update") && <Button onClick={() => setCustomising(true)}><Settings2 size={15} /> Customise</Button>}
           {creatable(def) && !def.managed?.create && <Button onClick={() => setImporting(true)}><Upload size={15} /> Import</Button>}
           {creatable(def) && (
             <Button tone="primary" onClick={() => setOpen("new")}><Plus size={16} /> New {def.singular.toLowerCase()}</Button>
@@ -204,6 +230,8 @@ function Records({ def, defs, openId }: { def: Def; defs: Def[]; openId?: string
         </div>
       )}
       {open && <RecordDrawer def={def} defs={defs} id={open === "new" ? undefined : open} onClose={() => setOpen(null)} />}
+      {customising && !fieldEdit && <Customise def={def} onClose={() => setCustomising(false)} onEditField={(id) => setFieldEdit({ id })} />}
+      {fieldEdit && fieldDefs && <RecordDrawer def={fieldDefs} defs={defs} id={fieldEdit.id} initial={{ entity: def.key }} onClose={() => setFieldEdit(null)} />}
     </div>
   );
 }
@@ -230,7 +258,7 @@ const WRITE_ONLY = new Set(["password"]);
 
 /* ---------- One record ---------- */
 
-function RecordDrawer({ def, defs, id, onClose }: { def: Def; defs: Def[]; id?: string; onClose: () => void }) {
+function RecordDrawer({ def, defs, id, onClose, initial }: { def: Def; defs: Def[]; id?: string; onClose: () => void; initial?: Rec }) {
   const client = useQueryClient();
   const { refreshReference, toast } = useApp();
   const record = useQuery({ queryKey: ["record", def.key, id], queryFn: () => api<Rec>(`/${def.key}/${id}`), enabled: Boolean(id) });
@@ -242,7 +270,7 @@ function RecordDrawer({ def, defs, id, onClose }: { def: Def; defs: Def[]; id?: 
   const canSensitive = Boolean(def.permissions?.sensitive);
   const writable = !id ? creatable(def) : def.permissions?.update && !def.managed?.update && record.data?.status !== "archived" && !record.data?.isSystem;
   const base = id ? record.data : undefined;
-  const value = draft ?? (base ? pick(base, def.createSchema) : {});
+  const value = draft ?? (base ? pick(base, def.createSchema) : { ...companyDefaults(def), ...initial });
   const done = async (message: string) => {
     toast(message);
     await client.invalidateQueries({ queryKey: ["records", def.key] });
@@ -560,7 +588,12 @@ function SchemaForm({ schema, def, defs, value, onChange, readOnly, canSensitive
   const required = new Set((schema.required ?? []) as string[]);
   const spec = isFieldSpec(schema);
   const choice = Boolean(path && schema.properties?.value && schema.properties?.label && !schema.properties?.key);
-  const main = props.filter(([k]) => (path || !BASE_KEYS.has(k)) && (!spec || !FOR_TYPES[k] || FOR_TYPES[k]!.includes(String(value.type ?? ""))) && !(numbered && k === POSITION_KEY));
+  // The company's shape for this master (#65): fields it hid drop out, the rest follow its order.
+  const infoOf = (k: string) => fieldOf(def, path ? `${path}.${k}` : k);
+  const shown = ([k]: [string, Schema]) => { const f = infoOf(k); return !f?.companyHidden || f.systemRequired; };
+  const rank = (k: string) => Number(infoOf(k)?.order ?? 1e6);
+  const main = props.filter(([k]) => (path || !BASE_KEYS.has(k)) && (!spec || !FOR_TYPES[k] || FOR_TYPES[k]!.includes(String(value.type ?? ""))) && !(numbered && k === POSITION_KEY))
+    .filter(shown).sort(([a], [b]) => rank(a) - rank(b));
   const more = path ? [] : props.filter(([k]) => BASE_KEYS.has(k) && !["externalRefs", "attachments", "custom"].includes(k));
   const set = (key: string, v: unknown) => {
     // A new field's key follows its label until someone types a key of their own.
@@ -575,13 +608,26 @@ function SchemaForm({ schema, def, defs, value, onChange, readOnly, canSensitive
     // Fields fixed at creation (a role's key, for example) are shown but not editable afterwards.
     const fixed = Boolean(editing && fieldOf(def, full)?.immutable);
     return (
-      <FieldInput key={full} name={key} path={full} schema={unwrap(raw)} required={required.has(key)} def={def} defs={defs}
+      <FieldInput key={full} name={key} path={full} schema={unwrap(raw)} required={required.has(key) || Boolean(infoOf(key)?.companyRequired)} def={def} defs={defs}
         value={value[key]} onChange={(v) => set(key, v)} readOnly={readOnly || hidden || fixed} canSensitive={canSensitive} currencyId={currency} litres={value.measure === "litres"} />
     );
   };
+  // Sections the company named, in its order; fields with none come first, unheaded.
+  const sectionOf = ([k]: [string, Schema]) => (path ? "" : String(infoOf(k)?.section ?? ""));
+  const named = [...new Set([...((def.sections as string[] | undefined) ?? []), ...main.map(sectionOf).filter(Boolean)])];
   return (
     <div className="schema-form">
-      <div className="grid-2">{main.map(render)}</div>
+      <div className="grid-2">{main.filter((e) => !sectionOf(e)).map(render)}</div>
+      {named.map((section) => {
+        const inSection = main.filter((e) => sectionOf(e) === section);
+        return inSection.length > 0 && (
+          // A heading, not a box: fields inside it may have boxes of their own (an address, a contact).
+          <section key={section} className="form-section" aria-label={section}>
+            <h4>{section}</h4>
+            <div className="grid-2">{inSection.map(render)}</div>
+          </section>
+        );
+      })}
       {!path && (def.customFields as Rec[]).length > 0 && (
         <fieldset className="form-group">
           <legend>Company fields</legend>
@@ -672,7 +718,7 @@ function FieldInput({ name, path, schema, required, def, defs, value, onChange, 
     if (item.enum)
       return (
         <FieldGroup label={title} hint={hint} wide>
-          <ChoiceChips label={title} disabled={readOnly} options={(item.enum as string[]).map((o) => ({ value: o, label: choiceName(def, path, o) }))} value={list as string[]} onChange={onChange} />
+          <ChoiceChips label={title} disabled={readOnly} options={offeredChoices(info, item.enum as string[], list).map((o) => ({ value: o, label: choiceName(def, path, o) }))} value={list as string[]} onChange={onChange} />
         </FieldGroup>
       );
     return <Field label={title} hint="Separate with commas" wide><input disabled={readOnly} value={list.join(", ")} onChange={(e) => onChange(e.target.value.split(",").map((s) => s.trim()).filter(Boolean))} /></Field>;
@@ -683,7 +729,10 @@ function FieldInput({ name, path, schema, required, def, defs, value, onChange, 
   if (specField !== undefined && name === "type" && schema.enum)
     return <Field label={title} hint={hint}><select disabled={readOnly} value={(value as string) ?? ""} onChange={(e) => onChange(e.target.value || undefined)}><option value="">—</option>{(schema.enum as string[]).map((o) => <option key={o} value={o}>{TYPE_LABEL[o] ?? label(o)}</option>)}</select></Field>;
   // A value outside the choices (an archived record's status) is still shown, but can't be picked.
-  if (schema.enum) return <Field label={title} hint={hint}><select disabled={readOnly} value={(value as string) ?? ""} onChange={(e) => onChange(e.target.value || undefined)}><option value="">—</option>{typeof value === "string" && value && !(schema.enum as string[]).includes(value) && <option value={value} disabled>{choiceName(def, path, value)}</option>}{(schema.enum as string[]).map((o) => <option key={o} value={o}>{choiceName(def, path, o)}</option>)}</select></Field>;
+  if (schema.enum) {
+    const offered = offeredChoices(info, schema.enum as string[], value);
+    return <Field label={title} hint={hint}><select disabled={readOnly} value={(value as string) ?? ""} onChange={(e) => onChange(e.target.value || undefined)}><option value="">—</option>{typeof value === "string" && value && !(schema.enum as string[]).includes(value) && <option value={value} disabled>{choiceName(def, path, value)}</option>}{offered.map((o) => <option key={o} value={o}>{choiceName(def, path, o)}</option>)}</select></Field>;
+  }
   const type = schema.type === "boolean" ? "boolean" : schema.type === "number" || schema.type === "integer" ? "number" : schema.format === "date" || schema.format === "date-time" || info?.type === "date" ? "date" : (schema.maxLength ?? 0) > 300 || LONG_TEXT.has(name) ? "long_text" : "text";
   if (type === "boolean") return <SwitchField label={title} hint={hint} checked={Boolean(value)} onChange={onChange} disabled={readOnly} />;
   if (type === "number" && /Minor$/.test(name) && litres)
