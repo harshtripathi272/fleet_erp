@@ -25,7 +25,7 @@ const OWNER_ROLES = ['owner', 'admin'];
 async function loadedTrip(id: string) {
   const trip = await Trip.findById(id);
   if (!trip) throw new NotFoundError('Trip not found');
-  if (!trip.get('dispatchedAt') || !trip.get('active')) throw conflict("This trip isn't on the road.");
+  if (!trip.get('active')) throw conflict('This trip is closed.');
   const consignment = await Consignment.findOne({ tripId: trip._id, inTransit: true });
   if (!consignment) throw conflict('Nothing is on this truck: stop the trip or end it instead.');
   if (consignment.get('writeOff')?.status === 'pending') throw conflict('A write-off of this load is waiting for the owner.');
@@ -59,7 +59,8 @@ async function returnLoad(trip: Doc, consignment: Doc, input: S.UndeliveredInput
   const at = new Date();
   const stops = (trip.toObject() as Plain).stops as Array<Plain & { placeId: unknown; kind: string; legKm: number; arrivedAt?: Date }>;
   const last = stops.reduce((found, s, i) => (s.arrivedAt ? i : found), 0);
-  const kept = stops.slice(0, last + 1).map((s) => (s.kind === 'offload' ? { ...s, kind: 'via' } : s));
+  // Refused where it was going: the stops it reached stay in the record, but the trip no longer offloads or ends there.
+  const kept = stops.slice(0, last + 1).map((s) => (s.kind === 'offload' || s.kind === 'end' ? { ...s, kind: 'via' } : s));
   const place = String(input.returnPlaceId ?? stops.find((s) => s.kind === 'load')!.placeId);
   const built = await buildStops([...kept.map((s) => ({ placeId: String(s.placeId), kind: s.kind as never })), { placeId: place, kind: 'offload' as never }, { placeId: place, kind: 'end' as never }]);
   const legs = built.slice(kept.length);

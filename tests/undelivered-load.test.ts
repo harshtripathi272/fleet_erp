@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { after, before, beforeEach, describe, test } from 'node:test';
 import { settleSends } from '../src/modules/messaging/dispatcher.js';
 import { OutboundMessage } from '../src/modules/messaging/models/connection.model.js';
+import { Trip } from '../src/modules/operations/models/trip.model.js';
 import { api, bearer, find, loadSample, resetDatabase, signUp, startDatabase, stopDatabase, userWithRole, type Session } from './helpers.js';
 
 let owner: Session, ops: Session, fin: Session;
@@ -77,6 +78,28 @@ describe('returning the load', () => {
   });
 });
 
+describe('a load refused at its destination', () => {
+  test('it can go back from the last stop, but there is nowhere further to move it on another truck', async () => {
+    const { trip, load } = await loaded();
+    ok(await as(ops).post(`/trips/${trip.id}/position`, { km: 99_999, speed: 0, source: 'simulator' }));
+    const there = ok(await as(ops).get(`/trips/${trip.id}`));
+    assert.ok(there.stops.find((s: { kind: string }) => s.kind === 'offload').arrivedAt, 'at the offloading point');
+    ok(await as(ops).put(`/vehicle-states/${ids.v2}`, { placeId: ids.nakonde, fuelL: 300 }));
+    assert.match((await undelivered(ops, trip.id, { outcome: 'transfer', vehicleId: ids.v2, closingFuelL: 80 })).body.error.message, /already reached its offloading point/);
+
+    // Every stop reached, the last one included.
+    await Trip.updateOne({ _id: trip.id }, { $set: { 'stops.$[].arrivedAt': new Date() } });
+    const decided = ok(await undelivered(ops, trip.id, { outcome: 'return', note: 'Refused by the consignee' }));
+    assert.equal(decided.stops.filter((s: { kind: string }) => s.kind === 'offload').length, 1);
+    assert.equal(decided.stops.filter((s: { kind: string }) => s.kind === 'end').length, 1);
+    assert.equal(decided.stops.at(-1).kind, 'end');
+    assert.equal(decided.stops.at(-1).arrivedAt, undefined, 'the way back is still to drive');
+    ok(await as(ops).post(`/trips/${trip.id}/position`, { km: 100_000, speed: 0, source: 'simulator' }));
+    ok(await as(ops).post(`/consignments/${load.id}/delivery`, { podNo: 'RET-2', qty: 38000, ambientL: 38000, tempC: 20, density: 835, certStd20L: load.load.std20L }));
+    assert.equal(ok(await as(ops).post(`/trips/${trip.id}/end`, { closingFuelL: 100 })).active, false);
+  });
+});
+
 describe('moving it to another truck', () => {
   test('a new trip carries the same consignment and its measurements; the old trip closes and frees its truck', async () => {
     const { trip, load } = await loaded();
@@ -105,6 +128,18 @@ describe('moving it to another truck', () => {
     assert.equal(ok(await as(ops).post(`/trips/${created.id}/end`, { closingFuelL: 100 })).active, false);
     await settleSends();
     assert.ok((await OutboundMessage.countDocuments({ event: 'trip.load_transferred' })) > 0);
+  });
+
+  test('before the new truck leaves, its trip cannot be cancelled away from the load, but the office can still decide', async () => {
+    const { trip, load } = await loaded();
+    ok(await as(ops).put(`/vehicle-states/${ids.v2}`, { placeId: ids.nakonde, fuelL: 300 }));
+    const created = ok(await undelivered(ops, trip.id, { outcome: 'transfer', vehicleId: ids.v2, driverId: ids.d2, closingFuelL: 80 }));
+    const cancel = await as(ops).post(`/trips/${created.id}/cancel`, { reason: 'Changed our minds' });
+    assert.equal(cancel.status, 409);
+    assert.match(cancel.body.error.message, /carries a load/);
+    const done = ok(await undelivered(owner, created.id, { outcome: 'write_off', amount: { amountMinor: 100_00, currencyId: ids.ZMW }, closingFuelL: 300 }));
+    assert.equal(done.id, load.id);
+    assert.equal(done.writeOff.status, 'approved');
   });
 
   test('the same driver can carry on in the other truck; a busy truck is refused and the old trip stays open', async () => {

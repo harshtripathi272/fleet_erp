@@ -326,6 +326,7 @@ export async function cancelTrip(id: string, input: S.ReasonInput, ctx: OpsConte
   need(ctx, 'trips', 'update');
   const at = new Date();
   const trip = await tripDoc(id);
+  if (await Consignment.exists({ tripId: trip._id, inTransit: true })) throw conflict("This trip carries a load from another truck. Say what happens to the load with \"Can't deliver\".");
   if (trip.get('dispatchedAt')) throw conflict('The truck has left. End the trip instead.');
   if (!activeTrip(trip.toObject())) throw conflict('This trip is already closed.');
   // Cash already paid or spent on the trip stays with the driver; the trip then goes on their next settlement.

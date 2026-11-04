@@ -19,7 +19,10 @@ const CARRIER_LABEL: Record<string, string> = { driver: "The driver", company: "
 
 export function CantDeliver({ trip, onClose }: { trip: Trip; onClose: () => void }) {
   const { data, run, me } = useApp();
-  const { loadedTripOutcomes, writeOffCarriers, writeOffDefaultCarrier, writeOffNeedsOwner } = data.settings;
+  const { writeOffCarriers, writeOffDefaultCarrier, writeOffNeedsOwner } = data.settings;
+  // A load already at its offloading point has nowhere further to go on another truck.
+  const atOffload = trip.stops.some((s) => s.kind === "offload" && s.arrivedAt);
+  const loadedTripOutcomes = data.settings.loadedTripOutcomes.filter((o) => o !== "transfer" || !atOffload);
   const [outcome, setOutcome] = useState(loadedTripOutcomes[0] ?? "");
   const reached = [...trip.stops].reverse().find((s) => s.arrivedAt) ?? trip.stops[0];
   const loadStop = trip.stops.find((s) => s.kind === "load");

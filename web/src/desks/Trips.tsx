@@ -274,7 +274,7 @@ function TripView({
               <span>Can't deliver</span>
             </button>
           )}
-          {!trip.dispatchedAt && !trip.cancelledAt && may("trip.cancel") && (
+          {!trip.dispatchedAt && !trip.cancelledAt && !onBoard && may("trip.cancel") && (
             <button className="icon-btn with-label" onClick={() => setCancelOpen(true)}>
               <XCircle size={18} />
               <span>Cancel trip</span>
