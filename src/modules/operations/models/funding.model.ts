@@ -15,6 +15,8 @@ const approvalLevelSchema = new Schema({
   approverUserId: { type: ObjectId, ref: 'User' },
   fallbackResource: String,
   channels: [String],
+  escalateAfterHours: Number,
+  escalatedAt: Date,
   decidedBy: { type: ObjectId, ref: 'User' },
   decidedByName: String,
   decidedAt: Date,
@@ -25,6 +27,7 @@ export const approvalSchema = new Schema({
   policyId: { type: ObjectId, ref: 'ApprovalPolicy' },
   levels: { type: [approvalLevelSchema], default: [] },
   current: { type: Number, default: 0 },
+  escalateAt: Date,
   requireReasonAboveBudget: Boolean,
 }, { _id: false });
 
@@ -32,7 +35,7 @@ const decisionSchema = new Schema({
   desk: { type: String, enum: DESKS, required: true },
   userId: { type: ObjectId, ref: 'User' },
   name: String,
-  what: { type: String, enum: ['requested', 'approved', 'sent to owner', 'rejected', 'issued', 'cancelled'], required: true },
+  what: { type: String, enum: ['requested', 'approved', 'sent to owner', 'escalated', 'rejected', 'issued', 'cancelled'], required: true },
   at: { type: Date, required: true },
   note: String,
   via: { type: String, enum: VIA, default: 'app' },
@@ -72,6 +75,8 @@ fundRequestSchema.index({ updatedAt: 1 });
 // The approval and payment queues (by status, oldest first), and the paged list, newest first.
 fundRequestSchema.index({ status: 1, createdAt: 1 });
 fundRequestSchema.index({ createdAt: -1 });
+// The escalation job: requests whose level has run out of time.
+fundRequestSchema.index({ status: 1, 'approval.escalateAt': 1 });
 
 export const FundRequest = opsModel('FundRequest', fundRequestSchema);
 

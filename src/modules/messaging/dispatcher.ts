@@ -39,9 +39,11 @@ export interface DispatchInput {
   actorId?: string;
 }
 
-interface Recipient { name: string; email?: string; phone?: string; whatsapp?: string }
+export interface Recipient { name: string; email?: string; phone?: string; whatsapp?: string }
 
 const addressOf = (r: Recipient, channel: Channel) => (channel === 'email' ? r.email : channel === 'sms' ? r.phone : r.whatsapp ?? r.phone);
+
+const noAddress = (r: Recipient, channel: Channel) => `${r.name} has no ${channel === 'email' ? 'e-mail address' : 'phone number'}`;
 
 const render = (text: string, values: Record<string, string>) => text.replace(PLACEHOLDER, (_m, key: string) => values[key.trim()] ?? '');
 
@@ -129,7 +131,7 @@ export async function dispatch(input: DispatchInput, { background = false }: { b
       body: render(String(template.body), values),
       attachments: channel === 'email' && attachments.length ? attachments : undefined,
       status: to ? 'queued' : 'skipped',
-      note: to ? undefined : `${recipient.name} has no ${channel === 'email' ? 'e-mail address' : 'phone number'}`,
+      note: to ? undefined : noAddress(recipient, channel),
       nextAttemptAt: to ? new Date(now + Number(rule.delayMinutes ?? 0) * 60000) : undefined,
       ruleId: rule._id as Types.ObjectId, templateId: template._id as Types.ObjectId, ref: input.ref, createdBy: input.actorId, at: new Date(now),
     })).toObject());
@@ -162,6 +164,26 @@ export async function settleSends(): Promise<void> {
  */
 export async function notify(input: DispatchInput): Promise<void> {
   try { await dispatch(input, { background: true }); } catch (err) { logger.error({ err, event: input.event }, 'Messages for an event could not be prepared'); }
+}
+
+/**
+ * One message to one person, outside the notification rules: what an approval level's channels ask for.
+ * Recorded in the outbox and retried like the rest; someone with no address shows there as skipped.
+ */
+export async function notifyPerson(input: { event: string; channel: Channel; recipient: Recipient; subject?: string; body: string; ref?: { kind: string; id: string }; actorId?: string }): Promise<void> {
+  const { channel, recipient } = input;
+  try {
+    const to = addressOf(recipient, channel);
+    const now = new Date();
+    const message = await OutboundMessage.create({
+      event: input.event, channel, to, toName: recipient.name, subject: channel === 'email' ? input.subject : undefined, body: input.body,
+      status: to ? 'queued' : 'skipped', note: to ? undefined : noAddress(recipient, channel), nextAttemptAt: to ? now : undefined,
+      ref: input.ref, createdBy: input.actorId, at: now,
+    });
+    if (to) track(deliver(message._id).then(() => undefined));
+  } catch (err) {
+    logger.error({ err, event: input.event }, 'A message could not be prepared');
+  }
 }
 
 async function attachmentNames(given: DispatchInput['attachments']) {

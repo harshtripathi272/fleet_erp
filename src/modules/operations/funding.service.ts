@@ -67,8 +67,8 @@ async function requestRows(trip: Plain, amount: string, extra: Array<[string, st
 
 const trailEntry = (ctx: OpsContext, what: string, at: Date, via: Via = 'app', note?: string) => ({ desk: ctx.desk, userId: ctx.actorId, name: ctx.name, what, at, note, via });
 
-/** Asks the level now waiting to decide, with what it needs to see. */
-async function askLevel(request: Plain, trip: Plain, ctx: OpsContext, at: Date) {
+/** Asks the level now waiting to decide, with what it needs to see. `why` says how it got here, when that isn't the usual way. */
+export async function askLevel(request: Plain, trip: Plain, ctx: OpsContext, at: Date, why?: string) {
   const approval = request.approval as Approval;
   const level = waitingOn(approval)!;
   const amount = await requestAmount(request);
@@ -79,11 +79,11 @@ async function askLevel(request: Plain, trip: Plain, ctx: OpsContext, at: Date) 
   if (request.reason) extra.push(['Reason', String(request.reason)]);
   await notifyLevel(level, at, {
     title: `${request.kind === 'fuel' ? 'Fuel' : 'Advance'} request ${request.number}`,
-    text: request.overBudget ? 'Above the trip budget.' : 'Within the trip budget.',
+    text: [why, request.overBudget ? 'Above the trip budget.' : 'Within the trip budget.'].filter(Boolean).join(' '),
     rows: await requestRows(trip, amount, extra),
     buttons: requestButtons(request),
     refId: String(request._id),
-  }, ctx);
+  }, ctx, 'fund-requests');
 }
 
 /* ---------- Reading ---------- */
