@@ -21,41 +21,20 @@
 
 /* ---------- Role picker ---------- */
 
+/* One column: a slim bar with the brand and the company, then the desks. No empty panel. */
 .picker {
   display: grid;
-  grid-template-columns: minmax(300px, 420px) 1fr;
+  grid-template-rows: auto 1fr;
   min-height: 100dvh;
 }
 .picker-side {
-  position: relative;
   display: flex;
-  flex-direction: column;
+  align-items: center;
   justify-content: space-between;
-  padding: 32px;
-  overflow: hidden;
-  background:
-    radial-gradient(120% 70% at 20% 0%, rgba(59, 142, 115, 0.28), transparent 60%),
-    linear-gradient(180deg, var(--pine-900), var(--pine-950));
+  gap: 16px;
+  padding: 12px 24px;
+  background: var(--pine-900);
   color: #dfeae5;
-}
-.picker-art {
-  position: absolute;
-  inset: 90px 0 70px;
-  display: grid;
-  place-items: center;
-  pointer-events: none;
-}
-.road-art {
-  width: 100%;
-  height: 100%;
-}
-.road-dash {
-  animation: road 2.4s linear infinite;
-}
-@keyframes road {
-  to {
-    stroke-dashoffset: -44;
-  }
 }
 .picker-company {
   position: relative;
@@ -65,9 +44,9 @@
 .picker-main {
   display: flex;
   flex-direction: column;
-  justify-content: center;
-  width: min(620px, 100%);
-  padding: 48px 56px;
+  justify-self: center;
+  width: min(640px, 100%);
+  padding: 56px 24px 48px;
 }
 .picker-main h1 {
   font: 600 38px/1.1 var(--serif);
@@ -90,29 +69,22 @@
   gap: 16px;
   padding: 16px 18px;
   border: 1px solid var(--line);
-  border-radius: 14px;
+  border-radius: 12px;
   background: var(--surface);
   box-shadow: var(--shadow-1);
   text-align: left;
   transition:
-    transform 0.18s var(--ease),
-    box-shadow 0.18s,
-    border-color 0.18s;
+    box-shadow 0.15s,
+    border-color 0.15s;
 }
 .picker-desk:hover {
-  transform: translateY(-1px);
   border-color: var(--pine-200);
   box-shadow: var(--shadow-2);
 }
 .picker-icon {
   display: grid;
   place-items: center;
-  width: 42px;
-  height: 42px;
-  border-radius: 11px;
-  background: linear-gradient(180deg, var(--pine-50), var(--pine-100));
   color: var(--pine-700);
-  box-shadow: inset 0 0 0 1px rgba(29, 77, 63, 0.08);
 }
 .picker-text {
   display: grid;
@@ -122,15 +94,11 @@
   font-size: 16px;
   font-weight: 620;
 }
-.picker-text span {
-  color: var(--ink-3);
-}
 .picker-chev {
   color: var(--ink-4);
-  transition: transform 0.18s var(--ease);
+  transition: color 0.15s;
 }
 .picker-desk:hover .picker-chev {
-  transform: translateX(3px);
   color: var(--pine-600);
 }
 .picker-drivers {
@@ -178,8 +146,7 @@
   height: 100dvh;
   padding: 18px 12px 14px;
   background:
-    radial-gradient(140% 50% at 0% 0%, rgba(59, 142, 115, 0.2), transparent 60%),
-    linear-gradient(180deg, var(--pine-900), var(--pine-950));
+    var(--pine-900);
   color: #cfe0d8;
 }
 .side-brand {
@@ -211,19 +178,9 @@
   color: #fff;
 }
 .side-link.on {
-  background: rgba(255, 255, 255, 0.09);
+  background: rgba(255, 255, 255, 0.1);
   color: #fff;
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
-}
-.side-link.on::before {
-  content: "";
-  position: absolute;
-  left: -12px;
-  top: 10px;
-  bottom: 10px;
-  width: 3px;
-  border-radius: 0 3px 3px 0;
-  background: var(--brass-2);
+  font-weight: 600;
 }
 .nav-count {
   margin-left: auto;
@@ -248,23 +205,21 @@
   align-items: center;
   gap: 10px;
   padding: 10px;
-  border: 1px solid rgba(255, 255, 255, 0.07);
-  border-radius: 12px;
-  background: rgba(255, 255, 255, 0.04);
+  margin-bottom: 4px;
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
   color: #e8f1ec;
-  text-align: left;
 }
-.side-user:hover {
-  background: rgba(255, 255, 255, 0.08);
-}
-.side-user > span {
+.side-user > span:not(.avatar) {
   display: grid;
   flex: 1;
   min-width: 0;
 }
 .side-user strong {
+  overflow: hidden;
   font-weight: 600;
   line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .side-user span span {
   color: rgba(222, 236, 229, 0.55);
@@ -276,15 +231,18 @@
 .side-reset {
   display: flex;
   align-items: center;
-  gap: 7px;
+  gap: 8px;
+  min-height: 34px;
   padding: 6px 10px;
   border: 0;
+  border-radius: 8px;
   background: transparent;
-  color: rgba(222, 236, 229, 0.45);
-  font-size: 12.5px;
+  color: rgba(222, 236, 229, 0.72);
+  font-size: 13.5px;
 }
 .side-reset:hover {
-  color: rgba(222, 236, 229, 0.85);
+  background: rgba(255, 255, 255, 0.06);
+  color: #e8f1ec;
 }
 .main {
   min-width: 0;
@@ -302,8 +260,7 @@
   gap: 12px;
   height: 64px;
   padding: 0 28px;
-  background: rgba(243, 242, 236, 0.86);
-  backdrop-filter: saturate(1.4) blur(10px);
+  background: var(--paper);
   border-bottom: 1px solid rgba(0, 0, 0, 0.05);
 }
 .topbar h1 {
@@ -319,7 +276,7 @@
   height: 38px;
   padding: 0 14px 0 12px;
   border: 1px solid var(--line-2);
-  border-radius: 20px;
+  border-radius: 8px;
   background: var(--surface);
   color: var(--ink);
   font-weight: 560;
@@ -363,7 +320,7 @@
   gap: 12px;
   margin-bottom: 12px;
 }
-.more-person > span {
+.more-person > span:not(.avatar) {
   display: grid;
 }
 .more-person strong {
@@ -408,6 +365,11 @@
   flex: 1;
   min-width: 200px;
   max-width: 360px;
+}
+.desk-tools .input {
+  flex: 0 1 auto;
+  width: auto;
+  min-width: 0;
 }
 .drawer-foot:has(.drawer-reason, .drawer-ask) {
   flex-wrap: wrap;
@@ -470,9 +432,6 @@
 }
 .card-mine {
   border-color: #e7cf9b;
-  box-shadow:
-    0 0 0 3px rgba(196, 144, 44, 0.12),
-    var(--shadow-1);
 }
 .card-quiet {
   background: var(--surface-2);
@@ -499,31 +458,29 @@
 .card-body > .rows:first-child {
   margin-top: -6px;
 }
+/* The day's figures: one framed line, divided by rules, like the summary line of a ledger. Not a grid of cards. */
 .kpis {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-  gap: 12px;
-}
-.kpi {
-  display: grid;
-  gap: 4px;
-  padding: 14px 16px;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
   border: 1px solid var(--line);
   border-radius: var(--radius);
   background: var(--surface);
-  box-shadow: var(--shadow-1);
+  overflow: hidden;
+}
+.kpi {
+  display: grid;
+  gap: 2px;
+  padding: 12px 18px;
+  box-shadow: -1px 0 0 var(--line);
 }
 .kpi span {
   color: var(--ink-3);
   font-size: 13px;
 }
 .kpi strong {
-  font: 600 25px/1.1 var(--serif);
-  letter-spacing: -0.01em;
-}
-.kpi-you {
-  border-color: #ebd6a8;
-  background: linear-gradient(180deg, #fffdf7, var(--brass-50));
+  font-size: 20px;
+  font-weight: 620;
+  line-height: 1.25;
 }
 .kpi-you strong {
   color: var(--brass);
@@ -599,7 +556,7 @@
   padding: 1px 7px;
   border: 1px solid var(--line-2);
   border-radius: 5px;
-  background: linear-gradient(180deg, #fff, #f5f3ec);
+  background: var(--surface);
   font: 600 12.5px/1.5 var(--mono);
   letter-spacing: 0.02em;
 }
@@ -610,7 +567,7 @@
   height: 30px;
   padding: 0 11px;
   border: 1px solid var(--line);
-  border-radius: 15px;
+  border-radius: 6px;
   background: var(--surface);
   font-size: 13.5px;
   white-space: nowrap;
@@ -715,7 +672,7 @@
   margin-top: 6px;
 }
 .approval.picked {
-  background: linear-gradient(90deg, var(--pine-50), transparent 60%);
+  background: var(--pine-50);
 }
 .approval-main {
   display: grid;
@@ -772,19 +729,17 @@
   padding: 0 10px;
   font-size: 13px;
 }
+/* What is being asked for, as a plain icon in its colour: no tile behind it. */
 .req-kind {
   display: grid;
   place-items: center;
   width: 32px;
   height: 32px;
-  border-radius: 9px;
 }
 .req-kind.fuel {
-  background: var(--sky-50);
   color: var(--sky);
 }
 .req-kind.cash {
-  background: var(--brass-50);
   color: var(--brass);
 }
 .labelled {
@@ -846,7 +801,7 @@
   height: calc(100dvh - 64px);
   padding: 16px 14px 16px 28px;
   border-right: 1px solid var(--line);
-  background: linear-gradient(180deg, var(--paper), #efede6);
+  background: var(--paper);
 }
 .acc-list,
 .trip-list {
@@ -960,6 +915,7 @@
 .trip-pick-text strong {
   font-weight: 580;
 }
+/* ui-allow: ruled lines of a paper statement */
 .statement-paper {
   position: sticky;
   top: 84px;
@@ -975,6 +931,7 @@
   background-image: linear-gradient(transparent 31px, rgba(29, 77, 63, 0.035) 32px);
   background-size: 100% 32px;
 }
+/* ui-allow: the torn edge of a paper statement */
 .statement-paper::before {
   content: "";
   position: absolute;
@@ -1052,7 +1009,7 @@
 .history-row:last-child {
   border-bottom: 0;
 }
-.history-row > span {
+.history-row > span:not(.avatar) {
   display: grid;
   flex: 1;
 }
@@ -1064,6 +1021,7 @@
 
 .nom-list {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 14px;
 }
 .nom {
@@ -1071,15 +1029,15 @@
   gap: 14px;
   padding: 18px 20px;
   border: 1px solid var(--line);
-  border-radius: 14px;
+  border-radius: 12px;
   background: var(--surface);
   box-shadow: var(--shadow-1);
 }
+.nom > * {
+  min-width: 0;
+}
 .nom-accepted {
   border-color: #e7cf9b;
-  box-shadow:
-    0 0 0 3px rgba(196, 144, 44, 0.1),
-    var(--shadow-1);
 }
 .nom-head {
   display: flex;
@@ -1094,7 +1052,8 @@
 }
 .nom-steps {
   display: flex;
-  gap: 0;
+  flex-wrap: wrap;
+  gap: 6px 0;
   margin: 0;
   padding: 0;
   list-style: none;
@@ -1111,11 +1070,12 @@
   font-weight: 540;
   white-space: nowrap;
 }
-.nom-steps li + li::before {
+/* The connector trails each step, so a wrapped second line starts with a step, not a dash. */
+.nom-steps li:not(:last-child)::after {
   content: "";
   width: 14px;
   height: 1.5px;
-  margin-right: 8px;
+  margin-left: 8px;
   background: var(--line-2);
 }
 .nom-steps i {
@@ -1314,7 +1274,7 @@
   display: block;
   height: 100%;
   border-radius: 4px;
-  background: linear-gradient(90deg, var(--pine-500), var(--pine-700));
+  background: var(--pine-600);
   transition: width 0.6s var(--ease);
 }
 .desk-waits {
@@ -1421,7 +1381,6 @@
     display: flex;
     padding: 6px 6px calc(6px + env(safe-area-inset-bottom));
     background: rgba(13, 26, 23, 0.97);
-    backdrop-filter: blur(10px);
   }
   .tab {
     position: relative;
@@ -1483,16 +1442,8 @@
     margin-bottom: 2px;
     padding: 0 12px 0 0;
   }
-  .picker {
-    grid-template-columns: 1fr;
-  }
   .picker-side {
-    min-height: 150px;
-    padding: 22px;
-  }
-  .picker-art {
-    inset: 30px -40px -80px 40%;
-    opacity: 0.7;
+    padding: 12px 16px;
   }
   .picker-main {
     padding: 28px 18px 48px;
@@ -1521,5 +1472,25 @@
   }
   .table-wrap {
     margin: -6px -18px -18px;
+  }
+}
+
+/* A page title on a phone uses the tab's one-word name, so the WhatsApp button never squeezes it. */
+.topbar .title-short {
+  display: none;
+}
+@media (max-width: 560px) {
+  .topbar .title-long:has(+ .title-short) {
+    display: none;
+  }
+  .topbar .title-short {
+    display: inline;
+  }
+  .desk-tools .search {
+    flex: 1 1 100%;
+    max-width: none;
+  }
+  .desk-tools .input {
+    flex: 1 1 0;
   }
 }

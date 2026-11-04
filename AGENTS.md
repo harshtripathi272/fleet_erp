@@ -97,7 +97,7 @@ It reads GitHub and prints what is yours: issues assigned to you, your pull requ
 - CI (`.github/workflows/check.yml`) runs the same check on every pull request and on every merge into `develop` and `main`. A run's summary page shows the test counts and the failing tests; the full log is attached as `test-log`.
 - The run on `develop` after each merge is the **integration test**: everything merged so far, together. If it goes red, nothing else is merged until it is green again, and fixing it is the next job of whoever merged last.
 - New behaviour comes with a test (`tests/*.test.ts`). A bug fix comes with the test that would have caught it.
-- Screen changes: say in the PR what you checked in the browser and as which role; add a screenshot.
+- Screen changes follow [docs/ui-rules.md](docs/ui-rules.md). Check them at 375, 768 and 1280 px with the layout audit (`web/scripts/ui-audit.js`). In the PR, say what you checked and as which role, and add a screenshot.
 
 ## 6. Talking to each other
 

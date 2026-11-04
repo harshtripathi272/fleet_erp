@@ -25,10 +25,6 @@ export function Overview() {
   return (
     <div className="desk overview">
       <div className="kpis">
-        <div className={`kpi ${owner.length ? "kpi-you" : ""}`}>
-          <span>Waiting on you</span>
-          <strong className="num">{owner.length}</strong>
-        </div>
         <div className="kpi">
           <span>On the road</span>
           <strong className="num">{onRoad.length}</strong>
@@ -47,7 +43,7 @@ export function Overview() {
         </div>
       </div>
       {owner.length > 0 && (
-        <Card title="Needs your approval">
+        <Card title={`Needs your approval (${owner.length})`}>
           <div className="approvals">
             {owner.map((r) => (
               <Approval key={r.id} request={r} picked={false} />

@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Archive, History, Link2, Plus, RotateCcw, Search, Trash2, Upload } from "lucide-react";
+import { Archive, ChevronLeft, History, Link2, Plus, RotateCcw, Search, Trash2, Upload } from "lucide-react";
 import { api, ApiError, request } from "../api/client";
 import type { Rec } from "../api/adapter";
 import { can } from "../api/session";
 import { useApp } from "../store";
-import { Button, Drawer, Empty, Field, Status } from "../ui/kit";
+import { Button, ChoiceChips, Drawer, Empty, Field, FieldGroup, Status, Switch, SwitchField, UnitInput } from "../ui/kit";
 import { CompanyPanel } from "./CompanyPanel";
 import { DriverAccess } from "./DriverAccess";
 import { UserAccess } from "./UserAccess";
@@ -15,7 +15,7 @@ import { RateFeed } from "./RateFeed";
 import { ImportDialog } from "./ImportDialog";
 import { CompanySetup, useReadiness } from "./CompanySetup";
 import MessagingSettings from "../settings/MessagingSettings";
-import { AUDIT_VIEW, fieldName, label, short, shown, wantsAuditLog } from "./history";
+import { AUDIT_VIEW, choiceName, fieldName, fieldTitle, label, short, shown, singular, wantsAuditLog } from "./history";
 import { AuditLog } from "./AuditLog";
 
 export { label };
@@ -31,6 +31,10 @@ type Schema = Rec;
 
 const useMasters = () => useQuery({ queryKey: ["meta-masters"], queryFn: () => api<Def[]>("/meta/masters"), staleTime: 5 * 60_000 });
 const OBJECT_ID = "^[0-9a-fA-F]{24}$";
+/** Free text that runs to sentences or paragraphs: a box several lines tall, whatever its length limit. */
+const LONG_TEXT = new Set(["body", "description", "notes", "address", "instructions", "message"]);
+/** In a list of entries, the field that holds an entry's position (1, 2, 3…), filled in from its place in the list. */
+const POSITION_KEY = "level";
 const BASE_KEYS = new Set(["status", "validFrom", "validTo", "branchIds", "tags", "notes", "externalRefs", "attachments", "custom"]);
 
 /** The master last open in this tab, so a reload comes back to it. */
@@ -48,14 +52,17 @@ export function MastersScreen({ initialEntity }: { initialEntity?: string }) {
   // A company that isn't ready for its first trip opens on "Set up the company", unless someone chose a page or followed a link.
   const readiness = useReadiness();
   const [opened, setOpened] = useState(Boolean(initialEntity || remembered() || wantsAuditLog()));
+  // On a phone the list of masters is a page of its own; choosing one shows it full width, with a way back.
+  const [browsing, setBrowsing] = useState(!initialEntity && !wantsAuditLog());
   useEffect(() => {
-    if (!opened && readiness.data && !readiness.data.ready && can(me, "company", "read")) { setSelectedState("setup"); setOpened(true); }
+    if (!opened && readiness.data && !readiness.data.ready && can(me, "company", "read")) { setSelectedState("setup"); setOpened(true); setBrowsing(false); }
   }, [opened, readiness.data, me]);
   const setSelected = (key: string, id?: string) => {
     setSelectedState(key);
     setOpenId(id);
     remember(key);
     setOpened(true);
+    setBrowsing(false);
     // Leaving the audit log drops its filters from the address bar.
     if (key !== AUDIT_VIEW && location.search) history.replaceState(null, "", location.pathname);
   };
@@ -71,7 +78,7 @@ export function MastersScreen({ initialEntity }: { initialEntity?: string }) {
   const custom = selected.startsWith("custom:") ? customMasters.data?.find((c) => `custom:${c.id}` === selected) : undefined;
   const def = defs.find((d) => d.key === selected) ?? defs[0];
   return (
-    <div className="masters">
+    <div className={browsing ? "masters browsing" : "masters"}>
       <aside className="masters-nav" aria-label="Masters">
         <label className="search">
           <Search size={15} />
@@ -114,6 +121,7 @@ export function MastersScreen({ initialEntity }: { initialEntity?: string }) {
         )}
       </aside>
       <section className="masters-main">
+        <button className="masters-back link-btn" onClick={() => { setBrowsing(true); window.scrollTo({ top: 0 }); }}><ChevronLeft size={16} /> All masters</button>
         {selected === "setup" ? <CompanySetup defs={defs} onOpen={(key) => setSelected(key)} />
           : selected === "company" ? <CompanyPanel />
           : selected === "messaging" ? <MessagingSettings />
@@ -143,9 +151,9 @@ function Records({ def, defs, openId }: { def: Def; defs: Def[]; openId?: string
   return (
     <div className="desk">
       <header className="masters-head">
-        <div>
+        <div className="masters-title">
           <h2>{def.label}</h2>
-          <p className="muted">{def.description}</p>
+          {def.description && <p>{def.description}</p>}
         </div>
         <div className="row-actions">
           {creatable(def) && !def.managed?.create && <Button onClick={() => setImporting(true)}><Upload size={15} /> Import</Button>}
@@ -180,7 +188,7 @@ function Records({ def, defs, openId }: { def: Def; defs: Def[]; openId?: string
               {(rows.data?.data ?? []).map((r) => (
                 <tr key={r.id} onClick={() => setOpen(r.id)} className="clickable">
                   {columns.map((c) => <td key={c.path}><Value value={get(r, c.path)} field={c.field} defs={defs} /></td>)}
-                  <td><Status tone={r.status === "active" ? "ok" : r.status === "archived" ? "mute" : "wait"}>{r.status}</Status></td>
+                  <td><Status tone={r.status === "active" ? "ok" : r.status === "archived" ? "mute" : "wait"}>{label(String(r.status))}</Status></td>
                 </tr>
               ))}
               {rows.data && !rows.data.data.length && <tr><td colSpan={columns.length + 1} className="muted">Nothing here yet.</td></tr>}
@@ -208,7 +216,7 @@ function listColumns(def: Def) {
   // A master may name its own list columns; otherwise required fields and links to other masters.
   const named = ((def.columns ?? []) as string[]).map((p) => fields.find((f) => f.path === p)).filter(Boolean) as Rec[];
   const extra = named.length ? named : fields.filter((f) => top(f.path) && f.group === "master" && !f.hidden && f.type !== "object" && !f.array && f.path !== def.titleField && f.path !== "code" && (f.required || f.ref || f.enum)).slice(0, 3);
-  return [title, code, ...extra].filter(Boolean).map((f) => ({ path: f!.path as string, label: (def.key === "field-definitions" && SPEC_LABEL[String(f!.path)]) || String(f!.path).split(".").map(label).join(" "), field: f! }));
+  return [title, code, ...extra].filter(Boolean).map((f) => ({ path: f!.path as string, label: (def.key === "field-definitions" && SPEC_LABEL[String(f!.path)]) || String(f!.label ?? f!.path.split(".").map(label).join(" ")), field: f! }));
 }
 
 /**
@@ -282,7 +290,7 @@ function RecordDrawer({ def, defs, id, onClose }: { def: Def; defs: Def[]; id?: 
       open
       title={title}
       onClose={onClose}
-      width={640}
+      width={def.key === "roles" ? 900 : 720}
       footer={
         asking === "archive" ? (
           <>
@@ -423,7 +431,7 @@ function HistoryList({ def, id }: { def: Def; id: string }) {
         <li key={h.id}>
           <strong><History size={13} /> {label(h.action)}</strong> <span className="muted">{new Date(h.at).toLocaleString("en-GB")}{h.actorName ? ` · ${h.actorName}` : ""}</span>
           {h.summary && <div>{h.summary}</div>}
-          {(h.changes as Rec[]).filter(shown).slice(0, 8).map((c) => <div key={c.path} className="small">{fieldName(String(c.path))}: {short(c.from)} → {short(c.to)}</div>)}
+          {(h.changes as Rec[]).filter(shown).slice(0, 8).map((c) => <div key={c.path} className="small">{fieldName(String(c.path), def)}: {short(c.from)} → {short(c.to)}</div>)}
         </li>
       ))}
     </ol>
@@ -468,7 +476,7 @@ function CustomRecords({ master, defs }: { master: Rec; defs: Def[] }) {
   return (
     <div className="desk">
       <header className="masters-head">
-        <div><h2>{master.name}</h2><p className="muted">{master.description}</p></div>
+        <div className="masters-title"><h2>{master.name}</h2>{master.description && <p>{master.description}</p>}</div>
         <Button tone="primary" onClick={() => { setDraft({}); setOpen("new"); }}><Plus size={16} /> New record</Button>
       </header>
       <div className="table-frame">
@@ -478,7 +486,7 @@ function CustomRecords({ master, defs }: { master: Rec; defs: Def[] }) {
             {(rows.data ?? []).map((r) => (
               <tr key={r.id} className="clickable" onClick={() => { setDraft(r.data ?? {}); setSure(false); setOpen(r); }}>
                 {fields.slice(0, 4).map((f) => <td key={f.key}><Value value={r.data?.[f.key]} field={{ ref: f.referenceMaster, type: f.type }} defs={defs} /></td>)}
-                <td><Status tone={r.status === "active" ? "ok" : "mute"}>{r.status}</Status></td>
+                <td><Status tone={r.status === "active" ? "ok" : "mute"}>{label(String(r.status))}</Status></td>
               </tr>
             ))}
           </tbody>
@@ -545,12 +553,14 @@ function unwrap(schema: Schema): Schema {
   return schema ?? {};
 }
 
-function SchemaForm({ schema, def, defs, value, onChange, readOnly, canSensitive, path = "", editing }: { schema: Schema; def: Def; defs: Def[]; value: Rec; onChange: (v: Rec) => void; readOnly?: boolean; canSensitive: boolean; path?: string; editing?: boolean }) {
+function SchemaForm({ schema, def, defs, value, onChange, readOnly, canSensitive, path = "", editing, currencyId, numbered }: { schema: Schema; def: Def; defs: Def[]; value: Rec; onChange: (v: Rec) => void; readOnly?: boolean; canSensitive: boolean; path?: string; editing?: boolean; currencyId?: string; numbered?: boolean }) {
+  // Amounts kept in minor units ("minAmountMinor") are entered in the currency of the record, or of the record holding them.
+  const currency = (value.currencyId as string | undefined) ?? currencyId;
   const props = Object.entries((schema.properties ?? {}) as Record<string, Schema>);
   const required = new Set((schema.required ?? []) as string[]);
   const spec = isFieldSpec(schema);
   const choice = Boolean(path && schema.properties?.value && schema.properties?.label && !schema.properties?.key);
-  const main = props.filter(([k]) => (path || !BASE_KEYS.has(k)) && (!spec || !FOR_TYPES[k] || FOR_TYPES[k]!.includes(String(value.type ?? ""))));
+  const main = props.filter(([k]) => (path || !BASE_KEYS.has(k)) && (!spec || !FOR_TYPES[k] || FOR_TYPES[k]!.includes(String(value.type ?? ""))) && !(numbered && k === POSITION_KEY));
   const more = path ? [] : props.filter(([k]) => BASE_KEYS.has(k) && !["externalRefs", "attachments", "custom"].includes(k));
   const set = (key: string, v: unknown) => {
     // A new field's key follows its label until someone types a key of their own.
@@ -566,7 +576,7 @@ function SchemaForm({ schema, def, defs, value, onChange, readOnly, canSensitive
     const fixed = Boolean(editing && fieldOf(def, full)?.immutable);
     return (
       <FieldInput key={full} name={key} path={full} schema={unwrap(raw)} required={required.has(key)} def={def} defs={defs}
-        value={value[key]} onChange={(v) => set(key, v)} readOnly={readOnly || hidden || fixed} canSensitive={canSensitive} />
+        value={value[key]} onChange={(v) => set(key, v)} readOnly={readOnly || hidden || fixed} canSensitive={canSensitive} currencyId={currency} litres={value.measure === "litres"} />
     );
   };
   return (
@@ -576,13 +586,17 @@ function SchemaForm({ schema, def, defs, value, onChange, readOnly, canSensitive
         <fieldset className="form-group">
           <legend>Company fields</legend>
           <div className="grid-2">
-            {(def.customFields as Rec[]).map((f) => (
-              <Field key={f.key} label={`${f.label}${f.required ? " *" : ""}`}>
-                {f.type === "reference"
-                  ? <RefSelect target={f.referenceMaster} defs={defs} disabled={readOnly} value={(value.custom ?? {})[f.key] ?? ""} onChange={(v) => set("custom", { ...(value.custom ?? {}), [f.key]: v })} />
-                  : <ScalarInput type={f.type} choices={f.choices} value={(value.custom ?? {})[f.key]} disabled={readOnly} onChange={(v) => set("custom", { ...(value.custom ?? {}), [f.key]: v })} />}
-              </Field>
-            ))}
+            {(def.customFields as Rec[]).map((f) => {
+              // Several choices are a group of buttons, which a <label> can't name; everything else is one control.
+              const Wrap = f.type === "multi_select" ? FieldGroup : Field;
+              return (
+                <Wrap key={f.key} label={`${f.label}${f.required ? " *" : ""}`}>
+                  {f.type === "reference"
+                    ? <RefSelect target={f.referenceMaster} defs={defs} disabled={readOnly} value={(value.custom ?? {})[f.key] ?? ""} onChange={(v) => set("custom", { ...(value.custom ?? {}), [f.key]: v })} />
+                    : <ScalarInput type={f.type} choices={f.choices} value={(value.custom ?? {})[f.key]} disabled={readOnly} onChange={(v) => set("custom", { ...(value.custom ?? {}), [f.key]: v })} />}
+                </Wrap>
+              );
+            })}
           </div>
         </fieldset>
       )}
@@ -596,15 +610,17 @@ function SchemaForm({ schema, def, defs, value, onChange, readOnly, canSensitive
   );
 }
 
-function FieldInput({ name, path, schema, required, def, defs, value, onChange, readOnly, canSensitive }: { name: string; path: string; schema: Schema; required: boolean; def: Def; defs: Def[]; value: unknown; onChange: (v: unknown) => void; readOnly?: boolean; canSensitive: boolean }) {
+function FieldInput({ name, path, schema, required, def, defs, value, onChange, readOnly, canSensitive, currencyId, litres }: { name: string; path: string; schema: Schema; required: boolean; def: Def; defs: Def[]; value: unknown; onChange: (v: unknown) => void; readOnly?: boolean; canSensitive: boolean; currencyId?: string; litres?: boolean }) {
   const isSpecMaster = def.key === "field-definitions" || def.key === "custom-masters";
   const specField = isSpecMaster ? SPEC_LABEL[name] ?? "" : undefined;
-  const title = `${specField || label(name)}${required ? " *" : ""}`;
+  const title = `${specField || fieldTitle(def, path, name)}${required ? " *" : ""}`;
+  // What to put in the field, when the master says (numbering patterns, approval thresholds).
+  const hint = fieldOf(def, path)?.hint as string | undefined;
   // Which master a custom field belongs to, or links to: chosen from the masters, not typed as a key.
   if ((def.key === "field-definitions" && name === "entity") || ((def.key === "field-definitions" || def.key === "custom-masters") && name === "referenceMaster")) {
     const choices = defs.filter((d) => d.key !== "custom-records" && (name !== "entity" || d.customFieldsAllowed !== false));
     return (
-      <Field label={title}>
+      <Field label={title} hint={hint}>
         <select disabled={readOnly} value={(value as string) ?? ""} onChange={(e) => onChange(e.target.value || undefined)}>
           <option value="">—</option>
           {choices.map((d) => <option key={d.key} value={d.key}>{d.label}</option>)}
@@ -615,55 +631,65 @@ function FieldInput({ name, path, schema, required, def, defs, value, onChange, 
   const ref = refOf(def, path);
   const info = fieldOf(def, path);
   if (def.key === "roles" && path === "permissions")
-    return <Field label={title} wide><PermissionMatrix value={(value as { resource: string; actions: string[] }[]) ?? []} onChange={onChange} defs={defs} readOnly={readOnly} /></Field>;
+    return <Field label={title} hint={hint} wide><PermissionMatrix value={(value as { resource: string; actions: string[] }[]) ?? []} onChange={onChange} defs={defs} readOnly={readOnly} /></Field>;
   if (schema.type === "object" && schema.properties?.amountMinor && schema.properties?.currencyId)
-    return <Field label={title}><MoneyInput value={value as Rec | undefined} onChange={onChange} disabled={readOnly} /></Field>;
+    return <Field label={title} hint={hint}><MoneyInput value={value as Rec | undefined} onChange={onChange} disabled={readOnly} /></Field>;
   if (schema.type === "object")
     return (
       <fieldset className="form-group field-wide">
         <legend>{title}</legend>
-        <SchemaForm schema={schema} def={def} defs={defs} value={(value as Rec) ?? {}} onChange={onChange} readOnly={readOnly} canSensitive={canSensitive} path={path} />
+        <SchemaForm schema={schema} def={def} defs={defs} value={(value as Rec) ?? {}} onChange={onChange} readOnly={readOnly} canSensitive={canSensitive} path={path} currencyId={currencyId} />
       </fieldset>
     );
   if (schema.type === "array") {
     const item = unwrap(schema.items ?? {});
     const list = (value as unknown[] | undefined) ?? [];
-    if (item.type === "object")
+    if (item.type === "object") {
+      // Each entry is a numbered card ("Level 1"), removed from its own header; "Add level" adds the next.
+      const one = singular(fieldTitle(def, path, name));
+      // Entries numbered by position (an approval policy's levels 1, 2, 3) take their number from the card.
+      const numbered = Boolean(item.properties?.[POSITION_KEY]);
+      const renumber = (rows: unknown[]) => (numbered ? rows.map((r, j) => ({ ...(r as Rec), [POSITION_KEY]: j + 1 })) : rows);
       return (
-        <fieldset className="form-group field-wide">
+        <fieldset className="form-group field-wide item-list">
           <legend>{title}</legend>
+          {!list.length && <p className="muted">None yet.</p>}
           {list.map((row, i) => (
-            <div key={i} className="array-row">
-              <SchemaForm schema={item} def={def} defs={defs} value={(row as Rec) ?? {}} onChange={(v) => onChange(list.map((r, j) => (j === i ? v : r)))} readOnly={readOnly} canSensitive={canSensitive} path={path} />
-              {!readOnly && <Button size="sm" tone="quiet" onClick={() => onChange(list.filter((_, j) => j !== i))}>Remove</Button>}
+            <div key={i} className="item-card">
+              <header>
+                <strong>{one} {i + 1}</strong>
+                {!readOnly && <Button size="sm" tone="quiet" onClick={() => onChange(renumber(list.filter((_, j) => j !== i)))}>Remove</Button>}
+              </header>
+              <SchemaForm schema={item} def={def} defs={defs} value={(row as Rec) ?? {}} onChange={(v) => onChange(renumber(list.map((r, j) => (j === i ? v : r))))} readOnly={readOnly} canSensitive={canSensitive} path={path} currencyId={currencyId} numbered={numbered} />
             </div>
           ))}
-          {!readOnly && <Button size="sm" onClick={() => onChange([...list, {}])}><Plus size={14} /> Add</Button>}
+          {!readOnly && <div><Button size="sm" onClick={() => onChange(renumber([...list, {}]))}><Plus size={14} /> Add {one.toLowerCase()}</Button></div>}
         </fieldset>
       );
+    }
     if (ref || item.pattern === OBJECT_ID)
-      return <Field label={title} wide><RefMulti target={ref ?? ""} defs={defs} value={list as string[]} onChange={onChange} disabled={readOnly} /></Field>;
+      return <Field label={title} hint={hint} wide><RefMulti target={ref ?? ""} defs={defs} value={list as string[]} onChange={onChange} disabled={readOnly} /></Field>;
     if (item.enum)
       return (
-        <Field label={title} wide>
-          <div className="checks">
-            {(item.enum as string[]).map((o) => (
-              <label key={o} className="check-box"><input type="checkbox" disabled={readOnly} checked={list.includes(o)} onChange={(e) => onChange(e.target.checked ? [...list, o] : list.filter((x) => x !== o))} /> {label(o)}</label>
-            ))}
-          </div>
-        </Field>
+        <FieldGroup label={title} hint={hint} wide>
+          <ChoiceChips label={title} disabled={readOnly} options={(item.enum as string[]).map((o) => ({ value: o, label: choiceName(def, path, o) }))} value={list as string[]} onChange={onChange} />
+        </FieldGroup>
       );
     return <Field label={title} hint="Separate with commas" wide><input disabled={readOnly} value={list.join(", ")} onChange={(e) => onChange(e.target.value.split(",").map((s) => s.trim()).filter(Boolean))} /></Field>;
   }
-  if (ref || schema.pattern === OBJECT_ID) return <Field label={title}><RefSelect target={ref ?? ""} defs={defs} value={(value as string) ?? ""} onChange={onChange} disabled={readOnly} /></Field>;
+  if (ref || schema.pattern === OBJECT_ID) return <Field label={title} hint={hint}><RefSelect target={ref ?? ""} defs={defs} value={(value as string) ?? ""} onChange={onChange} disabled={readOnly} /></Field>;
   if (WRITE_ONLY.has(name))
     return <Field label={title} hint="Leave empty to e-mail them an invitation to set their own."><input type="password" autoComplete="new-password" disabled={readOnly} value={(value as string) ?? ""} onChange={(e) => onChange(e.target.value || undefined)} /></Field>;
   if (specField !== undefined && name === "type" && schema.enum)
-    return <Field label={title}><select disabled={readOnly} value={(value as string) ?? ""} onChange={(e) => onChange(e.target.value || undefined)}><option value="">—</option>{(schema.enum as string[]).map((o) => <option key={o} value={o}>{TYPE_LABEL[o] ?? label(o)}</option>)}</select></Field>;
+    return <Field label={title} hint={hint}><select disabled={readOnly} value={(value as string) ?? ""} onChange={(e) => onChange(e.target.value || undefined)}><option value="">—</option>{(schema.enum as string[]).map((o) => <option key={o} value={o}>{TYPE_LABEL[o] ?? label(o)}</option>)}</select></Field>;
   // A value outside the choices (an archived record's status) is still shown, but can't be picked.
-  if (schema.enum) return <Field label={title}><select disabled={readOnly} value={(value as string) ?? ""} onChange={(e) => onChange(e.target.value || undefined)}><option value="">—</option>{typeof value === "string" && value && !(schema.enum as string[]).includes(value) && <option value={value} disabled>{label(value)}</option>}{(schema.enum as string[]).map((o) => <option key={o} value={o}>{label(o)}</option>)}</select></Field>;
-  const type = schema.type === "boolean" ? "boolean" : schema.type === "number" || schema.type === "integer" ? "number" : schema.format === "date" || schema.format === "date-time" || info?.type === "date" ? "date" : (schema.maxLength ?? 0) > 300 ? "longtext" : "text";
-  return <Field label={title} wide={type === "longtext"}><ScalarInput type={type} value={value} onChange={onChange} disabled={readOnly} /></Field>;
+  if (schema.enum) return <Field label={title} hint={hint}><select disabled={readOnly} value={(value as string) ?? ""} onChange={(e) => onChange(e.target.value || undefined)}><option value="">—</option>{typeof value === "string" && value && !(schema.enum as string[]).includes(value) && <option value={value} disabled>{choiceName(def, path, value)}</option>}{(schema.enum as string[]).map((o) => <option key={o} value={o}>{choiceName(def, path, o)}</option>)}</select></Field>;
+  const type = schema.type === "boolean" ? "boolean" : schema.type === "number" || schema.type === "integer" ? "number" : schema.format === "date" || schema.format === "date-time" || info?.type === "date" ? "date" : (schema.maxLength ?? 0) > 300 || LONG_TEXT.has(name) ? "long_text" : "text";
+  if (type === "boolean") return <SwitchField label={title} hint={hint} checked={Boolean(value)} onChange={onChange} disabled={readOnly} />;
+  if (type === "number" && /Minor$/.test(name) && litres)
+    return <Field label={title} hint={hint}><UnitInput label={title} unit="L" step={1} disabled={readOnly} value={value === undefined || value === null ? "" : String(value)} onChange={(v) => onChange(v === "" ? undefined : Math.round(Number(v)))} /></Field>;
+  if (type === "number" && /Minor$/.test(name)) return <Field label={title} hint={hint}><MinorInput value={value as number | undefined} onChange={onChange} currencyId={currencyId} disabled={readOnly} label={title} /></Field>;
+  return <Field label={title} hint={hint} wide={type === "long_text"}><ScalarInput type={type} value={value} onChange={onChange} disabled={readOnly} /></Field>;
 }
 
 type Choice = { value: string; label: string };
@@ -676,20 +702,24 @@ function ScalarInput({ type, value, onChange, disabled, choices }: { type: strin
         {(choices ?? []).map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
       </select>
     );
-  if (type === "multi_select") {
-    const picked = new Set((value as string[] | undefined) ?? []);
-    const toggle = (v: string) => { const next = new Set(picked); if (next.has(v)) next.delete(v); else next.add(v); onChange(next.size ? [...next] : undefined); };
-    return (
-      <span className="checks">
-        {(choices ?? []).map((c) => <label key={c.value}><input type="checkbox" disabled={disabled} checked={picked.has(c.value)} onChange={() => toggle(c.value)} /> {c.label}</label>)}
-      </span>
-    );
-  }
-  if (type === "boolean") return <input type="checkbox" disabled={disabled} checked={Boolean(value)} onChange={(e) => onChange(e.target.checked)} />;
+  if (type === "multi_select")
+    return <ChoiceChips label="Choices" disabled={disabled} options={choices ?? []} value={(value as string[] | undefined) ?? []} onChange={(next) => onChange(next.length ? next : undefined)} />;
+  if (type === "boolean") return <Switch checked={Boolean(value)} onChange={onChange} disabled={disabled} />;
   if (type === "number") return <input type="number" disabled={disabled} value={value === undefined || value === null ? "" : String(value)} onChange={(e) => onChange(e.target.value === "" ? undefined : Number(e.target.value))} />;
   if (type === "date") return <input type="date" disabled={disabled} value={value ? String(value).slice(0, 10) : ""} onChange={(e) => onChange(e.target.value || undefined)} />;
   if (type === "long_text") return <textarea disabled={disabled} value={(value as string) ?? ""} onChange={(e) => onChange(e.target.value || undefined)} />;
   return <input disabled={disabled} value={(value as string) ?? ""} onChange={(e) => onChange(e.target.value === "" ? undefined : e.target.value)} />;
+}
+
+/** An amount stored in minor units (ngwee, cents), typed in the currency: 1000000 shows as 10,000.00 ZMW. */
+function MinorInput({ value, onChange, currencyId, disabled, label: name }: { value?: number; onChange: (v: unknown) => void; currencyId?: string; disabled?: boolean; label: string }) {
+  const { data } = useApp();
+  const currency = data.currencies?.find((c) => c.id === currencyId) ?? data.baseCurrency;
+  const units = 10 ** (currency?.minorUnits ?? 2);
+  return (
+    <UnitInput label={name} unit={currency?.code ?? ""} disabled={disabled} value={value === undefined || value === null ? "" : String(value / units)}
+      onChange={(v) => onChange(v === "" ? undefined : Math.round(Number(v) * units))} />
+  );
 }
 
 function MoneyInput({ value, onChange, disabled }: { value?: Rec; onChange: (v: unknown) => void; disabled?: boolean }) {
@@ -763,7 +793,7 @@ function Value({ value, field, defs }: { value: unknown; field: Rec; defs: Def[]
   if (typeof value === "boolean") return value ? "Yes" : "No";
   if (Array.isArray(value)) return `${value.length} item${value.length === 1 ? "" : "s"}`;
   if (typeof value === "object") return short(value);
-  return field.enum ? label(String(value)) : String(value);
+  return field.enum ? String((field.choiceLabels as Rec | undefined)?.[String(value)] ?? label(String(value))) : String(value);
 }
 
 /* ---------- Helpers ---------- */

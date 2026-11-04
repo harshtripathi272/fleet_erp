@@ -1,23 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import {
-  ArrowRight,
-  Check,
-  CircleDollarSign,
-  Droplets,
-  Fuel,
-  MapPin,
-  Pause,
-  Play,
-  Plus,
-  RotateCcw,
-  Send,
-  Trash2,
-  Undo2,
-  FileText,
-  Upload,
-} from "lucide-react";
+import { ArrowRight, Check, CircleDollarSign, Clock, Droplets, FileText, Fuel, MapPin, Pause, Play, Plus, RotateCcw, Send, Trash2, Undo2, Upload } from "lucide-react";
 import { useApp } from "../store";
 import { can, useMay } from "../api/session";
 import { byId, carriedIn, cumulativeKm, driverBalance, fuelEstimate, fuelNow, funding, leg, legLoaded, measureFuel, shortageFor, toZmw, tripFuelUsed, tripHours, tripKm, validateStops, volume20 } from "../domain/calc";
@@ -1069,7 +1053,7 @@ function LoadingPanel({ trip }: { trip: Trip }) {
           <MeasureForm trip={trip} mode="load" onDone={() => setManual(false)} />
         ) : (
           <div className="waiting">
-            <span className="waiting-pulse" aria-hidden />
+            <Clock className="waiting-icon" size={18} aria-hidden />
             <div>
               <strong>{load?.arrivedAt ? "Waiting for the loading invoice" : `Arriving at ${placeName(data, load?.placeId)}`}</strong>
               <span className="muted">The driver sends a photo from the driver app, or you upload it here.</span>
@@ -1261,7 +1245,7 @@ function OffloadingPanel({ trip }: { trip: Trip }) {
           <MeasureForm trip={trip} mode="deliver" consignment={consignment} onDone={() => setManual(false)} />
         ) : (
           <div className="waiting">
-            <span className="waiting-pulse" aria-hidden />
+            <Clock className="waiting-icon" size={18} aria-hidden />
             <div>
               <strong>{offload?.arrivedAt ? "Waiting for the delivery note" : `Driving to ${placeName(data, offload?.placeId)}`}</strong>
               <span className="muted">Loaded {consignment.load.unit === "L" ? L(volume20(consignment.load)) + " at 20 °C" : `${consignment.load.qty} ${consignment.load.unit}`}.</span>

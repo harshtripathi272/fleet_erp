@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { ConflictError, NotFoundError } from '../errors/index.js';
+import { fullLabel } from './labels.js';
 import { getMaster, getRefTarget, refsOf } from './registry.js';
 import { create, type ServiceContext } from './service.js';
 import type { MasterDefinition, Plain } from './types.js';
@@ -17,6 +18,8 @@ export interface ImportColumn {
   kind: Kind;
   required: boolean;
   choices?: string[];
+  /** How each choice is named on screen; a cell may give the name or the stored value. */
+  choiceNames?: Record<string, string>;
   /** The master a reference column points at; the cell holds its code or name. */
   target?: string;
   /** What a list holds: references, choices or plain text, separated by ";" in the cell. */
@@ -42,34 +45,25 @@ const unwrap = (s: Json): Json => {
   if (options) return unwrap(options.find((o) => o.type !== 'null') ?? options[0]!);
   return s;
 };
-/** "currency" → "currencies", "branch" → "branches", "class" → "classes", "make" → "makes". */
-const plural = (w: string) => (/[^aeiou]y$/.test(w) ? `${w.slice(0, -1)}ies` : /(s|x|z|ch|sh)$/.test(w) ? `${w}es` : `${w}s`);
-/** "registrationNumber" → "registration number", "makeId" → "make", "currencyIds" → "currencies". */
-const words = (key: string) => {
-  const list = key.endsWith('Ids');
-  const base = key.replace(/Ids?$/, '').replace(/([a-z])([A-Z])/g, '$1 $2').toLowerCase();
-  return list ? base.replace(/(\w+)$/, (w) => plural(w)) : base;
-};
-const labelOf = (path: string) => {
-  const text = path.split('.').map(words).join(' ');
-  return text.charAt(0).toUpperCase() + text.slice(1);
-};
 const normal = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
+/** A cell's choice by its stored value or by the name the screens show. */
+const pickChoice = (c: ImportColumn, text: string) => c.choices!.find((o) => normal(o) === normal(text) || (c.choiceNames?.[o] && normal(c.choiceNames[o]!) === normal(text)));
+const choiceList = (c: ImportColumn) => c.choices!.map((o) => c.choiceNames?.[o] ?? o).join(', ');
 
 function columnFor(def: MasterDefinition, path: string, raw: Json, required: boolean): ImportColumn | undefined {
   const s = unwrap(raw);
   const target = refsOf(def).find((r) => r.path === path && !r.usageOnly)?.target;
-  const base = { path, label: labelOf(path), required };
+  const base = { path, label: def.labels?.[path] ?? fullLabel(path, Boolean(target)), required };
   if (s.type === 'object' && s.properties?.amountMinor && s.properties?.currencyId) return { ...base, kind: 'money' };
   if (s.type === 'array') {
     const item = unwrap(s.items ?? {});
     if (item.type === 'object') return undefined;
     if (target || item.pattern === OBJECT_ID) return target ? { ...base, kind: 'list', of: 'ref', target } : undefined;
-    if (item.enum) return { ...base, kind: 'list', of: 'choice', choices: item.enum as string[] };
+    if (item.enum) return { ...base, kind: 'list', of: 'choice', choices: item.enum as string[], choiceNames: def.choiceLabels?.[path] };
     return { ...base, kind: 'list', of: 'text' };
   }
   if (target || s.pattern === OBJECT_ID) return target ? { ...base, kind: 'ref', target } : undefined;
-  if (s.enum) return { ...base, kind: 'choice', choices: s.enum as string[] };
+  if (s.enum) return { ...base, kind: 'choice', choices: s.enum as string[], choiceNames: def.choiceLabels?.[path] };
   if (s.type === 'boolean') return { ...base, kind: 'boolean' };
   if (s.type === 'number' || s.type === 'integer') return { ...base, kind: 'number' };
   if (s.format === 'date' || s.format === 'date-time' || (raw.anyOf ?? []).some((o: Json) => o.format === 'date')) return { ...base, kind: 'date' };
@@ -177,8 +171,8 @@ async function convert(columns: ImportColumn[], row: Record<string, string>, fin
         break;
       }
       case 'choice': {
-        const hit = c.choices!.find((o) => normal(o) === normal(text));
-        if (hit) setPath(data, c.path, hit); else bad(`"${text}" isn't one of: ${c.choices!.join(', ')}`);
+        const hit = pickChoice(c, text);
+        if (hit) setPath(data, c.path, hit); else bad(`"${text}" isn't one of: ${choiceList(c)}`);
         break;
       }
       case 'ref': {
@@ -191,7 +185,7 @@ async function convert(columns: ImportColumn[], row: Record<string, string>, fin
         const values: string[] = [];
         for (const p of parts) {
           if (c.of === 'ref') { const id = await find(c.target!, p); if (id) values.push(id); else bad(`No ${c.label.toLowerCase()} "${p}"`); }
-          else if (c.of === 'choice') { const hit = c.choices!.find((o) => normal(o) === normal(p)); if (hit) values.push(hit); else bad(`"${p}" isn't one of: ${c.choices!.join(', ')}`); }
+          else if (c.of === 'choice') { const hit = pickChoice(c, p); if (hit) values.push(hit); else bad(`"${p}" isn't one of: ${choiceList(c)}`); }
           else values.push(p);
         }
         setPath(data, c.path, values);
@@ -271,7 +265,7 @@ export async function importRows(def: MasterDefinition, rows: Record<string, str
     } catch (err) {
       result.status = 'failed';
       const e = err as { message?: string; details?: Record<string, unknown> };
-      const detail = e.details && typeof e.details === 'object' ? Object.entries(e.details).map(([k, v]) => `${labelOf(k)}: ${Array.isArray(v) ? v.join(', ') : String(v)}`).join('; ') : '';
+      const detail = e.details && typeof e.details === 'object' ? Object.entries(e.details).map(([k, v]) => `${fullLabel(k)}: ${Array.isArray(v) ? v.join(', ') : String(v)}`).join('; ') : '';
       result.problems.push({ column: '—', message: [e.message, detail].filter(Boolean).join(' · ') });
     }
   }

@@ -11,6 +11,17 @@ export const EVENTS = [
   'expense.submitted', 'expense.approved', 'expense.rejected',
   'document.expiring', 'document.expired', 'settlement.posted', 'nomination.sent', 'user.invited', 'password.reset',
 ] as const;
+/** Each event as people say it: what has just happened. */
+export const EVENT_NAMES: Record<(typeof EVENTS)[number], string> = {
+  'trip.created': 'A trip is created', 'trip.dispatched': 'A trip leaves', 'trip.arrived_loading': 'A truck reaches loading',
+  'trip.loaded': 'A truck is loaded', 'trip.arrived_offloading': 'A truck reaches offloading', 'trip.delivered': 'A load is delivered',
+  'trip.closed': 'A trip is closed', 'fund_request.created': 'Fuel or cash is requested', 'fund_request.approved': 'A request is approved',
+  'fund_request.rejected': 'A request is rejected', 'fund_request.paid': 'A request is paid out', 'expense.submitted': 'An expense is sent in',
+  'expense.approved': 'An expense is approved', 'expense.rejected': 'An expense is rejected', 'document.expiring': 'A document is about to expire',
+  'document.expired': 'A document has expired', 'settlement.posted': 'A driver is settled', 'nomination.sent': 'A nomination goes to the customer',
+  'user.invited': 'Someone is invited', 'password.reset': 'A password reset is asked for',
+};
+export const CHANNEL_NAMES: Record<(typeof MESSAGE_CHANNELS)[number], string> = { whatsapp: 'WhatsApp', sms: 'SMS', email: 'E-mail' };
 /** Placeholders a template may use, written {{name}}. */
 export const VARIABLES = [
   'company.name', 'user.name', 'driver.name', 'driver.phone', 'vehicle.registration', 'trailer.registration', 'trip.number',

@@ -5,7 +5,7 @@ import { api, ApiError } from "../api/client";
 import type { Rec } from "../api/adapter";
 import { can } from "../api/session";
 import { useApp } from "../store";
-import { Button, Field, Status } from "../ui/kit";
+import { Button, ChoiceChips, Field, FieldGroup, Status } from "../ui/kit";
 import { stamp } from "../ui/format";
 
 interface Run { id: string; at: string; outcome: "stored" | "failed" | "off"; stored: number; keptManual: number; missing: string[]; error?: string; trigger: string }
@@ -41,7 +41,6 @@ export function RateFeed() {
       setBusy(null);
     }
   };
-  const toggle = (id: string) => setDraft({ ...draft, currencyIds: draft.currencyIds.includes(id) ? draft.currencyIds.filter((x) => x !== id) : [...draft.currencyIds, id] });
   return (
     <fieldset className="form-group rate-feed" disabled={!editable}>
       <legend>Rate feed</legend>
@@ -66,11 +65,11 @@ export function RateFeed() {
       </div>
       {provider?.needsKey && !feed.data.keyConfigured && <p className="signin-error">This provider needs an API key: the administrator sets RATE_FEED_API_KEY on the server.</p>}
       {draft.provider !== "manual" && (
-        <Field label="Currencies" hint="None ticked: every active currency." wide>
-          <span className="checks">
-            {(currencies.data ?? []).filter((c) => c.id !== feed.data.baseCurrencyId).map((c) => <label key={c.id}><input type="checkbox" checked={draft.currencyIds.includes(c.id)} onChange={() => toggle(c.id)} /> {c.code}</label>)}
-          </span>
-        </Field>
+        <FieldGroup label="Currencies to fetch" hint="None picked: every active currency." wide>
+          <ChoiceChips label="Currencies to fetch" disabled={!editable}
+            options={(currencies.data ?? []).filter((c) => c.id !== feed.data.baseCurrencyId).map((c) => ({ value: String(c.id), label: `${c.code} · ${c.name}` }))}
+            value={draft.currencyIds} onChange={(next) => setDraft({ ...draft, currencyIds: next })} />
+        </FieldGroup>
       )}
       {editable && (
         <div className="row-actions">

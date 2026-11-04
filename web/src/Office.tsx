@@ -283,9 +283,6 @@ function RolePicker({
     <div className="picker">
       <aside className="picker-side">
         <Wordmark />
-        <div className="picker-art" aria-hidden>
-          <RoadArt />
-        </div>
         <p className="picker-company">{company}{office ? ` · ${office}` : ""}</p>
       </aside>
       <main className="picker-main">
@@ -300,7 +297,6 @@ function RolePicker({
                 </span>
                 <span className="picker-text">
                   <strong>{title}</strong>
-                  <span>{me.email}</span>
                 </span>
                 <ChevronRight size={18} className="picker-chev" />
               </button>
@@ -328,36 +324,6 @@ function RolePicker({
         </button>
       </main>
     </div>
-  );
-}
-
-function RoadArt() {
-  return (
-    <svg viewBox="0 0 320 420" className="road-art">
-      <defs>
-        <linearGradient id="ra" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0" stopColor="#f3e1b8" stopOpacity=".0" />
-          <stop offset=".5" stopColor="#f3e1b8" stopOpacity=".55" />
-          <stop offset="1" stopColor="#f3e1b8" stopOpacity=".9" />
-        </linearGradient>
-      </defs>
-      <g fill="none" stroke="rgba(222,237,229,.08)">
-        {Array.from({ length: 9 }, (_, i) => (
-          <path key={i} d={`M${-40 + i * 10} ${420 - i * 12} C ${60 + i * 8} ${300 - i * 10}, ${120 - i * 6} ${190 - i * 6}, ${250 + i * 4} ${40 + i * 6}`} />
-        ))}
-      </g>
-      <path d="M40 410 C 120 320, 90 240, 170 190 S 260 90, 280 20" fill="none" stroke="url(#ra)" strokeWidth="2.4" strokeLinecap="round" />
-      <path d="M40 410 C 120 320, 90 240, 170 190 S 260 90, 280 20" fill="none" stroke="#0d1a17" strokeWidth="0.9" strokeDasharray="4 7" className="road-dash" />
-      {[
-        [40, 410],
-        [170, 190],
-        [280, 20],
-      ].map(([x, y], i) => (
-        <g key={i}>
-          <circle cx={x} cy={y} r="6" fill="#13261f" stroke="#f3e1b8" strokeWidth="1.6" />
-        </g>
-      ))}
-    </svg>
   );
 }
 
@@ -402,14 +368,18 @@ function Shell({
           ))}
         </nav>
         <div className="side-foot">
-          <button className="side-user" onClick={canSwitch ? onSwitch : undefined} title={canSwitch ? "Switch desk" : undefined} disabled={!canSwitch}>
+          <div className="side-user">
             <Avatar name={person} tone="dark" size={34} />
             <span>
-              <strong>{person}</strong>
+              <strong title={person}>{person}</strong>
               <span>{ROLE_LABEL[role]}</span>
             </span>
-            {canSwitch && <ArrowRightLeft size={16} />}
-          </button>
+          </div>
+          {canSwitch && (
+            <button className="side-reset" onClick={onSwitch}>
+              <ArrowRightLeft size={14} /> Switch desk
+            </button>
+          )}
           <button className="side-reset" onClick={() => setAccount(true)}>
             <KeyRound size={14} /> Your account
           </button>
@@ -421,7 +391,10 @@ function Shell({
       <main className="main" ref={main}>
         {role !== "driver" && (
           <header className="topbar">
-            <h1>{current?.label}</h1>
+            <h1>
+              <span className="title-long">{current?.label}</span>
+              {current?.short && <span className="title-short">{current.short}</span>}
+            </h1>
             <PhoneButton />
           </header>
         )}

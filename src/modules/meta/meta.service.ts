@@ -6,6 +6,7 @@ import { getRedis } from '../../core/cache/redis.js';
 import { mongoState } from '../../core/db/mongo.js';
 import { recentMail } from '../../core/mail/mailer.js';
 import { GROUPS } from '../../core/masters/groups.js';
+import { pathLabel } from '../../core/masters/labels.js';
 import { listMasters as registered, refsOf } from '../../core/masters/registry.js';
 import { ACTIONS, type MasterDefinition, type Plain } from '../../core/masters/types.js';
 import type { AuthContext } from '../../types/express.js';
@@ -21,6 +22,12 @@ const BASE_FIELDS = new Set(['status', 'validFrom', 'validTo', 'branchIds', 'tag
 
 interface FieldInfo {
   path: string;
+  /** How the field is named on screen and in the import template. */
+  label: string;
+  /** How each stored choice reads on screen, when the master names them. */
+  choiceLabels?: Record<string, string>;
+  /** What to put in the field, when the master says. */
+  hint?: string;
   type: string;
   array: boolean;
   required: boolean;
@@ -55,14 +62,17 @@ function describeSchema(schema: Schema, def: MasterDefinition, keys: Map<string,
     const enumValues = ((type as unknown as { enumValues?: string[] }).enumValues?.length ? (type as unknown as { enumValues: string[] }).enumValues : (caster as { enumValues?: string[] } | undefined)?.enumValues) ?? (Array.isArray(options.enum) ? options.enum as string[] : undefined);
     const info: FieldInfo = {
       path: full,
+      label: '',
       type: subSchema ? 'object' : array ? (caster?.instance ?? 'Mixed').toLowerCase() : instance.toLowerCase(),
       array,
       required: Boolean(options.required),
       group: SYSTEM_FIELDS.has(top) ? 'system' : BASE_FIELDS.has(top) ? 'standard' : 'master',
     };
-    if (enumValues?.length) info.enum = enumValues;
+    if (enumValues?.length) { info.enum = enumValues; if (def.choiceLabels?.[full]) info.choiceLabels = def.choiceLabels[full]; }
     if (refModel) info.ref = keys.get(refModel) ?? refModel;
     else { const declared = refsOf(def).find((r) => r.path === full && !r.usageOnly); if (declared) info.ref = declared.target; }
+    info.label = def.labels?.[full] ?? pathLabel(full, Boolean(info.ref));
+    if (def.hints?.[full]) info.hint = def.hints[full];
     if (options.default !== undefined && typeof options.default !== 'function') info.default = options.default;
     if (typeof options.min === 'number') info.min = options.min;
     if (typeof options.max === 'number') info.max = options.max;

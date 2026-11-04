@@ -24,15 +24,11 @@ export function TripAside({ trip }: { trip: Trip }) {
         <section className="aside-card map-card">
           <MiniRoute stops={trip.stops} trip={trip} height={170} />
           {trip.dispatchedAt && (
-            <button className="map-card-open" onClick={() => setOverlay({ tracking: trip.id })}>
-              <Maximize2 size={15} />
-              <span>Live map</span>
-            </button>
-          )}
-          {live && (
             <div className="map-card-foot">
-              <span className="live-dot" aria-hidden />
-              {Math.round(trip.tracking?.speed ?? 0) > 0 ? `${Math.round(trip.tracking?.speed ?? 0)} km/h` : "Stopped"} · {L(fuelNow(data, trip))} in the tank
+              <span>{live ? <>{Math.round(trip.tracking?.speed ?? 0) > 0 ? `${Math.round(trip.tracking?.speed ?? 0)} km/h` : "Stopped"} · {L(fuelNow(data, trip))} in the tank</> : null}</span>
+              <button className="link-btn" onClick={() => setOverlay({ tracking: trip.id })}>
+                <Maximize2 size={14} /> Open map
+              </button>
             </div>
           )}
         </section>
@@ -58,7 +54,7 @@ export function TripAside({ trip }: { trip: Trip }) {
             <Avatar name={driver.name} tone="sky" size={34} />
             <span>
               <strong>{driver.name}</strong>
-              <span className="mono muted">{driver.phone}</span>
+              <span className="mono muted num">{driver.phone}</span>
             </span>
             <a className="icon-btn with-label" href={`tel:${driver.phone.replace(/\s/g, "")}`} aria-label={`Call ${driver.name}`}>
               <Phone size={16} />

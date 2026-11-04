@@ -5,7 +5,7 @@ import { defineMaster } from '../../core/masters/define.js';
 import { GROUPS } from '../../core/masters/groups.js';
 import type { MasterDefinition, Plain } from '../../core/masters/types.js';
 import * as S from './messaging.schema.js';
-import { EVENTS, MESSAGE_CHANNELS, MessageTemplate, NotificationRule, PRINT_DOCUMENTS, PrintLayout, VARIABLES } from './models/messaging.model.js';
+import { CHANNEL_NAMES, EVENT_NAMES, EVENTS, MESSAGE_CHANNELS, MessageTemplate, NotificationRule, PRINT_DOCUMENTS, PrintLayout, VARIABLES } from './models/messaging.model.js';
 
 const PLACEHOLDER = /\{\{\s*([^{}]*?)\s*\}\}/g;
 const push = (errors: Record<string, string[]>, key: string, message: string) => { (errors[key] ??= []).push(message); };
@@ -33,6 +33,7 @@ export const messageTemplateDefinition = defineMaster({
   description: 'The WhatsApp or SMS message (sent through Marichi Talks) or e-mail (sent over SMTP) for each event, with {{placeholders}} and WhatsApp buttons.',
   model: MessageTemplate, createSchema: S.createMessageTemplateSchema, updateSchema: S.updateMessageTemplateSchema,
   searchFields: ['code', 'name', 'event', 'body'],
+  choiceLabels: { event: EVENT_NAMES, channel: CHANNEL_NAMES },
   filters: {
     channel: { schema: z.enum(MESSAGE_CHANNELS), apply: (v: string) => ({ channel: v }), description: 'Channel' },
     event: { schema: z.enum(EVENTS), apply: (v: string) => ({ event: v }), description: 'Event' },
@@ -62,6 +63,7 @@ export const notificationRuleDefinition = defineMaster({
   description: 'Who hears about an event, on which channels, with which template, after what delay, and how often to remind.',
   model: NotificationRule, createSchema: S.createNotificationRuleSchema, updateSchema: S.updateNotificationRuleSchema,
   searchFields: ['code', 'name', 'event'],
+  choiceLabels: { event: EVENT_NAMES, 'templates.channel': { ...CHANNEL_NAMES, app: 'In the app' } },
   refs: [{ path: 'recipients.roleId', target: 'roles' }, { path: 'recipients.userId', target: 'users' }, { path: 'templates.templateId', target: 'message-templates' }],
   filters: { event: { schema: z.enum(EVENTS), apply: (v: string) => ({ event: v }), description: 'Event' } },
   async prepare(data: Plain) {

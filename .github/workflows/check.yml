@@ -33,6 +33,8 @@ jobs:
       - run: npm ci --no-audit --no-fund
       - name: Type-check
         run: npm run typecheck
+      - name: UI check (no side stripes, decorative gradients, blur, pills or hover movement)
+        run: npm run check:ui
       - name: Tests
         run: |
           set -o pipefail
