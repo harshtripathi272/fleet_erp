@@ -64,7 +64,7 @@ function present(doc: Plain) {
 }
 
 export const connectionDefinition = defineMaster({
-  key: 'connections', label: 'Connections', singular: 'Connection', group: GROUPS.configuration,
+  key: 'connections', label: 'Connections', singular: 'Connection', group: GROUPS.configuration, lockedChoices: ['kind'],
   description: 'Every outside service: e-mail, SMS, WhatsApp, GPS trackers, exchange rates, map routing, file storage, accounting, fuel cards and mobile money. One switched on per kind; each kind works on its Simulated stand-in until a real one is connected. Passwords and keys stay in server settings; a connection names the setting that holds each one.',
   model: Connection, createSchema: createConnectionSchema, updateSchema: updateConnectionSchema,
   searchFields: ['code', 'name', 'kind', 'provider'],
