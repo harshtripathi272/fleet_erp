@@ -1,4 +1,4 @@
-/* Marichi Fleet API console. Plain JavaScript; everything it shows comes from the API itself
+/* The API console. Plain JavaScript; everything it shows comes from the API itself
    (/api/v1/meta/*), so new masters, fields and endpoints appear without changes here.
    Order is top-down: the core records a trip is built from, then the rules trips follow,
    then reference lists, then company setup. */
@@ -61,7 +61,10 @@ const ICON = {
   menu: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M2.5 4.5h11M2.5 8h11M2.5 11.5h11"/></svg>',
 };
 const logo = () => '<svg width="28" height="28" viewBox="0 0 32 32" aria-hidden="true"><rect x="1" y="1" width="30" height="30" rx="8" fill="#256451"/><rect x="1.5" y="1.5" width="29" height="29" rx="7.5" fill="none" stroke="rgba(255,255,255,.18)"/><path d="M8 23c3-6 6-8 9-8s5-2 7-7" fill="none" stroke="#f3e1b8" stroke-width="2.4" stroke-linecap="round"/><circle cx="24" cy="8" r="2.3" fill="#fff"/></svg>';
-const brand = () => `<div class="side-brand">${logo()}<span><b>Marichi</b> Fleet <span>API</span></span></div>`;
+/** The company's product name (#71), read once at start from the public brand; neutral until then. */
+let PRODUCT = 'Fleet';
+const loadBrand = async () => { try { const r = await fetch('/api/v1/brand'); if (r.ok) PRODUCT = (await r.json()).data.productName || PRODUCT; } catch { /* keep the neutral name */ } };
+const brand = () => `<div class="side-brand">${logo()}<span><b>${esc(PRODUCT)}</b> <span>API</span></span></div>`;
 
 function toast(message, bad = false) {
   const el = document.getElementById('toast');
@@ -216,7 +219,8 @@ function signOutLocal() {
 /** The models reference needs no sign-in; every other page is the signed-in testing console. */
 const isReference = (hash) => !hash || hash === '#' || hash === '#models' || hash.startsWith('#m/');
 
-function boot() {
+async function boot() {
+  await loadBrand();
   window.addEventListener('hashchange', route);
   route();
 }
@@ -268,7 +272,7 @@ async function route() {
 /* ---------------- Sign in ---------------- */
 
 function renderAuth(tab = 'login', token = '') {
-  document.title = 'Sign in · Marichi Fleet API';
+  document.title = `Sign in · ${PRODUCT} API`;
   $app.className = '';
   const tabs = [['login', 'Sign in'], ['register', 'Create account'], ['forgot', 'Forgot password'], ['reset', 'Reset password']];
   $app.innerHTML = `
@@ -344,7 +348,7 @@ function renderShell() {
       </div>
     </aside>
     <div class="main">
-      <div class="topbar"><button class="btn btn-sm" type="button" id="menuBtn">${ICON.menu}Menu</button><b>Marichi Fleet API</b></div>
+      <div class="topbar"><button class="btn btn-sm" type="button" id="menuBtn">${ICON.menu}Menu</button><b>${esc(PRODUCT)} API</b></div>
       <main id="main"></main>
     </div>
   </div>`;
@@ -398,7 +402,7 @@ async function renderReference(hash) {
   $app.className = '';
   $app.innerHTML = `
   <div class="doc">
-    <header class="doc-top"><div class="doc-bar"><a class="doc-brand" href="#models">${logo()}<span><b>Marichi</b> Fleet</span></a><span class="spacer"></span><a class="btn btn-sm" href="#api">Test the API</a></div></header>
+    <header class="doc-top"><div class="doc-bar"><a class="doc-brand" href="#models">${logo()}<span><b>${esc(PRODUCT)}</b></span></a><span class="spacer"></span><a class="btn btn-sm" href="#api">Test the API</a></div></header>
     <main class="doc-main" id="docMain"></main>
   </div>`;
   const box = document.getElementById('docMain');
@@ -410,7 +414,7 @@ async function renderReference(hash) {
 const ownTopFields = (m) => m.fields.filter((f) => f.group === 'master' && !f.hidden && !f.path.includes('.'));
 
 function renderModelList(box) {
-  document.title = 'Models · Marichi Fleet';
+  document.title = `Models · ${PRODUCT}`;
   const total = TIERS.reduce((n, t) => n + tierModels(t).length, 0);
   box.innerHTML = `
   <div class="page-head"><div><h1>Models</h1><div class="facts"><span>${total} models in ${TIERS.length} groups, most important first</span></div></div>
@@ -461,7 +465,7 @@ function fieldRows(m, list, uniques) {
 function renderModelDoc(box, key) {
   const m = masterByKey(key);
   if (!m || HIDDEN_MASTERS.has(key)) { box.innerHTML = '<div class="empty"><strong>No such model</strong><a href="#models">All models</a></div>'; return; }
-  document.title = `${m.label} · Marichi Fleet`;
+  document.title = `${m.label} · ${PRODUCT}`;
   const order = TIERS.flatMap((t) => tierModels(t));
   const at = order.indexOf(m);
   const prev = order[at - 1]; const next = order[at + 1];
@@ -530,7 +534,7 @@ const listState = {};
 function renderModel(key, tab) {
   const m = masterByKey(key);
   if (!m) { main().innerHTML = '<div class="page"><p class="empty">Unknown model.</p></div>'; return; }
-  document.title = `${m.label} · Marichi Fleet API`;
+  document.title = `${m.label} · ${PRODUCT} API`;
   const tabs = [['records', 'Records', countOf(key)], ['api', 'API', m.endpoints.length]];
   main().innerHTML = `
   <div class="page">
@@ -1025,7 +1029,7 @@ function renderModelApi(m) {
 }
 
 function renderApiTesting() {
-  document.title = 'API testing · Marichi Fleet API';
+  document.title = `API testing · ${PRODUCT} API`;
   const general = (state.overview?.endpoints || []).map((e) => ({ e, m: null, label: endpointLabel(e, null) }));
   const pick = (re) => general.filter((it) => re.test(it.e.path));
   const groups = [
@@ -1071,7 +1075,7 @@ async function renderCustomRecords(masterId) {
   const rm = masterByKey('custom-records');
   const fieldsSchema = { type: 'object', required: ['data'], properties: { data: { type: 'object', required: cm.fields.filter((f) => f.required).map((f) => f.key), properties: Object.fromEntries(cm.fields.map((f) => [f.key, { type: f.type === 'number' ? 'number' : f.type === 'boolean' ? 'boolean' : f.type === 'multi_select' ? 'array' : 'string', ...(f.options ? { enum: f.options } : {}) }])) } } };
   const cols = cm.fields.filter((f) => f.key !== cm.titleField).slice(0, 4);
-  document.title = `${cm.name} · Marichi Fleet API`;
+  document.title = `${cm.name} · ${PRODUCT} API`;
   main().innerHTML = `
   <div class="page">
     <div class="page-head"><div><div class="crumb"><a href="#model/custom-masters">Custom masters</a><span>/</span><span class="mono">${esc(API + base)}</span></div><h1>${esc(cm.name)}</h1>${cm.description ? `<p>${esc(cm.description)}</p>` : ''}</div></div>
@@ -1094,7 +1098,7 @@ async function renderCustomRecords(masterId) {
 /* ---------------- Account ---------------- */
 
 async function renderAccount() {
-  document.title = 'Account · Marichi Fleet API';
+  document.title = `Account · ${PRODUCT} API`;
   const sessions = await call('GET', '/auth/sessions', { quiet: true });
   const u = state.me.user;
   const you = state.overview?.you || {};
@@ -1139,7 +1143,7 @@ async function renderAccount() {
 /* ---------------- Company ---------------- */
 
 async function renderCompany() {
-  document.title = 'Company · Marichi Fleet API';
+  document.title = `Company · ${PRODUCT} API`;
   const r = await call('GET', '/company', { quiet: true });
   const current = r.ok ? r.data.data : null;
   const editable = current ? Object.fromEntries(Object.entries(current).filter(([k]) => !['id', 'createdAt', 'updatedAt', 'updatedBy', 'singleton'].includes(k))) : { legalName: '' };
@@ -1164,7 +1168,7 @@ async function renderCompany() {
 
 const auditState = { page: 1, entity: '', action: '' };
 async function renderAudit() {
-  document.title = 'Audit log · Marichi Fleet API';
+  document.title = `Audit log · ${PRODUCT} API`;
   const r = await call('GET', '/audit-logs', { query: { page: auditState.page, limit: 50, entity: auditState.entity, action: auditState.action }, quiet: true });
   const entities = [...TIERS.flatMap((t) => tierModels(t)).map((m) => [m.key, m.label]), ['company', 'Company']];
   main().innerHTML = `
@@ -1187,7 +1191,7 @@ async function renderAudit() {
 /* ---------------- Request log ---------------- */
 
 function renderRequests() {
-  document.title = 'Request log · Marichi Fleet API';
+  document.title = `Request log · ${PRODUCT} API`;
   main().innerHTML = `
   <div class="page">
     <div class="page-head"><div><h1>Request log</h1><div class="facts"><span>${plural(state.log.length, 'request')} from this tab, newest first</span></div></div><button class="btn btn-sm" type="button" id="clr">Clear</button></div>
@@ -1198,4 +1202,4 @@ function renderRequests() {
   document.getElementById('clr').addEventListener('click', () => { state.log = []; renderRequests(); });
 }
 
-boot();
+void boot();

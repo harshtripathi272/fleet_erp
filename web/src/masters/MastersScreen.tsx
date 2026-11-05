@@ -58,7 +58,7 @@ const POSITION_KEY = "level";
 const BASE_KEYS = new Set(["status", "validFrom", "validTo", "branchIds", "tags", "notes", "externalRefs", "attachments", "custom"]);
 
 /** The master last open in this tab, so a reload comes back to it. */
-const OPEN = "marichi.masters.open";
+const OPEN = "fleet.masters.open";
 const remembered = () => { try { return sessionStorage.getItem(OPEN); } catch { return null; } };
 const remember = (key: string) => { try { sessionStorage.setItem(OPEN, key); } catch { /* private mode: nothing to keep */ } };
 

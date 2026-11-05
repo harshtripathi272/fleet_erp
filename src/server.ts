@@ -7,6 +7,7 @@ import { ensureFirstOwner } from './modules/auth/auth.service.js';
 import { ensureDefaultMessages } from './modules/messaging/defaults.js';
 import { migrateToConnections } from './modules/connections/migrate.js';
 import { settleSends, startOutboxWorker, stopOutboxWorker } from './modules/messaging/dispatcher.js';
+import { startEscalationWorker, stopEscalationWorker } from './modules/operations/escalation.js';
 import { ensureSystemRoles } from './modules/roles/roles.service.js';
 
 await connectMongo();
@@ -20,6 +21,7 @@ await ensureDefaultMessages();
 await connectRedis();
 // Retries and delayed messages go out from here: only in the server, so scripts and tests that load the app don't start it.
 startOutboxWorker();
+if (env.IN_PROCESS_JOBS) startEscalationWorker();
 
 const server = app.listen(env.PORT, env.HOST, () => {
   logger.info({ host: env.HOST, port: env.PORT, environment: env.NODE_ENV }, 'Server started');
@@ -42,6 +44,7 @@ function shutdown(reason: string, exitCode: number) {
     clearTimeout(timer);
     if (err) { logger.error({ err }, 'Shutdown failed'); process.exitCode = 1; }
     stopOutboxWorker();
+    stopEscalationWorker();
     await settleSends();
     await Promise.allSettled([disconnectMongo(), disconnectRedis()]);
     logger.info({}, 'Server stopped');

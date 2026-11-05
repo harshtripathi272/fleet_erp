@@ -144,6 +144,16 @@ The job fetches only when it's due: after the fetch time set in the app (Masters
 - **What happened:** Cloud Run → Jobs → `fleet-<company>-rates` → Executions (exit 1 means a fetch failed), and in the app, the Rate feed panel's last run and its reason.
 - **Fetch now, by hand:** `gcloud run jobs execute fleet-<company>-rates --region <region> --args dist/jobs/fetchRates.js,--now`, or "Fetch now" in the app.
 
+## Approval escalation
+
+`new-company.sh` also sets up the job that moves up approvals nobody decided in time (#53). The service scales to zero when idle, so a timer inside it wouldn't run overnight, which is when requests wait longest.
+
+- **A Cloud Run job**, `fleet-<company>-escalate`, from the same image, settings and secrets as the service. It runs `node dist/jobs/escalate.js`, moves up what is due, sends what that tells people, and exits.
+- **A Cloud Scheduler trigger**, `fleet-<company>-escalate-15min`, which starts the job every 15 minutes. A request moves within 15 minutes of its hours running out.
+- **`IN_PROCESS_JOBS=false`** on the service and the job, so the service doesn't run the same work on a timer. Locally and in Docker Compose it stays on, and a timer does the work every minute.
+- **Updates:** `update-company.sh` moves the job to the new version together with the service.
+- **What happened:** Cloud Run → Jobs → `fleet-<company>-escalate` → Executions (exit 1 means the run failed). Each move is in the audit log as "System".
+
 ## Backups and restore
 
 - **Database:**

@@ -33,7 +33,7 @@ registerProvider({
     from: z.string().trim().min(3).max(200),
   }),
   labels: { host: 'SMTP server', secure: 'Encrypted from the start (port 465)', user: 'User name', from: 'From address' },
-  hints: { host: 'e.g. smtp.gmail.com', from: 'e.g. Marichi Fleet <fleet@company.com>', port: '587 for most servers, 465 when encrypted from the start' },
+  hints: { host: 'e.g. smtp.gmail.com', from: 'e.g. Acme Haulage <fleet@company.com>', port: '587 for most servers, 465 when encrypted from the start' },
   secrets: [{ key: 'password', label: 'SMTP password', required: false, hint: 'Needed when the server asks for a user name' }],
   test: ready,
   open: (ctx) => ({

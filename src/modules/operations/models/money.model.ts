@@ -32,6 +32,8 @@ expenseSchema.index({ updatedAt: 1 });
 // Expenses waiting for a decision, oldest first, and the paged list.
 expenseSchema.index({ status: 1, at: 1 });
 expenseSchema.index({ at: -1 });
+// The escalation job: expenses whose level has run out of time.
+expenseSchema.index({ status: 1, 'approval.escalateAt': 1 });
 
 export const Expense = opsModel('Expense', expenseSchema);
 

@@ -1,6 +1,7 @@
 /**
  * A plain printed document as a PDF: text and simple tables in Helvetica, top to bottom, with page
- * breaks and a footer. No library: enough for a trip sheet or a driver statement sent with an e-mail.
+ * breaks and a footer, the company's logo at the top and its watermark under every page (#71).
+ * No library: enough for a trip sheet or a driver statement sent with an e-mail.
  */
 
 export type PdfBlock =
@@ -16,6 +17,26 @@ export interface PdfLayout {
   paperSize?: 'A4' | 'A5' | 'Letter';
   orientation?: 'portrait' | 'landscape';
   footerText?: string;
+  /** The company's logo for documents: a JPEG (the screens convert any upload to one). */
+  logo?: Buffer | null;
+  /** Drawn under each page's content: the company's text or logo, faint, at an angle. */
+  watermark?: { text?: string | null; logo?: boolean; opacity: number; angle: number } | null;
+  /** A test installation: every page says so, across the middle and at the top. */
+  testMark?: boolean;
+}
+
+/** A JPEG's pixel size, from its start-of-frame marker; null when the bytes are not a JPEG we can place. */
+export function jpegSize(jpeg: Buffer): { width: number; height: number; components: number } | null {
+  if (jpeg[0] !== 0xff || jpeg[1] !== 0xd8) return null;
+  let i = 2;
+  while (i + 9 < jpeg.length) {
+    if (jpeg[i] !== 0xff) { i += 1; continue; }
+    const marker = jpeg[i + 1]!;
+    // Baseline, extended and progressive frames carry the size; the others are skipped by their length.
+    if (marker >= 0xc0 && marker <= 0xc3) return { height: jpeg.readUInt16BE(i + 5), width: jpeg.readUInt16BE(i + 7), components: jpeg[i + 9] ?? 3 };
+    i += 2 + jpeg.readUInt16BE(i + 2);
+  }
+  return null;
 }
 
 const PAPER: Record<NonNullable<PdfLayout['paperSize']>, [number, number]> = { A4: [595, 842], A5: [420, 595], Letter: [612, 792] };
@@ -85,6 +106,15 @@ export function renderPdf(blocks: PdfBlock[], layout: PdfLayout = {}): Buffer {
   const rule = (weight = 0.5) => { ops.push(`${weight} w ${MARGIN} ${(y - 3).toFixed(1)} m ${w - MARGIN} ${(y - 3).toFixed(1)} l S`); y -= 3; };
   newPage();
 
+  // The logo, top right of the first page, at most 34 points tall and 140 wide.
+  const logoSize = layout.logo ? jpegSize(layout.logo) : null;
+  if (logoSize) {
+    const scale = Math.min(34 / logoSize.height, 140 / logoSize.width);
+    const lw = logoSize.width * scale;
+    const lh = logoSize.height * scale;
+    ops.push(`q ${lw.toFixed(1)} 0 0 ${lh.toFixed(1)} ${(w - MARGIN - lw).toFixed(1)} ${(h - MARGIN - lh + 8).toFixed(1)} cm /Im1 Do Q`);
+  }
+
   for (const block of blocks) {
     switch (block.kind) {
       case 'title':
@@ -147,21 +177,51 @@ export function renderPdf(blocks: PdfBlock[], layout: PdfLayout = {}): Buffer {
     }
   }
 
+  // Under each page's content: the watermark, then the test mark; drawn first so the text stays on top.
+  const under: string[] = [];
+  const rad = ((layout.watermark?.angle ?? 35) * Math.PI) / 180;
+  const [cos, sin] = [Math.cos(rad), Math.sin(rad)];
+  const across = (value: string, size: number, opacityName: string) => {
+    const tw = widthOf(value, size);
+    // Centre the rotated text on the page.
+    const x = w / 2 - (cos * tw) / 2;
+    const y0 = h / 2 - (sin * tw) / 2;
+    under.push(`q /${opacityName} gs 0.35 g BT /F2 ${size} Tf ${cos.toFixed(4)} ${sin.toFixed(4)} ${(-sin).toFixed(4)} ${cos.toFixed(4)} ${x.toFixed(1)} ${y0.toFixed(1)} Tm ${pdfString(value)} Tj ET Q`);
+  };
+  if (layout.watermark?.text) across(layout.watermark.text, Math.min(72, (w * 0.8) / Math.max(1, widthOf(layout.watermark.text, 1))), 'GS1');
+  else if (layout.watermark?.logo && logoSize) {
+    const scale = Math.min((w * 0.6) / logoSize.width, (h * 0.4) / logoSize.height);
+    const lw = logoSize.width * scale;
+    const lh = logoSize.height * scale;
+    under.push(`q /GS1 gs ${lw.toFixed(1)} 0 0 ${lh.toFixed(1)} ${((w - lw) / 2).toFixed(1)} ${((h - lh) / 2).toFixed(1)} cm /Im1 Do Q`);
+  }
+  if (layout.testMark) across('TEST COPY', 64, 'GS2');
   pages.forEach((page, i) => {
+    page.unshift(...under);
+    if (layout.testMark) page.push(`BT /F2 8 Tf ${MARGIN} ${h - 22} Td ${pdfString('Test copy: not a real document')} Tj ET`);
     const footer = `${layout.footerText ? `${layout.footerText}  ·  ` : ''}Page ${i + 1} of ${pages.length}`;
     page.push(`BT /F1 7.5 Tf ${MARGIN} ${MARGIN - 8} Td ${pdfString(fit(footer, 7.5, usable))} Tj ET`);
   });
 
-  // Objects: 1 catalog, 2 page tree, 3–4 fonts, then a page and its content stream for each page.
+  // Objects: 1 catalog, 2 page tree, 3–4 fonts, 5–6 transparency (watermark, test mark), 7 the logo image,
+  // then a page and its content stream for each page.
   const objects: string[] = [];
-  const pageIds = pages.map((_, i) => 5 + i * 2);
+  const pageIds = pages.map((_, i) => 8 + i * 2);
   objects[1] = '<< /Type /Catalog /Pages 2 0 R >>';
   objects[2] = `<< /Type /Pages /Kids [${pageIds.map((id) => `${id} 0 R`).join(' ')}] /Count ${pages.length} >>`;
   objects[3] = '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>';
   objects[4] = '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>';
+  const opacity = Math.min(0.5, Math.max(0.03, layout.watermark?.opacity ?? 0.08));
+  objects[5] = `<< /Type /ExtGState /ca ${opacity} /CA ${opacity} >>`;
+  objects[6] = '<< /Type /ExtGState /ca 0.12 /CA 0.12 >>';
+  // A JPEG is binary; latin1 keeps every byte as one character, so string length is still the byte count.
+  objects[7] = logoSize && layout.logo
+    ? `<< /Type /XObject /Subtype /Image /Width ${logoSize.width} /Height ${logoSize.height} /ColorSpace /${logoSize.components === 1 ? 'DeviceGray' : logoSize.components === 4 ? 'DeviceCMYK' : 'DeviceRGB'} /BitsPerComponent 8 /Filter /DCTDecode /Length ${layout.logo.length} >>\nstream\n${layout.logo.toString('latin1')}\nendstream`
+    : '<< >>';
+  const resources = `/Font << /F1 3 0 R /F2 4 0 R >> /ExtGState << /GS1 5 0 R /GS2 6 0 R >>${logoSize ? ' /XObject << /Im1 7 0 R >>' : ''}`;
   pages.forEach((page, i) => {
     const stream = page.join('\n');
-    objects[pageIds[i]!] = `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${w} ${h}] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents ${pageIds[i]! + 1} 0 R >>`;
+    objects[pageIds[i]!] = `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${w} ${h}] /Resources << ${resources} >> /Contents ${pageIds[i]! + 1} 0 R >>`;
     objects[pageIds[i]! + 1] = `<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`;
   });
   // Everything above is ASCII (other characters are octal escapes), so string length is the byte count.

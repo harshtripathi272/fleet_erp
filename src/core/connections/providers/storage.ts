@@ -62,7 +62,7 @@ export async function gcsStore(bucketName: string): Promise<FileStore> {
 /** Writes a small file and deletes it again: what "Test connection" does for every store. */
 async function roundTrip(store: FileStore) {
   const key = `connection-test/${randomUUID()}.txt`;
-  await store.put(key, Buffer.from('Marichi Fleet connection test'), 'text/plain');
+  await store.put(key, Buffer.from('Connection test'), 'text/plain');
   await store.remove(key);
   return { ok: true, message: 'Wrote a test file and deleted it again.' };
 }
