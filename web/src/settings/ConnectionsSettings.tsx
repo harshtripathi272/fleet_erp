@@ -4,7 +4,7 @@ import { api, request } from "../api/client";
 import { can } from "../api/session";
 import { useApp } from "../store";
 import { Button, Drawer, Field, FieldGroup, Segmented, Status, SwitchField } from "../ui/kit";
-import { stamp } from "../ui/format";
+import { stamp, phonePlaceholder } from "../ui/format";
 import "./settings.css";
 import { COMING_SOON, ComingSoonTag } from "../ui/comingSoon";
 
@@ -199,7 +199,7 @@ function ConnectionCard({ connection: c, kind, writable, onEdit }: { connection:
       {writable && !archived && (
         <div className="connection-actions">
           {message && (
-            <input className="input" value={to} onChange={(e) => setTo(e.target.value)} placeholder={c.kind === "email" ? "you@company.com" : "+260…"} aria-label="Send a test message to" />
+            <input className="input" value={to} onChange={(e) => setTo(e.target.value)} placeholder={c.kind === "email" ? "you@company.com" : phonePlaceholder()} aria-label="Send a test message to" />
           )}
           <Button busy={test.isPending} disabled={message && !to.trim()} onClick={() => test.mutate()}>{message ? "Send a test message" : "Test connection"}</Button>
           <Button busy={toggle.isPending} onClick={() => toggle.mutate()}>{c.enabled ? "Switch off" : "Use this one"}</Button>

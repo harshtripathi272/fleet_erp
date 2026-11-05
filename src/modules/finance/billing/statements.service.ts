@@ -1,3 +1,4 @@
+import * as Fmt from '../../../core/format/regional.js';
 import { createHash, randomUUID } from 'node:crypto';
 import type { Plain } from '../../../core/masters/types.js';
 import { storeForNew } from '../../../core/storage/index.js';
@@ -81,7 +82,7 @@ export async function statement(customerId: string, query: { from?: Date; to?: D
   const payments = await CustomerPayment.find({ customerId, date: { $lt: end } }).sort({ date: 1 }).lean() as Plain[];
   const all: Entry[] = documents.map((d) => ({
     date: new Date(d.date as string), kind: d.kind as Entry['kind'], number: String(d.number),
-    description: d.kind === 'credit_note' ? `Credit note${d.reason ? `: ${d.reason}` : ''}` : `Invoice${d.dueDate ? `, due ${new Date(d.dueDate as string).toISOString().slice(0, 10)}` : ''}`,
+    description: d.kind === 'credit_note' ? `Credit note${d.reason ? `: ${d.reason}` : ''}` : `Invoice${d.dueDate ? `, due ${Fmt.calendarDate(d.dueDate as string)}` : ''}`,
     debitMinor: d.kind === 'invoice' ? Number(d.totalMinor) : 0, creditMinor: d.kind === 'credit_note' ? Number(d.totalMinor) : 0,
   }));
   for (const p of payments) {
@@ -107,7 +108,7 @@ export async function statementPdf(customerId: string, query: { from?: Date; to?
   const s = await statement(customerId, query);
   const company = await Company.findOne().select('legalName tradingName phone email').lean() as Plain | null;
   const money = (minor: number) => formatMoney(minor, { code: s.currency, minorUnits: s.minorUnits });
-  const day = (d: Date) => d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
+  const day = (d: Date) => Fmt.calendarDate(d);
   const blocks: PdfBlock[] = [
     { kind: 'title', text: `Statement for ${s.customer}` },
     { kind: 'subtitle', text: [company?.tradingName ?? company?.legalName, company?.phone, company?.email].filter(Boolean).join('  ·  ') },
@@ -131,7 +132,7 @@ export async function sendStatement(customerId: string, query: { from?: Date; to
   const s = await statement(customerId, query);
   const messages = await dispatch({
     event: 'statement.sent', partyId: customerId, receives: 'statements', actorId: ctx.actorId, ref: { kind: 'parties', id: customerId },
-    variables: { 'statement.period': `${s.from.toISOString().slice(0, 10)} to ${s.to.toISOString().slice(0, 10)}`, 'statement.balance': formatMoney(s.closingMinor, { code: s.currency, minorUnits: s.minorUnits }) },
+    variables: { 'statement.period': `${Fmt.calendarDate(s.from)} to ${Fmt.calendarDate(s.to)}`, 'statement.balance': formatMoney(s.closingMinor, { code: s.currency, minorUnits: s.minorUnits }) },
     attachments: async () => {
       const { name, body } = await statementPdf(customerId, query);
       if (!ctx.actorId) return null;

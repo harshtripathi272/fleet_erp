@@ -6,10 +6,13 @@
  */
 import { connectMongo, disconnectMongo } from '../core/db/mongo.js';
 import { logger } from '../core/logger/index.js';
+import { refreshRegional } from '../modules/company/regional.js';
 import { remindDueServices } from '../modules/maintenance/maintenance.service.js';
 import { settleSends } from '../modules/messaging/dispatcher.js';
 
 await connectMongo();
+// Its messages use the company's formats, like the server's.
+await refreshRegional();
 let failed = false;
 try {
   const reminded = await remindDueServices();

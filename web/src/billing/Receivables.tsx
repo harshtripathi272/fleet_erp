@@ -6,7 +6,7 @@ import type { Rec } from "../api/adapter";
 import { can } from "../api/session";
 import { useApp } from "../store";
 import { Button, Drawer, Empty, Field, Rows, Status } from "../ui/kit";
-import { baseCurrencyCode } from "../ui/format";
+import { baseCurrencyCode, calendarDate, num } from "../ui/format";
 import { Card } from "../desks/stages";
 
 /**
@@ -17,9 +17,9 @@ import { Card } from "../desks/stages";
 const amount = (minor: unknown, of: Rec | "base") => {
   const units = of === "base" ? 2 : Number(of.minorUnits ?? 2);
   const code = of === "base" ? baseCurrencyCode() : String(of.currency ?? "");
-  return `${(Number(minor ?? 0) / 10 ** units).toLocaleString("en-GB", { minimumFractionDigits: units, maximumFractionDigits: units })} ${code}`;
+  return `${num(Number(minor ?? 0) / 10 ** units, units)} ${code}`;
 };
-const day = (iso: unknown) => (iso ? new Date(String(iso)).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" }) : "—");
+const day = (iso: unknown) => (iso ? calendarDate(String(iso)) : "—");
 const today = () => new Date().toISOString().slice(0, 10);
 const monthStart = () => `${today().slice(0, 8)}01`;
 

@@ -194,7 +194,7 @@ export function CompanyKit() {
         <SettingsSection title="3. Regional settings" description="Codes, not records: they are looked up once the data files are in, so the currency and country must be in them (or in the sample data).">
           <div className="grid-2">
             <Field label="Country" hint={problemAt("regional.country") ?? "Its two-letter code, e.g. ZM."}><input className="input" value={String(regional.country ?? "")} onChange={(e) => set("regional.country", e.target.value.toUpperCase())} maxLength={2} /></Field>
-            <Field label="Base currency" hint={problemAt("regional.baseCurrency") ?? "Its three-letter code, e.g. ZMW."}><input className="input" value={String(regional.baseCurrency ?? "")} onChange={(e) => set("regional.baseCurrency", e.target.value.toUpperCase())} maxLength={3} /></Field>
+            <Field label="Base currency" hint={problemAt("regional.baseCurrency") ?? "Its three-letter code, such as USD."}><input className="input" value={String(regional.baseCurrency ?? "")} onChange={(e) => set("regional.baseCurrency", e.target.value.toUpperCase())} maxLength={3} /></Field>
             <Field label="Time zone">
               <select className="input" value={String(regional.timezone ?? "")} onChange={(e) => set("regional.timezone", e.target.value)}>
                 <option value="">Not set</option>

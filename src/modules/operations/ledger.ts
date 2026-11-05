@@ -1,4 +1,5 @@
 import { Types } from 'mongoose';
+import * as Fmt from '../../core/format/regional.js';
 import type { Plain } from '../../core/masters/types.js';
 import { Driver } from '../drivers/models/driver.model.js';
 import { ExpenseCategory } from '../trips/models/expense.model.js';
@@ -64,7 +65,7 @@ export async function driverLedger(driverId: unknown): Promise<LedgerEntry[]> {
     const s = c.shortage as Plain;
     entries.push({
       id: `short-${c._id}`, at: (s.decidedAt as Date).toISOString(), tripId: String(c.tripId), settlementId: settlementOf(c.tripId),
-      kind: 'shortage', label: `${s.unit && s.unit !== 'L' ? 'Shortage' : 'Fuel shortage'} ${c.number} · ${Number(s.netShortL).toLocaleString('en-GB')} ${s.unit ?? 'L'}`, amountMinor: Number(s.baseAmountMinor ?? 0),
+      kind: 'shortage', label: `${s.unit && s.unit !== 'L' ? 'Shortage' : 'Fuel shortage'} ${c.number} · ${Fmt.number(Number(s.netShortL), { max: 2 })} ${s.unit ?? 'L'}`, amountMinor: Number(s.baseAmountMinor ?? 0),
     });
   }
   for (const c of writeOffs) {

@@ -1,3 +1,4 @@
+import * as Fmt from '../../../core/format/regional.js';
 import { NotFoundError } from '../../../core/errors/index.js';
 import type { Plain } from '../../../core/masters/types.js';
 import { Product } from '../../cargo/models/product.model.js';
@@ -68,7 +69,7 @@ export async function rateFor(trip: Plain): Promise<Plain> {
   }).lean() as Plain[];
   const score = (r: Plain) => (r.routeId ? 2 : 0) + (r.productId ? 1 : 0);
   const best = candidates.sort((a, b) => score(b) - score(a) || +new Date(b.validFrom as string) - +new Date(a.validFrom as string))[0];
-  if (!best) throw refuse(`No customer rate covers ${trip.number} on ${day.toISOString().slice(0, 10)}. Add one under Customer rates.`);
+  if (!best) throw refuse(`No customer rate covers ${trip.number} on ${Fmt.date(day)}. Add one under Customer rates.`);
   return best;
 }
 

@@ -7,6 +7,7 @@ import { NotFoundError, ValidationError } from '../../core/errors/index.js';
 import { defineMaster } from '../../core/masters/define.js';
 import { GROUPS } from '../../core/masters/groups.js';
 import type { MasterDefinition, Plain } from '../../core/masters/types.js';
+import * as Fmt from '../../core/format/regional.js';
 import * as S from './messaging.schema.js';
 import { CHANNEL_NAMES, EVENT_NAMES, EVENTS, MESSAGE_CHANNELS, MessageTemplate, NotificationRule, PRINT_DOCUMENTS, PrintLayout, VARIABLES } from './models/messaging.model.js';
 
@@ -111,12 +112,17 @@ export const printLayoutDefinition = defineMaster({
   },
 });
 
-const SAMPLE: Record<string, string> = {
-  'user.name': 'Mutale Chanda', 'driver.name': 'Joseph Mwansa', 'driver.phone': '+260971234567',
-  'vehicle.registration': 'ALC 4821', 'trailer.registration': 'TAC 7821', 'trip.number': 'TRIP/26/0137', 'route.name': 'Dar es Salaam port to Lusaka fuel depot',
-  'place.name': 'Beira fuel terminal', 'customer.name': 'Zambezi Energy', amount: '5,350.00', 'document.name': 'Road tax',
-  'document.number': 'RT-2026-0042', 'document.expiryDate': '30 Nov 2026', reason: 'Above route budget', date: '21 Oct 2026',
-};
+/** Made-up values a preview fills in, written in the company's own formats (#72). */
+async function sampleValues(): Promise<Record<string, string>> {
+  const base = await baseCurrency().catch(() => null);
+  const now = new Date();
+  return {
+    'user.name': 'Mutale Chanda', 'driver.name': 'Joseph Mwansa', 'driver.phone': `${Fmt.regional().phoneCountryCode || '+'}971234567`,
+    'vehicle.registration': 'ALC 4821', 'trailer.registration': 'TAC 7821', 'trip.number': 'TRIP/26/0137', 'route.name': 'Dar es Salaam port to Lusaka fuel depot',
+    'place.name': 'Beira fuel terminal', 'customer.name': 'Zambezi Energy', amount: Fmt.amount(535_000, base?.minorUnits ?? 2), 'document.name': 'Road tax',
+    'document.number': 'RT-2026-0042', 'document.expiryDate': Fmt.date(new Date(now.getTime() + 25 * 86_400_000)), reason: 'Above route budget', date: Fmt.date(now),
+  };
+}
 
 /** Renders a template with the given variables (sample values fill the rest). */
 export async function previewTemplate(id: string, input: S.PreviewInput) {
@@ -128,11 +134,12 @@ export async function previewTemplate(id: string, input: S.PreviewInput) {
   // The company's own name, currency and address stand in for those placeholders, never another company's.
   const own: Record<string, string> = { 'company.name': await productName(), currency: (await baseCurrency().catch(() => null))?.code ?? '', link: `${env.APP_URL}/#t/abc` };
   const usedSample: string[] = [];
+  const sample = await sampleValues();
   const render = (text: string) => text.replace(PLACEHOLDER, (_m, raw: string) => {
     const key = raw.trim();
     if (key in given) return given[key]!;
     usedSample.push(key);
-    return own[key] ?? SAMPLE[key] ?? `{{${key}}}`;
+    return own[key] ?? sample[key] ?? `{{${key}}}`;
   });
   const body = render(String(template.body));
   const subject = template.subject ? render(String(template.subject)) : undefined;

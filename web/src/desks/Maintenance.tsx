@@ -5,7 +5,7 @@ import { api } from "../api/client";
 import { can } from "../api/session";
 import { byId } from "../domain/calc";
 import { useApp } from "../store";
-import { cash, dayYear, km, num } from "../ui/format";
+import { cash, dayYear, km, localDate, num } from "../ui/format";
 import { Button, Empty, Segmented, Status } from "../ui/kit";
 import { Card } from "./stages";
 
@@ -24,7 +24,7 @@ interface CostRow { vehicleId: string; plate: string; workOrders: number; workOr
 
 const HEALTH = { overdue: ["Overdue", "bad"], due: ["Due soon", "wait"], ok: ["Not due", "ok"] } as const;
 const STAGE = { open: ["Open", "wait"], in_workshop: ["In the workshop", "info"], done: ["Done", "ok"] } as const;
-const today = () => new Date().toISOString().slice(0, 10);
+const today = () => localDate(new Date().toISOString());
 const monthStart = () => `${today().slice(0, 8)}01`;
 
 export function Maintenance() {

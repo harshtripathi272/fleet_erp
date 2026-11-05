@@ -1,4 +1,5 @@
 import { ForbiddenError, NotFoundError } from '../../core/errors/index.js';
+import * as Fmt from '../../core/format/regional.js';
 import { Currency } from '../finance/models/currency.model.js';
 import type { Plain } from '../../core/masters/types.js';
 import { Product } from '../cargo/models/product.model.js';
@@ -48,7 +49,7 @@ function quantityOf(kind: CargoKind, input: { qty?: number; gross?: number; tare
 }
 
 /** "1,200 kg", or litres as everywhere else. */
-const amountOf = (value: number, unit: string) => (unit === 'L' ? litres(value) : `${value.toLocaleString('en-GB')} ${unit}`);
+const amountOf = (value: number, unit: string) => (unit === 'L' ? litres(value) : `${Fmt.number(value, { max: 6 })} ${unit}`);
 
 /* ---------- Driver documents ---------- */
 
@@ -107,7 +108,7 @@ export async function sendDocument(input: DocumentInput, ctx: OpsContext) {
   if (input.channel !== 'operations') await post(driverThread(driver._id), at, { from: 'me', text: input.note ?? '', attachment: file }, ctx);
   if (trip) await resolve(`${trip._id}-${input.kind}`, 'Sent');
   if (input.channel !== 'operations') {
-    const amount = reading?.amount ? ` for ${reading.amount.toLocaleString('en-GB', { maximumFractionDigits: 2 })} ${reading.currencyCode ?? ''}`.trimEnd() : '';
+    const amount = reading?.amount ? ` for ${Fmt.number(reading.amount, { max: 2 })} ${reading.currencyCode ?? ''}`.trimEnd() : '';
     await post(driverThread(driver._id), at, {
       text: input.kind === 'expense' || input.kind === 'fuel' ? `Got your ${label}${amount}. Finance will check it.` : `Got your ${label}${reading?.docNo ? ` ${reading.docNo}` : ''}. Operations will confirm it.`,
     }, ctx);
@@ -120,13 +121,13 @@ export async function sendDocument(input: DocumentInput, ctx: OpsContext) {
   if (reading?.docNo) rows.push(['Document', reading.docNo]);
   if (reading?.ambientL) rows.push(['Observed', `${litres(reading.ambientL)} at ${reading.tempC} °C · ${reading.density} kg/m³`]);
   else if (reading?.qty) rows.push(['Quantity', `${reading.qty}`]);
-  if (reading?.amount) rows.push(['Amount', `${reading.amount.toLocaleString('en-GB', { maximumFractionDigits: 2 })} ${reading.currencyCode ?? ''}`.trim()]);
+  if (reading?.amount) rows.push(['Amount', `${Fmt.number(reading.amount, { max: 2 })} ${reading.currencyCode ?? ''}`.trim()]);
   if (input.note) rows.push(['Note', input.note]);
   if (input.kind === 'expense' || input.kind === 'fuel') {
     const buttons: MessageButton[] = reading?.amount && reading.categoryId
       ? [
         {
-          label: `Approve ${reading.amount.toLocaleString('en-GB', { maximumFractionDigits: 2 })} ${reading.currencyCode ?? ''}`.trim(), tone: 'primary',
+          label: `Approve ${Fmt.number(reading.amount, { max: 2 })} ${reading.currencyCode ?? ''}`.trim(), tone: 'primary',
           action: { type: 'expense.record', driverId: String(driver._id), tripId: trip ? String(trip._id) : undefined, categoryId: String(reading.categoryId), amount: reading.amount, currency: reading.currencyCode, receiptNo: reading.docNo, docId: id },
         },
         { label: 'Return', tone: 'danger', action: { type: 'doc.return', docId: id, reason: '' } },
@@ -346,7 +347,7 @@ export async function recordDelivery(id: string, input: S.DeliveryInput, ctx: Op
     ? [loaded20, delivered20, true] : [Number(load.ambientL ?? load.qty), quantity, false];
   const limit = loadedQty * (1 + deliveredOverLoadedPercent / 100);
   if (deliveredQty > limit) {
-    throw refuse(`Delivered ${Math.round(deliveredQty).toLocaleString('en-GB')}${at20 ? ' L at 20 °C' : ''} is more than loaded (${Math.round(loadedQty).toLocaleString('en-GB')}) by over ${deliveredOverLoadedPercent}%. Check the figures.`);
+    throw refuse(`Delivered ${Fmt.number(Math.round(deliveredQty))}${at20 ? ' L at 20 °C' : ''} is more than loaded (${Fmt.number(Math.round(loadedQty))}) by over ${deliveredOverLoadedPercent}%. Check the figures.`);
   }
   const stops = trip.get('stops') as Array<{ kind: string; legKm: number }>;
   const index = stops.findIndex((s) => s.kind === 'offload');

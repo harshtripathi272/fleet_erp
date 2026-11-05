@@ -6,7 +6,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { ArrowRight, Check, CircleDollarSign, Clock, Droplets, FileText, Fuel, MapPin, Pause, Play, Plus, RotateCcw, Send, Trash2, Undo2, Upload } from "lucide-react";
 import { useApp } from "../store";
 import { can, useMay } from "../api/session";
-import { byId, carriedIn, round, cumulativeKm, driverBalance, fuelEstimate, fuelNow, funding, leg, legLoaded, measureFuel, shortageFor, toZmw, tripFuelUsed, tripHours, tripKm, validateStops, volume20 } from "../domain/calc";
+import { byId, carriedIn, round, cumulativeKm, driverBalance, fuelEstimate, fuelNow, funding, leg, legLoaded, measureFuel, shortageFor, toBase, tripFuelUsed, tripHours, tripKm, validateStops, volume20 } from "../domain/calc";
 import { activeTrip, placeName } from "../domain/helpers";
 import type { NextStep, StageId } from "../domain/turn";
 import type { Expense,
@@ -21,7 +21,7 @@ import type { Expense,
   Trip,
 } from "../domain/types";
 import { Button, Empty, Field, Meter, Rows, Status } from "../ui/kit";
-import { cash, day, fromLocalInput, hm, hoursText, km, L, localInput, num, stamp, zmw } from "../ui/format";
+import { cash, day, fromLocalInput, hm, hoursText, km, L, localInput, num, stamp, inBase, baseLabel, baseCurrencyCode } from "../ui/format";
 import { useDocImage } from "../docs/useDocImage";
 import { ACCEPT, uploadFile } from "../api/files";
 import { useSim } from "../tracking/sim";
@@ -70,7 +70,7 @@ export function ExpenseDecision({ expense }: { expense: Expense }) {
 }
 
 /** A quantity in its unit: litres as everywhere else, other units with their symbol. */
-const inUnit = (value: number, unit: string) => (unit === "L" ? L(value) : `${value.toLocaleString("en-GB")}\u00a0${unit}`);
+const inUnit = (value: number, unit: string) => (unit === "L" ? L(value) : `${num(value, 0, 6)}\u00a0${unit}`);
 
 export function Card({
   title,
@@ -122,7 +122,7 @@ function PlanPanel({ trip }: { trip: Trip }) {
     routeId: trip.routeId ?? "",
     stops: trip.stops.map((s) => ({ placeId: s.placeId, kind: s.kind })) as RouteStop[],
     fuelBudgetL: String(trip.fuelBudgetL),
-    cashBudgetZmw: String(trip.cashBudgetZmw),
+    cashBudgetBase: String(trip.cashBudgetBase),
   });
   // The form is based on one version of the trip. While nobody is editing it follows the trip;
   // once someone edits, their changes stay, and saving sends the version they started from, so a
@@ -159,7 +159,7 @@ function PlanPanel({ trip }: { trip: Trip }) {
     if (!r) return set({ routeId: "" });
     const stops = r.stops[0].placeId === truck.placeId ? r.stops : [{ placeId: truck.placeId, kind: "start" as const }, ...r.stops.slice(1)];
     const f = fuelEstimate({ stops: stops.map((s, i) => ({ ...s, id: String(i), legKm: i ? leg(data, stops[i - 1].placeId, s.placeId).km : 0, legHours: 0 })) }, truck);
-    set({ routeId: id, stops, fuelBudgetL: String(r.fuelBudgetL ?? f), cashBudgetZmw: String(r.cashBudgetZmw) });
+    set({ routeId: id, stops, fuelBudgetL: String(r.fuelBudgetL ?? f), cashBudgetBase: String(r.cashBudgetBase) });
   };
   const save = async () => {
     const saved = await run(
@@ -176,7 +176,7 @@ function PlanPanel({ trip }: { trip: Trip }) {
         routeId: form.routeId,
         stops: form.stops,
         fuelBudgetL: Number(form.fuelBudgetL),
-        cashBudgetZmw: Number(form.cashBudgetZmw),
+        cashBudgetBase: Number(form.cashBudgetBase),
       },
       "Plan saved.",
     );
@@ -199,7 +199,7 @@ function PlanPanel({ trip }: { trip: Trip }) {
               ["Cargo", byId(data.products, trip.productId)?.name ?? "On the loading invoice"],
               ["Distance", `${km(tripKm(trip))} · about ${hoursText(tripHours(trip))} driving`],
               ["Fuel budget", L(trip.fuelBudgetL)],
-              ["Cash budget", zmw(trip.cashBudgetZmw)],
+              ["Cash budget", inBase(trip.cashBudgetBase)],
             ]}
           />
         </Card>
@@ -311,8 +311,8 @@ function PlanPanel({ trip }: { trip: Trip }) {
           </Field>
           <Field label="Driver cash" hint={route ? `${route.name} standard` : undefined}>
             <span className="suffix">
-              <input type="number" min={0} value={form.cashBudgetZmw} onChange={(e) => set({ cashBudgetZmw: e.target.value })} />
-              <span>ZMW</span>
+              <input type="number" min={0} value={form.cashBudgetBase} onChange={(e) => set({ cashBudgetBase: e.target.value })} />
+              <span>{baseLabel()}</span>
             </span>
           </Field>
         </div>
@@ -433,12 +433,12 @@ function FundingPanel({ trip, step }: { trip: Trip; step: NextStep }) {
       {both && (
         <div className={`quick ${mine ? "quick-mine" : ""}`}>
           <span>
-            Request <b>{L(f.fuel.suggested)}</b> of fuel and a <b>{zmw(f.cash.suggested)}</b> advance, as budgeted
+            Request <b>{L(f.fuel.suggested)}</b> of fuel and a <b>{inBase(f.cash.suggested)}</b> advance, as budgeted
           </span>
           <Button
             tone="primary"
             onClick={async () => {
-              const base = data.baseCurrency?.code ?? "ZMW";
+              const base = data.baseCurrency?.code ?? "";
               if (await run({ type: "request.create", tripId: trip.id, kind: "fuel", amount: f.fuel.suggested, currency: base }))
                 await run({ type: "request.create", tripId: trip.id, kind: "cash", amount: f.cash.suggested, currency: base }, "Both sent for approval.");
             }}
@@ -474,13 +474,13 @@ function FundingPanel({ trip, step }: { trip: Trip; step: NextStep }) {
         <FundCard
           icon={<CircleDollarSign size={18} />}
           title="Driver cash"
-          unit={data.baseCurrency?.code ?? "ZMW"}
+          unit={data.baseCurrency?.code ?? ""}
           budget={f.cash.budget}
           rows={[
-            ["Budget", zmw(f.cash.budget)],
-            [f.cash.holds >= 0 ? `${driver?.name.split(" ")[0] ?? "Driver"} already holds` : "Company owes the driver", zmw(Math.abs(f.cash.holds))],
-            [`Paid on this ${wl(data, "trip")}`, zmw(f.cash.issued)],
-            ["Waiting", zmw(f.cash.open)],
+            ["Budget", inBase(f.cash.budget)],
+            [f.cash.holds >= 0 ? `${driver?.name.split(" ")[0] ?? "Driver"} already holds` : "Company owes the driver", inBase(Math.abs(f.cash.holds))],
+            [`Paid on this ${wl(data, "trip")}`, inBase(f.cash.issued)],
+            ["Waiting", inBase(f.cash.open)],
           ]}
           parts={[
             { value: Math.max(0, f.cash.holds), tone: "base", label: "Holds" },
@@ -488,7 +488,7 @@ function FundingPanel({ trip, step }: { trip: Trip; step: NextStep }) {
             { value: f.cash.open, tone: "open", label: "Waiting" },
           ]}
           suggested={f.cash.suggested}
-          suggestionText={f.cash.suggested ? `Advance ${zmw(f.cash.suggested)}` : "Covered"}
+          suggestionText={f.cash.suggested ? `Advance ${inBase(f.cash.suggested)}` : "Covered"}
           canRequest={canRequest}
           kind="cash"
           trip={trip}
@@ -537,19 +537,19 @@ function FundCard({
   const { data, run } = useApp();
   const company = usePlacement("fund-requests", "ask");
   const [amount, setAmount] = useState(String(suggested || ""));
-  const [currency, setCurrency] = useState<Currency>((data.baseCurrency?.code ?? "ZMW") as Currency);
+  const [currency, setCurrency] = useState<Currency>((data.baseCurrency?.code ?? "") as Currency);
   const [reason, setReason] = useState("");
   const [extra, setExtra] = useState(false);
   useEffect(() => {
     setAmount(String(suggested || ""));
   }, [suggested]);
   const value = Number(amount);
-  const inZmw = kind === "cash" ? toZmw(data, value, currency) : value;
+  const inBase = kind === "cash" ? toBase(data, value, currency) : value;
   // A currency with no exchange rate can't be compared with the budget or approved: say so instead of guessing.
-  const noRate = kind === "cash" && value > 0 && !Number.isFinite(inZmw);
-  const over = inZmw > suggested + 0.001;
+  const noRate = kind === "cash" && value > 0 && !Number.isFinite(inBase);
+  const over = inBase > suggested + 0.001;
   const submit = async () => {
-    if (await run({ type: "request.create", custom: company.custom, tripId: trip.id, kind, amount: value, currency: kind === "fuel" ? data.baseCurrency?.code ?? "ZMW" : currency, reason }, "Sent for approval.")) setReason("");
+    if (await run({ type: "request.create", custom: company.custom, tripId: trip.id, kind, amount: value, currency: kind === "fuel" ? data.baseCurrency?.code ?? "" : currency, reason }, "Sent for approval.")) setReason("");
   };
   return (
     <section className="card fund-card">
@@ -997,7 +997,7 @@ function MeasureForm({
           {preview && (
             <span className={`calc-short ${preview.netShortL > 0 ? "bad" : "ok"}`}>
               {preview.netShortL > 0
-                ? `${L(preview.netShortL)} short beyond ${preview.allowancePct}% · ${zmw(preview.amountZmw)}`
+                ? `${L(preview.netShortL)} short beyond ${preview.allowancePct}% · ${inBase(preview.amountBase)}`
                 : `Loss ${L(preview.lossL)}, within ${preview.allowancePct}%`}
             </span>
           )}
@@ -1010,7 +1010,7 @@ function MeasureForm({
           {preview && (
             <span className={`calc-short ${preview.netShortL > 0 ? "bad" : "ok"}`}>
               {preview.netShortL > 0
-                ? `${inUnit(preview.netShortL, preview.unit)} short beyond ${preview.allowancePct}% · ${zmw(preview.amountZmw)}`
+                ? `${inUnit(preview.netShortL, preview.unit)} short beyond ${preview.allowancePct}% · ${inBase(preview.amountBase)}`
                 : `Loss ${inUnit(preview.lossL, preview.unit)}, within ${preview.allowancePct}%`}
             </span>
           )}
@@ -1275,7 +1275,7 @@ function TransitPanel({ trip }: { trip: Trip }) {
             <div key={d.id} className="doc-line">
               <DocPhoto doc={d} size="sm" />
               <div className="doc-line-text">
-                <strong>{d.read?.amount ? cash(d.read.amount, d.read.currency ?? "ZMW") : "Receipt"}</strong>
+                <strong>{d.read?.amount ? cash(d.read.amount, d.read.currency ?? baseCurrencyCode()) : "Receipt"}</strong>
                 <span className="muted">
                   {byId(data.categories, d.read?.categoryId)?.name} · {stamp(d.at)}
                 </span>
@@ -1409,9 +1409,9 @@ export function ShortageCard({ consignment }: { consignment: Consignment }) {
           </tr>
           <tr className="total">
             <td>
-              At {zmw(s.pricePerL)} per {fuel ? "litre" : s.unit}
+              At {inBase(s.pricePerL)} per {fuel ? "litre" : s.unit}
             </td>
-            <td className="num">{zmw(s.amountZmw)}</td>
+            <td className="num">{inBase(s.amountBase)}</td>
           </tr>
         </tbody>
       </table>
@@ -1421,7 +1421,7 @@ export function ShortageCard({ consignment }: { consignment: Consignment }) {
             <>
               {finance && (
                 <Button tone="primary" onClick={() => run({ type: "shortage.decide", consignmentId: consignment.id, charge: true }, "Charged to the driver's account.")}>
-                  Charge {zmw(s.amountZmw)}
+                  Charge {inBase(s.amountBase)}
                 </Button>
               )}
               {mayWaive && (
@@ -1525,9 +1525,9 @@ function SettlePanel({ trip }: { trip: Trip }) {
   const expenses = data.expenses.filter((e) => e.tripId === trip.id);
   const receipts = data.docs.filter((d) => d.tripId === trip.id && (d.kind === "expense" || d.kind === "fuel") && d.status === "new");
   const shortage = data.consignments.filter((c) => c.tripId === trip.id && c.shortage?.status === "charged");
-  const adv = advances.reduce((s, r) => s + toZmw(data, r.amount, r.currency, r.fxAtIssue), 0);
-  const exp = expenses.filter((e) => e.status === "approved").reduce((s, e) => s + e.amountZmw, 0);
-  const sh = shortage.reduce((s, c) => s + c.shortage!.amountZmw, 0);
+  const adv = advances.reduce((s, r) => s + toBase(data, r.amount, r.currency, r.fxAtIssue), 0);
+  const exp = expenses.filter((e) => e.status === "approved").reduce((s, e) => s + e.amountBase, 0);
+  const sh = shortage.reduce((s, c) => s + c.shortage!.amountBase, 0);
   const finance = may("settlement.post");
   return (
     <div className="stack">
@@ -1536,28 +1536,28 @@ function SettlePanel({ trip }: { trip: Trip }) {
           <tbody>
             <tr>
               <td>Advances paid</td>
-              <td className="num">{zmw(adv)}</td>
+              <td className="num">{inBase(adv)}</td>
             </tr>
             <tr>
               <td>Approved expenses</td>
-              <td className="num">− {zmw(exp)}</td>
+              <td className="num">− {inBase(exp)}</td>
             </tr>
             {sh > 0 && (
               <tr>
                 <td>Fuel shortage charged</td>
-                <td className="num">+ {zmw(sh)}</td>
+                <td className="num">+ {inBase(sh)}</td>
               </tr>
             )}
             <tr className="total">
               <td>Left with {driver?.name.split(" ")[0]} from this {wl(data, "trip")}</td>
-              <td className="num">{zmw(adv - exp + sh)}</td>
+              <td className="num">{inBase(adv - exp + sh)}</td>
             </tr>
           </tbody>
         </table>
         {driver && (
           <div className="settle-foot">
             <span className="muted">
-              {driver.name}'s whole account: <b className="num">{zmw(driverBalance(data, driver.id))}</b>
+              {driver.name}'s whole account: <b className="num">{inBase(driverBalance(data, driver.id))}</b>
             </span>
             {finance && trip.endedAt && !settlement && (
               <Button tone="primary" onClick={() => nav({ view: "settle", driverId: driver.id })}>
@@ -1611,7 +1611,7 @@ export function ReceiptReview({ doc }: { doc: DriverDoc }) {
   const read = doc.read ?? {};
   const [categoryId, setCategoryId] = useState(read.categoryId ?? data.categories[0].id);
   const [amount, setAmount] = useState(String(read.amount ?? ""));
-  const [currency, setCurrency] = useState<Currency>(read.currency ?? ((data.baseCurrency?.code ?? "ZMW") as Currency));
+  const [currency, setCurrency] = useState<Currency>(read.currency ?? ((data.baseCurrency?.code ?? "") as Currency));
   const finance = may("expense.record");
   // Recording approves it too for someone who approves expenses; otherwise it waits for whoever does.
   const approves = can(me, "expense-approvals", "create");

@@ -5,8 +5,11 @@ import { getRefTarget } from '../../core/masters/registry.js';
 import { ValidationError } from '../../core/errors/index.js';
 import type { Plain } from '../../core/masters/types.js';
 import { Company } from './company.model.js';
+import { refreshRegional } from './regional.js';
 
-const present = (doc: Plain) => { const { _id, singleton, ...rest } = comparable(doc) as Plain; return { id: _id, ...rest }; };
+const presentDoc = (doc: Plain) => { const { _id, singleton, ...rest } = comparable(doc) as Plain; return { id: _id, ...rest }; };
+/** The record as saved, and the regional settings in effect (the company's, else its country's, else the defaults). */
+const present = async (doc: Plain) => ({ ...presentDoc(doc), effectiveRegional: await refreshRegional() });
 /** Audit-friendly copy without the internal singleton marker. */
 const auditable = (doc: Plain) => { const { singleton, ...rest } = doc; return rest; };
 
@@ -40,6 +43,10 @@ export async function saveCompany(input: Plain, actorId?: string, requestId?: st
   for (const [key, value] of Object.entries(changes)) {
     // Operations and Maintenance settings merge, so saving one setting doesn't reset the others.
     if ((key === 'operations' || key === 'maintenance') && value) existing.set(key, { ...((before[key] as Plain | undefined) ?? {}), ...(value as Plain) });
+    else if (key === 'regional' && value) {
+      const merged = { ...((before.regional as Plain | undefined) ?? {}), ...(value as Plain) };
+      existing.set(key, Object.fromEntries(Object.entries(merged).filter(([, v]) => v !== null && v !== undefined)));
+    }
     // Brand and watermark merge the same way; a null clears that one setting (a logo removed, say).
     else if ((key === 'brand' || key === 'watermark') && value) {
       const merged: Plain = { ...((before[key] as Plain | undefined) ?? {}) };

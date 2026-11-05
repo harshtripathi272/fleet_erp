@@ -62,7 +62,7 @@ export function MoneySettings({ billing }: { billing: boolean }) {
           <SettingRow title="Which rate to convert at" description="A day's rate can carry the bank's buying and selling rates as well as the mid rate. A day without the one chosen uses its mid rate.">
             <Segmented choice label="Which rate to convert at" value={form.money.rateBasis} options={[...BASES]} onChange={(v) => setMoney({ rateBasis: v })} disabled={!writable} />
           </SettingRow>
-          <SettingRow title="Convert through another currency" description="With no rate between two currencies, go through this one: TZS to ZMW as TZS to USD to ZMW. Off: such a conversion is refused until the rate is added." htmlFor="money-pivot">
+          <SettingRow title="Convert through another currency" description="With no rate between two currencies, go through this one: TZS to KES as TZS to USD to KES. Off: such a conversion is refused until the rate is added." htmlFor="money-pivot">
             <span className="range-inputs">
               <Switch label="Convert through another currency" checked={form.money.viaPivot} onChange={(on) => setMoney({ viaPivot: on })} />
               <select id="money-pivot" className="input" aria-label="Through" value={pivotId} disabled={!form.money.viaPivot} onChange={(e) => setMoney({ pivotCurrencyId: e.target.value || undefined })}>

@@ -13,12 +13,13 @@ import { callJson } from './http.js';
  */
 registerProvider({
   kind: 'rates', key: 'openexchangerates', label: 'Open Exchange Rates',
-  description: 'Daily rates for about 170 currencies, including ZMW, TZS and CDF. The free plan is enough.',
+  description: 'Daily rates for about 170 currencies. The free plan is enough.',
   fields: z.strictObject({}),
   secrets: [{ key: 'apiKey', label: 'App ID', required: true, hint: 'From openexchangerates.org → App IDs' }],
   async test(ctx) {
-    const body = await callJson<{ rates?: Record<string, number> }>('Open Exchange Rates', `https://openexchangerates.org/api/latest.json?app_id=${encodeURIComponent(ctx.secret('apiKey')!)}&symbols=ZMW`);
-    return { ok: Boolean(body.rates?.ZMW), message: body.rates?.ZMW ? `Today: 1 USD = ${body.rates.ZMW} ZMW.` : 'Answered, but without a ZMW rate.' };
+    const body = await callJson<{ rates?: Record<string, number> }>('Open Exchange Rates', `https://openexchangerates.org/api/latest.json?app_id=${encodeURIComponent(ctx.secret('apiKey')!)}`);
+    const count = Object.keys(body.rates ?? {}).length;
+    return { ok: count > 0, message: count ? `Answered with rates for ${count} currencies.` : 'Answered, but without any rates.' };
   },
   open: (ctx) => ({
     async fetch({ base, codes, signal }) {

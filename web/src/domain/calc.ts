@@ -1,3 +1,4 @@
+import { num } from "../ui/format";
 import type {
   AppData,
   Consignment,
@@ -272,7 +273,7 @@ export function shortageFor(data: AppData, consignment: Consignment) {
     allowanceL,
     netShortL,
     pricePerL,
-    amountZmw: round(netShortL * pricePerL, 0),
+    amountBase: round(netShortL * pricePerL, 0),
     status: netShortL > 0 ? ("pending" as const) : ("none" as const),
   };
 }
@@ -283,8 +284,8 @@ export function shortageFor(data: AppData, consignment: Consignment) {
  * An amount in the base currency. `fx` is the rate the API used when it was paid; otherwise the latest rate in
  * the exchange-rates master. With no rate the result is NaN (shown as "—"): a figure is never guessed.
  */
-export const toZmw = (data: AppData, amount: number, currency: string, fx?: number) =>
-  currency === (data.baseCurrency?.code ?? "ZMW") ? amount : amount * (fx ?? data.settings.fx[currency] ?? Number.NaN);
+export const toBase = (data: AppData, amount: number, currency: string, fx?: number) =>
+  currency === (data.baseCurrency?.code ?? "") ? amount : amount * (fx ?? data.settings.fx[currency] ?? Number.NaN);
 
 export interface LedgerEntry {
   id: string;
@@ -293,7 +294,7 @@ export interface LedgerEntry {
   settlementId?: string;
   kind: "opening" | "advance" | "expense" | "shortage" | "write_off" | "cash";
   label: string;
-  amountZmw: number;
+  amountBase: number;
 }
 
 /**
@@ -304,13 +305,13 @@ export function driverLedger(data: AppData, driverId: string): LedgerEntry[] {
   const driver = byId(data.drivers, driverId);
   const trips = new Map(data.trips.filter((t) => t.driverId === driverId).map((t) => [t.id, t]));
   const entries: LedgerEntry[] = [];
-  if (driver?.openingBalanceZmw)
+  if (driver?.openingBalanceBase)
     entries.push({
       id: `open-${driverId}`,
       at: "2000-01-01T00:00:00.000Z",
       kind: "opening",
       label: "Carried in",
-      amountZmw: driver.openingBalanceZmw,
+      amountBase: driver.openingBalanceBase,
       settlementId: "opening",
     });
   for (const request of data.requests) {
@@ -323,7 +324,7 @@ export function driverLedger(data: AppData, driverId: string): LedgerEntry[] {
       settlementId: trip.settlementId,
       kind: "advance",
       label: `Advance ${request.no}`,
-      amountZmw: round(toZmw(data, request.amount, request.currency, request.fxAtIssue)),
+      amountBase: round(toBase(data, request.amount, request.currency, request.fxAtIssue)),
     });
   }
   for (const expense of data.expenses) {
@@ -336,7 +337,7 @@ export function driverLedger(data: AppData, driverId: string): LedgerEntry[] {
       settlementId: trip?.settlementId,
       kind: "expense",
       label: `${byId(data.categories, expense.categoryId)?.name ?? "Expense"} ${expense.receiptNo ?? ""}`.trim(),
-      amountZmw: -expense.amountZmw,
+      amountBase: -expense.amountBase,
     });
   }
   for (const item of data.consignments) {
@@ -348,32 +349,32 @@ export function driverLedger(data: AppData, driverId: string): LedgerEntry[] {
       tripId: trip.id,
       settlementId: trip.settlementId,
       kind: "shortage",
-      label: `${item.shortage.unit === "L" ? "Fuel shortage" : "Shortage"} ${item.no} · ${item.shortage.netShortL.toLocaleString("en-GB")} ${item.shortage.unit}`,
-      amountZmw: item.shortage.amountZmw,
+      label: `${item.shortage.unit === "L" ? "Fuel shortage" : "Shortage"} ${item.no} · ${num(item.shortage.netShortL, 0, 2)} ${item.shortage.unit}`,
+      amountBase: item.shortage.amountBase,
     });
   }
   // A load written off and carried by the driver is recovered through their account (#64).
   for (const item of data.consignments) {
     const trip = trips.get(item.tripId);
     if (!trip || item.writeOff?.status !== "approved" || item.writeOff.carrier !== "driver") continue;
-    entries.push({ id: `writeoff-${item.id}`, at: item.writeOff.decidedAt!, tripId: trip.id, settlementId: trip.settlementId, kind: "write_off", label: `Load written off ${item.no}`, amountZmw: item.writeOff.amountZmw });
+    entries.push({ id: `writeoff-${item.id}`, at: item.writeOff.decidedAt!, tripId: trip.id, settlementId: trip.settlementId, kind: "write_off", label: `Load written off ${item.no}`, amountBase: item.writeOff.amountBase });
   }
   for (const s of data.settlements) {
-    if (s.driverId !== driverId || !s.cashZmw) continue;
+    if (s.driverId !== driverId || !s.cashBase) continue;
     entries.push({
       id: `cash-${s.id}`,
       at: s.postedAt,
       settlementId: s.id,
       kind: "cash",
-      label: s.cashZmw > 0 ? `Cash returned · ${s.no}` : `Paid to driver · ${s.no}`,
-      amountZmw: -s.cashZmw,
+      label: s.cashBase > 0 ? `Cash returned · ${s.no}` : `Paid to driver · ${s.no}`,
+      amountBase: -s.cashBase,
     });
   }
   return entries.sort((a, b) => a.at.localeCompare(b.at));
 }
 
 export function driverBalance(data: AppData, driverId: string) {
-  return round(driverLedger(data, driverId).reduce((sum, entry) => sum + entry.amountZmw, 0));
+  return round(driverLedger(data, driverId).reduce((sum, entry) => sum + entry.amountBase, 0));
 }
 
 /** What the driver carries into a trip: everything on his account not produced by this trip. */
@@ -382,7 +383,7 @@ export function carriedIn(data: AppData, trip: Trip) {
   return round(
     driverLedger(data, trip.driverId)
       .filter((entry) => entry.tripId !== trip.id)
-      .reduce((sum, entry) => sum + entry.amountZmw, 0),
+      .reduce((sum, entry) => sum + entry.amountBase, 0),
   );
 }
 
@@ -393,7 +394,7 @@ export function funding(data: AppData, trip: Trip) {
     round(
       requests
         .filter((item) => item.kind === kind && statuses.includes(item.status))
-        .reduce((total, item) => total + toZmw(data, item.amount, item.currency, item.fxAtIssue), 0),
+        .reduce((total, item) => total + toBase(data, item.amount, item.currency, item.fxAtIssue), 0),
     );
   const fuelIssued = sum("fuel", ["issued"]);
   const fuelOpen = sum("fuel", ["pending", "owner", "approved"]);
@@ -407,7 +408,7 @@ export function funding(data: AppData, trip: Trip) {
   const cashOpen = sum("cash", ["pending", "owner", "approved"]);
   const cashSuggested = Math.max(
     0,
-    Math.round(trip.cashBudgetZmw - Math.max(0, holds) - cashIssued - cashOpen),
+    Math.round(trip.cashBudgetBase - Math.max(0, holds) - cashIssued - cashOpen),
   );
   return {
     fuel: {
@@ -419,7 +420,7 @@ export function funding(data: AppData, trip: Trip) {
       room,
     },
     cash: {
-      budget: trip.cashBudgetZmw,
+      budget: trip.cashBudgetBase,
       holds,
       open: cashOpen,
       issued: cashIssued,

@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { NotFoundError } from '../../../core/errors/index.js';
+import * as Fmt from '../../../core/format/regional.js';
 import type { Plain } from '../../../core/masters/types.js';
 import { storeForNew } from '../../../core/storage/index.js';
 import { Company } from '../../company/company.model.js';
@@ -13,8 +14,8 @@ import { currencyUnits } from './pricing.js';
 
 /** An invoice or credit note as a PDF, laid out by the company's default "invoice" print layout. */
 
-const dayText = (d: unknown) => (d ? new Date(d as string).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' }) : '—');
-const qtyText = (n: number) => n.toLocaleString('en-GB', { maximumFractionDigits: 3 });
+const dayText = (d: unknown) => (d ? Fmt.calendarDate(d as string) : '—');
+const qtyText = (n: number) => Fmt.number(n, { max: 3 });
 
 export async function invoicePdf(id: string): Promise<{ name: string; body: Buffer }> {
   const inv = await Invoice.findById(id).lean() as Plain | null;

@@ -124,7 +124,7 @@ export const companyFileSchema = z.strictObject({
   /** Codes, not ids: they are looked up once the data is in. */
   regional: z.strictObject({
     country: z.string().trim().toUpperCase().regex(/^[A-Z]{2}$/, 'A two-letter country code, e.g. ZM').optional(),
-    baseCurrency: z.string().trim().toUpperCase().regex(/^[A-Z]{3}$/, 'A three-letter currency code, e.g. ZMW').optional(),
+    baseCurrency: z.string().trim().toUpperCase().regex(/^[A-Z]{3}$/, 'A three-letter currency code, such as USD').optional(),
     timezone: company.timezone,
     dateFormat: company.dateFormat,
     fiscalYearStartMonth: company.fiscalYearStartMonth,

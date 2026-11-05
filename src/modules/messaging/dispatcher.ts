@@ -1,4 +1,5 @@
 import { areaOfEvent, isAreaOn } from '../company/areas.js';
+import * as Fmt from '../../core/format/regional.js';
 import { productName } from '../company/brand.service.js';
 import type { Readable } from 'node:stream';
 import mongoose, { Types } from 'mongoose';
@@ -84,7 +85,7 @@ async function recipientsFor(rule: Plain, input: DispatchInput): Promise<Recipie
 
 async function valuesFor(input: DispatchInput): Promise<Record<string, string>> {
   const company = await Company.findOne().select('legalName tradingName brand').lean() as Plain | null;
-  const values: Record<string, string> = { date: new Date().toISOString().slice(0, 10) };
+  const values: Record<string, string> = { date: Fmt.date(new Date()) };
   if (company) values['company.name'] = String(company.tradingName ?? company.legalName);
   // The company's own sign-off for messages (#71), empty when it has none.
   if (company) values['company.signature'] = String((company.brand as Plain | undefined)?.signature ?? '');
@@ -325,7 +326,7 @@ const testText = (product: string) => `This is a test message from ${product}. I
 /** "Send a test message" on a message connection, switched on or not. The result is kept on the connection and in the outbox. */
 export async function testConnection(connection: Plain, to: string, actorId?: string) {
   const channel = connection.kind as Channel;
-  if (!isAddressFor(channel, to)) throw new ValidationError('Check the address', { to: [channel === 'email' ? 'An e-mail address' : 'A phone number with its country code, e.g. +260971234567'] });
+  if (!isAddressFor(channel, to)) throw new ValidationError('Check the address', { to: [channel === 'email' ? 'An e-mail address' : 'A phone number in international format: + and the country code first'] });
   const product = await productName();
   const message = await OutboundMessage.create({
     event: 'connection.test', channel, to, subject: channel === 'email' ? `${product} test message` : undefined, body: testText(product),

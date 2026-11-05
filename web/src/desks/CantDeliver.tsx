@@ -6,7 +6,7 @@ import type { Action, Consignment, Trip } from "../domain/types";
 import { activeTrip } from "../domain/helpers";
 import { useApp } from "../store";
 import { Button, Field, Modal, Segmented } from "../ui/kit";
-import { zmw } from "../ui/format";
+import { inBase } from "../ui/format";
 
 /** A loaded trip that can't deliver (#64): what the company allows, in its words. */
 const OUTCOME_LABEL: Record<string, string> = { return: "Return it", transfer: "Move to another truck", write_off: "Write it off" };
@@ -173,7 +173,7 @@ export function UndeliveredNote({ trip, load }: { trip: Trip; load?: Consignment
       {load?.writeOff?.status === "rejected" && activeTrip(trip) && <p className="drawer-note">Not written off: {load.writeOff.note}</p>}
       {pending && (
         <div className="drawer-note undelivered-wait">
-          <span>Write-off of {zmw(pending.amountZmw)} asked by {pending.requestedByName}, carried by {(CARRIER_LABEL[pending.carrier] ?? pending.carrier).toLowerCase()}: {pending.reason}. {isOwner ? "" : "Waiting for the owner."}</span>
+          <span>Write-off of {inBase(pending.amountBase)} asked by {pending.requestedByName}, carried by {(CARRIER_LABEL[pending.carrier] ?? pending.carrier).toLowerCase()}: {pending.reason}. {isOwner ? "" : "Waiting for the owner."}</span>
           {isOwner && (
             <span className="row-buttons">
               <Button size="sm" tone="primary" onClick={() => void run({ type: "writeoff.decide", consignmentId: load!.id, approve: true }, "Written off.")}>Approve</Button>

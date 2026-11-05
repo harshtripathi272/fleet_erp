@@ -11,7 +11,7 @@ import { signOut, type Me } from "../api/session";
 import { DocThumb } from "../docs/DocThumb";
 import { Wordmark } from "../ui/brand";
 import { Button } from "../ui/kit";
-import { stamp } from "../ui/format";
+import { stamp, num } from "../ui/format";
 import { DEFAULT_WORDS } from "../domain/words";
 
 /**
@@ -169,7 +169,7 @@ export function DriverPortal({ me }: { me: Me }) {
                   <strong>{s.place}</strong>
                   <small>
                     {STOP_LABEL[s.kind] ?? s.kind}
-                    {s.legKm ? ` · ${Math.round(s.legKm).toLocaleString("en-GB")} km` : ""}
+                    {s.legKm ? ` · ${num(Math.round(s.legKm))} km` : ""}
                     {s.arrivedAt ? ` · arrived ${stamp(s.arrivedAt)}${s.arrivedVia === "simulator" ? " (simulated)" : ""}` : ""}
                   </small>
                 </span>

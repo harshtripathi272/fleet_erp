@@ -175,7 +175,7 @@ export async function testConnection(id: string, input: { to?: string }, actorId
   const connection = await Connection.findById(id).lean() as Plain | null;
   if (!connection) throw new NotFoundError('Connection not found');
   if (isMessageKind(String(connection.kind))) {
-    if (!input.to) throw new ValidationError('Who should get the test message?', { to: [connection.kind === 'email' ? 'An e-mail address' : 'A phone number with its country code, e.g. +260971234567'] });
+    if (!input.to) throw new ValidationError('Who should get the test message?', { to: [connection.kind === 'email' ? 'An e-mail address' : 'A phone number in international format: + and the country code first'] });
     if (!messageTest) throw new Error('Messaging is not loaded');
     return messageTest(connection, input.to, actorId);
   }

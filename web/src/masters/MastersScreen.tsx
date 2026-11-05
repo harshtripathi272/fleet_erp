@@ -1,3 +1,4 @@
+import { fullDate, moment } from "../ui/format";
 import { useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -377,7 +378,7 @@ function RecordDrawer({ def, defs, id, onClose, initial }: { def: Def; defs: Def
           {base?.isSystem && <p className="drawer-note">A built-in role: it can't be changed. Make a copy to give a job its own permissions.</p>}
           {base?.status === "archived" && (
             <p className="drawer-note">
-              Archived{base.archivedAt ? ` on ${new Date(String(base.archivedAt)).toLocaleDateString("en-GB")}` : ""}{base.archiveReason ? `: ${base.archiveReason}` : ""}. Restore it to make changes.
+              Archived{base.archivedAt ? ` on ${fullDate(String(base.archivedAt))}` : ""}{base.archiveReason ? `: ${base.archiveReason}` : ""}. Restore it to make changes.
             </p>
           )}
           <Extras def={def} id={id} record={base} />
@@ -477,7 +478,7 @@ function HistoryList({ def, id }: { def: Def; id: string }) {
     <ol className="history">
       {history.data.map((h) => (
         <li key={h.id}>
-          <strong><History size={13} /> {label(h.action)}</strong> <span className="muted">{new Date(h.at).toLocaleString("en-GB")}{h.actorName ? ` · ${h.actorName}` : ""}</span>
+          <strong><History size={13} /> {label(h.action)}</strong> <span className="muted">{moment(String(h.at))}{h.actorName ? ` · ${h.actorName}` : ""}</span>
           {h.summary && <div>{h.summary}</div>}
           {(h.changes as Rec[]).filter(shown).slice(0, 8).map((c) => <div key={c.path} className="small">{fieldName(String(c.path), def)}: {short(c.from)} → {short(c.to)}</div>)}
         </li>
@@ -800,7 +801,7 @@ function ScalarInput({ type, value, onChange, disabled, choices }: { type: strin
   return <input disabled={disabled} value={(value as string) ?? ""} onChange={(e) => onChange(e.target.value === "" ? undefined : e.target.value)} />;
 }
 
-/** An amount stored in minor units (ngwee, cents), typed in the currency: 1000000 shows as 10,000.00 ZMW. */
+/** An amount stored in minor units (cents), typed in the currency: 1000000 shows as 10,000.00 in a two-decimal currency. */
 function MinorInput({ value, onChange, currencyId, disabled, label: name }: { value?: number; onChange: (v: unknown) => void; currencyId?: string; disabled?: boolean; label: string }) {
   const { data } = useApp();
   const currency = data.currencies?.find((c) => c.id === currencyId) ?? data.baseCurrency;
@@ -891,7 +892,7 @@ function Value({ value, field, defs }: { value: unknown; field: Rec; defs: Def[]
 /** A record's name; a master titled by a date (pairings) reads as that date, not a timestamp. */
 const titleOf = (r: Rec, def?: Def) => {
   const value = String(r[def?.titleField ?? "name"] ?? r.name ?? r.code ?? r.registrationNumber ?? r.id);
-  return /^\d{4}-\d{2}-\d{2}T/.test(value) ? new Date(value).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : value;
+  return /^\d{4}-\d{2}-\d{2}T/.test(value) ? fullDate(value) : value;
 };
 const get = (r: Rec, path: string) => path.split(".").reduce<unknown>((v, k) => (v && typeof v === "object" ? (v as Rec)[k] : undefined), r);
 

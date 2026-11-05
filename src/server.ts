@@ -11,6 +11,7 @@ import { applyCompanyFile } from './modules/setup/apply.js';
 import { settleSends, startOutboxWorker, stopOutboxWorker } from './modules/messaging/dispatcher.js';
 import { startEscalationWorker, stopEscalationWorker } from './modules/operations/escalation.js';
 import { ensureSystemRoles } from './modules/roles/roles.service.js';
+import { refreshRegional } from './modules/company/regional.js';
 
 await connectMongo();
 await syncIndexes();
@@ -20,6 +21,10 @@ await migrateToConnections();
 // A company kit's file: the company, its brand, areas, connections, roles, people and data (#76). Before the
 // first owner, so the invitation goes out with the company's brand and over its e-mail server.
 if (env.COMPANY_CONFIG) await applyCompanyFile(env.COMPANY_CONFIG);
+// Dates and numbers in the company's formats (#72); after the company file, which may set them.
+await refreshRegional();
+// With several instances, a change saved on one reaches the others within a minute.
+setInterval(() => { refreshRegional().catch((err) => logger.error({ err }, 'Could not refresh the regional settings')); }, 60_000).unref();
 await ensureFirstOwner();
 // A new installation starts with the default message templates and rules, once (#43).
 await ensureDefaultMessages();

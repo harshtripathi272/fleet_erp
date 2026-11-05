@@ -8,7 +8,7 @@ import { activeTrip, placeName } from "../domain/helpers";
 import type { RouteStop, Truck } from "../domain/types";
 import { usePlacement } from "./usePlacement";
 import { Button, Drawer, Field, Status } from "../ui/kit";
-import { fromLocalInput, km, L, localInput, zmw } from "../ui/format";
+import { fromLocalInput, km, L, localInput, inBase } from "../ui/format";
 import { StopEditor } from "./stages";
 import { MiniRoute } from "../tracking/MiniRoute";
 import { wl } from "../domain/words";
@@ -194,7 +194,7 @@ export function NewTrip({ open, onClose, onCreated }: { open: boolean; onClose: 
                   </div>
                   <div>
                     <span>Cash budget</span>
-                    <strong>{zmw(byId(data.routes, routeId)?.cashBudgetZmw ?? 0)}</strong>
+                    <strong>{inBase(byId(data.routes, routeId)?.cashBudgetBase ?? 0)}</strong>
                   </div>
                 </div>
               </div>

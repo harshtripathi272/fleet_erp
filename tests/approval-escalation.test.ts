@@ -206,6 +206,21 @@ describe('the scheduled job', () => {
     assert.equal(moved.trail.at(-1).what, 'escalated');
     assert.equal((await inThread('role:owner', raised.id)).length, 1);
   });
+
+  test('it writes in the company\'s number format, not the default', async () => {
+    await setLevel('ADV-ZMW', 1, { escalateAfterHours: 24 });
+    const company = ok(await as(owner).get('/company'));
+    ok(await as(owner).put('/company', { version: company.version, regional: { decimalSeparator: ',', thousandsSeparator: '.' } }));
+    const trip = await newTrip();
+    const raised = ok(await as(ops).post('/fund-requests', { tripId: trip.id, kind: 'cash', amount: { amountMinor: 1_234_50, currencyId: ids.ZMW }, reason: 'Fees' }), 201);
+    await FundRequest.updateOne({ _id: raised.id }, { $set: { 'approval.escalateAt': new Date(Date.now() - 1000) } });
+    const { host, port, name } = mongoose.connection;
+    const run = spawnSync(process.execPath, ['--import', 'tsx', 'src/jobs/escalate.ts'], { env: { ...process.env, MONGODB_URI: `mongodb://${host}:${port}/${name}` }, encoding: 'utf8', timeout: 60_000 });
+    assert.equal(run.status, 0, run.stderr || run.stdout);
+    const [told] = await inThread(ok(await as(owner).get(`/fund-requests/${raised.id}`)).approval.levels[1].thread, raised.id);
+    const amount = told.rows.find(([label]: [string]) => label === 'Amount')[1];
+    assert.match(amount, /1\.234,5/, amount);
+  });
 });
 
 describe('approval channels', () => {

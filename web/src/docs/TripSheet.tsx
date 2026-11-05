@@ -2,10 +2,10 @@ import { Fragment } from "react";
 import { useCompanyFields } from "../desks/usePlacement";
 import { useApp } from "../store";
 import { Watermark } from "../ui/brand";
-import { byId, loadedKm, toZmw, tripFuelUsed, tripKm, volume20 } from "../domain/calc";
+import { byId, loadedKm, toBase, tripFuelUsed, tripKm, volume20 } from "../domain/calc";
 import { placeName, routeLabel } from "../domain/helpers";
 import { BrandMark } from "../ui/brand";
-import { cash, clock, day, num, stamp } from "../ui/format";
+import { cash, clock, day, num, stamp, baseLabel } from "../ui/format";
 import { w } from "../domain/words";
 
 const n0 = (v?: number) => (v == null ? "—" : num(v));
@@ -27,9 +27,9 @@ export function TripSheet({ tripId }: { tripId: string }) {
   const loaded = loadedKm(trip);
   const used = tripFuelUsed(data, trip);
   const fuelIssued = requests.filter((r) => r.kind === "fuel").reduce((s, r) => s + r.amount, 0);
-  const advances = requests.filter((r) => r.kind === "cash").reduce((s, r) => s + toZmw(data, r.amount, r.currency, r.fxAtIssue), 0);
-  const approved = expenses.filter((e) => e.status === "approved").reduce((s, e) => s + e.amountZmw, 0);
-  const shortage = consignments.reduce((s, c) => s + (c.shortage?.status === "charged" ? c.shortage.amountZmw : 0), 0);
+  const advances = requests.filter((r) => r.kind === "cash").reduce((s, r) => s + toBase(data, r.amount, r.currency, r.fxAtIssue), 0);
+  const approved = expenses.filter((e) => e.status === "approved").reduce((s, e) => s + e.amountBase, 0);
+  const shortage = consignments.reduce((s, c) => s + (c.shortage?.status === "charged" ? c.shortage.amountBase : 0), 0);
   const days = trip.endedAt && trip.dispatchedAt ? Math.max(1, Math.ceil((Date.parse(trip.endedAt) - Date.parse(trip.dispatchedAt)) / 864e5)) : undefined;
   const c = consignments[0];
   const product = byId(data.products, c?.productId ?? trip.productId);
@@ -105,7 +105,7 @@ export function TripSheet({ tripId }: { tripId: string }) {
                 <dt>Net shortage</dt>
                 <dd>{c?.shortage ? `${n0(c.shortage.netShortL)} ${c.shortage.unit}` : "—"}</dd>
                 <dt>Charged to driver</dt>
-                <dd>{c?.shortage?.status === "charged" ? `${n0(c.shortage.amountZmw)} ZMW` : c?.shortage?.status === "waived" ? "Waived" : "—"}</dd>
+                <dd>{c?.shortage?.status === "charged" ? `${n0(c.shortage.amountBase)} ${baseLabel()}` : c?.shortage?.status === "waived" ? "Waived" : "—"}</dd>
               </>
             ) : (
               <>
@@ -118,7 +118,7 @@ export function TripSheet({ tripId }: { tripId: string }) {
                     <dt>Net shortage</dt>
                     <dd>{`${num(c.shortage.netShortL, 2)} ${c.shortage.unit}`}</dd>
                     <dt>Charged to driver</dt>
-                    <dd>{c.shortage.status === "charged" ? `${n0(c.shortage.amountZmw)} ZMW` : c.shortage.status === "waived" ? "Waived" : "—"}</dd>
+                    <dd>{c.shortage.status === "charged" ? `${n0(c.shortage.amountBase)} ${baseLabel()}` : c.shortage.status === "waived" ? "Waived" : "—"}</dd>
                   </>
                 )}
               </>
@@ -211,7 +211,7 @@ export function TripSheet({ tripId }: { tripId: string }) {
                 <th>Reference</th>
                 <th>Paid by</th>
                 <th className="r">Litres</th>
-                <th className="r">ZMW</th>
+                <th className="r">{baseLabel()}</th>
               </tr>
             </thead>
             <tbody>
@@ -221,7 +221,7 @@ export function TripSheet({ tripId }: { tripId: string }) {
                   <td className="mono">{r.reference}</td>
                   <td>{r.medium}</td>
                   <td className="r">{r.kind === "fuel" ? n0(r.amount) : ""}</td>
-                  <td className="r">{r.kind === "cash" ? n0(toZmw(data, r.amount, r.currency, r.fxAtIssue)) : ""}</td>
+                  <td className="r">{r.kind === "cash" ? n0(toBase(data, r.amount, r.currency, r.fxAtIssue)) : ""}</td>
                 </tr>
               ))}
               {!requests.length && (
@@ -271,7 +271,7 @@ export function TripSheet({ tripId }: { tripId: string }) {
             </tbody>
             <tfoot>
               <tr>
-                <td colSpan={3}>Approved, in ZMW</td>
+                <td colSpan={3}>Approved, in {baseLabel()}</td>
                 <td className="r">{n0(approved)}</td>
               </tr>
             </tfoot>
@@ -296,7 +296,7 @@ export function TripSheet({ tripId }: { tripId: string }) {
         </div>
         <span className="op">=</span>
         <div className="final">
-          <span>Left with the driver, ZMW</span>
+          <span>Left with the driver, {baseLabel()}</span>
           <strong>{n0(advances - approved + shortage)}</strong>
         </div>
       </section>

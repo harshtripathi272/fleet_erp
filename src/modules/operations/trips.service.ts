@@ -1,4 +1,5 @@
 import { Types, type HydratedDocument } from 'mongoose';
+import * as Fmt from '../../core/format/regional.js';
 import { env } from '../../config/env.js';
 import { ForbiddenError, NotFoundError } from '../../core/errors/index.js';
 import type { Plain } from '../../core/masters/types.js';
@@ -280,7 +281,7 @@ export async function createTrip(input: S.CreateTripInput, ctx: OpsContext, extr
     await post(driverThread(driver._id), at, {
       title: `New trip ${trip.get('number')}`,
       text: `${truck.plate}${trailer ? ` with ${trailer.registrationNumber}` : ''} for ${customer.name}. ${stops.length ? await routeLabel(trip.toObject()) : 'Route to follow'}.`,
-      rows: [['Planned start', new Date(input.plannedStart).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: 'UTC' })]],
+      rows: [['Planned start', Fmt.dateTime(input.plannedStart)]],
     }, ctx);
   }
   await log(ctx, at, `${trip.get('number')} created: ${truck.plate} for ${customer.name}`, { tripId: trip._id });
@@ -680,7 +681,7 @@ export async function endTrip(id: string, input: S.EndTripInput, ctx: OpsContext
     }, ctx);
   }
   const label = await routeLabel(plain as never);
-  await post(queue('trips'), at, { title: `Trip sheet ready · ${plain.number}`, text: `${label}, ${Math.round(tripKm(stops)).toLocaleString('en-GB')} km. ${truck.plate} is free at ${place}.`, buttons: [{ label: 'View trip sheet', nav: { tripId: String(plain._id), view: 'sheet' } }] }, ctx);
+  await post(queue('trips'), at, { title: `Trip sheet ready · ${plain.number}`, text: `${label}, ${Fmt.number(Math.round(tripKm(stops)))} km. ${truck.plate} is free at ${place}.`, buttons: [{ label: 'View trip sheet', nav: { tripId: String(plain._id), view: 'sheet' } }] }, ctx);
   await log(ctx, at, `Ended at ${place} · ${litres(input.closingFuelL)} in the tank`, { tripId: trip._id });
   await announce('trip.closed', plain, ctx, {
     variables: { 'place.name': place },

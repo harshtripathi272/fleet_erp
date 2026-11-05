@@ -1,10 +1,11 @@
+import { clockTime, fullDate, num } from "../ui/format";
 import { byId } from "../domain/calc";
 import { EXPENSE_SAMPLES, readDocument, seeded } from "../domain/reading";
 import type { AppData, DocKind, Extracted, Trip } from "../domain/types";
 
 const esc = (s: string | number | undefined) =>
   String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-const n = (v?: number, d = 0) => (v == null ? "" : v.toLocaleString("en-GB", { minimumFractionDigits: d, maximumFractionDigits: d }));
+const n = (v?: number, d = 0) => (v == null ? "" : num(v, d));
 const svgUrl = (svg: string) => `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
 
 function photo(inner: string, key: string, paperW = 470, paperH = 620) {
@@ -79,7 +80,7 @@ function invoice(data: AppData, trip: Trip, read: Extracted, key: string) {
     ${Array.from({ length: 34 }, (_, i) => `<rect x="${30 + i * 5.2}" y="${560}" width="${1 + ((i * 7) % 3)}" height="30" fill="#222"/>`).join("")}
     <text x="30" y="${520}" font-family="Arial, sans-serif" font-size="10" fill="#444">Gantry officer</text>
     ${signature(40, 505)}
-    ${stamp(360, 505, "LOADED", new Date().toLocaleDateString("en-GB"), "#b3261e", -14)}
+    ${stamp(360, 505, "LOADED", fullDate(new Date()), "#b3261e", -14)}
   </g>`;
   return photo(inner, key);
 }
@@ -114,7 +115,7 @@ function deliveryNote(data: AppData, trip: Trip, read: Extracted, key: string) {
     <text x="30" y="360" font-size="10" fill="#444">Received by</text>
     <text x="30" y="380" font-size="13" font-family="Georgia, serif" font-style="italic">R. Mutale, depot supervisor</text>
     ${signature(250, 380)}
-    ${stamp(350, 470, "RECEIVED", new Date().toLocaleDateString("en-GB"), "#1d3b6e", 11)}
+    ${stamp(350, 470, "RECEIVED", fullDate(new Date()), "#1d3b6e", 11)}
     <line x1="30" y1="560" x2="440" y2="560" stroke="#ccc" stroke-dasharray="4 4"/>
     <text x="30" y="585" font-size="9" fill="#777">White: customer · Yellow: transporter · Pink: driver</text>
   </g>`;
@@ -126,8 +127,8 @@ function receipt(read: Extracted, variant: string, key: string) {
   const lines = [
     [sample.title.toUpperCase(), ""],
     ["Ref", read.docNo ?? ""],
-    ["Date", new Date().toLocaleDateString("en-GB")],
-    ["Time", new Date().toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })],
+    ["Date", fullDate(new Date())],
+    ["Time", clockTime(new Date())],
   ];
   const inner = `<g font-family="'Courier New', Courier, monospace" fill="#2a2a2a">
     <text x="150" y="44" text-anchor="middle" font-size="15" font-weight="700">${esc(sample.issuer.toUpperCase())}</text>

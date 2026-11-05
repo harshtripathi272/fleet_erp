@@ -7,7 +7,7 @@ import { can } from "../api/session";
 import { useApp } from "../store";
 import { Button, Drawer, Empty, Field, FieldGroup, Modal, Rows, Segmented, Status } from "../ui/kit";
 import { Card } from "../desks/stages";
-import { baseCurrencyCode } from "../ui/format";
+import { baseCurrencyCode, calendarDate, num } from "../ui/format";
 import { MoneySettings } from "./MoneySettings";
 import { AccountingExport, Ageing, Revaluations } from "./Receivables";
 
@@ -22,9 +22,9 @@ const PAGE = 25;
 const money = (minor: unknown, of: Rec | "base") => {
   const units = of === "base" ? 2 : Number(of.minorUnits ?? 2);
   const code = of === "base" ? baseCurrencyCode() : String(of.currency ?? "");
-  return `${(Number(minor ?? 0) / 10 ** units).toLocaleString("en-GB", { minimumFractionDigits: units, maximumFractionDigits: units })} ${code}`;
+  return `${num(Number(minor ?? 0) / 10 ** units, units)} ${code}`;
 };
-const day = (iso: unknown) => (iso ? new Date(String(iso)).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" }) : "—");
+const day = (iso: unknown) => (iso ? calendarDate(String(iso)) : "—");
 const STATE: Record<string, { tone: "ok" | "wait" | "bad" | "info" | "mute"; text: string }> = {
   draft: { tone: "info", text: "Draft" }, cancelled: { tone: "mute", text: "Cancelled" },
   unpaid: { tone: "wait", text: "Unpaid" }, part_paid: { tone: "wait", text: "Part paid" }, paid: { tone: "ok", text: "Paid" },
@@ -213,7 +213,7 @@ function InvoiceDrawer({ id, onClose, onOpen }: { id: string | null; onClose: ()
               {lines.map((l) => (
                 <tr key={String(l.id ?? l.description)}>
                   <td>{String(l.description)}</td>
-                  <td className="right num">{Number(l.qty).toLocaleString("en-GB", { maximumFractionDigits: 3 })}{l.unit ? ` ${l.unit}` : ""}</td>
+                  <td className="right num">{num(Number(l.qty), 0, 3)}{l.unit ? ` ${l.unit}` : ""}</td>
                   <td className="right num">{money(Math.round(Number(l.unitPriceMinor)), i)}</td>
                   <td className="right num">{money(l.amountMinor, i)}</td>
                 </tr>

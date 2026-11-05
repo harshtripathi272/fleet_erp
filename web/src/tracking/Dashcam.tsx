@@ -1,3 +1,4 @@
+import { fullDate, clockTime } from "../ui/format";
 import { useEffect, useRef } from "react";
 
 /** A simulated dash camera: road perspective, passing posts, time-of-day sky, overlays. */
@@ -129,7 +130,7 @@ export function Dashcam({ plate, speed, time, coords }: { plate: string; speed: 
       ctx.fillStyle = "rgba(255,255,255,.92)";
       ctx.fillText("REC", W - 52, 26);
       const d = new Date(s.time);
-      const stampText = `${d.toLocaleDateString("en-GB")} ${d.toLocaleTimeString("en-GB")}`;
+      const stampText = `${fullDate(d)} ${clockTime(d, true)}`;
       ctx.fillText(stampText, 16, H - 16);
       ctx.textAlign = "right";
       ctx.fillText(`${Math.round(s.speed)} km/h  ${s.coords}`, W - 16, H - 16);

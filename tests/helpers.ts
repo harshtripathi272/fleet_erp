@@ -1,4 +1,5 @@
 import { MongoMemoryServer } from 'mongodb-memory-server';
+import { setRegional } from '../src/core/format/regional.js';
 import mongoose from 'mongoose';
 import request from 'supertest';
 import { app } from '../src/app.js';
@@ -31,6 +32,7 @@ export async function resetDatabase() {
   for (const c of await db.collections()) await c.deleteMany({});
   setRateLimitStore(new MemoryRateLimitStore());
   await ensureSystemRoles();
+  setRegional({});
 }
 
 export const api = () => request(app);

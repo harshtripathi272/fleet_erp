@@ -1,3 +1,4 @@
+import { fullDate, clockTime } from "../ui/format";
 import type { Rec } from "../api/adapter";
 
 /** The address the audit log opens at. Here, not in AuditLog.tsx, so the desks can check it without loading Masters. */
@@ -36,7 +37,7 @@ export const short = (v: unknown): string => {
   if (typeof v === "string" && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(v)) {
     const d = new Date(v);
     const midnight = d.getUTCHours() === 0 && d.getUTCMinutes() === 0;
-    return midnight ? d.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : d.toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
+    return midnight ? fullDate(d) : `${fullDate(d)} ${clockTime(d)}`;
   }
   if (Array.isArray(v) && v.every((x) => typeof x === "string" && /^[0-9a-f]{24}$/.test(x))) return v.length === 1 ? "1 linked record" : `${v.length} linked records`;
   if (typeof v === "boolean") return v ? "Yes" : "No";

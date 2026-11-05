@@ -1,3 +1,4 @@
+import * as Fmt from '../../../core/format/regional.js';
 import type { Plain } from '../../../core/masters/types.js';
 import { Company } from '../../company/company.model.js';
 import { baseCurrency, conflict, log, refuse, type OpsContext } from '../../operations/support.js';
@@ -44,7 +45,7 @@ export async function revaluationDue() {
   const { revaluation } = await billingSettings();
   if (revaluation === 'off') return { due: false, reason: 'Revaluation is off (Money settings)' } as const;
   const periodEnd = lastPeriodEnd(await today(), revaluation);
-  if (await RevaluationRun.exists({ periodEnd })) return { due: false, reason: `${periodEnd.toISOString().slice(0, 10)} is revalued already`, periodEnd } as const;
+  if (await RevaluationRun.exists({ periodEnd })) return { due: false, reason: `${Fmt.calendarDate(periodEnd)} is revalued already`, periodEnd } as const;
   return { due: true, reason: 'Due', periodEnd } as const;
 }
 
@@ -74,7 +75,7 @@ export async function revalue(options: { periodEnd?: Date; trigger: 'schedule' |
   const settings = await billingSettings();
   if (!options.periodEnd && settings.revaluation === 'off') throw refuse('Revaluation is off. Choose monthly or quarterly in Money settings, or give the day to revalue at.');
   const periodEnd = utcDay(options.periodEnd ?? lastPeriodEnd(await today(), settings.revaluation === 'off' ? 'monthly' : settings.revaluation));
-  if (await RevaluationRun.exists({ periodEnd })) throw conflict(`${periodEnd.toISOString().slice(0, 10)} is revalued already.`);
+  if (await RevaluationRun.exists({ periodEnd })) throw conflict(`${Fmt.calendarDate(periodEnd)} is revalued already.`);
   if (await RevaluationRun.exists({ periodEnd: { $gt: periodEnd } })) throw conflict('A later period end is revalued already.');
   const base = await baseCurrency();
   const run = await RevaluationRun.create({ periodEnd, at: new Date(), trigger: options.trigger, createdBy: ctx.actorId });
@@ -113,7 +114,7 @@ export async function revalue(options: { periodEnd?: Date; trigger: 'schedule' |
     if (entries.length) await ExchangeDifference.insertMany(entries);
     const netMinor = entries.reduce((s, e) => s + Number(e.amountMinor), 0);
     await RevaluationRun.updateOne({ _id: run._id }, { $set: { invoices: entries.length, netMinor, reversedMinor, reversedRunId: previous?._id, missing: [...missing] } });
-    await log(ctx, new Date(), `Open invoices revalued at ${periodEnd.toISOString().slice(0, 10)}: ${entries.length} invoice${entries.length === 1 ? '' : 's'}`, { entity: 'revaluations', entityId: run._id });
+    await log(ctx, new Date(), `Open invoices revalued at ${Fmt.calendarDate(periodEnd)}: ${entries.length} invoice${entries.length === 1 ? '' : 's'}`, { entity: 'revaluations', entityId: run._id });
   } catch (err) {
     // A run that fails leaves nothing behind, so it can simply be run again.
     await ExchangeDifference.deleteMany({ runId: run._id });

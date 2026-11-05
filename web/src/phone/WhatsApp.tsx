@@ -22,7 +22,7 @@ import { useMay } from "../api/session";
 import type { Action, Attachment, DocKind, Message, MsgButton } from "../domain/types";
 import { useDocImage } from "../docs/useDocImage";
 import { FileText } from "lucide-react";
-import { clock, hm } from "../ui/format";
+import { clock, hm, regionalSettings, fullDate } from "../ui/format";
 import { AttachSheet } from "./Attach";
 
 export interface ThreadInfo {
@@ -122,8 +122,8 @@ function dayLabel(iso: string, now: number) {
   const diff = Math.round((new Date(today.toDateString()).getTime() - new Date(d.toDateString()).getTime()) / 864e5);
   if (diff === 0) return "Today";
   if (diff === 1) return "Yesterday";
-  if (diff < 7) return d.toLocaleDateString("en-GB", { weekday: "long" });
-  return d.toLocaleDateString("en-GB", { day: "numeric", month: "long" });
+  if (diff < 7) return d.toLocaleDateString("en", { weekday: "long", timeZone: regionalSettings().timeZone });
+  return fullDate(d);
 }
 
 type Prompt = { action: Action; label: string; chips: string[] };

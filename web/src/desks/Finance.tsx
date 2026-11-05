@@ -8,7 +8,7 @@ import { byId, carriedIn, driverBalance, funding } from "../domain/calc";
 import { routeLabel, toSettle } from "../domain/helpers";
 import type { FundRequest } from "../domain/types";
 import { Avatar, Button, Status } from "../ui/kit";
-import { ago, cash, L, zmw } from "../ui/format";
+import { ago, cash, L, inBase } from "../ui/format";
 import { Card, ExpenseDecision, ReceiptReview, ShortageCard } from "./stages";
 
 export function FinanceToday() {
@@ -41,7 +41,7 @@ export function FinanceToday() {
         <Kpi label="To pay" value={toPay.length} tone={toPay.length ? "you" : undefined} />
         <Kpi label="Receipts" value={receipts.length + expenses.length} tone={receipts.length + expenses.length ? "you" : undefined} />
         <Kpi label="Drivers to settle" value={settle.length} />
-        <Kpi label="Cash with drivers" value={zmw(data.drivers.reduce((s, d) => s + Math.max(0, driverBalance(data, d.id)), 0))} />
+        <Kpi label="Cash with drivers" value={inBase(data.drivers.reduce((s, d) => s + Math.max(0, driverBalance(data, d.id)), 0))} />
       </div>
       {allClear && (
         <div className="all-clear">
@@ -140,7 +140,7 @@ export function FinanceToday() {
                     </span>
                   </span>
                   <span className={`balance ${balance > 0 ? "holds" : balance < 0 ? "owed" : ""}`}>
-                    {balance > 0 ? `Holds ${zmw(balance)}` : balance < 0 ? `Owed ${zmw(-balance)}` : "Clear"}
+                    {balance > 0 ? `Holds ${inBase(balance)}` : balance < 0 ? `Owed ${inBase(-balance)}` : "Clear"}
                   </span>
                   <ArrowRight size={16} />
                 </button>
@@ -183,9 +183,9 @@ export function Approval({ request, picked, onPick }: { request: FundRequest; pi
             ["Suggested", L(request.suggested)],
           ]
         : [
-            ["Budget", zmw(trip.cashBudgetZmw)],
-            [holds >= 0 ? "Driver holds" : "Company owes", zmw(Math.abs(holds))],
-            ["Suggested", zmw(request.suggested)],
+            ["Budget", inBase(trip.cashBudgetBase)],
+            [holds >= 0 ? "Driver holds" : "Company owes", inBase(Math.abs(holds))],
+            ["Suggested", inBase(request.suggested)],
           ],
     [request, trip, f, holds],
   );

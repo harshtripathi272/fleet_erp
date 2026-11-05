@@ -1,3 +1,4 @@
+import * as Fmt from '../../core/format/regional.js';
 import { Types } from 'mongoose';
 import { ConflictError, ValidationError } from '../../core/errors/index.js';
 import { defineMaster } from '../../core/masters/define.js';
@@ -168,7 +169,7 @@ export interface ServiceRow {
 }
 
 const DAY = 86_400_000;
-const n = (value: number) => value.toLocaleString('en-GB');
+const n = (value: number) => Fmt.number(value, { max: 2 });
 
 /** Why it is due, in words: the limit already passed, else the one close enough to count, else the first there is. */
 function reasonFor(limits: Array<{ left?: number; soon: number; unit: string }>) {

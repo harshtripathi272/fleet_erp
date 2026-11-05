@@ -244,7 +244,7 @@ describe('invoices from closed trips', () => {
     assert.equal((await invoicesOf(trip)).length, 0);
     const waiting = ok(await as(fin).get('/invoices/unbilled-trips'));
     const row = waiting.data.find((t: any) => t.id === trip.id);
-    assert.match(row.problem, new RegExp(`^No customer rate covers ${trip.number.replace(/\//g, '\\/')} on \\d{4}-\\d\\d-\\d\\d\\. Add one under Customer rates\\.$`));
+    assert.match(row.problem, new RegExp(`^No customer rate covers ${trip.number.replace(/\//g, '\\/')} on \\d\\d\\/\\d\\d\\/\\d{4}\\. Add one under Customer rates\\.$`));
 
     await customerRate({ basis: 'per_tonne', price: { amountMinor: 45_00, currencyId: ids.USD } });
     const drafted = ok(await as(fin).post('/invoices/draft', { tripIds: [trip.id] }));

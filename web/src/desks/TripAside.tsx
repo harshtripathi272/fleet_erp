@@ -5,7 +5,7 @@ import { byId, driverLedger, funding, fuelNow } from "../domain/calc";
 import { activeTrip } from "../domain/helpers";
 import type { Trip } from "../domain/types";
 import { MiniRoute } from "../tracking/MiniRoute";
-import { ago, L, zmw } from "../ui/format";
+import { ago, L, inBase } from "../ui/format";
 import { Avatar } from "../ui/kit";
 import { wl } from "../domain/words";
 
@@ -16,7 +16,7 @@ export function TripAside({ trip }: { trip: Trip }) {
   // Unsettled: what the driver holds now, the Driver accounts figure. Settled: this trip's advances less its approved receipts.
   const ledger = trip.driverId ? driverLedger(data, trip.driverId) : [];
   const own = ledger.filter((e) => e.tripId === trip.id && (e.kind === "advance" || e.kind === "expense"));
-  const cash = Math.max(0, Math.round((trip.settlementId ? own : ledger).reduce((sum, e) => sum + e.amountZmw, 0)));
+  const cash = Math.max(0, Math.round((trip.settlementId ? own : ledger).reduce((sum, e) => sum + e.amountBase, 0)));
   const events = data.events.filter((e) => e.tripId === trip.id).slice().reverse();
   const driver = byId(data.drivers, trip.driverId);
   const customer = byId(data.customers, trip.customerId);
@@ -46,8 +46,8 @@ export function TripAside({ trip }: { trip: Trip }) {
           <div>
             {/* The driver ledger's figure (as on Driver accounts): advances paid less receipts approved. */}
             <span>{trip.settlementId ? `Cash on this ${wl(data, "trip")}` : "Cash with driver"}</span>
-            <strong>{zmw(cash)}</strong>
-            <small>of {zmw(f.cash.budget)} budget</small>
+            <strong>{inBase(cash)}</strong>
+            <small>of {inBase(f.cash.budget)} budget</small>
           </div>
         </div>
       </section>

@@ -4,7 +4,7 @@ import { byId, driverBalance } from "../domain/calc";
 import { activeTrip } from "../domain/helpers";
 import { nextStep, queueFor, stageIndex, visibleStages } from "../domain/turn";
 import { FleetMap } from "../tracking/FleetMap";
-import { ago, L, zmw } from "../ui/format";
+import { ago, L, inBase } from "../ui/format";
 import { Card } from "./stages";
 import { Approval } from "./Finance";
 
@@ -35,7 +35,7 @@ export function Overview() {
         </div>
         <div className="kpi">
           <span>Cash with drivers</span>
-          <strong className="num">{zmw(cashOut)}</strong>
+          <strong className="num">{inBase(cashOut)}</strong>
         </div>
         <div className="kpi">
           <span>Fuel issued, 7 days</span>

@@ -1,5 +1,6 @@
+import { baseCurrencyCode, num } from "../ui/format";
 import { byId, driverBalance, funding, volume20 } from "./calc";
-import { closedAt, firstName, litres, money, placeName, toSettle, zmw } from "./helpers";
+import { closedAt, firstName, litres, money, placeName, toSettle, inBase } from "./helpers";
 import type { AppData, Desk, Role, Trip } from "./types";
 import { stageName, stageOn } from "./words";
 
@@ -145,7 +146,7 @@ function workedStep(data: AppData, trip: Trip): NextStep {
         move: "request",
         title: f.fuel.suggested && f.cash.suggested ? "Request fuel and advance" : f.fuel.suggested ? "Request fuel" : "Request the advance",
         waiting: "Operations is preparing the funding request",
-        detail: [f.fuel.suggested ? litres(f.fuel.suggested) : "", f.cash.suggested ? zmw(f.cash.suggested) : ""]
+        detail: [f.fuel.suggested ? litres(f.fuel.suggested) : "", f.cash.suggested ? inBase(f.cash.suggested) : ""]
           .filter(Boolean)
           .join(" and "),
         since: trip.createdAt,
@@ -156,7 +157,7 @@ function workedStep(data: AppData, trip: Trip): NextStep {
       move: "dispatch",
       title: "Dispatch the truck",
       waiting: "Ready to leave",
-      detail: `${who} leaves ${placeName(data, trip.stops[0].placeId)} with ${litres(byId(data.trucks, trip.truckId)?.fuelL ?? 0)} in the tank and ${zmw(Math.max(0, f.cash.holds) + f.cash.issued)} cash`,
+      detail: `${who} leaves ${placeName(data, trip.stops[0].placeId)} with ${litres(byId(data.trucks, trip.truckId)?.fuelL ?? 0)} in the tank and ${inBase(Math.max(0, f.cash.holds) + f.cash.issued)} cash`,
       since: requests.filter((r) => r.issuedAt).map((r) => r.issuedAt!).sort().at(-1) ?? trip.createdAt,
     };
   }
@@ -263,7 +264,7 @@ function workedStep(data: AppData, trip: Trip): NextStep {
       move: "shortage",
       title: shortage.shortage!.unit === "L" ? "Decide the fuel shortage" : "Decide the shortage",
       waiting: shortage.shortage!.unit === "L" ? "Finance is reviewing the fuel shortage" : "Finance is reviewing the shortage",
-      detail: `${shortage.shortage!.unit === "L" ? litres(shortage.shortage!.netShortL) : `${shortage.shortage!.netShortL.toLocaleString("en-GB")} ${shortage.shortage!.unit}`} beyond the allowance · ${zmw(shortage.shortage!.amountZmw)}`,
+      detail: `${shortage.shortage!.unit === "L" ? litres(shortage.shortage!.netShortL) : `${num(shortage.shortage!.netShortL, 0, 2)} ${shortage.shortage!.unit}`} beyond the allowance · ${inBase(shortage.shortage!.amountBase)}`,
       since: shortage.delivered?.at,
       refId: shortage.id,
     };
@@ -285,7 +286,7 @@ function workedStep(data: AppData, trip: Trip): NextStep {
     move: "settle",
     title: `Settle ${who}'s account`,
     waiting: `Waiting for ${who}'s settlement`,
-    detail: driver ? `Balance ${zmw(driverBalance(data, driver.id))}` : undefined,
+    detail: driver ? `Balance ${inBase(driverBalance(data, driver.id))}` : undefined,
     since: trip.endedAt,
   };
 }
@@ -362,7 +363,7 @@ export function queueFor(data: AppData, desk: Desk): QueueItem[] {
           tripId: d.tripId,
           driverId: d.driverId,
           title: `Check ${firstName(driver?.name)}'s receipt`,
-          detail: `${d.read?.amount ? money(d.read.amount, d.read.currency ?? "ZMW") : "Receipt"}${d.tripId ? ` · ${byId(data.trips, d.tripId)?.no}` : ""}`,
+          detail: `${d.read?.amount ? money(d.read.amount, d.read.currency ?? baseCurrencyCode()) : "Receipt"}${d.tripId ? ` · ${byId(data.trips, d.tripId)?.no}` : ""}`,
           since: d.at,
           move: "receipt",
         });
@@ -386,7 +387,7 @@ export function queueFor(data: AppData, desk: Desk): QueueItem[] {
           key: `${driver.id}-settle`,
           driverId: driver.id,
           title: `Settle ${driver.name}`,
-          detail: `${trips.length} closed trip${trips.length === 1 ? "" : "s"} · balance ${zmw(driverBalance(data, driver.id))}${driver.settleRequestedAt ? " · requested" : ""}`,
+          detail: `${trips.length} closed trip${trips.length === 1 ? "" : "s"} · balance ${inBase(driverBalance(data, driver.id))}${driver.settleRequestedAt ? " · requested" : ""}`,
           since: driver.settleRequestedAt ?? trips.map((t) => closedAt(t)!).sort()[0],
           move: "settle",
         });
