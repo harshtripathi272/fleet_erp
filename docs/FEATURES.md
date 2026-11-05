@@ -7,6 +7,7 @@ Every feature of the product: what is built, what is being built, what is planne
 - **Built**: merged on `develop`, tested.
 - **Building**: an agent is on it (issue in progress or in review).
 - **Planned**: an issue exists, with an owner or ready to take.
+- **Coming soon**: decided for after the v1 trial (5 Nov 2026, milestone "Coming soon"). Shown in the app with a Coming soon mark.
 - **Proposed**: needed in real use, no issue yet. The orchestrator files it when it comes up.
 - **Needs work**: built, but a known gap remains (the note says which).
 
@@ -22,8 +23,8 @@ Owners: LD = lakshya-desktop, LT = lakshya-t3, HD = harsh-desktop, HT = harsh-t3
 | Simple lists (blood groups, colours…) | Built | — | Choice lists for any field |
 | Master of masters: rename, hide, require, default, order and section every field; rename, reorder and retire choices; rename masters | Built | #65 | Phase 1 of `docs/entities.md` |
 | Company fields on trips, requests, expenses, loadings and settlements, asked at the right step | Planned | #67 | Phase 2 |
-| Custom masters in the same editor; references to any record type; field permissions by role; saved list views | Planned | #68 | Phase 3 |
-| Safe field type changes, definition history, copy a company's configuration | Planned | #69 | Phase 4 |
+| Custom masters in the same editor; references to any record type; field permissions by role; saved list views | Coming soon | #68 | Phase 3 |
+| Safe field type changes, definition history, copy a company's configuration | Coming soon | #69 | Phase 4 |
 | Areas switch whole features on and off (masters, desks, menus, messages follow) | Built | #56 | |
 | Company vocabulary: rename Trip, Nomination, Driver and nine other terms on the desks, the driver app and documents | Building | #73 | LD. Masters keep their own names, set in Customise (#65) |
 | Trip stages: rename any; switch off Funding and Settlement | Building | #73 | LD. The order is the journey's and stays fixed; stages of the company's own are part of #67 |
@@ -43,7 +44,7 @@ Owners: LD = lakshya-desktop, LT = lakshya-t3, HD = harsh-desktop, HT = harsh-t3
 | No "Marichi" anywhere outside sample data | Building | #71 | A test enforces it |
 | Regional settings: time zone, date, time and number formats, financial year, phone prefix | Planned | #72 | HT; today date format and financial year change nothing |
 | No currency code, locale or country hard-coded in code | Planned | #72 | HT; ZMW appears in 30+ places, `en-GB` in 9 server files |
-| Languages: translation layer, English and French first, per user, driver and customer | Planned | #74 | HD |
+| Languages: translation layer, English and French first, per user, driver and customer | Coming soon | #74 | HD |
 | Right-to-left languages | Proposed | — | |
 
 ## Accounts and access
@@ -57,14 +58,14 @@ Owners: LD = lakshya-desktop, LT = lakshya-t3, HD = harsh-desktop, HT = harsh-t3
 | Nobody grants access they don't have; the last owner can't be removed | Built | — | |
 | Driver accounts: phone and password, own work only | Built | #5 | |
 | Self sign-up as Viewer (a company setting) | Built | — | |
-| Branch access: staff limited to their branches; trips carry a branch | Planned | #57 | LD |
-| Sign-in by one-time code (SMS, WhatsApp, e-mail) | Planned | #57 | LD |
-| Password reset by phone, for drivers with no e-mail | Planned | #57 | LD |
-| Invitations by e-mail, SMS or WhatsApp | Planned | #57 | LD |
+| Branch access: staff limited to their branches; trips carry a branch | Coming soon | #89 | |
+| Sign-in by one-time code (SMS, WhatsApp, e-mail) | Coming soon | #89 | |
+| Password reset by phone, for drivers with no e-mail | Coming soon | #89 | |
+| Invitations by e-mail (SMS and WhatsApp coming soon) | Planned | #57 | LD |
 | Password and session policy (length, expiry, lockout, idle sign-out) | Planned | #57 | LD |
-| Two-step sign-in (authenticator app), required by role | Planned | #58 | LD |
-| Customer portal accounts (an area): customers follow their own loads, delivery proof and invoices | Planned | #58 | LD |
-| API keys for other systems | Planned | #58 | LD |
+| Two-step sign-in (authenticator app), required by role | Coming soon | #58 | LD |
+| Customer portal accounts (an area): customers follow their own loads, delivery proof and invoices | Coming soon | #58 | LD |
+| API keys for other systems | Coming soon | #58 | LD |
 | Single sign-on (Google Workspace, Microsoft Entra) through connections | Proposed | — | |
 | Audit log screen, filters, CSV download, a record's history | Built | #36 | |
 
@@ -135,7 +136,7 @@ Owners: LD = lakshya-desktop, LT = lakshya-t3, HD = harsh-desktop, HT = harsh-t3
 | Defects reported from the app open a work order | Planned | #63 | LT |
 | Installable on the phone's home screen, with the company's icon | Planned | #71 | LD |
 | Push notifications | Proposed | — | |
-| In the driver's language | Planned | #74 | HD |
+| In the driver's language | Coming soon | #74 | HD |
 
 ## Tracking and maps
 
@@ -143,9 +144,9 @@ Owners: LD = lakshya-desktop, LT = lakshya-t3, HD = harsh-desktop, HT = harsh-t3
 | --- | --- | --- | --- |
 | Positions from the driver's phone; the simulator, labelled | Built | — | |
 | Live map and fleet map | Built | — | |
-| GPS trackers through connections (generic webhook, Traccar) | Planned | #60 | HD |
-| Arrival and departure detected by geofence | Planned | #60 | HD |
-| Road routes and distances from a routing provider (OSRM, Mapbox, Google) | Planned | #60 | HD |
+| GPS trackers through connections (generic webhook, Traccar) | Coming soon | #60 | HD |
+| Arrival and departure detected by geofence | Coming soon | #60 | HD |
+| Road routes and distances from a routing provider (OSRM, Mapbox, Google) | Coming soon | #60 | HD |
 | Fuel level sensors from trackers | Proposed | — | |
 
 ## Messages and documents
@@ -179,7 +180,7 @@ Owners: LD = lakshya-desktop, LT = lakshya-t3, HD = harsh-desktop, HT = harsh-t3
 | Owner overview: figures line, approvals, fleet map, where trips are | Built | — | |
 | Finance and operations queues ("Needs me") | Built | — | |
 | Reports: trips, fuel, cash, shortages, utilisation, by period and branch | Proposed | — | |
-| Saved list views and exports per role | Planned | #68 | |
+| Saved list views and exports per role | Coming soon | #68 | |
 | Scheduled reports by e-mail | Proposed | — | |
 
 ## Deploying and running a company's copy

@@ -6,6 +6,7 @@ import type { Rec } from "../api/adapter";
 import { useApp } from "../store";
 import { Button, Drawer, SettingRow, SettingsSection, Switch } from "../ui/kit";
 import { label } from "./history";
+import { ComingSoonRows } from "../ui/comingSoon";
 
 /**
  * The master of masters (#65, docs/entities.md): how this company shapes one master. Its name, each field (name,
@@ -213,6 +214,9 @@ export function Customise({ def, onClose, onEditField }: { def: Rec; onClose: ()
             </SettingRow>
           </SettingsSection>
         )}
+        <SettingsSection title="Coming soon">
+          <ComingSoonRows place="masters" />
+        </SettingsSection>
       </div>
     </Drawer>
   );

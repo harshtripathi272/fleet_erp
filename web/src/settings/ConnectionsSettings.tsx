@@ -6,6 +6,7 @@ import { useApp } from "../store";
 import { Button, Drawer, Field, FieldGroup, Segmented, Status, SwitchField } from "../ui/kit";
 import { stamp } from "../ui/format";
 import "./settings.css";
+import { COMING_SOON, ComingSoonTag } from "../ui/comingSoon";
 
 /**
  * Masters → Connections (#59): every outside service the system uses, by kind. Each kind says what it
@@ -93,12 +94,15 @@ export default function ConnectionsSettings() {
       {kinds.isLoading && <p className="muted">Loading…</p>}
       {(kinds.data ?? []).map((k) => {
         const mine = (connections.data ?? []).filter((c) => c.kind === k.kind);
+        // A tracker or map service can be connected now; using it on trips comes after v1 (#60), and the card says so.
+        const soon = COMING_SOON.find((f) => f.kind === k.kind);
         return (
           <section key={k.kind} className="card kind-card">
             <div className="card-head">
               <div className="kind-title">
-                <h3>{k.label}</h3>
+                <h3>{k.label}{soon && <> <ComingSoonTag /></>}</h3>
                 <p className="muted">{k.description}</p>
+                {soon && <p className="muted">{soon.description}</p>}
               </div>
               {creatable && <Button onClick={() => setEditing({ kind: k, connection: null })}>Add a connection</Button>}
             </div>
