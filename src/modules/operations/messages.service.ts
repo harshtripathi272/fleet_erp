@@ -21,7 +21,8 @@ export interface Viewer { userId: string; roles: string[]; can: (resource: strin
 export function threadFilter(viewer: Viewer): Plain {
   if (viewer.can('*', 'create')) return {};
   const threads = [
-    ...OPERATIONS_RESOURCES.filter((r) => viewer.can(r, 'create')).map((r) => `queue:${r}`),
+    // Work orders are a master, not one of the trip side's resources, but they have a queue too (#63).
+    ...[...OPERATIONS_RESOURCES, 'work-orders'].filter((r) => viewer.can(r, 'create')).map((r) => `queue:${r}`),
     ...viewer.roles.map((key) => `role:${key}`),
     `user:${viewer.userId}`,
   ];

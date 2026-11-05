@@ -160,6 +160,10 @@ details.form-group summary { cursor: pointer; }
 .audit-fields[open] summary { margin-bottom: 4px; }
 .area-early { margin-left: 8px; vertical-align: 1px; }
 
+/* The Maintenance desk's period, and the driver's defect form. */
+.audit-date-pair { display: inline-flex; flex-wrap: wrap; gap: 8px; }
+.maint-costs .num { text-align: right; }
+.drv-defect { display: grid; gap: 8px; }
 /* The master of masters (#65): how a company shapes one master. */
 .customise { display: grid; gap: 20px; }
 .cust-table-wrap { overflow-x: auto; }

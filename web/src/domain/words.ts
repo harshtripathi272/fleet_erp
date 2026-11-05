@@ -30,8 +30,8 @@ export const DEFAULT_STAGES: Settings["stages"] = [
 ];
 
 export const DEFAULT_DESKS: Settings["desks"] = [
-  { key: "owner", name: "Overview and approvals", icon: "gauge", views: ["overview", "trips", "nominations", "accounts", "billing", "masters"], kind: "owner", actsAs: "owner" },
-  { key: "operations", name: "Operations", icon: "grid", views: ["trips", "nominations", "accounts", "masters"], kind: "operations", actsAs: "operations" },
+  { key: "owner", name: "Overview and approvals", icon: "gauge", views: ["overview", "trips", "nominations", "accounts", "maintenance", "billing", "masters"], kind: "owner", actsAs: "owner" },
+  { key: "operations", name: "Operations", icon: "grid", views: ["trips", "nominations", "accounts", "maintenance", "masters"], kind: "operations", actsAs: "operations" },
   { key: "finance", name: "Finance", icon: "wallet", views: ["today", "trips", "accounts", "billing", "masters"], kind: "finance", actsAs: "finance" },
 ];
 

@@ -7,6 +7,8 @@ import { validate } from '../../middleware/validate.js';
 import { idempotent } from '../../middleware/idempotency.js';
 import * as C from './operations.controller.js';
 import * as S from './operations.schema.js';
+import { requireArea } from '../company/areas.js';
+import { defectSchema } from '../maintenance/maintenance.schema.js';
 import { requireModule } from './settings.js';
 
 /**
@@ -112,6 +114,7 @@ router.get('/driver-app/settlements/:id/statement.pdf', validate(id), C.driverSt
 router.get('/driver-app/messages', validate({ query: S.driverMessagesQuery }), C.driverMessages);
 // The driver app queues these on a weak signal and may send one twice; the Idempotency-Key keeps it to one.
 router.post('/driver-app/send', idempotent, validate({ body: S.driverSendSchema }), C.driverSend);
+router.post('/driver-app/defects', requireArea('maintenance'), idempotent, validate({ body: defectSchema }), C.driverDefect);
 router.post('/driver-app/stops/:stopId/arrive', idempotent, validate({ params: S.driverStopParams }), C.driverArrive);
 
 router.post('/whatsapp/simulate', authorize('driver-documents', 'create'), validate({ body: S.simulateSchema }), C.simulate);

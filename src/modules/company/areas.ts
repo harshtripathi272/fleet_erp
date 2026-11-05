@@ -33,7 +33,8 @@ export async function areasOn(): Promise<Set<string>> {
   if (cached && Date.now() - cached.at < TTL_MS) return cached.on;
   const company = await Company.findOne().select('modules').lean<{ modules?: string[] }>();
   const chosen = company?.modules ?? DEFAULT_AREAS;
-  const on = new Set<string>(AREAS.filter((a) => ('always' in a && a.always) || (a.state !== 'not-built' && chosen.includes(a.key))).map((a) => a.key));
+  const isOn = (a: (typeof AREAS)[number]) => ('always' in a && a.always) || (a.state !== 'not-built' && chosen.includes(a.key));
+  const on = new Set<string>(AREAS.filter((a) => isOn(a) && (!('within' in a) || chosen.includes(a.within))).map((a) => a.key));
   cached = { at: Date.now(), on };
   return on;
 }

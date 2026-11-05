@@ -1,3 +1,6 @@
+import { isAreaOn } from '../company/areas.js';
+import type { DefectInput } from '../maintenance/maintenance.schema.js';
+import { reportDefect as openDefect } from '../maintenance/maintenance.service.js';
 import { ForbiddenError, NotFoundError } from '../../core/errors/index.js';
 import type { Plain } from '../../core/masters/types.js';
 import { Product } from '../cargo/models/product.model.js';
@@ -113,6 +116,8 @@ export async function home(actor: DriverActor) {
     expenseCategories: categories.map((c) => ({ id: String(c._id), name: c.name })),
     /** The company's words (#73), so the phone says "load" where the company does. */
     words: terms,
+    /** Maintenance is on, so a defect can be reported from the phone (#63). */
+    canReportDefect: await isAreaOn('maintenance'),
   };
 }
 
@@ -136,6 +141,9 @@ export async function send(actor: DriverActor, input: S.DriverSendInput) {
     file: input.fileId ? { fileId: input.fileId } : undefined, reading: input.reading, channel: 'app',
   }, driverContext(actor));
 }
+
+/** The driver reports something wrong with their truck: it becomes a work order. */
+export const reportDefect = (actor: DriverActor, input: DefectInput) => openDefect(actor.driverId, input, driverContext(actor));
 
 /** The driver says they have reached a stop on their own trip. */
 export async function arrive(actor: DriverActor, stopId: string) {

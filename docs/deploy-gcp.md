@@ -139,6 +139,16 @@ The job fetches only when it's due: after the fetch time set in the app (Masters
 - **Updates:** `update-company.sh` moves the job to the new version together with the service.
 - **What happened:** Cloud Run → Jobs → `fleet-<company>-escalate` → Executions (exit 1 means the run failed). Each move is in the audit log as "System".
 
+## Service reminders
+
+For companies with Maintenance on, `new-company.sh` also sets up the "Service due" reminders (#63), for the same reason:
+
+- **A Cloud Run job**, `fleet-<company>-service-reminders`, which runs `node dist/jobs/serviceReminders.js`. While Maintenance is off it does nothing.
+- **A Cloud Scheduler trigger**, `fleet-<company>-service-reminders-hourly`, at twenty past every hour.
+- **`IN_PROCESS_JOBS=false`** turns off the server's timer for this too. Locally and in Docker Compose a timer checks every 15 minutes.
+
+The job and the trigger exist for every company, so switching Maintenance on needs no redeploy.
+
 ## Backups and restore
 
 - **Database:**

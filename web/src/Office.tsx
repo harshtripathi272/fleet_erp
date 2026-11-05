@@ -13,6 +13,7 @@ import {
   KeyRound,
   LogOut,
   MessageCircle,
+  Wrench,
   MoreHorizontal,
   Settings2,
   Truck,
@@ -20,7 +21,6 @@ import {
   Wallet,
   X,
   Receipt,
-  Wrench,
   Users,
   Map as MapIcon,
 } from "lucide-react";
@@ -48,12 +48,13 @@ const FinanceToday = lazy(() => import("./desks/Finance").then((m) => ({ default
 const Billing = lazy(() => import("./billing/Billing").then((m) => ({ default: m.Billing })));
 const Accounts = lazy(() => import("./desks/Accounts").then((m) => ({ default: m.Accounts })));
 const Nominations = lazy(() => import("./desks/Nominations").then((m) => ({ default: m.Nominations })));
+const Maintenance = lazy(() => import("./desks/Maintenance").then((m) => ({ default: m.Maintenance })));
 const MastersScreen = lazy(() => import("./masters/MastersScreen").then((m) => ({ default: m.MastersScreen })));
 const Overview = lazy(() => import("./desks/Overview").then((m) => ({ default: m.Overview })));
 const DriverDesk = lazy(() => import("./desks/DriverDesk").then((m) => ({ default: m.DriverDesk })));
 const Tracking = lazy(() => import("./tracking/Tracking"));
 
-type View = "overview" | "today" | "trips" | "nominations" | "accounts" | "billing" | "masters" | "driver";
+type View = "overview" | "today" | "trips" | "nominations" | "accounts" | "billing" | "maintenance" | "masters" | "driver";
 interface Session {
   /** The company desk (#73) by key; `role` is the built-in desk it acts as, or "driver". */
   desk?: string;
@@ -103,6 +104,7 @@ function viewItem(data: AppData, desk: WorkspaceDesk, id: string): NavItem | und
         ? { id, label: w(data, "settlement", true), icon: Wallet }
         : { id, label: `${w(data, "driver")} accounts`, short: "Accounts", icon: Wallet };
     case "billing": return { id, label: "Billing", icon: Receipt };
+    case "maintenance": return { id, label: "Maintenance", icon: Wrench };
     case "masters": return { id, label: "Masters", icon: Settings2 };
     default: return undefined;
   }
@@ -166,6 +168,8 @@ export default function Desks({ me }: { me: Me }) {
     },
     [perform, role, toast],
   );
+  // A record to open in Masters, for this visit only: leaving or reloading doesn't reopen it.
+  const [masterId, setMasterId] = useState<string>();
   const nav = useCallback(
     (target: Nav) => {
       if (!role || !data) return;
@@ -189,7 +193,11 @@ export default function Desks({ me }: { me: Me }) {
         return;
       }
       if (target.view === "nominations") setSession({ view: "nominations" });
-      if (target.view === "masters" && role !== "driver") setSession({ view: "masters", masterEntity: target.masterEntity });
+      if (target.view === "masters" && role !== "driver") {
+        setMasterId(target.masterId);
+        setSession({ view: "masters", masterEntity: target.masterEntity });
+      }
+      if (target.view === "maintenance" && role !== "driver") setSession({ view: "maintenance" });
       if (target.view === "finance" && role === "finance") setSession({ view: "today" });
       setOverlay({});
     },
@@ -230,7 +238,10 @@ export default function Desks({ me }: { me: Me }) {
           view={view}
           person={role === "driver" ? data.drivers.find((d) => d.id === session.driverId)?.name ?? "Driver" : me.name}
           canSwitch={desks.length + (driverDesk ? 1 : 0) > 1}
-          onView={(next) => setSession({ view: next })}
+          onView={(next) => {
+            setMasterId(undefined);
+            setSession({ view: next });
+          }}
           onSwitch={() => setSession({ desk: undefined, role: undefined, driverId: undefined })}
           onSignOut={() => void signOut()}
           me={me}
@@ -250,7 +261,8 @@ export default function Desks({ me }: { me: Me }) {
               <Accounts driverId={session.accountDriverId} onDriver={(id) => setSession({ accountDriverId: id })} />
             )}
             {view === "billing" && <Billing />}
-            {view === "masters" && <MastersScreen key={session.masterEntity || "masters"} initialEntity={session.masterEntity} />}
+            {view === "maintenance" && <Maintenance />}
+            {view === "masters" && <MastersScreen key={`${session.masterEntity || "masters"}-${masterId ?? ""}`} initialEntity={session.masterEntity} initialId={masterId} />}
             {view === "driver" && <DriverDesk />}
           </Suspense>
         </Shell>

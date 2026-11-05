@@ -49,6 +49,14 @@ const companyShape = {
     screens: z.boolean().optional(),
   }).optional(),
   /** Only the settings sent change; the rest keep their values. */
+  maintenance: z.strictObject({
+    workOrderStopsTruck: z.boolean().optional(),
+    defectStopsTruck: z.boolean().optional(),
+    dueSoonKm: z.number().min(0).max(100_000).optional(),
+    dueSoonDays: z.number().min(0).max(365).optional(),
+    dueSoonHours: z.number().min(0).max(10_000).optional(),
+  }).optional(),
+  /** Only the settings sent change; the rest keep their values. */
   operations: z.strictObject({
     loadedTripOutcomes: z.array(z.enum(LOADED_TRIP_OUTCOMES)).max(3).optional(),
     writeOffCarriers: z.array(z.enum(WRITE_OFF_CARRIERS)).max(3).optional(),

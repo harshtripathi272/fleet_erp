@@ -57,8 +57,8 @@ export const DESK_ICONS = ['gauge', 'grid', 'wallet', 'wrench', 'truck', 'clipbo
 
 /** Today's desks: who sees each is decided by permissions (`kind`), unless the company names roles. */
 export const DEFAULT_DESKS = [
-  { key: 'owner', name: 'Overview and approvals', icon: 'gauge', views: ['overview', 'trips', 'nominations', 'accounts', 'billing', 'masters'], kind: 'owner' },
-  { key: 'operations', name: 'Operations', icon: 'grid', views: ['trips', 'nominations', 'accounts', 'masters'], kind: 'operations' },
+  { key: 'owner', name: 'Overview and approvals', icon: 'gauge', views: ['overview', 'trips', 'nominations', 'accounts', 'maintenance', 'billing', 'masters'], kind: 'owner' },
+  { key: 'operations', name: 'Operations', icon: 'grid', views: ['trips', 'nominations', 'accounts', 'maintenance', 'masters'], kind: 'operations' },
   { key: 'finance', name: 'Finance', icon: 'wallet', views: ['today', 'trips', 'accounts', 'billing', 'masters'], kind: 'finance' },
 ] as const;
 

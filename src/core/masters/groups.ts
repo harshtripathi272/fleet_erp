@@ -5,6 +5,7 @@ export const GROUPS = {
   money: 'Money and tax',
   parties: 'Customers and partners',
   fleet: 'Vehicles and equipment',
+  maintenance: 'Maintenance',
   drivers: 'Drivers',
   compliance: 'Compliance and documents',
   cargo: 'Cargo',
