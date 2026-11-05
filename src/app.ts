@@ -34,6 +34,7 @@ import organisationRouter from './modules/organisation/organisation.router.js';
 import partiesRouter from './modules/parties/parties.router.js';
 import rolesRouter from './modules/roles/roles.router.js';
 import setupKitRouter from './modules/setup/setup.router.js';
+import trackingRouter from './modules/tracking/tracking.router.js';
 import tripsRouter from './modules/trips/trips.router.js';
 import usersRouter from './modules/users/users.router.js';
 
@@ -81,6 +82,7 @@ app.use('/api/v1', authenticate, cargoRouter);
 app.use('/api/v1', authenticate, tripsRouter);
 app.use('/api/v1', authenticate, messagingRouter);
 app.use('/api/v1', authenticate, connectionsRouter);
+app.use('/api/v1', authenticate, trackingRouter);
 app.use('/api/v1', authenticate, configurationRouter);
 
 // The web app (web/dist), when built: hashed assets cached for a year, the page itself never,

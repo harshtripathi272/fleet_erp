@@ -33,6 +33,7 @@ import {
 } from './support.js';
 import type * as S from './operations.schema.js';
 import { operationsSettings } from './settings.js';
+import { roadLeg } from '../tracking/routing.service.js';
 
 /* ---------- Names for messages ---------- */
 
@@ -115,8 +116,9 @@ export async function correctVehicleState(vehicleId: string, input: S.VehicleSta
 /* ---------- Stops and budgets ---------- */
 
 /**
- * Road kilometres from route masters where a route has the leg; otherwise straight-line × the company's
- * road distance factor. Driving hours use its average speed; border posts add their usual wait.
+ * Road kilometres from route masters where a route has the leg; then the routing connection (#60), kept
+ * per pair of places; otherwise straight-line × the company's road distance factor. Driving hours come
+ * from the routing service or the average speed; border posts add their usual wait.
  */
 export async function buildStops(plan: StopPlan[]): Promise<Array<StopLeg & { _id: Types.ObjectId }>> {
   const { roadDistanceFactor, averageSpeedKmh } = await operationsSettings();
@@ -136,17 +138,22 @@ export async function buildStops(plan: StopPlan[]): Promise<Array<StopLeg & { _i
     }
   }
   const waits = new Map((await BorderPost.find({ placeId: { $in: ids }, status: 'active' }).select('placeId typicalWaitHours').lean()).map((b) => [String(b.placeId), Number(b.typicalWaitHours ?? 0)]));
-  return plan.map((stop, index) => {
+  const out: Array<StopLeg & { _id: Types.ObjectId }> = [];
+  for (const [index, stop] of plan.entries()) {
     const prev = plan[index - 1];
     let km = 0;
+    let hours: number | undefined;
     if (prev && prev.placeId !== stop.placeId) {
       const a = byId.get(prev.placeId)?.location as { lat: number; lng: number } | undefined;
       const b = byId.get(stop.placeId)?.location as { lat: number; lng: number } | undefined;
-      km = known.get(`${prev.placeId}-${stop.placeId}`) ?? (a && b ? Math.round(haversineKm(a, b) * roadDistanceFactor) : 0);
+      const routed = known.has(`${prev.placeId}-${stop.placeId}`) ? null : await roadLeg({ id: prev.placeId, location: a }, { id: stop.placeId, location: b });
+      km = known.get(`${prev.placeId}-${stop.placeId}`) ?? routed?.km ?? (a && b ? Math.round(haversineKm(a, b) * roadDistanceFactor) : 0);
+      hours = routed?.hours;
     }
     const wait = byId.get(stop.placeId)?.type === 'border' ? waits.get(stop.placeId) ?? 0 : 0;
-    return { _id: new Types.ObjectId(), placeId: stop.placeId, kind: stop.kind, legKm: km, legHours: round(km / averageSpeedKmh + (index ? wait : 0), 1) };
-  });
+    out.push({ _id: new Types.ObjectId(), placeId: stop.placeId, kind: stop.kind, legKm: km, legHours: round((hours ?? km / averageSpeedKmh) + (index ? wait : 0), 1) });
+  }
+  return out;
 }
 
 /** A route's stops, starting where the truck is now. */

@@ -63,8 +63,8 @@ const tripSchema = new Schema<any>({
   stopReason: String,
   /** Cancelled after cash was paid or spent on it: the trip still goes on the driver's next settlement. */
   settleAfterCancel: Boolean,
-  /** The latest position. `source` says where it came from; `simulator` positions are a demo, not the truck. */
-  tracking: { type: new Schema({ km: Number, speed: Number, heading: Number, at: Date, source: { type: String, enum: ARRIVAL_SOURCES } }, { _id: false }), default: undefined },
+  /** The latest position. `source` says where it came from; `simulator` positions are a demo, not the truck. A tracker's (#60) also has lat and lng. */
+  tracking: { type: new Schema({ km: Number, speed: Number, heading: Number, at: Date, source: { type: String, enum: ARRIVAL_SOURCES }, lat: Number, lng: Number }, { _id: false }), default: undefined },
   settlementId: { type: ObjectId, ref: 'Settlement' },
   active: { type: Boolean, default: true },
   createdBy: { type: ObjectId, ref: 'User' },

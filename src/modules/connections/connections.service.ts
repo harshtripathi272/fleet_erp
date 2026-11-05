@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { env } from '../../config/env.js';
 import {
   type Capabilities, contextFor, describeFields, describeSecrets, type InboundResult, isKind, type Kind, KIND_INFO, KINDS,
-  type Provider, providerFor, providersOf, scrub, SECRET_ENV, SECRET_ENV_HINT, simulatedProvider, verifySignature,
+  type Provider, providerFor, providersOf, scrub, SECRET_ENV, SECRET_ENV_HINT, sharedSecretMatches, simulatedProvider, verifySignature,
 } from '../../core/connections/index.js';
 import { NotFoundError, UnauthorizedError, ValidationError } from '../../core/errors/index.js';
 import { logger } from '../../core/logger/index.js';
@@ -229,7 +229,7 @@ export function onInbound(listener: InboundListener) { listeners.push(listener);
  * One call to a connection's webhook. Refused unless the connection is switched on, its provider takes
  * calls, and the call is signed with its signing secret within the last five minutes.
  */
-export async function receiveInbound(id: string, headers: { timestamp?: string; signature?: string }, raw: Buffer) {
+export async function receiveInbound(id: string, headers: { timestamp?: string; signature?: string; sharedSecret?: string }, raw: Buffer) {
   if (!/^[0-9a-f]{24}$/i.test(id)) throw new NotFoundError('Not found');
   const connection = await Connection.findOne({ _id: id, enabled: true, status: 'active' }).lean() as Plain | null;
   const provider = connection && isKind(String(connection.kind)) ? providerFor(connection.kind as Kind, String(connection.provider)) : undefined;
@@ -239,7 +239,7 @@ export async function receiveInbound(id: string, headers: { timestamp?: string; 
     await recordError(connection._id, `A call came in, but ${String(connection.webhookSecretEnv)} is not set on the server, so it can't be checked`);
     throw new UnauthorizedError('This connection cannot check signatures yet');
   }
-  const refused = verifySignature(secret, headers.timestamp, headers.signature, raw);
+  const refused = provider.sharedSecretHeader && sharedSecretMatches(secret, headers.sharedSecret) ? undefined : verifySignature(secret, headers.timestamp, headers.signature, raw);
   if (refused) {
     await recordError(connection._id, `A call was refused: ${refused}`);
     throw new UnauthorizedError(refused);

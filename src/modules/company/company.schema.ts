@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { email, objectId, phone, text } from '../../core/masters/zod.js';
-import { SETTLEMENT_PERIODS } from './company.model.js';
+import { ARRIVAL_DETECTION, POSITION_SOURCES, SETTLEMENT_PERIODS } from './company.model.js';
 
 import { AREA_KEYS } from './areaList.js';
 
@@ -57,6 +57,10 @@ const companyShape = {
     defaultFuelReservePercent: z.number().min(0).max(50).optional(),
     settlementPeriod: z.enum(SETTLEMENT_PERIODS).optional(),
     stopBeforeLoading: z.boolean().optional(),
+    positionSource: z.enum(POSITION_SOURCES).optional(),
+    arrivalDetection: z.enum(ARRIVAL_DETECTION).optional(),
+    arrivalDwellMinutes: z.number().min(0).max(120).optional(),
+    trackerPollSeconds: z.number().int().min(15).max(3600).optional(),
   }).refine((o) => o.densityMinKgM3 === undefined || o.densityMaxKgM3 === undefined || o.densityMinKgM3 < o.densityMaxKgM3, 'Minimum density must be below the maximum').optional(),
 };
 

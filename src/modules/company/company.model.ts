@@ -26,8 +26,18 @@ export const OPERATIONS_DEFAULTS = {
   settlementPeriod: 'any',
   /** A trip that left but never loaded (the customer cancelled, a breakdown) may be stopped and its truck freed. */
   stopBeforeLoading: true,
+  /** Which position moves a truck when a tracker and the driver's phone both report (#60): "newest", "tracker" or "phone". */
+  positionSource: 'newest',
+  /** Arrival and departure at stops from tracker positions: "auto" is on only while a real GPS connection is in use. */
+  arrivalDetection: 'auto',
+  /** How long a truck stays inside a stop's geofence before it counts as arrived. */
+  arrivalDwellMinutes: 3,
+  /** How often trackers that are asked (not pushing) are asked for positions. */
+  trackerPollSeconds: 60,
 } as const;
 export const SETTLEMENT_PERIODS = ['any', 'weekly', 'fortnightly', 'monthly'] as const;
+export const POSITION_SOURCES = ['newest', 'tracker', 'phone'] as const;
+export const ARRIVAL_DETECTION = ['auto', 'on', 'off'] as const;
 
 const operationsSchema = new Schema({
   tripStartsFromTruck: { type: Boolean, default: OPERATIONS_DEFAULTS.tripStartsFromTruck },
@@ -40,6 +50,10 @@ const operationsSchema = new Schema({
   defaultFuelReservePercent: { type: Number, min: 0, max: 50, default: OPERATIONS_DEFAULTS.defaultFuelReservePercent },
   settlementPeriod: { type: String, enum: SETTLEMENT_PERIODS, default: OPERATIONS_DEFAULTS.settlementPeriod },
   stopBeforeLoading: { type: Boolean, default: OPERATIONS_DEFAULTS.stopBeforeLoading },
+  positionSource: { type: String, enum: POSITION_SOURCES, default: OPERATIONS_DEFAULTS.positionSource },
+  arrivalDetection: { type: String, enum: ARRIVAL_DETECTION, default: OPERATIONS_DEFAULTS.arrivalDetection },
+  arrivalDwellMinutes: { type: Number, min: 0, max: 120, default: OPERATIONS_DEFAULTS.arrivalDwellMinutes },
+  trackerPollSeconds: { type: Number, min: 15, max: 3600, default: OPERATIONS_DEFAULTS.trackerPollSeconds },
 }, { _id: false, strict: 'throw' });
 
 /**

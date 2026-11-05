@@ -105,6 +105,14 @@ export function signBody(secret: string, timestamp: string, body: Buffer | strin
 }
 
 /** Checks a call's signature and timestamp. Says why when it fails, for the connection's last error. */
+/** The fixed-header alternative to a signature (see Provider.sharedSecretHeader), compared in constant time. */
+export function sharedSecretMatches(secret: string, given: string | undefined) {
+  if (!given) return false;
+  const a = Buffer.from(secret);
+  const b = Buffer.from(given);
+  return a.length === b.length && timingSafeEqual(a, b);
+}
+
 export function verifySignature(secret: string, timestamp: string | undefined, signature: string | undefined, body: Buffer, now = Date.now()): string | undefined {
   if (!timestamp || !signature) return 'The call is not signed (X-Signature-Timestamp and X-Signature are needed).';
   const seconds = Number(timestamp);

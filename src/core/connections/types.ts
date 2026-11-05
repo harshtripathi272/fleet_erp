@@ -99,4 +99,9 @@ export interface Provider<K extends Kind = Kind> {
   open(ctx: ProviderContext): Capabilities[K];
   /** For services that push to us (trackers, message replies): reads one signed call's body. */
   inbound?(ctx: ProviderContext, body: unknown): Promise<InboundResult>;
+  /**
+   * For services that can send a fixed header but can't sign each call (Traccar's forwarding): the signing
+   * secret itself in X-Webhook-Secret is accepted too. Weaker than a signature, so only where it's needed.
+   */
+  sharedSecretHeader?: boolean;
 }

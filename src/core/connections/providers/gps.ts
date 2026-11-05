@@ -64,10 +64,23 @@ registerProvider({
   },
 });
 
-/** Traccar: open-source tracking server that speaks to most tracker brands. Asked for positions. */
+interface TraccarPosition { deviceId: number; latitude: number; longitude: number; fixTime: string; speed?: number; course?: number }
+/** One Traccar position; the device is named by its unique id (the tracker's IMEI), which trucks keep as their GPS device ID. */
+const fromTraccar = (p: TraccarPosition, uniqueId: string): Position => ({
+  deviceId: uniqueId, lat: p.latitude, lng: p.longitude, at: new Date(p.fixTime),
+  // Traccar gives speed in knots.
+  ...(p.speed !== undefined ? { speedKmh: Math.round(p.speed * 1.852) } : {}), ...(p.course !== undefined ? { heading: p.course } : {}),
+});
+
+/**
+ * Traccar: open-source tracking server that speaks to most tracker brands. Asked for positions, or set to
+ * forward them here (forward.url to this connection's address, forward.json true, and forward.header
+ * "X-Webhook-Secret: <the signing secret>", since Traccar can't sign each call).
+ */
 registerProvider({
   kind: 'gps', key: 'traccar', label: 'Traccar',
-  description: 'A Traccar server, your own or hosted. Positions are fetched from it.',
+  description: 'A Traccar server, your own or hosted. Positions are fetched from it, or it forwards them here.',
+  sharedSecretHeader: true,
   fields: z.strictObject({ baseUrl: z.url().refine((u) => /^https?:\/\//.test(u), 'An http or https address'), user: z.string().trim().min(1).max(200) }),
   labels: { baseUrl: 'Server address', user: 'User name' },
   hints: { baseUrl: 'e.g. https://traccar.company.com', user: 'A Traccar user who can see every device' },
@@ -78,11 +91,19 @@ registerProvider({
   },
   open: (ctx) => ({
     async positions(signal) {
-      const list = await callJson<Array<{ deviceId: number; latitude: number; longitude: number; fixTime: string; speed?: number; course?: number }>>('Traccar', `${url(ctx.settings)}/api/positions`, { headers: auth(ctx), signal });
-      // Traccar gives speed in knots.
-      return list.map((p) => ({ deviceId: String(p.deviceId), lat: p.latitude, lng: p.longitude, at: new Date(p.fixTime), ...(p.speed !== undefined ? { speedKmh: Math.round(p.speed * 1.852) } : {}), ...(p.course !== undefined ? { heading: p.course } : {}) }));
+      const devices = await callJson<Array<{ id: number; uniqueId: string }>>('Traccar', `${url(ctx.settings)}/api/devices`, { headers: auth(ctx), signal });
+      const uniqueIds = new Map(devices.map((d) => [d.id, d.uniqueId]));
+      const list = await callJson<TraccarPosition[]>('Traccar', `${url(ctx.settings)}/api/positions`, { headers: auth(ctx), signal });
+      return list.filter((p) => uniqueIds.has(p.deviceId)).map((p) => fromTraccar(p, uniqueIds.get(p.deviceId)!));
     },
   }),
+  // Position forwarding: { position, device } per call.
+  async inbound(_ctx, body) {
+    const calls = (Array.isArray(body) ? body : [body]) as Array<{ position?: TraccarPosition; device?: { uniqueId?: string } }>;
+    const positions = calls.filter((c) => c.position && c.device?.uniqueId && Number.isFinite(c.position.latitude) && Number.isFinite(c.position.longitude))
+      .map((c) => fromTraccar(c.position!, String(c.device!.uniqueId)));
+    return { accepted: positions.length, positions, ...(positions.length ? {} : { note: 'No position in the call: set forward.json to true in Traccar' }) };
+  },
 });
 
 const url = (s: Record<string, unknown>) => String(s.baseUrl).replace(/\/$/, '');

@@ -26,6 +26,6 @@ export default router;
  */
 export const hooksRouter = Router();
 hooksRouter.post('/:id', express.raw({ type: () => true, limit: '1mb' }), asyncHandler(async (req, res) => {
-  const result = await receiveInbound(id(req), { timestamp: req.get('x-signature-timestamp'), signature: req.get('x-signature') }, Buffer.isBuffer(req.body) ? req.body : Buffer.alloc(0));
+  const result = await receiveInbound(id(req), { timestamp: req.get('x-signature-timestamp'), signature: req.get('x-signature'), sharedSecret: req.get('x-webhook-secret') }, Buffer.isBuffer(req.body) ? req.body : Buffer.alloc(0));
   ApiResponse.success(res, result);
 }));
