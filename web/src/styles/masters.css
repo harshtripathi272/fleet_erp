@@ -160,6 +160,10 @@ details.form-group summary { cursor: pointer; }
 .audit-fields[open] summary { margin-bottom: 4px; }
 .area-early { margin-left: 8px; vertical-align: 1px; }
 
+/* The Maintenance desk's period, and the driver's defect form. */
+.audit-date-pair { display: inline-flex; flex-wrap: wrap; gap: 8px; }
+.maint-costs .num { text-align: right; }
+.drv-defect { display: grid; gap: 8px; }
 /* The master of masters (#65): how a company shapes one master. */
 .customise { display: grid; gap: 20px; }
 .cust-table-wrap { overflow-x: auto; }
@@ -193,3 +197,10 @@ details.form-group summary { cursor: pointer; }
 .brand-preview .muted { font-size: 12.5px; }
 .accent-input { display: flex; align-items: center; gap: 8px; width: 100%; }
 .accent-input input[type="color"] { flex: none; width: 40px; height: 40px; padding: 2px; border: 1px solid var(--line-2); border-radius: 8px; background: var(--surface); }
+
+/* Words, stages and desks (#73): each desk is a block of fields inside the Desks section, divided by a rule. */
+.settings-rows > .desk-setup { padding: 16px 20px; }
+.settings-rows > .desk-setup:first-child { border-top: 0; }
+.desk-setup-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.desk-setup-add { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
+.term-note { display: block; margin-top: 2px; color: var(--ink-3); font-size: 12.5px; }

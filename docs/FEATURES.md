@@ -24,10 +24,10 @@ Owners: LD = lakshya-desktop, LT = lakshya-t3, HD = harsh-desktop, HT = harsh-t3
 | Company fields on trips, requests, expenses, loadings and settlements, asked at the right step | Building | #67 | LT, PR #85 |
 | Custom masters in the same editor; references to any record type; field permissions by role; saved list views | Planned | #68 | Phase 3 |
 | Safe field type changes, definition history, copy a company's configuration | Planned | #69 | Phase 4 |
-| Areas switch whole features on and off (masters, desks, menus, messages follow) | Building | #56 | LD, PR #66 |
-| Company vocabulary: rename Trip, Nomination, Driver… everywhere | Planned | #73 | LD |
-| Trip stages from the master: rename, switch off, reorder | Planned | #73 | LD; today the web stage bar is fixed |
-| Desks from configuration: names, menus, which roles see them | Planned | #73 | LD |
+| Areas switch whole features on and off (masters, desks, menus, messages follow) | Built | #56 | |
+| Company vocabulary: rename Trip, Nomination, Driver and nine other terms on the desks, the driver app and documents | Building | #73 | LD. Masters keep their own names, set in Customise (#65) |
+| Trip stages: rename any; switch off Funding and Settlement | Building | #73 | LD. The order is the journey's and stays fixed; stages of the company's own are part of #67 |
+| Desks from configuration: name, icon, screens and their order, which roles see them; add a desk | Building | #73 | LD |
 | Policies instead of hard-coded rules (every business choice is a setting with a default) | Building | #55 | The pattern every issue follows |
 | First-run set-up page: what a first trip needs, with counts, Open and Import | Built | #45 | |
 | Import any master from a spreadsheet, with a dry run | Built | #41 | Follows the company's field names (#65) |
@@ -74,7 +74,7 @@ Owners: LD = lakshya-desktop, LT = lakshya-t3, HD = harsh-desktop, HT = harsh-t3
 | --- | --- | --- | --- |
 | Nominations from customers, accepted into trips | Built | — | |
 | Trip from the truck: paired trailer and usual driver fill in | Built | — | A company setting |
-| Trip stages: plan, funding, loading, transit, offloading, close, settlement | Built | — | Fixed in the web app until #73 |
+| Trip stages: plan, funding, loading, transit, offloading, close, settlement | Built | — | Names and the optional stages are the company's (#73) |
 | Loading and delivery measured and corrected to 20 °C, with density checks | Built | — | |
 | Shortages with allowances by policy or product, and decisions | Built | — | |
 | Stop a trip that left but never loaded | Built | — | A company setting |

@@ -18,8 +18,10 @@ import authRouter from './modules/auth/auth.router.js';
 import cargoRouter from './modules/cargo/cargo.router.js';
 import companyRouter from './modules/company/company.router.js';
 import filesRouter from './modules/files/files.router.js';
+import maintenanceRouter from './modules/maintenance/maintenance.router.js';
 import complianceRouter from './modules/compliance/compliance.router.js';
 import configurationRouter from './modules/configuration/configuration.router.js';
+import connectionsRouter, { hooksRouter } from './modules/connections/connections.router.js';
 import driversRouter from './modules/drivers/drivers.router.js';
 import financeRouter from './modules/finance/finance.router.js';
 import fleetRouter from './modules/fleet/fleet.router.js';
@@ -43,6 +45,8 @@ app.use(cors);
 app.use(requestId);
 app.use(requestLogger);
 app.use('/api', compressJson);
+// Signed calls from outside services, checked over the exact bytes sent, so before the JSON parser (#59).
+app.use('/api/v1/hooks', hooksRouter);
 app.use(express.json({ limit: '1mb' }));
 app.use(rejectOperators);
 
@@ -69,11 +73,13 @@ app.use('/api/v1', authenticate, geographyRouter);
 app.use('/api/v1', authenticate, financeRouter);
 app.use('/api/v1', authenticate, partiesRouter);
 app.use('/api/v1', authenticate, fleetRouter);
+app.use('/api/v1', authenticate, maintenanceRouter);
 app.use('/api/v1', authenticate, driversRouter);
 app.use('/api/v1', authenticate, complianceRouter);
 app.use('/api/v1', authenticate, cargoRouter);
 app.use('/api/v1', authenticate, tripsRouter);
 app.use('/api/v1', authenticate, messagingRouter);
+app.use('/api/v1', authenticate, connectionsRouter);
 app.use('/api/v1', authenticate, configurationRouter);
 
 // The web app (web/dist), when built: hashed assets cached for a year, the page itself never,

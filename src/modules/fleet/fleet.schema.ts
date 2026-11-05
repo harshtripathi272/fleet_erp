@@ -54,6 +54,7 @@ export const vehicleShape = {
   dealerPartyId: objectId.optional(),
   homeBranchId: objectId.optional(),
   odometerKm: z.number().min(0).max(5_000_000).optional(),
+  engineHours: z.number().min(0).max(5_000_000).optional(),
   tankCapacityL: z.number().positive().max(5000).optional(),
   fuelTypeId: objectId.optional(),
   kmPerLLoaded: kmPerL.optional(),

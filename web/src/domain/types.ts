@@ -1,5 +1,14 @@
 export type Role = "owner" | "operations" | "finance" | "driver";
 export type Desk = Exclude<Role, "driver">;
+export interface WorkspaceDesk {
+  key: string;
+  name: string;
+  icon: string;
+  views: string[];
+  kind: Desk | "roles";
+  roleKeys?: string[];
+  actsAs: Desk;
+}
 /** An ISO currency code. The base currency comes from the company settings (ZMW in the sample). */
 export type Currency = string;
 export type StopKind = "start" | "load" | "via" | "border" | "offload" | "end";
@@ -112,6 +121,12 @@ export interface Settings {
   writeOffDefaultCarrier: string;
   loadedTripRoles: string[];
   writeOffNeedsOwner: boolean;
+  /** The company's words for the app's core terms (#73): `words.trip.plural` and so on. */
+  words: Record<string, { singular: string; plural: string }>;
+  /** The desks' stages as the company names them, and which are on. */
+  stages: { key: string; name: string; on: boolean }[];
+  /** The company's desks (#73): each lists its screens and who sees it; `actsAs` is the built-in desk whose queues it follows. */
+  desks: WorkspaceDesk[];
   clockOffsetMs: number;
   seq: Record<string, number>;
   people: Record<Desk, string>;
@@ -364,7 +379,7 @@ export interface Nomination {
   tripIds: string[];
 }
 
-export type Nav = { tripId?: string; view?: string; docId?: string; driverId?: string; masterEntity?: string };
+export type Nav = { masterId?: string; tripId?: string; view?: string; docId?: string; driverId?: string; masterEntity?: string };
 export interface MsgButton {
   label: string;
   action?: Action;

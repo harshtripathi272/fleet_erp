@@ -7,6 +7,7 @@ import type { Trip } from "../domain/types";
 import { MiniRoute } from "../tracking/MiniRoute";
 import { ago, L, zmw } from "../ui/format";
 import { Avatar } from "../ui/kit";
+import { wl } from "../domain/words";
 
 export function TripAside({ trip }: { trip: Trip }) {
   const tracking = useAreas()("tracking");
@@ -44,7 +45,7 @@ export function TripAside({ trip }: { trip: Trip }) {
           </div>
           <div>
             {/* The driver ledger's figure (as on Driver accounts): advances paid less receipts approved. */}
-            <span>{trip.settlementId ? "Cash on this trip" : "Cash with driver"}</span>
+            <span>{trip.settlementId ? `Cash on this ${wl(data, "trip")}` : "Cash with driver"}</span>
             <strong>{zmw(cash)}</strong>
             <small>of {zmw(f.cash.budget)} budget</small>
           </div>

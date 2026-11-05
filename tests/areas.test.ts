@@ -24,8 +24,8 @@ describe('areas', () => {
     const list = await areas();
     const by = (k: string) => list.find((a) => a.key === k)!;
     assert.equal(by('masters').on, true);
-    assert.equal(by('maintenance').state, 'not-built');
-    assert.equal(by('maintenance').on, false);
+    assert.equal(by('customer-portal').state, 'not-built');
+    assert.equal(by('customer-portal').on, false);
     assert.ok(by('finance').masters.includes('expense-categories'));
     assert.ok(by('trips').masters.includes('trip-types'));
   });
@@ -56,7 +56,7 @@ describe('areas', () => {
   });
 
   test('an area that is not built cannot be switched on', async () => {
-    await setAreas(['masters', 'trips', 'finance', 'maintenance']);
-    assert.equal((await areas()).find((a) => a.key === 'maintenance')!.on, false);
+    await setAreas(['masters', 'trips', 'finance', 'customer-portal']);
+    assert.equal((await areas()).find((a) => a.key === 'customer-portal')!.on, false);
   });
 });

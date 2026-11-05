@@ -17,7 +17,7 @@ export interface OutboxItem {
   at: string;
   /** What the driver sees in "Waiting to send". */
   label: string;
-  type: "send" | "arrive" | "fields";
+  type: "send" | "arrive" | "defect" | "fields";
   /** Answers to what the company asks of the driver. */
   values?: Record<string, unknown>;
   kind?: DocKind;
@@ -90,6 +90,10 @@ async function deliver(item: OutboxItem) {
   }
   if (item.type === "fields") {
     await api("/driver-app/fields", { method: "POST", headers, body: { values: item.values } });
+    return;
+  }
+  if (item.type === "defect") {
+    await api("/driver-app/defects", { method: "POST", headers, body: { note: item.note } });
     return;
   }
   let fileId = item.fileId;

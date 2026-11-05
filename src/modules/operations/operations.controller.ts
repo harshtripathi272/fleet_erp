@@ -118,4 +118,5 @@ export const driverMessages = asyncHandler(async (req, res) => ApiResponse.succe
 export const driverSend = asyncHandler(async (req, res) => ApiResponse.created(res, await DriverApp.send(driverActor(req), req.body), 'Sent to the office'));
 export const companyFields = asyncHandler(async (_req, res) => ApiResponse.success(res, await Placements.companyFields()));
 export const driverFields = asyncHandler(async (req, res) => ApiResponse.success(res, await DriverApp.answerFields(driverActor(req), req.body), 'Sent to the office'));
+export const driverDefect = asyncHandler(async (req, res) => ApiResponse.created(res, await DriverApp.reportDefect(driverActor(req), req.body), 'Sent to the office'));
 export const driverArrive = asyncHandler(async (req, res) => ApiResponse.success(res, await DriverApp.arrive(driverActor(req), param(req, 'stopId')), 'Arrival recorded'));

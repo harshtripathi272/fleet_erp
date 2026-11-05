@@ -46,7 +46,7 @@ describe('registry', () => {
   test('sample data covers every master except a few optional ones', async () => {
     const stats = (await api().get('/api/v1/meta/stats').set(bearer(owner)).expect(200)).body.data as Array<{ key: string; total: number }>;
     // Message connections are each installation's own setup, not sample data (#19); tests/messaging.test.ts covers them.
-    const optional = ['message-connections'];
+    const optional = ['connections'];
     const empty = stats.filter((s) => s.total === 0 && !optional.includes(s.key)).map((s) => s.key).sort();
     assert.deepEqual(empty, []);
   });

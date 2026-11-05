@@ -1,9 +1,11 @@
-// #19: message connections, the dispatcher, the outbox, retries, resend, simulator mode and secrets.
+// #19: message connections (on connections since #59), the dispatcher, the outbox, retries, resend, simulator mode and secrets.
 import assert from 'node:assert/strict';
 import { after, afterEach, before, beforeEach, describe, test } from 'node:test';
 import { env } from '../src/config/env.js';
 import { setSmtpTransportFactory, type SmtpSettings } from '../src/core/mail/mailer.js';
-import { registerSmsAdapter, simulatedSms } from '../src/core/sms/index.js';
+import { z } from 'zod';
+import { registerProvider } from '../src/core/connections/index.js';
+import { simulatedMessages } from '../src/core/connections/providers/messages.js';
 import { dispatch, processDue, RETRY_MINUTES } from '../src/modules/messaging/dispatcher.js';
 import { OutboundMessage } from '../src/modules/messaging/models/connection.model.js';
 import { NotificationRule } from '../src/modules/messaging/models/messaging.model.js';
@@ -29,7 +31,12 @@ function fakeSmtp() {
 
 /** A real (not simulated) SMS provider for tests. */
 const smsSent: Array<{ to: string; text: string; secret?: string }> = [];
-registerSmsAdapter({ key: 'test-sms', label: 'Test provider', simulated: false, async send(m, config) { smsSent.push({ ...m, secret: config.secret }); return { providerRef: `t-${smsSent.length}`, simulated: false }; } });
+registerProvider({
+  kind: 'sms', key: 'test-sms', label: 'Test provider', fields: z.strictObject({ account: z.string().optional(), senderId: z.string().optional() }),
+  secrets: [{ key: 'apiKey', label: 'API key', required: true }],
+  test: async () => ({ ok: true, message: 'ready' }),
+  open: (ctx) => ({ async send(m) { smsSent.push({ to: m.to, text: m.text, secret: ctx.secret('apiKey') }); return { providerRef: `t-${smsSent.length}` }; } }),
+});
 
 let owner: Session;
 const as = (s: Session) => ({
@@ -39,9 +46,11 @@ const as = (s: Session) => ({
 });
 
 async function emailConnection(extra: Record<string, unknown> = {}) {
-  const res = await as(owner).post('/message-connections', {
-    code: `EM${Math.random().toString(36).slice(2, 7)}`, name: 'Company SMTP', channel: 'email', provider: 'smtp', enabled: true,
-    host: 'smtp.example.com', port: 587, user: 'fleet@example.com', from: 'Marichi Fleet <fleet@example.com>', secretEnv: 'MESSAGING_SMTP_PASS', ...extra,
+  const { settings, ...rest } = extra as { settings?: Record<string, unknown> };
+  const res = await as(owner).post('/connections', {
+    code: `EM${Math.random().toString(36).slice(2, 7)}`, name: 'Company SMTP', kind: 'email', provider: 'smtp', enabled: true,
+    settings: { host: 'smtp.example.com', port: 587, user: 'fleet@example.com', from: 'Marichi Fleet <fleet@example.com>', ...settings },
+    secrets: { password: 'MESSAGING_SMTP_PASS' }, ...rest,
   });
   assert.equal(res.status, 201, JSON.stringify(res.body));
   return res.body.data;
@@ -74,76 +83,80 @@ beforeEach(async () => {
 afterEach(() => { setSmtpTransportFactory(null); env.DRIVER_PHONE_SIMULATOR = true; });
 
 describe('connections', () => {
-  test('are checked per channel, and may only name messaging secrets', async () => {
-    const base = { code: 'C1', name: 'SMTP', channel: 'email', provider: 'smtp', host: 'smtp.example.com', from: 'Fleet <f@example.com>' };
-    for (const secretEnv of ['JWT_SECRET', 'MONGODB_URI', 'messaging_x', 'MESSAGING_']) {
-      const r = await as(owner).post('/message-connections', { ...base, user: 'u', secretEnv });
-      assert.equal(r.status, 422, `${secretEnv} was accepted`);
+  test('are checked against their provider, and may only name allowed secrets', async () => {
+    const settings = { host: 'smtp.example.com', from: 'Fleet <f@example.com>' };
+    const base = { code: 'C1', name: 'SMTP', kind: 'email', provider: 'smtp', settings };
+    for (const name of ['JWT_SECRET', 'MONGODB_URI', 'messaging_x', 'MESSAGING_', 'CONNECTION_']) {
+      const r = await as(owner).post('/connections', { ...base, settings: { ...settings, user: 'u' }, secrets: { password: name } });
+      assert.equal(r.status, 422, `${name} was accepted`);
     }
-    assert.equal((await as(owner).post('/message-connections', { ...base, user: 'u' })).status, 422, 'a user without a password setting');
-    assert.equal((await as(owner).post('/message-connections', { ...base, senderId: 'FLEET' })).status, 422, 'an SMS field on e-mail');
-    assert.equal((await as(owner).post('/message-connections', { ...base, provider: 'simulated' })).status, 422, 'an SMS provider on e-mail');
-    assert.equal((await as(owner).post('/message-connections', { ...base, from: undefined })).status, 422, 'no From address');
-    assert.equal((await as(owner).post('/message-connections', { code: 'S1', name: 'SMS', channel: 'sms', provider: 'nonesuch' })).status, 422);
-    assert.equal((await as(owner).post('/message-connections', { code: 'S1', name: 'SMS', channel: 'sms', provider: 'simulated', senderId: 'FLEET' })).status, 201);
+    assert.equal((await as(owner).post('/connections', { ...base, settings: { ...settings, senderId: 'FLEET' } })).status, 422, 'an SMS field on e-mail');
+    assert.equal((await as(owner).post('/connections', { ...base, secrets: { apiKey: 'MESSAGING_X' } })).status, 422, 'a secret the provider does not use');
+    assert.equal((await as(owner).post('/connections', { ...base, provider: 'twilio' })).status, 422, 'an SMS provider on e-mail');
+    assert.equal((await as(owner).post('/connections', { ...base, settings: { host: 'smtp.example.com' } })).status, 422, 'no From address');
+    assert.equal((await as(owner).post('/connections', { code: 'S1', name: 'SMS', kind: 'sms', provider: 'nonesuch' })).status, 422);
+    assert.equal((await as(owner).post('/connections', { code: 'S1', name: 'SMS', kind: 'sms', provider: 'twilio', settings: { accountSid: `AC${'0'.repeat(32)}`, from: '+15551234567' } })).status, 422, 'Twilio without its auth token');
+    assert.equal((await as(owner).post('/connections', { code: 'S1', name: 'SMS', kind: 'sms', provider: 'simulated', settings: { senderId: 'FLEET' } })).status, 201);
   });
 
   test('edit, archive, restore and delete like every master', async () => {
     const c = await emailConnection();
-    const edited = await as(owner).patch(`/message-connections/${c.id}`, { version: c.version, port: 465, secure: true }).expect(200);
-    assert.equal(edited.body.data.port, 465);
-    await as(owner).patch(`/message-connections/${c.id}`, { version: c.version, port: 25 }).expect(409);
-    await as(owner).post(`/message-connections/${c.id}/archive`, { reason: 'Moved to another provider' }).expect(200);
+    const edited = await as(owner).patch(`/connections/${c.id}`, { version: c.version, settings: { ...c.settings, port: 465, secure: true } }).expect(200);
+    assert.equal(edited.body.data.settings.port, 465);
+    await as(owner).patch(`/connections/${c.id}`, { version: c.version, settings: { ...c.settings, port: 25 } }).expect(409);
+    await as(owner).post(`/connections/${c.id}/archive`, { reason: 'Moved to another provider' }).expect(200);
     assert.equal((await as(owner).get('/message-channels')).body.data[0].via, 'simulated', 'an archived connection is not used');
-    await as(owner).post(`/message-connections/${c.id}/restore`).expect(200);
-    const history = await as(owner).get(`/message-connections/${c.id}/history`).expect(200);
+    await as(owner).post(`/connections/${c.id}/restore`).expect(200);
+    const history = await as(owner).get(`/connections/${c.id}/history`).expect(200);
     assert.ok(history.body.data.length >= 3);
-    await api().delete(`/api/v1/message-connections/${c.id}`).set(bearer(owner)).expect(204);
+    await api().delete(`/api/v1/connections/${c.id}`).set(bearer(owner)).expect(204);
   });
 
-  test('only one is switched on per channel', async () => {
+  test('only one is switched on per kind', async () => {
     await emailConnection();
-    const second = await as(owner).post('/message-connections', { code: 'C2', name: 'Other', channel: 'email', provider: 'smtp', enabled: true, host: 'mail.example.com', from: 'x@example.com' });
+    const settings = { host: 'mail.example.com', from: 'x@example.com' };
+    const second = await as(owner).post('/connections', { code: 'C2', name: 'Other', kind: 'email', provider: 'smtp', enabled: true, settings });
     assert.equal(second.status, 409);
-    await as(owner).post('/message-connections', { code: 'C3', name: 'Spare', channel: 'email', provider: 'smtp', enabled: false, host: 'mail.example.com', from: 'x@example.com' }).expect(201);
+    await as(owner).post('/connections', { code: 'C3', name: 'Spare', kind: 'email', provider: 'smtp', enabled: false, settings }).expect(201);
   });
 
   test('secrets never come back from the API', async () => {
     const created = await emailConnection();
-    assert.equal(created.secretEnv, 'MESSAGING_SMTP_PASS');
-    assert.equal(created.secretSet, true);
+    assert.deepEqual(created.secrets, { password: 'MESSAGING_SMTP_PASS' });
+    assert.deepEqual(created.secretsSet, { password: true });
     smtp.failures = 1;
-    await as(owner).post(`/message-connections/${created.id}/test`, { to: 'ops@example.com' }).expect(200);
-    for (const path of ['/message-connections', `/message-connections/${created.id}`, '/message-outbox', '/message-channels', `/message-connections/${created.id}/history`]) {
+    await as(owner).post(`/connections/${created.id}/test`, { to: 'ops@example.com' }).expect(200);
+    for (const path of ['/connections', `/connections/${created.id}`, '/message-outbox', '/message-channels', '/connection-kinds', `/connections/${created.id}/history`]) {
       const r = await as(owner).get(path).expect(200);
       assert.ok(!JSON.stringify(r.body).includes(SECRET), `${path} returned the password`);
     }
-    const after = await as(owner).get(`/message-connections/${created.id}`).expect(200);
-    assert.match(after.body.data.lastTest.error, /\[hidden\]/);
+    const after = await as(owner).get(`/connections/${created.id}`).expect(200);
+    assert.match(after.body.data.lastTest.message, /\[hidden\]/);
   });
 
   test('send a test message: sent, kept on the connection and in the outbox', async () => {
     const c = await emailConnection({ enabled: false });
-    const ok = await as(owner).post(`/message-connections/${c.id}/test`, { to: 'ops@example.com' }).expect(200);
+    const ok = await as(owner).post(`/connections/${c.id}/test`, { to: 'ops@example.com' }).expect(200);
     assert.equal(ok.body.data.ok, true);
     assert.equal(ok.body.data.status, 'sent');
     assert.equal(smtp.sent[0]!.to, 'ops@example.com');
     assert.equal(smtp.settings[0]!.pass, SECRET, 'the password comes from the environment');
-    const stored = (await as(owner).get(`/message-connections/${c.id}`)).body.data;
+    const stored = (await as(owner).get(`/connections/${c.id}`)).body.data;
     assert.equal(stored.lastTest.ok, true);
     assert.equal(stored.lastTest.to, 'ops@example.com');
 
     smtp.failures = 1;
-    const bad = await as(owner).post(`/message-connections/${c.id}/test`, { to: 'ops@example.com' }).expect(200);
+    const bad = await as(owner).post(`/connections/${c.id}/test`, { to: 'ops@example.com' }).expect(200);
     assert.equal(bad.body.data.ok, false);
     assert.equal(bad.body.data.message.status, 'failed', 'a test is one attempt, not retried');
-    await as(owner).post(`/message-connections/${c.id}/test`, { to: '+260971234567' }).expect(422);
+    await as(owner).post(`/connections/${c.id}/test`, { to: '+260971234567' }).expect(422);
+    await as(owner).post(`/connections/${c.id}/test`, {}).expect(422);
   });
 
   test('channel status says where each channel sends', async () => {
     let status = (await as(owner).get('/message-channels').expect(200)).body.data;
     assert.deepEqual(status.map((c: { via: string }) => c.via), ['simulated', 'simulated', 'simulated']);
-    assert.deepEqual(status[0].providers.map((p: { key: string }) => p.key), ['smtp']);
+    assert.ok(status[0].providers.some((p: { key: string }) => p.key === 'smtp'));
     assert.ok(status[1].providers.some((p: { key: string; simulated: boolean }) => p.key === 'simulated' && p.simulated));
     // Reasons are for the office: they never name a server setting.
     for (const c of status) assert.doesNotMatch(c.simulated, /[A-Z]{2,}_[A-Z_]+|#\d+/, `${c.channel}: ${c.simulated}`);
@@ -190,7 +203,7 @@ describe('dispatching', () => {
     await loadSample(owner);
     await NotificationRule.deleteMany({ isDefault: true }); // only this test's rules (the defaults have their own tests)
     const driver = await find(owner, 'drivers', 'Joseph');
-    await as(owner).post('/message-connections', { code: 'SMS', name: 'SMS', channel: 'sms', provider: 'test-sms', enabled: true, user: 'marichi', senderId: 'MARICHI', secretEnv: 'MESSAGING_SMS_KEY' }).expect(201);
+    await as(owner).post('/connections', { code: 'SMS', name: 'SMS', kind: 'sms', provider: 'test-sms', enabled: true, settings: { account: 'marichi', senderId: 'MARICHI' }, secrets: { apiKey: 'MESSAGING_SMS_KEY' } }).expect(201);
     await dispatchRule();
     const out = await dispatch({ event: 'trip.dispatched', driverId: driver.id, variables: { 'trip.number': 'T2' } });
     const sms = out.find((m) => m.channel === 'sms' && m.toName === 'Joseph Mwansa')!;
@@ -204,12 +217,12 @@ describe('dispatching', () => {
     await loadSample(owner);
     await NotificationRule.deleteMany({ isDefault: true }); // only this test's rules (the defaults have their own tests)
     const driver = await find(owner, 'drivers', 'Joseph');
-    await as(owner).post('/message-connections', { code: 'SMS', name: 'SMS', channel: 'sms', provider: 'simulated', enabled: true }).expect(201);
+    await as(owner).post('/connections', { code: 'SMS', name: 'SMS', kind: 'sms', provider: 'simulated', enabled: true }).expect(201);
     await dispatchRule();
-    const before = simulatedSms().length;
+    const before = simulatedMessages().length;
     const out = await dispatch({ event: 'trip.dispatched', driverId: driver.id, variables: { 'trip.number': 'T3' } });
     assert.equal(out.find((m) => m.channel === 'sms' && m.toName === 'Joseph Mwansa')!.status, 'simulated');
-    assert.equal(simulatedSms().length, before + 1);
+    assert.equal(simulatedMessages().length, before + 1);
   });
 
   test('a failed send retries with back-off, then is marked failed', async () => {
@@ -241,7 +254,7 @@ describe('dispatching', () => {
     const failed = await OutboundMessage.findById(second!.id).lean();
     assert.equal(failed!.status, 'failed');
     assert.equal(failed!.attempts, RETRY_MINUTES.length);
-    const connection = (await as(owner).get('/message-connections')).body.data[0];
+    const connection = (await as(owner).get('/connections')).body.data[0];
     assert.match(connection.lastError.message, /535/);
   });
 

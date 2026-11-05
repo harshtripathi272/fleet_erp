@@ -74,6 +74,20 @@ if [ -n "${RATE_FEED_API_KEY:-}" ]; then
 elif exists gcloud secrets describe "$COMPANY-rate-feed-key" --project "$PROJECT_ID"; then
   secrets="$secrets,RATE_FEED_API_KEY=$COMPANY-rate-feed-key:latest"
 fi
+# Connections' secrets (#59): each CONNECTION_* variable in the environment goes to Secret Manager as
+# <company>-connection-<name> (CONNECTION_TWILIO_TOKEN → acme-connection-twilio-token), and each one
+# stored on an earlier run is mounted again, so a re-run never drops a connection's key.
+connection_secrets=()
+for var in $(compgen -e | grep -E '^CONNECTION_[A-Z0-9_]{1,50}$' || true); do
+  put_secret "$COMPANY-connection-$(printf '%s' "${var#CONNECTION_}" | tr 'A-Z_' 'a-z-')" "${!var}"
+  connection_secrets+=("$var")
+done
+for stored in $(capture "" gcloud secrets list --project "$PROJECT_ID" --filter "name~^projects/.*/secrets/$COMPANY-connection-" --format 'value(name.basename())'); do
+  connection_secrets+=("CONNECTION_$(printf '%s' "${stored#"$COMPANY-connection-"}" | tr 'a-z-' 'A-Z_')")
+done
+for var in $(printf '%s\n' "${connection_secrets[@]}" | sort -u); do
+  secrets="$secrets,$var=$COMPANY-connection-$(printf '%s' "${var#CONNECTION_}" | tr 'A-Z_' 'a-z-'):latest"
+done
 
 egress_flags=()
 if [ "$EGRESS" = static ]; then
@@ -145,22 +159,30 @@ run gcloud scheduler jobs "$schedule_verb" http "$RATES_JOB-hourly" --project "$
   --uri "https://run.googleapis.com/v2/projects/$PROJECT_ID/locations/$REGION/jobs/$RATES_JOB:run" \
   --oauth-service-account-email "$SA_EMAIL" --oauth-token-scope https://www.googleapis.com/auth/cloud-platform
 
+# Work the service would do on a timer if it stayed awake. It scales to zero when idle, so a scheduler starts these.
+scheduled_job() {
+  local job="$1" script="$2" trigger="$3" schedule="$4"
+  run gcloud run jobs deploy "$job" --project "$PROJECT_ID" --region "$REGION" \
+    --image "$IMAGE" --service-account "$SA_EMAIL" \
+    --env-vars-file "$env_file" --set-secrets "$secrets" \
+    --command node --args "$script" \
+    --tasks 1 --max-retries 0 --task-timeout 300s --cpu 1 --memory 512Mi \
+    "${egress_flags[@]}"
+  run gcloud run jobs add-iam-policy-binding "$job" --project "$PROJECT_ID" --region "$REGION" \
+    --member "serviceAccount:$SA_EMAIL" --role roles/run.invoker --quiet
+  local verb=create
+  if exists gcloud scheduler jobs describe "$trigger" --location "$SCHEDULER_REGION" --project "$PROJECT_ID"; then verb=update; fi
+  run gcloud scheduler jobs "$verb" http "$trigger" --project "$PROJECT_ID" --location "$SCHEDULER_REGION" \
+    --schedule "$schedule" --time-zone UTC --http-method POST \
+    --uri "https://run.googleapis.com/v2/projects/$PROJECT_ID/locations/$REGION/jobs/$job:run" \
+    --oauth-service-account-email "$SA_EMAIL" --oauth-token-scope https://www.googleapis.com/auth/cloud-platform
+}
+
 say "Approval escalation: Cloud Run job $ESCALATION_JOB, started every 15 minutes by Cloud Scheduler ($SCHEDULER_REGION)"
-# The service scales to zero when idle, so requests waiting overnight need a scheduler to move them up.
-run gcloud run jobs deploy "$ESCALATION_JOB" --project "$PROJECT_ID" --region "$REGION" \
-  --image "$IMAGE" --service-account "$SA_EMAIL" \
-  --env-vars-file "$env_file" --set-secrets "$secrets" \
-  --command node --args dist/jobs/escalate.js \
-  --tasks 1 --max-retries 0 --task-timeout 300s --cpu 1 --memory 512Mi \
-  "${egress_flags[@]}"
-run gcloud run jobs add-iam-policy-binding "$ESCALATION_JOB" --project "$PROJECT_ID" --region "$REGION" \
-  --member "serviceAccount:$SA_EMAIL" --role roles/run.invoker --quiet
-schedule_verb=create
-if exists gcloud scheduler jobs describe "$ESCALATION_JOB-15min" --location "$SCHEDULER_REGION" --project "$PROJECT_ID"; then schedule_verb=update; fi
-run gcloud scheduler jobs "$schedule_verb" http "$ESCALATION_JOB-15min" --project "$PROJECT_ID" --location "$SCHEDULER_REGION" \
-  --schedule "*/15 * * * *" --time-zone UTC --http-method POST \
-  --uri "https://run.googleapis.com/v2/projects/$PROJECT_ID/locations/$REGION/jobs/$ESCALATION_JOB:run" \
-  --oauth-service-account-email "$SA_EMAIL" --oauth-token-scope https://www.googleapis.com/auth/cloud-platform
+scheduled_job "$ESCALATION_JOB" dist/jobs/escalate.js "$ESCALATION_JOB-15min" "*/15 * * * *"
+
+say "Service reminders: Cloud Run job $REMINDERS_JOB, started every hour by Cloud Scheduler ($SCHEDULER_REGION)"
+scheduled_job "$REMINDERS_JOB" dist/jobs/serviceReminders.js "$REMINDERS_JOB-hourly" "20 * * * *"
 
 dns=""
 if [ "$DOMAIN_MODE" = lb ]; then
