@@ -629,6 +629,7 @@ function RequestRow({ request }: { request: FundRequest }) {
             <span className="mono">{request.no}</span>
             {request.medium ? ` · ${[request.medium, request.reference].filter(Boolean).join(" ")}` : ""}
             {request.reason ? ` · ${request.reason}` : ""}
+            {request.movedUpFrom ? ` · ${request.movedUpFrom} did not decide in time` : ""}
           </span>
         </div>
         <Status tone={tone}>{label}</Status>
@@ -1559,6 +1560,7 @@ function SettlePanel({ trip }: { trip: Trip }) {
                 </strong>
                 <span className="muted">
                   <span className="mono">{e.no}</span> · {stamp(e.at)}
+                  {e.movedUpFrom ? ` · ${e.movedUpFrom} did not decide in time` : ""}
                 </span>
               </div>
               {e.status === "pending" && e.mayDecide ? (

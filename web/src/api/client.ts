@@ -22,7 +22,7 @@ export interface Page<T> {
   meta: { page: number; limit: number; total: number; totalPages: number; hasNextPage: boolean };
 }
 
-const KEY = "marichi.fleet.session";
+const KEY = "fleet.fleet.session";
 const listeners = new Set<() => void>();
 
 function read(): Tokens | null {

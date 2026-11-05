@@ -41,13 +41,22 @@ export function serverSmtp(): SmtpSettings | null {
   return { host: env.SMTP_HOST, port: env.SMTP_PORT, secure: env.SMTP_SECURE, user: env.SMTP_USER, pass: env.SMTP_PASS, from: env.SMTP_FROM };
 }
 
+/**
+ * The name e-mails come from (#71): the company's brand, supplied by the company module so this core does not
+ * depend on it. The address stays the configured one; only the name people see changes.
+ */
+let senderName: () => Promise<string | undefined> = async () => undefined;
+export const setSenderName = (fn: () => Promise<string | undefined>) => { senderName = fn; };
+const withName = (from: string, name: string) => `"${name.replace(/["\\]/g, '')}" <${(from.match(/<([^>]+)>/)?.[1] ?? from).trim()}>`;
+
 /** Sends one message over the given SMTP server. Throws when the server refuses it. */
 export async function sendOverSmtp(settings: SmtpSettings, message: MailMessage): Promise<{ providerRef?: string }> {
   const key = JSON.stringify([settings.host, settings.port, settings.secure, settings.user, settings.pass]);
   let transport = transports.get(key);
   if (!transport) { transport = factory(settings); transports.set(key, transport); }
+  const name = await senderName().catch(() => undefined);
   const info = await transport.sendMail({
-    from: settings.from, to: message.to, subject: message.subject, text: message.text, html: message.html, attachments: message.attachments,
+    from: name ? withName(settings.from, name) : settings.from, to: message.to, subject: message.subject, text: message.text, html: message.html, attachments: message.attachments,
   }) as { messageId?: string } | undefined;
   return { providerRef: info?.messageId };
 }

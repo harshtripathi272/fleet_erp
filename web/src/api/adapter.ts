@@ -74,6 +74,7 @@ function mayDecideFinal(me: Reference["me"], approval?: Rec) {
   return mayDecide(me, { levels: [last], current: 0 });
 }
 const waitingLabel = (approval?: Rec) => approval?.levels?.[approval.current ?? 0]?.label as string | undefined;
+const movedUpFrom = (approval?: Rec) => (approval?.levels as Rec[] | undefined)?.filter((l) => l.escalatedAt).at(-1)?.label as string | undefined;
 const positive = (...values: unknown[]) => values.find((v): v is number => typeof v === "number" && v > 0);
 const via = (v?: string): Decision["via"] => (v === "whatsapp" ? "WhatsApp" : "app");
 const CHANNEL: Record<string, DriverDoc["channel"]> = { whatsapp: "WhatsApp", app: "App", operations: "Operations" };
@@ -211,6 +212,7 @@ export function toAppData(ref: Reference, ops: Operations): AppData {
     status: r.status === "pending" && (r.approval?.current ?? 0) > 0 ? "owner" : r.status,
     waitingOn: r.status === "pending" ? waitingLabel(r.approval) : undefined,
     mayDecide: r.status === "pending" ? mayDecide(ref.me, r.approval) : undefined,
+    movedUpFrom: r.status === "pending" ? movedUpFrom(r.approval) : undefined,
     level: r.approval?.levels?.length > 1 ? { current: (r.approval.current ?? 0) + 1, of: r.approval.levels.length } : undefined,
     trail: (r.trail ?? []).map((d: Rec) => ({ role: d.desk === "viewer" ? "operations" : d.desk, what: d.what, at: d.at, note: d.note, via: via(d.via) })),
     medium: r.medium, reference: r.reference, station: r.station, issuedAt: r.issuedAt,
@@ -244,6 +246,7 @@ export function toAppData(ref: Reference, ops: Operations): AppData {
     amount: toMajor(e.amount?.amountMinor, e.amount?.currencyId), currency: codeOf(e.amount?.currencyId), amountZmw: baseMajor(e.baseAmountMinor),
     receiptNo: e.receiptNo, docId: e.docId, note: e.note, status: e.status,
     waitingOn: e.status === "pending" ? waitingLabel(e.approval) : undefined, mayDecide: e.status === "pending" ? mayDecide(ref.me, e.approval) : undefined,
+    movedUpFrom: e.status === "pending" ? movedUpFrom(e.approval) : undefined,
     recordedBy: e.recordedByDesk === "viewer" ? "operations" : e.recordedByDesk,
     decidedAt: e.decidedAt, reason: e.reason, at: e.at,
   })).sort((a, b) => a.at.localeCompare(b.at));
@@ -276,7 +279,7 @@ export function toAppData(ref: Reference, ops: Operations): AppData {
   return {
     version: 4,
     settings: {
-      company: ref.company?.tradingName ?? ref.company?.legalName ?? "Marichi Fleet",
+      company: ref.company?.brand?.productName ?? ref.company?.tradingName ?? ref.company?.legalName ?? "",
       office: hq?.name ?? "",
       officeAddress: hq?.address
         ? [hq.address.line1, hq.address.line2, cities.get(String(hq.address.cityId))?.name].filter(Boolean).join(", ")
