@@ -56,8 +56,9 @@ app.use(rejectOperators);
 if (env.CONSOLE_ENABLED) {
   app.use('/console', express.static(fileURLToPath(new URL('../public/console', import.meta.url)), { index: 'index.html', maxAge: 0 }));
   app.use('/api/v1/meta', publicMetaRouter);
-  app.use('/api/v1/brand', brandRouter);
 }
+// The company's brand, without a session: the sign-in page needs it, so it is served with or without the console.
+app.use('/api/v1/brand', brandRouter);
 
 app.use('/api/v1/health', healthRouter);
 app.use('/api/v1/auth', authRouter);
