@@ -16,6 +16,7 @@ import { ImportDialog } from "./ImportDialog";
 import { CompanySetup, useReadiness } from "./CompanySetup";
 import MessagingSettings from "../settings/MessagingSettings";
 import ConnectionsSettings from "../settings/ConnectionsSettings";
+import CompanyKit from "../setup/CompanyKit";
 import { AUDIT_VIEW, choiceName, fieldName, fieldTitle, label, short, shown, singular, wantsAuditLog } from "./history";
 import { AuditLog } from "./AuditLog";
 import { Customise } from "./Customise";
@@ -110,6 +111,7 @@ export function MastersScreen({ initialEntity }: { initialEntity?: string }) {
           const pages = [
             { key: "setup", label: "Set up the company", badge: readiness.data?.missing.length ?? 0, show: can(me, "company", "read") },
             { key: "company", label: "Company", show: can(me, "company", "read") },
+            { key: "kit", label: "Company kit", show: can(me, "company", "update") },
             { key: "messaging", label: "Sending messages", show: can(me, "connections", "read") },
             { key: AUDIT_VIEW, label: "Audit log", show: can(me, "audit-logs", "read") },
           ].filter((p) => p.show && (!filter || p.label.toLowerCase().includes(filter.toLowerCase())));
@@ -145,6 +147,7 @@ export function MastersScreen({ initialEntity }: { initialEntity?: string }) {
         <button className="masters-back link-btn" onClick={() => { setBrowsing(true); window.scrollTo({ top: 0 }); }}><ChevronLeft size={16} /> All masters</button>
         {selected === "setup" ? <CompanySetup defs={defs} onOpen={(key) => setSelected(key)} />
           : selected === "company" ? <CompanyPanel />
+          : selected === "kit" && can(me, "company", "update") ? <CompanyKit />
           : selected === "messaging" ? <MessagingSettings onOpenConnections={() => setSelected("connections")} />
           : selected === "connections" && can(me, "connections", "read") ? <ConnectionsSettings />
           : selected === AUDIT_VIEW && can(me, "audit-logs", "read") ? <AuditLog onOpen={(entity, id) => setSelected(entity, id)} />
