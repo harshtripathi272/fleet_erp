@@ -14,4 +14,4 @@ export function useAreas() {
 }
 
 /** What each desk view needs switched on. Views not listed need nothing beyond the masters. */
-export const VIEW_AREA: Record<string, string> = { trips: "trips", nominations: "trips", accounts: "finance", today: "finance", driver: "driver-app" };
+export const VIEW_AREA: Record<string, string> = { trips: "trips", nominations: "trips", accounts: "finance", today: "finance", billing: "billing", driver: "driver-app" };

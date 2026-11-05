@@ -12,6 +12,7 @@ import { DriverAccess } from "./DriverAccess";
 import { UserAccess } from "./UserAccess";
 import { PermissionMatrix } from "./PermissionMatrix";
 import { RateFeed } from "./RateFeed";
+import { MoneySettings } from "../billing/MoneySettings";
 import { ImportDialog } from "./ImportDialog";
 import { CompanySetup, useReadiness } from "./CompanySetup";
 import MessagingSettings from "../settings/MessagingSettings";
@@ -189,6 +190,7 @@ function Records({ def, defs, openId }: { def: Def; defs: Def[]; openId?: string
         </div>
       </header>
       {def.key === "exchange-rates" && <RateFeed />}
+      {def.key === "exchange-rates" && <MoneySettings billing={false} />}
       {importing && <ImportDialog master={def.key} label={def.label} onClose={() => setImporting(false)} />}
       <div className="desk-tools">
         <label className="search">
