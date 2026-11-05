@@ -18,7 +18,7 @@ import { Trip } from './models/trip.model.js';
 import type * as S from './operations.schema.js';
 import { statementPdf as settlementStatementPdf } from './printouts.js';
 import { baseCurrency, currencyInfo, driverThread, formatMoney, log, save, type OpsContext } from './support.js';
-import { arriveAtStop, partyName, placeName, plateOf, trailerPlate } from './trips.service.js';
+import { arriveAtStop, partyName, placeName, plateOf, trailerPlate, driverTripNow } from './trips.service.js';
 import { words } from '../company/workspace.js';
 
 /**
@@ -137,9 +137,9 @@ export async function messages(actor: DriverActor, since?: string) {
   }));
 }
 
-/** A photo, a PDF or a message from the driver, filed on the open trip. */
+/** A photo, a PDF or a message from the driver, filed on the open trip, or the last one not yet settled (#92). */
 export async function send(actor: DriverActor, input: S.DriverSendInput) {
-  const trip = await ownTrip(actor.driverId);
+  const trip = await driverTripNow(actor.driverId);
   return sendDocument({
     driverId: actor.driverId, tripId: trip ? String(trip._id) : undefined, kind: input.kind, note: input.note,
     file: input.fileId ? { fileId: input.fileId } : undefined, reading: input.reading, channel: 'app',

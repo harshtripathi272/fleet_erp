@@ -11,7 +11,7 @@ import {
   activeRecord, baseCurrency, conflict, currencyInfo, driverThread, formatMoney, litres, loadOr404, log, need, nextNumber,
   post, present, queue, refuse, resolve, save, toBase, type MessageButton, type OpsContext, type Via,
 } from './support.js';
-import { activeTrip, driverName, fundingFor, plateOf, routeLabel, setVehicleState, truckFacts } from './trips.service.js';
+import { activeTrip, driverName, fuelInTank, fundingFor, plateOf, routeLabel, setVehicleState, truckFacts } from './trips.service.js';
 import type * as S from './operations.schema.js';
 
 /* ---------- Message parts ---------- */
@@ -232,7 +232,7 @@ export async function issueRequest(id: string, input: S.IssueInput, ctx: OpsCont
   const truck = await truckFacts(trip.vehicleId, false);
   if (kind === 'fuel') {
     const litresIssued = Number(request.get('litres'));
-    if (truck.tankL && truck.fuelL + litresIssued > truck.tankL) throw refuse(`The tank holds ${litres(truck.tankL)}.`);
+    if (truck.tankL && fuelInTank(trip, truck) + litresIssued > truck.tankL) throw refuse(`The tank holds ${litres(truck.tankL)}.`);
   } else {
     const amount = request.get('amount');
     const { baseMinor, rate } = await toBase(amount.amountMinor, amount.currencyId, at);

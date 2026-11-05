@@ -400,7 +400,7 @@ export function funding(data: AppData, trip: Trip) {
   const fuelOpen = sum("fuel", ["pending", "owner", "approved"]);
   const fuelBaseline = trip.openingFuelL;
   // A truck with no tank size recorded has no limit, as on the server.
-  const room = truck.tankL ? Math.max(0, truck.tankL - truck.fuelL - fuelOpen) : Infinity;
+  const room = truck.tankL ? Math.max(0, truck.tankL - fuelNow(data, trip) - fuelOpen) : Infinity;
   // Never suggest more than the tank takes; a longer route is topped up on the way.
   const fuelSuggested = Math.min(room, Math.max(0, Math.ceil(trip.fuelBudgetL - fuelBaseline - fuelIssued - fuelOpen)));
   const holds = carriedIn(data, trip);
