@@ -49,7 +49,7 @@ export const branchDefinition = defineMaster({
 
 /* ---------- Numbering series ---------- */
 
-export const DOCUMENT_SERIES = ['trips', 'fund-requests', 'expenses', 'settlements', 'invoices', 'nominations', 'consignments'];
+export const DOCUMENT_SERIES = ['trips', 'fund-requests', 'expenses', 'settlements', 'invoices', 'credit-notes', 'payments-received', 'nominations', 'consignments'];
 const TOKEN = /\{(PREFIX|YYYY|YY|MM|BR|SEQ)\}/g;
 
 export function seriesEntities(): string[] {

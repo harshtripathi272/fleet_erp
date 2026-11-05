@@ -15,7 +15,7 @@ export const AREAS = [
   { key: 'maintenance', name: 'Maintenance', description: 'Service plans, what is due on each truck, work orders, and what each truck costs to keep on the road.', state: 'early', defaultOn: false },
   { key: 'parts', name: 'Parts', description: 'Inside Maintenance: the parts used on each work order, with their costs.', state: 'early', defaultOn: false, within: 'maintenance' },
   { key: 'tyres', name: 'Tyres', description: 'Inside Maintenance: tyres fitted, rotated and replaced on each truck, by position and odometer.', state: 'early', defaultOn: false, within: 'maintenance' },
-  { key: 'billing', name: 'Billing', description: 'Customer rates, invoices, payments received and exchange gain or loss.', state: 'not-built', defaultOn: false },
+  { key: 'billing', name: 'Billing', description: 'Customer rates, invoices, payments received and exchange gain or loss.', state: 'early', defaultOn: false },
   { key: 'customer-portal', name: 'Customer portal', description: 'Customers sign in to follow their own loads, delivery proof and invoices.', state: 'not-built', defaultOn: false },
 ] as const satisfies readonly Area[];
 

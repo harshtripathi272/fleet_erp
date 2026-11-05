@@ -20,6 +20,7 @@ import {
   TriangleAlert,
   Wallet,
   X,
+  Receipt,
 } from "lucide-react";
 import { AppProvider, useApp, useSharedData } from "./store";
 import type { Overlay, Toast } from "./store";
@@ -41,6 +42,7 @@ import { wantsAuditLog } from "./masters/history";
 // Each screen is its own download, fetched the first time it's opened; the map only when a map is opened.
 const TripsPage = lazy(() => import("./desks/Trips").then((m) => ({ default: m.TripsPage })));
 const FinanceToday = lazy(() => import("./desks/Finance").then((m) => ({ default: m.FinanceToday })));
+const Billing = lazy(() => import("./billing/Billing").then((m) => ({ default: m.Billing })));
 const Accounts = lazy(() => import("./desks/Accounts").then((m) => ({ default: m.Accounts })));
 const Nominations = lazy(() => import("./desks/Nominations").then((m) => ({ default: m.Nominations })));
 const Maintenance = lazy(() => import("./desks/Maintenance").then((m) => ({ default: m.Maintenance })));
@@ -49,7 +51,7 @@ const Overview = lazy(() => import("./desks/Overview").then((m) => ({ default: m
 const DriverDesk = lazy(() => import("./desks/DriverDesk").then((m) => ({ default: m.DriverDesk })));
 const Tracking = lazy(() => import("./tracking/Tracking"));
 
-type View = "overview" | "today" | "trips" | "nominations" | "accounts" | "maintenance" | "masters" | "driver";
+type View = "overview" | "today" | "trips" | "nominations" | "accounts" | "billing" | "maintenance" | "masters" | "driver";
 interface Session {
   role?: Role;
   driverId?: string;
@@ -90,6 +92,7 @@ const NAV: Record<Role, { id: View; label: string; short?: string; icon: typeof 
     { id: "today", label: "Approvals", icon: Inbox },
     { id: "trips", label: "Trips", icon: Truck },
     { id: "accounts", label: "Settlements", icon: Wallet },
+    { id: "billing", label: "Billing", icon: Receipt },
     { id: "masters", label: "Masters", icon: Settings2 },
   ],
   owner: [
@@ -98,6 +101,7 @@ const NAV: Record<Role, { id: View; label: string; short?: string; icon: typeof 
     { id: "nominations", label: "Nominations", icon: ClipboardList },
     { id: "accounts", label: "Driver accounts", short: "Accounts", icon: Wallet },
     { id: "maintenance", label: "Maintenance", icon: Wrench },
+    { id: "billing", label: "Billing", icon: Receipt },
     { id: "masters", label: "Masters", icon: Settings2 },
   ],
   driver: [{ id: "driver", label: "My trip", icon: Truck }],
@@ -238,6 +242,7 @@ export default function Desks({ me }: { me: Me }) {
             {view === "accounts" && (
               <Accounts driverId={session.accountDriverId} onDriver={(id) => setSession({ accountDriverId: id })} />
             )}
+            {view === "billing" && <Billing />}
             {view === "maintenance" && <Maintenance />}
             {view === "masters" && <MastersScreen key={`${session.masterEntity || "masters"}-${masterId ?? ""}`} initialEntity={session.masterEntity} initialId={masterId} />}
             {view === "driver" && <DriverDesk />}
