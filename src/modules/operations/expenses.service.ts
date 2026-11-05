@@ -28,6 +28,23 @@ export async function getExpense(id: string) {
   return present(doc);
 }
 
+/** Asks the level now waiting to decide an expense, with what it needs to see. */
+export async function askExpenseLevel(expense: Plain, text: string, ctx: OpsContext, at: Date) {
+  const id = String(expense._id);
+  const category = await ExpenseCategory.findById(expense.categoryId).select('name').lean();
+  const amount = expense.amount as { amountMinor: number; currencyId: unknown };
+  const trip = expense.tripId ? await Trip.findById(expense.tripId).select('number').lean() : null;
+  await notifyLevel(waitingOn(expense.approval as Approval)!, at, {
+    title: `Expense ${expense.number}`, text,
+    rows: [['Type', String(category?.name ?? 'Expense')], ['Amount', formatMoney(amount.amountMinor, await currencyInfo(amount.currencyId))], ['Trip', String(trip?.number ?? '—')]],
+    buttons: [
+      { label: 'Approve', tone: 'primary', action: { type: 'expense.decide', id, approve: true, via: 'whatsapp' } },
+      { label: 'Reject', tone: 'danger', action: { type: 'expense.decide', id, approve: false, via: 'whatsapp' } },
+    ],
+    refId: id,
+  }, ctx, 'expenses');
+}
+
 /**
  * A trip cost against a driver, approved through the company's expense approval policy. Whoever records
  * it approves the levels they are entitled to; the rest go to the next approver.
@@ -67,15 +84,7 @@ export async function recordExpense(input: S.ExpenseInput, ctx: OpsContext) {
   if (approved) {
     await post(driverThread(driver._id), at, { title: 'Expense approved', text: `${category.name} ${amount}${trip ? ` on ${trip.number}` : ''}. It's off your balance.` }, ctx);
   } else {
-    await notifyLevel(waitingOn(approval)!, at, {
-      title: `Expense ${number}`, text: `${ctx.name} recorded this for ${driver.name}.`,
-      rows: [['Type', String(category.name)], ['Amount', amount], ['Trip', String(trip?.number ?? '—')]],
-      buttons: [
-        { label: 'Approve', tone: 'primary', action: { type: 'expense.decide', id: String(expense._id), approve: true, via: 'whatsapp' } },
-        { label: 'Reject', tone: 'danger', action: { type: 'expense.decide', id: String(expense._id), approve: false, via: 'whatsapp' } },
-      ],
-      refId: String(expense._id),
-    }, ctx);
+    await askExpenseLevel(expense.toObject() as Plain, `${ctx.name} recorded this for ${driver.name}.`, ctx, at);
   }
   await log(ctx, at, `${approved ? 'Approved' : 'Recorded'} ${category.name} ${amount} (${number})`, { tripId: trip?._id, entity: 'expenses', entityId: expense._id });
   // One message per step: an expense approved as it is recorded says "approved", not also "submitted".
@@ -101,14 +110,7 @@ export async function decideExpense(id: string, input: S.ExpenseDecisionInput, c
   await save(expense);
   await resolve(id, input.approve ? (done ? 'Approved' : `Approved · next: ${waitingOn(approval)!.label}`) : 'Rejected');
   if (!done) {
-    await notifyLevel(waitingOn(approval)!, at, {
-      title: `Expense ${expense.get('number')}`, text: `Level ${approval.current + 1} of ${approval.levels.length}.`,
-      buttons: [
-        { label: 'Approve', tone: 'primary', action: { type: 'expense.decide', id, approve: true, via: 'whatsapp' } },
-        { label: 'Reject', tone: 'danger', action: { type: 'expense.decide', id, approve: false, via: 'whatsapp' } },
-      ],
-      refId: id,
-    }, ctx);
+    await askExpenseLevel(expense.toObject() as Plain, `Level ${approval.current + 1} of ${approval.levels.length}.`, ctx, at);
     return present(expense.toObject());
   }
   const category = String((await ExpenseCategory.findById(expense.get('categoryId')).select('name').lean())?.name ?? 'Expense');

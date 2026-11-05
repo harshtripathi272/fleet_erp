@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useBrand } from "../ui/brand";
 import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "motion/react";
 import { useApp } from "../store";
@@ -8,8 +9,9 @@ import { Device } from "./Device";
 import { BotAvatar, unreadIn, WhatsApp } from "./WhatsApp";
 import type { ThreadInfo } from "./WhatsApp";
 
-export function deskThreads(data: ReturnType<typeof useApp>["data"], role: Desk): ThreadInfo[] {
-  const threads: ThreadInfo[] = [{ key: role, name: "Marichi Fleet", status: "Business account", avatar: <BotAvatar /> }];
+/** `botName` is the company's product name: the business account the threads talk to. */
+export function deskThreads(data: ReturnType<typeof useApp>["data"], role: Desk, botName: string): ThreadInfo[] {
+  const threads: ThreadInfo[] = [{ key: role, name: botName, status: "Business account", avatar: <BotAvatar /> }];
   if (role === "operations")
     for (const c of data.customers)
       if (data.messages.some((m) => m.thread === `customer:${c.id}`))
@@ -20,7 +22,8 @@ export function deskThreads(data: ReturnType<typeof useApp>["data"], role: Desk)
 /** The desk phone rises from the corner, tilts into place and stays out of the way. */
 export function DeskPhone() {
   const { data, role, overlay, setOverlay } = useApp();
-  const threads = useMemo(() => deskThreads(data, role as Desk), [data, role]);
+  const brand = useBrand();
+  const threads = useMemo(() => deskThreads(data, role as Desk, brand.productName), [data, role, brand.productName]);
   const close = () => setOverlay({ ...overlay, phone: false });
   useEffect(() => {
     if (!overlay.phone) return;
@@ -53,6 +56,7 @@ export function DeskPhone() {
 
 /** A notification banner for new messages while the phone is down. */
 export function MessageBanner() {
+  const brand = useBrand();
   const { data, role, overlay, setOverlay } = useApp();
   const mine = (m: Message) => m.thread === role && m.from === "bot";
   const lastSeen = useRef<string | null>(null);
@@ -98,7 +102,7 @@ export function MessageBanner() {
           </span>
           <span className="banner-text">
             <span className="banner-top">
-              <strong>Marichi Fleet</strong>
+              <strong>{brand.productName}</strong>
               <span>now</span>
             </span>
             <b>{shown.title ?? "New message"}</b>

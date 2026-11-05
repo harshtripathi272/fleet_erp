@@ -186,8 +186,8 @@ export const approvalPolicyDefinition = defineMaster({
   choiceLabels: { 'levels.channels': { app: 'In the app', whatsapp: 'WhatsApp', sms: 'SMS', email: 'E-mail' } },
   hints: {
     'levels.minAmountMinor': 'The level applies to requests from this amount (or these litres) up. Level 1 usually starts at 0.',
-    'levels.escalateAfterHours': 'Kept for escalation, which is not built yet: today a request waits at its level until someone decides.',
-    'levels.channels': 'Approvers always see a waiting request in the app; WhatsApp also sends them Approve and Reject buttons. SMS and e-mail are not sent for approvals yet.',
+    'levels.escalateAfterHours': 'If nobody at this level decides a fuel request, advance or expense within these hours, it moves to the next level up, and that level is told. Nights and weekends count. Empty: it waits here until someone decides.',
+    'levels.channels': 'Approvers always see a waiting request in the app. WhatsApp also sends them Approve and Reject buttons; SMS and e-mail tell them to open the app, and go out through the connections under Sending messages.',
   },
   labels: { 'levels.minAmountMinor': 'Applies from', 'levels.measure': 'Measured in', 'levels.escalateAfterHours': 'Escalate after (hours)', 'levels.approverUserId': 'Approver (a person instead of a role)' },
   filters: { subject: { schema: z.enum(APPROVAL_SUBJECTS), apply: (v: string) => ({ subject: v }), description: 'What is being approved' } },
