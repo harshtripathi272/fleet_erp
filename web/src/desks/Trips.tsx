@@ -17,15 +17,17 @@ import { useApp } from "../store";
 import { useMay } from "../api/session";
 import { useMine } from "./mine";
 import { byId, tripKm } from "../domain/calc";
-import { placeName, routeLabel } from "../domain/helpers";
-import { ACTOR_NAME, nextStep, STAGES, stageIndex, stageTimes } from "../domain/turn";
+import { activeTrip, placeName, routeLabel } from "../domain/helpers";
+import { ACTOR_NAME, nextStep, stageIndex, stageTimes, visibleStages } from "../domain/turn";
 import type { Move, NextStep, StageId } from "../domain/turn";
 import type { Action, Desk, Trip } from "../domain/types";
 import { Avatar, Button, Empty, Field, Modal, Segmented } from "../ui/kit";
 import { ago, day, hm, km, stamp } from "../ui/format";
+import { CantDeliver, UndeliveredNote } from "./CantDeliver";
 import { NewTrip } from "./NewTrip";
 import { DriverMessages, StagePanel } from "./stages";
 import { TripAside } from "./TripAside";
+import { w, wl } from "../domain/words";
 
 type Filter = "mine" | "active" | "closed";
 
@@ -93,11 +95,11 @@ export function TripsPage({
           />
           <div className="search">
             <Search size={16} />
-            <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Truck, driver, trip, customer" aria-label="Search trips" />
+            <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder={`${w(data, "truck")}, ${wl(data, "driver")}, ${wl(data, "trip")}, ${wl(data, "customer")}`} aria-label={`Search ${wl(data, "trip", true)}`} />
           </div>
           {may("trip.create") && (
             <Button tone="primary" onClick={() => setCreating(true)} className="new-trip-btn">
-              <Plus /> New trip
+              <Plus /> New {wl(data, "trip")}
             </Button>
           )}
         </div>
@@ -106,7 +108,7 @@ export function TripsPage({
             <TripRow key={trip.id} trip={trip} step={step} selected={trip.id === selected?.id} onClick={() => onSelect(trip.id)} />
           ))}
           {!shown.length && (
-            <Empty title={filter === "mine" ? "Nothing waiting on you" : "No trips here"}>
+            <Empty title={filter === "mine" ? "Nothing waiting on you" : `No ${wl(data, "trip", true)} here`}>
               {filter === "mine" && <button className="link-btn" onClick={() => setFilter("active")}>See active trips</button>}
             </Empty>
           )}
@@ -151,7 +153,7 @@ function TripRow({ trip, step, selected, onClick }: { trip: Trip; step: NextStep
   const message = useMessageTrips().has(trip.id);
   const truck = byId(data.trucks, trip.truckId);
   const driver = byId(data.drivers, trip.driverId);
-  const current = stageIndex(step.stage);
+  const current = stageIndex(step.stage, data);
   return (
     <button role="listitem" className={`trip-row ${selected ? "on" : ""}`} onClick={onClick}>
       <div className="trip-row-top">
@@ -162,7 +164,7 @@ function TripRow({ trip, step, selected, onClick }: { trip: Trip; step: NextStep
       <div className="trip-row-route">{trip.stops.length ? routeLabel(data, trip) : "Route not set"}</div>
       <div className="trip-row-foot">
         <span className="trip-row-bar" aria-hidden>
-          {STAGES.map((s, i) => (
+          {visibleStages(data).map((s, i) => (
             <i key={s.id} className={i < current || step.actor === "done" ? "done" : i === current ? "now" : ""} />
           ))}
         </span>
@@ -208,7 +210,7 @@ function TripView({
   onStage: (stage: StageId) => void;
   onBack: () => void;
 }) {
-  const { data, role, setOverlay } = useApp();
+  const { data, role, setOverlay, me } = useApp();
   const may = useMay();
   const step = nextStep(data, trip);
   const truck = byId(data.trucks, trip.truckId)!;
@@ -221,6 +223,11 @@ function TripView({
   const panelRef = useRef<HTMLDivElement>(null);
   const [cancelOpen, setCancelOpen] = useState(false);
   const [stopOpen, setStopOpen] = useState(false);
+  const [cantDeliverOpen, setCantDeliverOpen] = useState(false);
+  // On the truck and not delivered, and nothing already waiting for the owner.
+  const onBoard = data.consignments.find((c) => c.tripId === trip.id && !c.delivered && activeTrip(trip));
+  const mayCantDeliver = Boolean(onBoard) && onBoard!.writeOff?.status !== "pending" && data.settings.loadedTripOutcomes.length > 0 && may("trip.undelivered")
+    && me.roles.some((r) => ["owner", "admin", ...data.settings.loadedTripRoles].includes(r));
   const focus = (s: StageId) => {
     onStage(s);
     requestAnimationFrame(() => panelRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }));
@@ -232,7 +239,7 @@ function TripView({
       </button>
       <header className="trip-head">
         <div className="trip-head-main">
-          <h2>{trip.stops.length ? routeLabel(data, trip) : "New trip"}</h2>
+          <h2>{trip.stops.length ? routeLabel(data, trip) : `New ${wl(data, "trip")}`}</h2>
           <div className="trip-head-meta">
             <span className="mono">{trip.no}</span>
             <span>{customer?.name}</span>
@@ -254,18 +261,24 @@ function TripView({
         </div>
         <div className="trip-head-actions">
           <Button onClick={() => setOverlay({ document: { kind: "trip-sheet", id: trip.id } })}>
-            <FileText /> Trip sheet
+            <FileText /> {w(data, "tripSheet")}
           </Button>
           {trip.dispatchedAt && !trip.endedAt && data.settings.stopBeforeLoading && !data.consignments.some((c) => c.tripId === trip.id) && may("trip.stop") && (
             <button className="icon-btn with-label" onClick={() => setStopOpen(true)}>
               <XCircle size={18} />
-              <span>Stop trip</span>
+              <span>Stop {wl(data, "trip")}</span>
             </button>
           )}
-          {!trip.dispatchedAt && !trip.cancelledAt && may("trip.cancel") && (
+          {mayCantDeliver && (
+            <button className="icon-btn with-label" onClick={() => setCantDeliverOpen(true)}>
+              <XCircle size={18} />
+              <span>Can't deliver</span>
+            </button>
+          )}
+          {!trip.dispatchedAt && !trip.cancelledAt && !onBoard && may("trip.cancel") && (
             <button className="icon-btn with-label" onClick={() => setCancelOpen(true)}>
               <XCircle size={18} />
-              <span>Cancel trip</span>
+              <span>Cancel {wl(data, "trip")}</span>
             </button>
           )}
         </div>
@@ -273,7 +286,8 @@ function TripView({
 
       <Stepper trip={trip} step={step} selected={selectedStage} onSelect={onStage} />
       <NextStepBar trip={trip} step={step} onGo={focus} viewing={selectedStage} />
-      {trip.stopReason && <p className="drawer-note">Stopped before loading: {trip.stopReason}</p>}
+      {trip.stopReason && !trip.undelivered && <p className="drawer-note">Stopped before loading: {trip.stopReason}</p>}
+      <UndeliveredNote trip={trip} load={data.consignments.find((c) => c.tripId === trip.id)} />
 
       <div className="trip-body">
         <div className="trip-main" ref={panelRef}>
@@ -284,6 +298,7 @@ function TripView({
       </div>
       <CancelTrip trip={trip} open={cancelOpen} onClose={() => setCancelOpen(false)} />
       {stopOpen && <StopTrip trip={trip} onClose={() => setStopOpen(false)} />}
+      {cantDeliverOpen && <CantDeliver trip={trip} onClose={() => setCantDeliverOpen(false)} />}
     </article>
   );
 }
@@ -302,10 +317,11 @@ function Stepper({
   const { data } = useApp();
   const mine = useMine()(trip, step);
   const times = stageTimes(data, trip);
-  const current = step.actor === "done" ? STAGES.length : stageIndex(step.stage);
+  const stages = visibleStages(data);
+  const current = step.actor === "done" ? stages.length : stageIndex(step.stage, data);
   return (
     <ol className="stepper" aria-label="Trip stages">
-      {STAGES.map((s, i) => {
+      {stages.map((s, i) => {
         const state = i < current ? "done" : i === current ? (mine ? "mine" : "now") : "next";
         return (
           <li key={s.id} className={`step step-${state} ${selected === s.id ? "selected" : ""}`}>
@@ -391,7 +407,7 @@ function NextStepBar({ trip, step, onGo, viewing }: { trip: Trip; step: NextStep
         )}
         {actor === "done" && (
           <Button size="lg" onClick={() => setOverlay({ document: { kind: "trip-sheet", id: trip.id } })}>
-            <FileText /> Trip sheet
+            <FileText /> {w(data, "tripSheet")}
           </Button>
         )}
       </div>
@@ -416,7 +432,7 @@ function StopTrip({ trip, onClose }: { trip: Trip; onClose: () => void }) {
         <>
           <Button tone="quiet" onClick={onClose}>Keep trip</Button>
           <Button tone="danger" disabled={!ready} onClick={async () => (await run({ type: "trip.stop", tripId: trip.id, reason: reason.trim(), closingFuelL: Number(fuel), placeId: placeId || undefined }, "Trip stopped. The truck and driver are free.")) && onClose()}>
-            Stop trip
+            Stop {wl(data, "trip")}
           </Button>
         </>
       }
@@ -440,7 +456,7 @@ function StopTrip({ trip, onClose }: { trip: Trip; onClose: () => void }) {
 }
 
 function CancelTrip({ trip, open, onClose }: { trip: Trip; open: boolean; onClose: () => void }) {
-  const { run } = useApp();
+  const { data, run } = useApp();
   const [reason, setReason] = useState("");
   return (
     <Modal
@@ -457,7 +473,7 @@ function CancelTrip({ trip, open, onClose }: { trip: Trip; open: boolean; onClos
             disabled={!reason.trim()}
             onClick={async () => (await run({ type: "trip.cancel", tripId: trip.id, reason }, "Trip cancelled.")) && onClose()}
           >
-            Cancel trip
+            Cancel {wl(data, "trip")}
           </Button>
         </>
       }

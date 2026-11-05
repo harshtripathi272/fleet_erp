@@ -1,3 +1,4 @@
+import * as Undelivered from './undelivered.service.js';
 import type { Request, Response } from 'express';
 import { ApiResponse, buildPaginationMeta } from '../../core/response/index.js';
 import { asyncHandler } from '../../utils/asyncHandler.js';
@@ -39,6 +40,8 @@ export const reportPosition = asyncHandler(async (req, res) => ApiResponse.succe
 export const arriveAtStop = asyncHandler(async (req, res) => ApiResponse.success(res, await Trips.arriveAtStop(param(req), param(req, 'stopId'), opsContext(req))));
 export const remind = asyncHandler(async (req, res) => ApiResponse.success(res, await Trips.remind(param(req), opsContext(req)), 'Reminder sent'));
 export const stopTrip = asyncHandler(async (req, res) => ApiResponse.success(res, await Trips.stopTrip(param(req), req.body, opsContext(req)), 'Trip stopped'));
+export const undelivered = asyncHandler(async (req, res) => ApiResponse.success(res, await Undelivered.handleUndelivered(param(req, 'id'), req.body, opsContext(req)), 'Decided'));
+export const decideWriteOff = asyncHandler(async (req, res) => ApiResponse.success(res, await Undelivered.decideWriteOff(param(req, 'id'), req.body, opsContext(req)), 'Decided'));
 export const endTrip = asyncHandler(async (req, res) => ApiResponse.success(res, await Trips.endTrip(param(req), req.body, opsContext(req)), 'Trip ended'));
 export const completeStage = asyncHandler(async (req, res) => ApiResponse.success(res, Trips.presentTrip((await Stages.completeStage(param(req), opsContext(req))).toObject()), 'Stage complete'));
 export const funding = asyncHandler(async (req, res) => ApiResponse.success(res, await Trips.getFunding(param(req))));
@@ -112,4 +115,5 @@ export const driverHome = asyncHandler(async (req, res) => ApiResponse.success(r
 export const driverStatementPdf = asyncHandler(async (req, res) => sendPdf(res, await DriverApp.statementPdf(driverActor(req), param(req))));
 export const driverMessages = asyncHandler(async (req, res) => ApiResponse.success(res, await DriverApp.messages(driverActor(req), query<{ since?: string }>(req).since)));
 export const driverSend = asyncHandler(async (req, res) => ApiResponse.created(res, await DriverApp.send(driverActor(req), req.body), 'Sent to the office'));
+export const driverDefect = asyncHandler(async (req, res) => ApiResponse.created(res, await DriverApp.reportDefect(driverActor(req), req.body), 'Sent to the office'));
 export const driverArrive = asyncHandler(async (req, res) => ApiResponse.success(res, await DriverApp.arrive(driverActor(req), param(req, 'stopId')), 'Arrival recorded'));

@@ -121,7 +121,7 @@ export async function postSettlement(input: S.SettlementInput, ctx: OpsContext) 
   const ends = trips.map((t) => (t.endedAt ?? t.cancelledAt) as Date).sort((a, b) => a.getTime() - b.getTime());
   const settlement = await Settlement.create({
     number: await nextNumber('settlements', 'SET', at), driverId: driver._id, tripIds: input.tripIds, from: starts[0], to: ends.at(-1),
-    currencyId: base.id, openingMinor: opening, advancesMinor: sumKind('advance'), expensesMinor: -sumKind('expense'), shortagesMinor: sumKind('shortage'),
+    currencyId: base.id, openingMinor: opening, advancesMinor: sumKind('advance'), expensesMinor: -sumKind('expense'), shortagesMinor: sumKind('shortage'), writeOffsMinor: sumKind('write_off'),
     cashMinor: input.cashMinor, closingMinor: before - input.cashMinor, note: input.note, postedAt: at, createdBy: ctx.actorId, updatedBy: ctx.actorId,
   });
   // No multi-document transactions: claim each trip only if it is still unsettled, and undo if another settlement got there first.
@@ -143,6 +143,7 @@ export async function postSettlement(input: S.SettlementInput, ctx: OpsContext) 
     rows: [
       ['Trips', trips.map((t) => t.number).join(', ')], ['Advances', money(Number(s.advancesMinor))], ['Approved expenses', money(Number(s.expensesMinor))],
       ...(Number(s.shortagesMinor) ? [['Fuel shortage', money(Number(s.shortagesMinor))] as [string, string]] : []),
+      ...(Number(s.writeOffsMinor) ? [['Load written off', money(Number(s.writeOffsMinor))] as [string, string]] : []),
     ],
     buttons: [{ label: 'View statement', nav: { view: 'statement', driverId: String(driver._id) } }],
   }, ctx);

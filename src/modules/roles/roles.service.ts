@@ -2,13 +2,14 @@ import { ConflictError, ValidationError } from '../../core/errors/index.js';
 import { listMasters } from '../../core/masters/registry.js';
 import { GROUPS } from '../../core/masters/groups.js';
 import type { MasterDefinition, Plain } from '../../core/masters/types.js';
+import { BILLING_RESOURCES } from '../finance/resources.js';
 import { FINANCE_DESK, OPERATIONS_DESK, OPERATIONS_RESOURCES } from '../operations/resources.js';
 import { Role } from './role.model.js';
 import { assertCanGrantPermissions, permissionsOf } from './grants.js';
 import { createRoleSchema, updateRoleSchema } from './roles.schema.js';
 
 /** Resources that are not masters but carry permissions. */
-export const EXTRA_RESOURCES = ['company', 'audit-logs', ...OPERATIONS_RESOURCES];
+export const EXTRA_RESOURCES = ['company', 'audit-logs', ...OPERATIONS_RESOURCES, ...BILLING_RESOURCES];
 
 export function knownResources(): string[] {
   return ['*', ...listMasters().map((m) => m.key), ...EXTRA_RESOURCES];
@@ -24,11 +25,11 @@ export function systemRoles() {
     { key: 'admin', name: 'Administrator', description: 'Full access to every master, users and roles.', permissions: [{ resource: '*', actions: ['*'] }] },
     {
       key: 'operations', name: 'Operations', description: 'Reads everything; maintains fleet, drivers, places, cargo and trip settings; plans and runs trips.',
-      permissions: [{ resource: '*', actions: ['read'] }, ...write(groupKeys(GROUPS.geography, GROUPS.fleet, GROUPS.drivers, GROUPS.compliance, GROUPS.cargo, GROUPS.trips, GROUPS.parties)), ...write(OPERATIONS_DESK)],
+      permissions: [{ resource: '*', actions: ['read'] }, ...write(groupKeys(GROUPS.geography, GROUPS.fleet, GROUPS.maintenance, GROUPS.drivers, GROUPS.compliance, GROUPS.cargo, GROUPS.trips, GROUPS.parties)), ...write(OPERATIONS_DESK)],
     },
     {
       key: 'finance', name: 'Finance', description: 'Reads everything including sensitive fields; maintains money, parties and trip budgets; approves, pays and settles.',
-      permissions: [{ resource: '*', actions: ['read', 'sensitive'] }, ...write(groupKeys(GROUPS.money, GROUPS.parties)), ...write(['expense-categories', 'expense-items', 'trip-budgets', 'advance-policies', 'approval-policies']), ...write(FINANCE_DESK)],
+      permissions: [{ resource: '*', actions: ['read', 'sensitive'] }, ...write(groupKeys(GROUPS.money, GROUPS.parties)), ...write(['expense-categories', 'expense-items', 'trip-budgets', 'advance-policies', 'approval-policies']), ...write(FINANCE_DESK), ...write(BILLING_RESOURCES)],
     },
     { key: 'viewer', name: 'Viewer', description: 'Read-only access to every master.', permissions: [{ resource: '*', actions: ['read'] }] },
   ];

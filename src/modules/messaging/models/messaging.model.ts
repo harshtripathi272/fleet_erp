@@ -7,19 +7,26 @@ export const AUDIENCES = ['driver', 'operations', 'finance', 'owner', 'customer'
 export const BUTTON_ACTIONS = ['approve', 'reject', 'send_photo', 'open_link', 'reply'] as const;
 export const EVENTS = [
   'trip.created', 'trip.dispatched', 'trip.arrived_loading', 'trip.loaded', 'trip.arrived_offloading', 'trip.delivered', 'trip.closed',
+  'trip.load_returned', 'trip.load_transferred', 'trip.load_written_off',
   'fund_request.created', 'fund_request.approved', 'fund_request.rejected', 'fund_request.paid',
   'expense.submitted', 'expense.approved', 'expense.rejected',
   'document.expiring', 'document.expired', 'settlement.posted', 'nomination.sent', 'user.invited', 'password.reset',
+  'invoice.sent', 'payment.received', 'statement.sent',
+  'service.due',
+  'invoice.sent', 'payment.received',
 ] as const;
 /** Each event as people say it: what has just happened. */
 export const EVENT_NAMES: Record<(typeof EVENTS)[number], string> = {
   'trip.created': 'A trip is created', 'trip.dispatched': 'A trip leaves', 'trip.arrived_loading': 'A truck reaches loading',
+  'trip.load_returned': 'A load is going back', 'trip.load_transferred': 'A load moves to another truck', 'trip.load_written_off': 'A load is written off',
+  'service.due': 'A service is due on a truck',
   'trip.loaded': 'A truck is loaded', 'trip.arrived_offloading': 'A truck reaches offloading', 'trip.delivered': 'A load is delivered',
   'trip.closed': 'A trip is closed', 'fund_request.created': 'Fuel or cash is requested', 'fund_request.approved': 'A request is approved',
   'fund_request.rejected': 'A request is rejected', 'fund_request.paid': 'A request is paid out', 'expense.submitted': 'An expense is sent in',
   'expense.approved': 'An expense is approved', 'expense.rejected': 'An expense is rejected', 'document.expiring': 'A document is about to expire',
   'document.expired': 'A document has expired', 'settlement.posted': 'A driver is settled', 'nomination.sent': 'A nomination goes to the customer',
   'user.invited': 'Someone is invited', 'password.reset': 'A password reset is asked for',
+  'invoice.sent': 'An invoice or credit note is sent', 'payment.received': "A customer's payment is received", 'statement.sent': 'A customer statement is sent',
 };
 export const CHANNEL_NAMES: Record<(typeof MESSAGE_CHANNELS)[number], string> = { whatsapp: 'WhatsApp', sms: 'SMS', email: 'E-mail' };
 /** Placeholders a template may use, written {{name}}. */
@@ -27,6 +34,7 @@ export const VARIABLES = [
   'company.name', 'company.signature', 'user.name', 'driver.name', 'driver.phone', 'vehicle.registration', 'trailer.registration', 'trip.number',
   'route.name', 'place.name', 'customer.name', 'amount', 'currency', 'document.name', 'document.number', 'document.expiryDate',
   'reason', 'link', 'date',
+  'invoice.number', 'invoice.kind', 'invoice.total', 'invoice.due', 'payment.number', 'payment.amount', 'payment.invoices', 'statement.period', 'statement.balance',
 ] as const;
 
 /** A WhatsApp or SMS message sent through Marichi Talks, or an e-mail sent over SMTP. */

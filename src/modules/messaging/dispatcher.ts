@@ -40,6 +40,8 @@ export interface DispatchInput {
   attachments?: Array<{ fileId: string }> | (() => Promise<Array<{ fileId: string }> | null>);
   /** The record it is about, e.g. { kind: 'trips', id }, shown in the outbox. */
   ref?: { kind: string; id: string };
+  /** Which of the party's contacts it goes to: the first that receives these (invoices, statements), else the primary one. */
+  receives?: string;
   actorId?: string;
 }
 
@@ -67,10 +69,11 @@ async function recipientsFor(rule: Plain, input: DispatchInput): Promise<Recipie
       const p = await Party.findById(input.partyId).select('name email phone whatsapp contacts').lean() as Plain | null;
       if (!p) continue;
       const contacts = (p.contacts ?? []) as Array<Recipient & { isPrimary?: boolean }>;
-      const primary = contacts.find((c) => c.isPrimary) ?? contacts[0];
+      const primary = (input.receives ? contacts.find((c) => ((c as { receives?: string[] }).receives ?? []).includes(input.receives!)) : undefined)
+        ?? contacts.find((c) => c.isPrimary) ?? contacts[0];
       out.push({
         name: String(p.name),
-        email: (p.email as string | undefined) ?? primary?.email,
+        email: (input.receives ? primary?.email : undefined) ?? (p.email as string | undefined) ?? primary?.email,
         phone: (p.phone as string | undefined) ?? primary?.phone,
         whatsapp: (p.whatsapp as string | undefined) ?? primary?.whatsapp,
       });
@@ -173,6 +176,20 @@ export async function settleSends(): Promise<void> {
  */
 export async function notify(input: DispatchInput): Promise<void> {
   try { await dispatch(input, { background: true }); } catch (err) { logger.error({ err, event: input.event }, 'Messages for an event could not be prepared'); }
+  for (const listener of listeners.get(input.event) ?? []) {
+    try { await listener(input); } catch (err) { logger.error({ err, event: input.event }, 'Work that follows an event failed'); }
+  }
+}
+
+type Listener = (input: DispatchInput) => Promise<void>;
+const listeners = new Map<string, Listener[]>();
+
+/**
+ * Work another area does when something happens, after its messages (billing drafts an invoice when a trip closes).
+ * A listener that fails is logged; it never undoes the step or stops the other listeners.
+ */
+export function onEvent(event: DispatchInput['event'], listener: Listener) {
+  listeners.set(event, [...(listeners.get(event) ?? []), listener]);
 }
 
 /**

@@ -1,3 +1,4 @@
+import { word } from '../company/workspace.js';
 import { documentBrand } from '../company/brand.service.js';
 import { createHash, randomUUID } from 'node:crypto';
 import type { Plain } from '../../core/masters/types.js';
@@ -85,7 +86,8 @@ export async function tripSheetPdf(tripId: string): Promise<{ name: string; body
   const zone = await timeZone();
   const tripType = trip.tripTypeId ? await TripType.findById(trip.tripTypeId).select('printLayoutId').lean() as Plain | null : null;
   const layout = await layoutFor('trip_sheet', tripType?.printLayoutId);
-  const blocks: PdfBlock[] = await companyBlocks(`Trip sheet ${trip.number}`);
+  const sheetWord = await word('tripSheet');
+  const blocks: PdfBlock[] = await companyBlocks(`${sheetWord} ${trip.number}`);
   const stops = (trip.stops ?? []) as Array<{ kind: string; placeId: unknown; arrivedAt?: Date; leftAt?: Date; legKm?: number }>;
   const products = new Map((await Product.find({ _id: { $in: sheet.consignments.map((c) => c.productId) } }).select('name').lean()).map((p) => [String(p._id), String(p.name)]));
   const categories = new Map((await ExpenseCategory.find({ _id: { $in: sheet.expenses.map((e) => e.categoryId) } }).select('name').lean()).map((c) => [String(c._id), String(c.name)]));
@@ -135,7 +137,7 @@ export async function tripSheetPdf(tripId: string): Promise<{ name: string; body
     }
   }
   blocks.push({ kind: 'signatures', labels: ((layout?.signatureLines ?? []) as string[]) });
-  return { name: fileName('Trip sheet', trip.number), body: renderPdf(blocks, { ...pageOf(layout), ...(await documentBrand('tripSheet')) }) };
+  return { name: fileName(sheetWord, trip.number), body: renderPdf(blocks, { ...pageOf(layout), ...(await documentBrand('tripSheet')) }) };
 }
 
 /** The driver statement for a settlement as a PDF. */
@@ -145,7 +147,8 @@ export async function statementPdf(settlementId: string): Promise<{ name: string
   const layout = await layoutFor('driver_statement');
   const base = s.currency;
   const amount = (minor: unknown) => formatMoney(Number(minor ?? 0), base);
-  const blocks: PdfBlock[] = await companyBlocks(`Driver statement ${s.settlement.number}`);
+  const statementWord = `${await word('driver')} ${(await word('statement')).toLowerCase()}`;
+  const blocks: PdfBlock[] = await companyBlocks(`${statementWord} ${s.settlement.number}`);
   blocks.push(
     { kind: 'heading', text: 'Driver' },
     { kind: 'facts', rows: [['Driver', String(s.driver?.name ?? '')], ['Code', String(s.driver?.code ?? '')], ['Phone', String(s.driver?.phone ?? '')], ['Trips', s.trips.map((t) => t.number).join(', ')], ['Period', `${when(s.settlement.from, zone)} to ${when(s.settlement.to, zone)}`], ['Posted', when(s.settlement.postedAt, zone)]] },
@@ -158,6 +161,7 @@ export async function statementPdf(settlementId: string): Promise<{ name: string
         ['Advances', amount(s.settlement.advancesMinor)],
         ['Approved expenses', amount(s.settlement.expensesMinor)],
         ...(Number(s.settlement.shortagesMinor) ? [['Fuel shortage', amount(s.settlement.shortagesMinor)] as [string, string]] : []),
+        ...(Number(s.settlement.writeOffsMinor) ? [['Load written off', amount(s.settlement.writeOffsMinor)] as [string, string]] : []),
         [Number(s.settlement.cashMinor) < 0 ? 'Paid to the driver' : 'Returned by the driver', amount(Math.abs(Number(s.settlement.cashMinor)))],
         ['Carried forward', amount(s.settlement.closingMinor)],
       ],
@@ -165,7 +169,7 @@ export async function statementPdf(settlementId: string): Promise<{ name: string
   );
   if (s.settlement.note) blocks.push({ kind: 'text', text: String(s.settlement.note) });
   blocks.push({ kind: 'signatures', labels: ((layout?.signatureLines ?? ['Finance', 'Driver']) as string[]) });
-  return { name: fileName('Statement', s.settlement.number), body: renderPdf(blocks, { ...pageOf(layout), ...(await documentBrand('statement')) }) };
+  return { name: fileName(await word('statement'), s.settlement.number), body: renderPdf(blocks, { ...pageOf(layout), ...(await documentBrand('statement')) }) };
 }
 
 /** Stores a printout so a message can attach it; `null` when there is nobody to file it under. */

@@ -48,6 +48,10 @@ export const DEFAULT_TEMPLATES: DefaultTemplate[] = [
   { code: 'EM-FUND-PAID', name: 'Paid (e-mail to Operations)', channel: 'email', event: 'fund_request.paid', audience: 'operations', subject: '{{trip.number}}: {{amount}} {{currency}} paid', body: `{{amount}} {{currency}} for trip {{trip.number}} was paid (reference {{document.number}}).${SIGN}` },
   // Expenses
   { code: 'EM-EXPENSE-SUBMITTED', name: 'Expense to approve (e-mail to Finance)', channel: 'email', event: 'expense.submitted', audience: 'finance', subject: 'Expense to approve: {{document.name}} {{amount}} {{currency}}', body: `{{driver.name}} has a {{document.name}} expense of {{amount}} {{currency}} on trip {{trip.number}} (receipt {{document.number}}) waiting for approval.\n\n{{link}}${SIGN}` },
+  { code: 'EM-LOAD-RETURNED', name: 'A load is going back (e-mail)', channel: 'email', event: 'trip.load_returned', audience: 'any', subject: 'Load going back: {{trip.number}}', body: `The load on {{trip.number}} can't be delivered and is going back to {{place.name}}: {{reason}}.\n\nTruck {{vehicle.registration}}.${SIGN}` },
+  { code: 'EM-LOAD-TRANSFERRED', name: 'A load moves to another truck (e-mail)', channel: 'email', event: 'trip.load_transferred', audience: 'any', subject: 'Load moved to another truck: {{trip.number}}', body: `The load is moving to truck {{vehicle.registration}} at {{place.name}}, as {{trip.number}}: {{reason}}.${SIGN}` },
+  { code: 'EM-LOAD-WRITTEN-OFF', name: 'A load is written off (e-mail)', channel: 'email', event: 'trip.load_written_off', audience: 'any', subject: 'Load written off: {{trip.number}}', body: `The load on {{trip.number}} has been written off: {{reason}}.\n\nTruck {{vehicle.registration}}.${SIGN}` },
+  { code: 'EM-SERVICE-DUE', name: 'Service due (e-mail to Operations)', channel: 'email', event: 'service.due', audience: 'operations', subject: 'Service due: {{vehicle.registration}}', body: `{{document.name}} on {{vehicle.registration}}: {{reason}}.${SIGN}` },
   { code: 'SMS-EXPENSE-APPROVED', name: 'Expense approved (SMS to driver)', channel: 'sms', event: 'expense.approved', audience: 'driver', body: 'Your {{document.name}} expense of {{amount}} {{currency}} is approved. It is off your balance.' },
   { code: 'SMS-EXPENSE-REJECTED', name: 'Expense rejected (SMS to driver)', channel: 'sms', event: 'expense.rejected', audience: 'driver', body: 'Your {{document.name}} expense of {{amount}} {{currency}} was not accepted: {{reason}}' },
   // Settlement
@@ -80,6 +84,10 @@ export const DEFAULT_RULES: DefaultRule[] = [
   { code: 'FUND-PAID-DRIVER', name: 'Tell the driver money is issued', event: 'fund_request.paid', recipients: [driver], templates: [{ channel: 'sms', template: 'SMS-FUND-PAID' }] },
   { code: 'FUND-PAID-OPS', name: 'Tell Operations a request is paid', event: 'fund_request.paid', recipients: [role('operations')], templates: [{ channel: 'email', template: 'EM-FUND-PAID' }] },
   { code: 'EXPENSE-SUBMITTED-FINANCE', name: 'Tell Finance about expenses to approve', event: 'expense.submitted', recipients: [role('finance')], templates: [{ channel: 'email', template: 'EM-EXPENSE-SUBMITTED' }] },
+  { code: 'LOAD-RETURNED', name: 'Tell the office and the customer a load is going back', event: 'trip.load_returned', recipients: [role('operations'), role('owner'), { kind: 'party_contact' }], templates: [{ channel: 'email', template: 'EM-LOAD-RETURNED' }] },
+  { code: 'LOAD-TRANSFERRED', name: 'Tell the office and the customer a load moved truck', event: 'trip.load_transferred', recipients: [role('operations'), role('owner'), { kind: 'party_contact' }], templates: [{ channel: 'email', template: 'EM-LOAD-TRANSFERRED' }] },
+  { code: 'LOAD-WRITTEN-OFF', name: 'Tell the office and the customer a load is written off', event: 'trip.load_written_off', recipients: [role('operations'), role('owner'), role('finance'), { kind: 'party_contact' }], templates: [{ channel: 'email', template: 'EM-LOAD-WRITTEN-OFF' }] },
+  { code: 'SERVICE-DUE-OPERATIONS', name: 'Tell Operations a service is due', event: 'service.due', recipients: [role('operations')], templates: [{ channel: 'email', template: 'EM-SERVICE-DUE' }] },
   { code: 'EXPENSE-APPROVED-DRIVER', name: 'Tell the driver an expense is approved', event: 'expense.approved', recipients: [driver], templates: [{ channel: 'sms', template: 'SMS-EXPENSE-APPROVED' }] },
   { code: 'EXPENSE-REJECTED-DRIVER', name: 'Tell the driver an expense is rejected', event: 'expense.rejected', recipients: [driver], templates: [{ channel: 'sms', template: 'SMS-EXPENSE-REJECTED' }] },
   { code: 'SETTLEMENT-DRIVER', name: 'Send the driver their statement', event: 'settlement.posted', recipients: [driver], templates: [{ channel: 'sms', template: 'SMS-SETTLEMENT' }, { channel: 'email', template: 'EM-SETTLEMENT' }] },
@@ -88,7 +96,7 @@ export const DEFAULT_RULES: DefaultRule[] = [
 ];
 
 /** One record per installation saying the default set was created, so it is never created again. */
-const defaultsMark = model('MessageDefaults', new Schema({ _id: String, state: { type: String, enum: ['creating', 'done', 'skipped'] }, at: Date }, { collection: 'message_defaults', versionKey: false }));
+const defaultsMark = model('MessageDefaults', new Schema({ _id: String, state: { type: String, enum: ['creating', 'done', 'skipped'] }, at: Date, codes: { type: [String], default: undefined } }, { collection: 'message_defaults', versionKey: false }));
 const MARK = 'messages';
 
 async function createIfMissing(key: 'message-templates' | 'notification-rules', code: string, data: Plain, actorId?: string) {
@@ -137,5 +145,67 @@ export async function ensureDefaultMessages(actorId?: string): Promise<{ created
   }
   await defaultsMark.updateOne({ _id: MARK }, { $set: { state: 'done', at: new Date() } });
   if (created) logger.info({ created }, 'Default message templates and rules created');
+  return { created };
+}
+
+/* ---------- Billing (#61) ---------- */
+
+export const BILLING_TEMPLATES: DefaultTemplate[] = [
+  { code: 'EM-INVOICE', name: 'Invoice or credit note (e-mail to customer)', channel: 'email', event: 'invoice.sent', audience: 'customer', subject: '{{company.name}} {{invoice.kind}} {{invoice.number}}', body: `Hello,
+
+Please find attached our {{invoice.kind}} {{invoice.number}} for {{invoice.total}}. {{invoice.due}}
+
+Thank you for your business.${SIGN}` },
+  { code: 'EM-STATEMENT', name: 'Statement (e-mail to customer)', channel: 'email', event: 'statement.sent', audience: 'customer', subject: '{{company.name}} statement {{statement.period}}', body: `Hello,
+
+Please find attached your statement for {{statement.period}}. The balance owed is {{statement.balance}}.${SIGN}` },
+  { code: 'EM-PAYMENT-RECEIVED', name: 'Payment received (e-mail to customer)', channel: 'email', event: 'payment.received', audience: 'customer', subject: 'Payment {{payment.number}} received', body: `Hello,
+
+Thank you: we received {{payment.amount}} (receipt {{payment.number}}) against {{payment.invoices}}.${SIGN}` },
+];
+export const BILLING_RULES: DefaultRule[] = [
+  { code: 'INVOICE-CUSTOMER', name: 'Send invoices and credit notes to the customer', event: 'invoice.sent', recipients: [customer], templates: [{ channel: 'email', template: 'EM-INVOICE' }] },
+  { code: 'STATEMENT-CUSTOMER', name: 'Send statements to the customer', event: 'statement.sent', recipients: [customer], templates: [{ channel: 'email', template: 'EM-STATEMENT' }] },
+  { code: 'PAYMENT-RECEIVED-CUSTOMER', name: 'Thank the customer for a payment', event: 'payment.received', recipients: [customer], templates: [{ channel: 'email', template: 'EM-PAYMENT-RECEIVED' }] },
+];
+const BILLING_MARK = 'billing-messages';
+
+/**
+ * The invoice, statement and receipt messages, each once per installation, also on one that has its own
+ * messages: nobody had a template for these events before billing existed. The marker lists the codes
+ * offered, so one added later is offered once too, and one the company deleted never comes back. A code or
+ * event the company already covers is left alone.
+ */
+export async function ensureBillingMessages(actorId?: string): Promise<{ created: number }> {
+  const mark = await defaultsMark.findById(BILLING_MARK).lean() as { codes?: string[] } | null;
+  const offered = new Set(mark?.codes ?? []);
+  const templates = BILLING_TEMPLATES.filter((t) => !offered.has(t.code));
+  const rules = BILLING_RULES.filter((r) => !offered.has(r.code));
+  if (!templates.length && !rules.length) return { created: 0 };
+  await defaultsMark.updateOne({ _id: BILLING_MARK }, { $setOnInsert: { state: 'creating', at: new Date() } }, { upsert: true });
+  let created = 0;
+  const templateIds = new Map<string, string>();
+  for (const t of BILLING_TEMPLATES) {
+    if (offered.has(t.code)) {
+      const own = await MessageTemplate.findOne({ code: t.code }).select('_id').lean();
+      if (own) templateIds.set(t.code, String(own._id));
+      continue;
+    }
+    const own = await MessageTemplate.findOne({ $or: [{ code: t.code }, { event: t.event, channel: t.channel, audience: t.audience, language: 'en', status: 'active' }] }).select('_id').lean();
+    if (own) { templateIds.set(t.code, String(own._id)); continue; }
+    templateIds.set(t.code, await createIfMissing('message-templates', t.code, { ...t, language: 'en' }, actorId));
+    created += 1;
+  }
+  for (const r of rules) {
+    if (await NotificationRule.exists({ $or: [{ code: r.code }, { event: r.event }] })) continue;
+    if (!templateIds.get(r.templates[0]!.template!)) continue;
+    await createIfMissing('notification-rules', r.code, {
+      code: r.code, name: r.name, event: r.event, recipients: r.recipients.map((x) => ({ kind: x.kind })),
+      templates: r.templates.map((t) => ({ channel: t.channel, templateId: templateIds.get(t.template!) })),
+    }, actorId);
+    created += 1;
+  }
+  await defaultsMark.updateOne({ _id: BILLING_MARK }, { $set: { state: 'done', at: new Date(), codes: [...BILLING_TEMPLATES, ...BILLING_RULES].map((x) => x.code) } });
+  if (created) logger.info({ created }, 'Billing message templates and rules created');
   return { created };
 }

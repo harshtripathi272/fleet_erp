@@ -4,6 +4,7 @@ import { byId, driverLedger, tripKm } from "../domain/calc";
 import { routeLabel } from "../domain/helpers";
 import { BrandMark } from "../ui/brand";
 import { dayYear, num, stamp } from "../ui/format";
+import { w } from "../domain/words";
 
 export function Statement({ id }: { id: string }) {
   const { data } = useApp();
@@ -12,7 +13,7 @@ export function Statement({ id }: { id: string }) {
   const driver = byId(data.drivers, s.driverId)!;
   const trips = s.tripIds.map((t) => byId(data.trips, t)!).filter(Boolean);
   const lines = driverLedger(data, driver.id).filter((e) => e.tripId && s.tripIds.includes(e.tripId));
-  const before = s.openingZmw + s.advancesZmw - s.expensesZmw + s.shortagesZmw;
+  const before = s.openingZmw + s.advancesZmw - s.expensesZmw + s.shortagesZmw + s.writeOffsZmw;
   return (
     <article className="paper statement">
       <Watermark forDocument />
@@ -52,11 +53,11 @@ export function Statement({ id }: { id: string }) {
         </div>
       </section>
       <section className="sheet-section">
-        <h2>Trips</h2>
+        <h2>{w(data, "trip", true)}</h2>
         <table>
           <thead>
             <tr>
-              <th>Trip</th>
+              <th>{w(data, "trip")}</th>
               <th>Route</th>
               <th>Truck</th>
               <th>Left</th>
@@ -127,6 +128,12 @@ export function Statement({ id }: { id: string }) {
           <span>Shortage charged</span>
           <strong>{num(s.shortagesZmw)}</strong>
         </div>
+        {s.writeOffsZmw > 0 && (
+          <div>
+            <span>Load written off</span>
+            <strong>{num(s.writeOffsZmw)}</strong>
+          </div>
+        )}
         <div className="final">
           <span>Carried forward</span>
           <strong>{num(s.closingZmw)}</strong>

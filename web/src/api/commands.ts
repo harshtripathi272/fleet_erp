@@ -90,6 +90,13 @@ export async function runCommand(action: Action, ctx: { data: AppData; role: Rol
     case "trip.arrive": await api(`/trips/${action.tripId}/stops/${action.stopId}/arrive`, { method: "POST" }); return;
     case "trip.remind": await api(`/trips/${action.tripId}/remind`, { method: "POST" }); return;
     case "trip.stop": await api(`/trips/${action.tripId}/stop`, { method: "POST", body: { reason: action.reason, closingFuelL: action.closingFuelL, ...(action.placeId ? { placeId: action.placeId } : {}) } }); return;
+    case "trip.undelivered": {
+      const { type: _type, tripId, amount, ...rest } = action as Extract<Action, { type: "trip.undelivered"; outcome: "write_off" }>;
+      const value = amount === undefined ? {} : { amount: money(data, amount, data.baseCurrency?.code ?? "") };
+      await api(`/trips/${tripId}/undelivered`, { method: "POST", body: clean({ ...rest, ...value }) });
+      return;
+    }
+    case "writeoff.decide": await api(`/consignments/${action.consignmentId}/write-off-decision`, { method: "POST", body: clean({ approve: action.approve, note: blank(action.note?.trim()), via: viaOf(action.via) }) }); return;
     case "trip.end": await api(`/trips/${action.tripId}/end`, { method: "POST", body: { closingFuelL: action.closingFuelL } }); return;
 
     /* Money requests */

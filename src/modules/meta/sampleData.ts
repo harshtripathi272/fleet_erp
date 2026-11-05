@@ -117,6 +117,9 @@ export async function loadSampleData(actorId?: string, size: SampleSize = 'full'
   await make('fuel-types', 'diesel', { code: 'D50', name: 'Diesel 50 ppm', unitId: ids.L, densityKgPerL: 0.835 });
   await make('vehicles', 'v1', { code: 'T001', registrationNumber: 'ALC 4821', vin: 'YS2R6X40005412345', engineNumber: 'DC13-1234567', makeId: ids.scania, modelId: ids.r460, vehicleTypeId: ids.vtPrime, year: 2021, homeBranchId: ids.hq, odometerKm: 412560, tankCapacityL: 900, fuelTypeId: ids.diesel, kmPerLLoaded: 2.2, kmPerLEmpty: 2.9, ownership: 'leased', ownerPartyId: ids.leasing, financierPartyId: ids.leasing, purchase: { date: '2021-03-15', amount: money(92_000_00, 'USD') }, regulatorRefs: [{ authority: 'RTSA', number: 'RTSA-884512' }] });
   await make('vehicles', 'v2', { code: 'T002', registrationNumber: 'BCA 9034', makeId: ids.volvo, modelId: ids.fh, vehicleTypeId: ids.vtPrime, year: 2019, homeBranchId: ids.ndola, odometerKm: 655010, fuelTypeId: ids.diesel });
+  // Ready for when a company switches Maintenance on.
+  await make('parties', 'workshop', { code: 'KAFUE-WS', name: 'Kafue Truck Repairs', roles: ['workshop'], countryId: ids.ZM });
+  await make('service-plans', 'planA', { code: 'A-SERVICE', name: 'A service', vehicleTypeId: ids.vtPrime, everyKm: 20_000, everyDays: 180, includes: 'Engine oil and filters, greasing, brakes and belts checked.' });
   await make('trailers', 't1', { code: 'TR001', registrationNumber: 'TAC 7821', trailerTypeId: ids.ttTanker, make: 'Henred', axles: 3, capacityL: 38000, compartments: [{ number: 1, capacityL: 13000 }, { number: 2, capacityL: 12500 }, { number: 3, capacityL: 12500 }], homeBranchId: ids.hq });
   await make('trailers', 't2', { code: 'TR002', registrationNumber: 'TBL 6206', trailerTypeId: ids.ttFlat, axles: 3, capacityKg: 34000, homeBranchId: ids.ndola });
   await pair(pairSchema.parse({ vehicleId: ids.v1, trailerId: ids.t1, reason: 'Fuel runs' }), ctx);
@@ -177,7 +180,15 @@ export async function loadSampleData(actorId?: string, size: SampleSize = 'full'
   await make('payment-methods', 'pmAirtel', { code: 'AIRTEL', name: 'Airtel Money', kind: 'mobile_money', provider: 'Airtel', currencyIds: [ids.ZMW] });
   await make('payment-methods', 'pmDepot', { code: 'DEPOT', name: 'Own depot fuel', kind: 'own_depot', forFuel: true, forCash: false, referenceRequired: true });
   await make('advance-policies', 'apRoute', { code: 'ROUTE-BUDGET', name: 'Advance from route budget', basis: 'route_budget', maxAmount: money(10_000_00), capOnCashHeld: money(2_000_00), approvalPolicyId: ids.advanceApproval, paymentMethodIds: [ids.pmCash, ids.pmAirtel] });
+  // What a customer pays (#61): Copperbelt Minerals pays per tonne of cathodes, with a minimum per trip.
+  await make('customer-rates', 'rateCopper', { code: 'CBM-CATH', name: 'Copperbelt cathodes per tonne', customerId: ids.copper, productId: ids.cuCathodes, basis: 'per_tonne', price: money(42_00, 'USD'), minimumCharge: money(1_200_00, 'USD'), validFrom: days(-365).toISOString().slice(0, 10) });
+  // The accounts the export posts to (#62).
+  for (const [code, name, postsFor] of [
+    ['1100', 'Trade debtors', ['receivables']], ['4000', 'Freight income', ['revenue']], ['2200', 'VAT output', ['tax']], ['1000', 'Bank', ['bank']],
+    ['7900', 'Exchange gains and losses', ['exchange_gain', 'exchange_loss', 'unrealised_exchange']], ['1300', 'Driver advances', ['driver_advances']], ['6100', 'Trip expenses', ['expenses']],
+  ] as const) await make('account-codes', `ac${code}`, { code, name, postsFor: [...postsFor] });
   await make('cancellation-reasons', 'crCustomer', { code: 'CUST-CANCEL', name: 'Customer cancelled', appliesTo: ['trip', 'order'], chargeableToCustomer: true });
+  await make('cancellation-reasons', 'crAccident', { code: 'ACCIDENT', name: 'Accident on the road', appliesTo: ['trip'] });
 
   // Configuration
   await make('lists', 'listUnions', { code: 'UNIONS', name: 'Driver unions', values: [{ value: 'ztu', label: 'Zambia Transport Union' }, { value: 'none', label: 'Not a member' }] });
@@ -202,6 +213,9 @@ export async function loadSampleData(actorId?: string, size: SampleSize = 'full'
     await saveCompany(saveCompanySchema.parse({ legalName: 'Marichi Connect Logistics Ltd', tradingName: 'Marichi Fleet', countryId: ids.ZM, baseCurrencyId: ids.ZMW, timezone: 'Africa/Lusaka', fiscalYearStartMonth: 1, modules: ['masters', 'trips', 'finance', 'tracking', 'driver-app'], phone: '+260211123456', email: 'ops@marichi.example', allowSelfRegistration: true }), actorId);
     created += 1;
   }
+  // A finished service and a new tyre: they cost money, so they need the company's base currency.
+  await make('work-orders', 'woV2', { vehicleId: ids.v2, source: 'service', servicePlanId: ids.planA, workshopPartyId: ids.workshop, stage: 'done', stopsTruck: false, startedAt: days(-21).toISOString(), endedAt: days(-20).toISOString(), labour: money(1_450_00), description: 'A service done on schedule.' });
+  await make('tyre-records', 'tyreV2', { vehicleId: ids.v2, position: 'Front left', action: 'replaced', serialNumber: 'MX-44721', at: days(-20).toISOString(), cost: money(4_800_00) });
   if (size === 'full') created += await loadSampleHistory(ids, names, actorId);
   logger.info({ created, size }, 'Sample data loaded');
   return { created };
