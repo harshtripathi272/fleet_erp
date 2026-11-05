@@ -11,9 +11,6 @@ export const previewTemplate = asyncHandler(async (req, res) => {
   ApiResponse.success(res, await MessagingService.previewTemplate((req.params as { id: string }).id, req.body));
 });
 
-export const testConnection = asyncHandler(async (req, res) => {
-  ApiResponse.success(res, await Dispatcher.testConnection(id(req), (req.body as { to: string }).to, req.auth?.userId));
-});
 export const channels = asyncHandler(async (_req, res) => ApiResponse.success(res, await channelStatus()));
 export const outbox = asyncHandler(async (req, res) => {
   const result = await Dispatcher.listOutbox(req.query as unknown as Dispatcher.OutboxQuery);

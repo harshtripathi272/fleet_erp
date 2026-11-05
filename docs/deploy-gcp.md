@@ -114,6 +114,21 @@ Without a version, both scripts use the current git commit, and they stop if tha
 
 To change a setting, edit the company file and run `new-company.sh` again. To replace a secret, for example after the SMTP password changes, run `new-company.sh` with the new value; the service picks up `:latest` on its next revision. The JWT secret isn't replaced on re-runs. To rotate it on purpose, add a new version with `gcloud secrets versions add <company>-jwt-secret` and redeploy; everyone signs in again.
 
+## Keys for connections
+
+Masters → Connections (#59) sets up every outside service: SMS, WhatsApp, GPS trackers, map routing, file storage and the rest. A connection never holds a password or key. It names the server setting that holds it, either a name starting with `CONNECTION_`, or `SMTP_PASS` or `RATE_FEED_API_KEY`. The screen shows whether the server has each one.
+
+To give the server a connection's key, run `new-company.sh` again with it in the environment:
+
+```sh
+CONNECTION_TWILIO_TOKEN='…' CONNECTION_TRACKER_SIGNING_SECRET='…' deploy/new-company.sh ~/companies/acme.env [version]
+```
+
+- **Where it goes:** each `CONNECTION_*` variable is stored in Secret Manager as `<company>-connection-<name>`, here `acme-connection-twilio-token`. The service and the rates job get it under the same variable name.
+- **Re-runs:** keys stored on an earlier run are mounted again, so you only pass the ones that are new or changed.
+- **Signed calls:** a service that calls us, such as a tracker webhook, signs each call with the connection's signing secret. Its web address is shown on the connection once it's saved. Unsigned calls are refused.
+- **File storage on Google Cloud Storage** needs no key: the service account already has the bucket (see above). An S3 bucket needs its two keys as `CONNECTION_*` secrets.
+
 ## Daily exchange rates
 
 `new-company.sh` also sets up the exchange-rate fetch (#22):

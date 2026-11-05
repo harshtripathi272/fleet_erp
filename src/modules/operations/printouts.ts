@@ -2,7 +2,7 @@ import { word } from '../company/workspace.js';
 import { documentBrand } from '../company/brand.service.js';
 import { createHash, randomUUID } from 'node:crypto';
 import type { Plain } from '../../core/masters/types.js';
-import { fileStore } from '../../core/storage/index.js';
+import { storeForNew } from '../../core/storage/index.js';
 import { Product } from '../cargo/models/product.model.js';
 import { Company } from '../company/company.model.js';
 import { StoredFile } from '../files/file.model.js';
@@ -71,8 +71,9 @@ async function money(amount: unknown) {
 async function store(name: string, body: Buffer, actorId: string) {
   const at = new Date();
   const key = `${at.toISOString().slice(0, 7)}/${randomUUID()}.pdf`;
-  await (await fileStore()).put(key, body, 'application/pdf');
-  const file = await StoredFile.create({ name, mime: 'application/pdf', size: body.length, sha256: createHash('sha256').update(body).digest('hex'), key, uploadedBy: actorId, at });
+  const { store: files, connectionId } = await storeForNew();
+  await files.put(key, body, 'application/pdf');
+  const file = await StoredFile.create({ name, mime: 'application/pdf', size: body.length, sha256: createHash('sha256').update(body).digest('hex'), key, uploadedBy: actorId, connectionId, at });
   return { fileId: String(file._id) };
 }
 

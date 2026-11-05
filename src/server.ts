@@ -6,6 +6,7 @@ import { logger } from './core/logger/index.js';
 import { ensureFirstOwner } from './modules/auth/auth.service.js';
 import { startMaintenanceWorker, stopMaintenanceWorker } from './modules/maintenance/maintenance.service.js';
 import { ensureBillingMessages, ensureDefaultMessages } from './modules/messaging/defaults.js';
+import { migrateToConnections } from './modules/connections/migrate.js';
 import { settleSends, startOutboxWorker, stopOutboxWorker } from './modules/messaging/dispatcher.js';
 import { startEscalationWorker, stopEscalationWorker } from './modules/operations/escalation.js';
 import { ensureSystemRoles } from './modules/roles/roles.service.js';
@@ -13,6 +14,8 @@ import { ensureSystemRoles } from './modules/roles/roles.service.js';
 await connectMongo();
 await syncIndexes();
 await ensureSystemRoles();
+// Message connections and the rate feed move onto connections, once (#59).
+await migrateToConnections();
 await ensureFirstOwner();
 // A new installation starts with the default message templates and rules, once (#43).
 await ensureDefaultMessages();

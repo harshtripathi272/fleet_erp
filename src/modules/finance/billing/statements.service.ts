@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 import type { Plain } from '../../../core/masters/types.js';
-import { fileStore } from '../../../core/storage/index.js';
+import { storeForNew } from '../../../core/storage/index.js';
 import { Company } from '../../company/company.model.js';
 import { StoredFile } from '../../files/file.model.js';
 import { dispatch } from '../../messaging/dispatcher.js';
@@ -137,7 +137,7 @@ export async function sendStatement(customerId: string, query: { from?: Date; to
       if (!ctx.actorId) return null;
       const at = new Date();
       const key = `${at.toISOString().slice(0, 7)}/${randomUUID()}.pdf`;
-      await (await fileStore()).put(key, body, 'application/pdf');
+      await (await storeForNew()).store.put(key, body, 'application/pdf');
       const file = await StoredFile.create({ name, mime: 'application/pdf', size: body.length, sha256: createHash('sha256').update(body).digest('hex'), key, uploadedBy: ctx.actorId, at });
       return [{ fileId: String(file._id) }];
     },

@@ -2,7 +2,7 @@ import type { Readable } from 'node:stream';
 import { env } from '../../config/env.js';
 import { NotFoundError } from '../../core/errors/index.js';
 import { setSenderName } from '../../core/mail/mailer.js';
-import { fileStore } from '../../core/storage/index.js';
+import { storeOf } from '../../core/storage/index.js';
 import { StoredFile } from '../files/file.model.js';
 import { Company } from './company.model.js';
 
@@ -62,9 +62,9 @@ export async function documentBrand(kind: 'tripSheet' | 'statement' | 'invoice')
 }
 
 async function readFile(id: string): Promise<Buffer> {
-  const file = await StoredFile.findById(id).select('key').lean<{ key: string }>();
+  const file = await StoredFile.findById(id).select('key connectionId').lean<{ key: string; connectionId?: unknown }>();
   if (!file) throw new NotFoundError('File not found');
-  const stream = await (await fileStore()).open(file.key);
+  const stream = await (await storeOf(file)).open(file.key);
   const chunks: Buffer[] = [];
   for await (const chunk of stream) chunks.push(Buffer.from(chunk as Buffer));
   return Buffer.concat(chunks);
@@ -75,9 +75,9 @@ export async function brandAsset(asset: BrandAsset): Promise<{ mime: string; str
   const { brand } = await companyBrand();
   const id = brand[FIELD[asset] as keyof BrandDoc];
   if (!id) throw new NotFoundError('No such brand file');
-  const file = await StoredFile.findById(id).select('key mime').lean<{ key: string; mime: string }>();
+  const file = await StoredFile.findById(id).select('key mime connectionId').lean<{ key: string; mime: string; connectionId?: unknown }>();
   if (!file || !file.mime.startsWith('image/')) throw new NotFoundError('No such brand file');
-  return { mime: file.mime, stream: await (await fileStore()).open(file.key) };
+  return { mime: file.mime, stream: await (await storeOf(file)).open(file.key) };
 }
 
 // Every e-mail comes from the company's own name: its chosen sender name, else the product's name.
