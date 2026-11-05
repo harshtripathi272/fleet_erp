@@ -66,10 +66,10 @@ describe('import from a spreadsheet', () => {
 
   test('dates, yes/no, lists, choices and money read the way spreadsheets write them', async () => {
     // A date written day first, and a reference by code.
-    const rate = (await run('exchange-rates', [{ 'Base currency': 'USD', 'Quote currency': 'ZMW', Rate: '26.9', 'Effective date': '04/11/2026', Source: 'Manual' }], false).expect(200)).body.data;
+    const rate = (await run('exchange-rates', [{ 'Base currency': 'USD', 'Quote currency': 'ZMW', Rate: '26.9', 'Effective date': '04/11/2031', Source: 'Manual' }], false).expect(200)).body.data;
     assert.equal(rate.results[0].status, 'created', JSON.stringify(rate.results[0]));
     const stored = (await api().get(`/api/v1/exchange-rates/${rate.results[0].id}`).set(bearer(owner)).expect(200)).body.data;
-    assert.equal(String(stored.effectiveDate).slice(0, 10), '2026-11-04');
+    assert.equal(String(stored.effectiveDate).slice(0, 10), '2031-11-04');
     // Yes/no, a list of references separated by ";", and a choice in any case.
     const pm = (await run('payment-methods', [{ Code: 'IMP-MOMO', Name: 'Imported mobile money', Kind: 'MOBILE_MONEY', 'For cash': 'yes', 'For fuel': 'no', Currencies: 'ZMW; usd' }], false).expect(200)).body.data;
     assert.equal(pm.results[0].status, 'created', JSON.stringify(pm.results[0]));
