@@ -357,7 +357,8 @@
 .stop-row {
   position: relative;
   display: grid;
-  grid-template-columns: 16px 150px minmax(0, 1fr) 150px 34px;
+  /* Fixed leg and Remove columns, so every stop's place box lines up whether or not the row has them. */
+  grid-template-columns: 16px 150px minmax(0, 1fr) 200px 96px;
   gap: 10px;
   align-items: center;
   padding: 6px 0;
@@ -1308,7 +1309,7 @@
     max-width: 220px;
   }
   .stop-row {
-    grid-template-columns: 16px 1fr 34px;
+    grid-template-columns: 16px minmax(0, 1fr) max-content;
   }
   .stop-row .stop-kind {
     grid-column: 2 / 4;

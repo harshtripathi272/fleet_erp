@@ -1,3 +1,4 @@
+import { workspaceInput } from './workspace.js';
 import { z } from 'zod';
 import { email, objectId, phone, text } from '../../core/masters/zod.js';
 import { SETTLEMENT_PERIODS } from './company.model.js';
@@ -9,6 +10,7 @@ export const MODULES = AREA_KEYS;
 const timezone = z.string().refine((tz) => Intl.supportedValuesOf('timeZone').includes(tz) || tz === 'UTC', 'Unknown time zone');
 
 const companyShape = {
+  ...workspaceInput,
   legalName: text(200).optional(),
   tradingName: text(200).nullable().optional(),
   registrationNumber: text(60).nullable().optional(),

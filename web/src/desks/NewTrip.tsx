@@ -9,6 +9,7 @@ import { Button, Drawer, Field } from "../ui/kit";
 import { fromLocalInput, km, L, localInput, zmw } from "../ui/format";
 import { StopEditor } from "./stages";
 import { MiniRoute } from "../tracking/MiniRoute";
+import { wl } from "../domain/words";
 
 /** Truck first: pick the truck, its driver and trailer follow, the route starts where it stands. */
 export function NewTrip({ open, onClose, onCreated }: { open: boolean; onClose: () => void; onCreated: (id: string) => void }) {
@@ -80,7 +81,7 @@ export function NewTrip({ open, onClose, onCreated }: { open: boolean; onClose: 
   return (
     <Drawer
       open={open}
-      title="New trip"
+      title={`New ${wl(data, "trip")}`}
       onClose={onClose}
       width={620}
       footer={

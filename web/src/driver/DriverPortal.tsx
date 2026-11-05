@@ -11,6 +11,7 @@ import { DocThumb } from "../docs/DocThumb";
 import { Wordmark } from "../ui/brand";
 import { Button } from "../ui/kit";
 import { stamp } from "../ui/format";
+import { DEFAULT_WORDS } from "../domain/words";
 
 /**
  * The driver web app (issue #5): a driver signed in on their own phone sees only their own trip,
@@ -31,6 +32,8 @@ interface Home {
     stops: Stop[]; next?: Kind | null; issued: { id: string; number: string; kind: string; text: string; at?: string }[]; documents: Doc[];
   };
   account: { balance: string; direction: "holds" | "owed" | "even"; settlements: { id: string; number: string; at: string }[] };
+  /** The company's words (#73); an older server sends none. */
+  words?: Record<string, { singular: string; plural: string }>;
 }
 interface Msg { id: string; at: string; from: string; title?: string; text?: string; rows?: [string, string][]; upload?: Kind }
 
@@ -102,6 +105,10 @@ export function DriverPortal({ me }: { me: Me }) {
   }
   const h = home.data;
   const trip = h.trip;
+  const say = (term: string, plural = false) => {
+    const own = h.words?.[term] ?? DEFAULT_WORDS[term];
+    return own ? (plural ? own.plural : own.singular) : term;
+  };
   const nextStop = trip?.stops.find((s) => !s.arrivedAt);
 
   return (
@@ -123,8 +130,8 @@ export function DriverPortal({ me }: { me: Me }) {
 
       {!trip && (
         <section className="drv-card">
-          <h2>No trip right now</h2>
-          <p className="muted">When the office plans your next trip it shows here.</p>
+          <h2>No {say("trip").toLowerCase()} right now</h2>
+          <p className="muted">When the office plans your next {say("trip").toLowerCase()} it shows here.</p>
         </section>
       )}
 
@@ -220,7 +227,7 @@ export function DriverPortal({ me }: { me: Me }) {
         )}
         {h.account.settlements.length > 0 && (
           <>
-            <h4>Settlements</h4>
+            <h4>{say("settlement", true)}</h4>
             <ul className="drv-list">
               {h.account.settlements.map((s) => <li key={s.id}><span>{s.number}</span><span className="muted">{stamp(s.at)}</span><StatementLink id={s.id} number={s.number} /></li>)}
             </ul>

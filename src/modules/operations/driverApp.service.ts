@@ -14,6 +14,7 @@ import type * as S from './operations.schema.js';
 import { statementPdf as settlementStatementPdf } from './printouts.js';
 import { baseCurrency, currencyInfo, driverThread, formatMoney, type OpsContext } from './support.js';
 import { arriveAtStop, partyName, placeName, plateOf, trailerPlate } from './trips.service.js';
+import { words } from '../company/workspace.js';
 
 /**
  * The driver app: a driver signed in with their own account (a user linked to their driver record).
@@ -92,9 +93,10 @@ export async function home(actor: DriverActor) {
   }
   const entries = await driverLedger(actor.driverId);
   const balanceMinor = entries.reduce((sum, e) => sum + e.amountMinor, 0);
-  const [settlements, categories] = await Promise.all([
+  const [settlements, categories, terms] = await Promise.all([
     Settlement.find({ driverId: actor.driverId }).sort({ postedAt: -1, _id: -1 }).limit(10).lean(),
     ExpenseCategory.find({ status: 'active' }).select('name').sort({ name: 1 }).lean(),
+    words(),
   ]);
   return {
     driver: { id: String(driver._id), name: driver.name, code: driver.code },
@@ -109,6 +111,8 @@ export async function home(actor: DriverActor) {
       settlements: settlements.map((s) => ({ id: String(s._id), number: s.number, at: iso(s.postedAt ?? s.createdAt) })),
     },
     expenseCategories: categories.map((c) => ({ id: String(c._id), name: c.name })),
+    /** The company's words (#73), so the phone says "load" where the company does. */
+    words: terms,
   };
 }
 

@@ -123,6 +123,10 @@ const companySchema = new Schema<any>({
     }, { _id: false }),
     default: () => ({}),
   },
+  /** The company's own words, stages and desks (#73): only its changes over the defaults in workspace.ts. */
+  vocabulary: { type: Schema.Types.Mixed, default: undefined },
+  stages: { type: Schema.Types.Mixed, default: undefined },
+  desks: { type: [Schema.Types.Mixed], default: undefined },
   updatedBy: { type: ObjectId, ref: 'User' },
 }, { ...schemaOptions, minimize: true });
 companySchema.index({ singleton: 1 }, { unique: true });
