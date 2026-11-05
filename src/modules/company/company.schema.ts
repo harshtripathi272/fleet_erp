@@ -34,6 +34,27 @@ const companyShape = {
   email: email.nullable().optional(),
   website: z.url().max(300).nullable().optional(),
   logoUrl: z.url().max(2000).nullable().optional(),
+  brand: z.strictObject({
+    productName: text(60).nullable().optional(),
+    shortName: text(24).nullable().optional(),
+    logoFileId: objectId.nullable().optional(),
+    logoDarkFileId: objectId.nullable().optional(),
+    iconFileId: objectId.nullable().optional(),
+    logoPdfFileId: objectId.nullable().optional(),
+    accent: z.string().regex(/^#[0-9a-fA-F]{6}$/, 'A colour such as #1d4d3f').nullable().optional(),
+    emailSenderName: text(80).nullable().optional(),
+    signature: text(160).nullable().optional(),
+  }).optional(),
+  watermark: z.strictObject({
+    mode: z.enum(['off', 'text', 'logo']).optional(),
+    text: text(40).nullable().optional(),
+    opacity: z.number().min(0.03).max(0.5).optional(),
+    angle: z.number().int().min(-90).max(90).optional(),
+    tripSheet: z.boolean().optional(),
+    statement: z.boolean().optional(),
+    invoice: z.boolean().optional(),
+    screens: z.boolean().optional(),
+  }).optional(),
   /** Only the settings sent change; the rest keep their values. */
   operations: z.strictObject({
     tripStartsFromTruck: z.boolean().optional(),

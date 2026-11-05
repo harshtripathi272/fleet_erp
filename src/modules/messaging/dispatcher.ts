@@ -1,5 +1,6 @@
 import { areaOfEvent, isAreaOn } from '../company/areas.js';
 import * as Fmt from '../../core/format/regional.js';
+import { productName } from '../company/brand.service.js';
 import type { Readable } from 'node:stream';
 import mongoose, { Types } from 'mongoose';
 import { ConflictError, NotFoundError, ValidationError } from '../../core/errors/index.js';
@@ -38,12 +39,16 @@ export interface DispatchInput {
   attachments?: Array<{ fileId: string }> | (() => Promise<Array<{ fileId: string }> | null>);
   /** The record it is about, e.g. { kind: 'trips', id }, shown in the outbox. */
   ref?: { kind: string; id: string };
+  /** Which of the party's contacts it goes to: the first that receives these (invoices, statements), else the primary one. */
+  receives?: string;
   actorId?: string;
 }
 
-interface Recipient { name: string; email?: string; phone?: string; whatsapp?: string }
+export interface Recipient { name: string; email?: string; phone?: string; whatsapp?: string }
 
 const addressOf = (r: Recipient, channel: Channel) => (channel === 'email' ? r.email : channel === 'sms' ? r.phone : r.whatsapp ?? r.phone);
+
+const noAddress = (r: Recipient, channel: Channel) => `${r.name} has no ${channel === 'email' ? 'e-mail address' : 'phone number'}`;
 
 const render = (text: string, values: Record<string, string>) => text.replace(PLACEHOLDER, (_m, key: string) => values[key.trim()] ?? '');
 
@@ -63,10 +68,11 @@ async function recipientsFor(rule: Plain, input: DispatchInput): Promise<Recipie
       const p = await Party.findById(input.partyId).select('name email phone whatsapp contacts').lean() as Plain | null;
       if (!p) continue;
       const contacts = (p.contacts ?? []) as Array<Recipient & { isPrimary?: boolean }>;
-      const primary = contacts.find((c) => c.isPrimary) ?? contacts[0];
+      const primary = (input.receives ? contacts.find((c) => ((c as { receives?: string[] }).receives ?? []).includes(input.receives!)) : undefined)
+        ?? contacts.find((c) => c.isPrimary) ?? contacts[0];
       out.push({
         name: String(p.name),
-        email: (p.email as string | undefined) ?? primary?.email,
+        email: (input.receives ? primary?.email : undefined) ?? (p.email as string | undefined) ?? primary?.email,
         phone: (p.phone as string | undefined) ?? primary?.phone,
         whatsapp: (p.whatsapp as string | undefined) ?? primary?.whatsapp,
       });
@@ -76,9 +82,11 @@ async function recipientsFor(rule: Plain, input: DispatchInput): Promise<Recipie
 }
 
 async function valuesFor(input: DispatchInput): Promise<Record<string, string>> {
-  const company = await Company.findOne().select('legalName tradingName').lean() as Plain | null;
+  const company = await Company.findOne().select('legalName tradingName brand').lean() as Plain | null;
   const values: Record<string, string> = { date: Fmt.date(new Date()) };
   if (company) values['company.name'] = String(company.tradingName ?? company.legalName);
+  // The company's own sign-off for messages (#71), empty when it has none.
+  if (company) values['company.signature'] = String((company.brand as Plain | undefined)?.signature ?? '');
   if (input.driverId && Types.ObjectId.isValid(input.driverId)) {
     const d = await Driver.findById(input.driverId).select('name phone').lean() as Plain | null;
     if (d) { values['driver.name'] = String(d.name); values['driver.phone'] = String(d.phone ?? ''); }
@@ -134,7 +142,7 @@ export async function dispatch(input: DispatchInput, { background = false }: { b
       body: render(String(template.body), values),
       attachments: channel === 'email' && attachments.length ? attachments : undefined,
       status: to ? 'queued' : 'skipped',
-      note: to ? undefined : `${recipient.name} has no ${channel === 'email' ? 'e-mail address' : 'phone number'}`,
+      note: to ? undefined : noAddress(recipient, channel),
       nextAttemptAt: to ? new Date(now + Number(rule.delayMinutes ?? 0) * 60000) : undefined,
       ruleId: rule._id as Types.ObjectId, templateId: template._id as Types.ObjectId, ref: input.ref, createdBy: input.actorId, at: new Date(now),
     })).toObject());
@@ -167,6 +175,40 @@ export async function settleSends(): Promise<void> {
  */
 export async function notify(input: DispatchInput): Promise<void> {
   try { await dispatch(input, { background: true }); } catch (err) { logger.error({ err, event: input.event }, 'Messages for an event could not be prepared'); }
+  for (const listener of listeners.get(input.event) ?? []) {
+    try { await listener(input); } catch (err) { logger.error({ err, event: input.event }, 'Work that follows an event failed'); }
+  }
+}
+
+type Listener = (input: DispatchInput) => Promise<void>;
+const listeners = new Map<string, Listener[]>();
+
+/**
+ * Work another area does when something happens, after its messages (billing drafts an invoice when a trip closes).
+ * A listener that fails is logged; it never undoes the step or stops the other listeners.
+ */
+export function onEvent(event: DispatchInput['event'], listener: Listener) {
+  listeners.set(event, [...(listeners.get(event) ?? []), listener]);
+}
+
+/**
+ * One message to one person, outside the notification rules: what an approval level's channels ask for.
+ * Recorded in the outbox and retried like the rest; someone with no address shows there as skipped.
+ */
+export async function notifyPerson(input: { event: string; channel: Channel; recipient: Recipient; subject?: string; body: string; ref?: { kind: string; id: string }; actorId?: string }): Promise<void> {
+  const { channel, recipient } = input;
+  try {
+    const to = addressOf(recipient, channel);
+    const now = new Date();
+    const message = await OutboundMessage.create({
+      event: input.event, channel, to, toName: recipient.name, subject: channel === 'email' ? input.subject : undefined, body: input.body,
+      status: to ? 'queued' : 'skipped', note: to ? undefined : noAddress(recipient, channel), nextAttemptAt: to ? now : undefined,
+      ref: input.ref, createdBy: input.actorId, at: now,
+    });
+    if (to) track(deliver(message._id).then(() => undefined));
+  } catch (err) {
+    logger.error({ err, event: input.event }, 'A message could not be prepared');
+  }
 }
 
 async function attachmentNames(given: DispatchInput['attachments']) {
@@ -277,7 +319,7 @@ export async function resend(id: string, actorId?: string) {
   return present((await OutboundMessage.findById(copy._id).lean())!);
 }
 
-const TEST_TEXT = 'This is a test message from Marichi Fleet. If you received it, this connection works.';
+const testText = (product: string) => `This is a test message from ${product}. If you received it, this connection works.`;
 
 /** "Send a test message" on a connection, switched on or not. The result is kept on the connection and in the outbox. */
 export async function testConnection(id: string, to: string, actorId?: string) {
@@ -285,8 +327,9 @@ export async function testConnection(id: string, to: string, actorId?: string) {
   if (!connection) throw new NotFoundError('Message connection not found');
   const channel = connection.channel as Channel;
   if (!isAddressFor(channel, to)) throw new ValidationError('Check the address', { to: [channel === 'email' ? 'An e-mail address' : 'A phone number in international format: + and the country code first'] });
+  const product = await productName();
   const message = await OutboundMessage.create({
-    event: 'connection.test', channel, to, subject: channel === 'email' ? 'Marichi Fleet test message' : undefined, body: TEST_TEXT,
+    event: 'connection.test', channel, to, subject: channel === 'email' ? `${product} test message` : undefined, body: testText(product),
     status: 'queued', nextAttemptAt: new Date(), connectionId: connection._id as Types.ObjectId, ref: { kind: 'message-connections', id }, createdBy: actorId, at: new Date(),
   });
   // One attempt, on this connection, whether or not it is switched on.

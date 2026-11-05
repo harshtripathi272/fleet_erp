@@ -1,12 +1,13 @@
 
+import { env } from '../../config/env.js';
+import { productName } from '../company/brand.service.js';
+import { baseCurrency } from '../operations/support.js';
 import { z } from 'zod';
 import { NotFoundError, ValidationError } from '../../core/errors/index.js';
 import { defineMaster } from '../../core/masters/define.js';
 import { GROUPS } from '../../core/masters/groups.js';
 import type { MasterDefinition, Plain } from '../../core/masters/types.js';
 import * as Fmt from '../../core/format/regional.js';
-import { Company } from '../company/company.model.js';
-import { Currency } from '../finance/models/currency.model.js';
 import * as S from './messaging.schema.js';
 import { CHANNEL_NAMES, EVENT_NAMES, EVENTS, MESSAGE_CHANNELS, MessageTemplate, NotificationRule, PRINT_DOCUMENTS, PrintLayout, VARIABLES } from './models/messaging.model.js';
 
@@ -33,7 +34,7 @@ export function smsSegments(text: string) {
 
 export const messageTemplateDefinition = defineMaster({
   key: 'message-templates', label: 'Message templates', singular: 'Message template', group: GROUPS.messaging, lockedChoices: ['channel', 'event', 'audience'],
-  description: 'The WhatsApp or SMS message (sent through Marichi Talks) or e-mail (sent over SMTP) for each event, with {{placeholders}} and WhatsApp buttons.',
+  description: 'The WhatsApp or SMS message (sent through the WhatsApp or SMS connection) or e-mail (sent over SMTP) for each event, with {{placeholders}} and WhatsApp buttons.',
   model: MessageTemplate, createSchema: S.createMessageTemplateSchema, updateSchema: S.updateMessageTemplateSchema,
   searchFields: ['code', 'name', 'event', 'body'],
   choiceLabels: { event: EVENT_NAMES, channel: CHANNEL_NAMES },
@@ -109,16 +110,15 @@ export const printLayoutDefinition = defineMaster({
   },
 });
 
-/** Made-up values a preview fills in, written in the company's own formats and currency. */
+/** Made-up values a preview fills in, written in the company's own formats (#72). */
 async function sampleValues(): Promise<Record<string, string>> {
-  const company = await Company.findOne().select('baseCurrencyId').lean<{ baseCurrencyId?: unknown }>();
-  const base = company?.baseCurrencyId ? await Currency.findById(company.baseCurrencyId).select('code minorUnits').lean<{ code?: string; minorUnits?: number }>() : null;
+  const base = await baseCurrency().catch(() => null);
   const now = new Date();
   return {
-    'company.name': 'Marichi Connect Logistics', 'user.name': 'Mutale Chanda', 'driver.name': 'Joseph Mwansa', 'driver.phone': `${Fmt.regional().phoneCountryCode || '+'}971234567`,
+    'user.name': 'Mutale Chanda', 'driver.name': 'Joseph Mwansa', 'driver.phone': `${Fmt.regional().phoneCountryCode || '+'}971234567`,
     'vehicle.registration': 'ALC 4821', 'trailer.registration': 'TAC 7821', 'trip.number': 'TRIP/26/0137', 'route.name': 'Dar es Salaam port to Lusaka fuel depot',
-    'place.name': 'Beira fuel terminal', 'customer.name': 'Zambezi Energy', amount: Fmt.amount(535_000, Number(base?.minorUnits ?? 2)), currency: String(base?.code ?? ''), 'document.name': 'Road tax',
-    'document.number': 'RT-2026-0042', 'document.expiryDate': Fmt.date(new Date(now.getTime() + 25 * 86_400_000)), reason: 'Above route budget', link: 'https://marichi.example/t/abc', date: Fmt.date(now),
+    'place.name': 'Beira fuel terminal', 'customer.name': 'Zambezi Energy', amount: Fmt.amount(535_000, base?.minorUnits ?? 2), 'document.name': 'Road tax',
+    'document.number': 'RT-2026-0042', 'document.expiryDate': Fmt.date(new Date(now.getTime() + 25 * 86_400_000)), reason: 'Above route budget', date: Fmt.date(now),
   };
 }
 
@@ -129,13 +129,15 @@ export async function previewTemplate(id: string, input: S.PreviewInput) {
   const given = Object.fromEntries((input.variables ?? []).map((v) => [v.name, String(v.value)]));
   const unknown = Object.keys(given).filter((k) => !(VARIABLES as readonly string[]).includes(k));
   if (unknown.length) throw new ValidationError('Unknown variables', { variables: unknown.map((k) => `Unknown variable ${k}`) });
+  // The company's own name, currency and address stand in for those placeholders, never another company's.
+  const own: Record<string, string> = { 'company.name': await productName(), currency: (await baseCurrency().catch(() => null))?.code ?? '', link: `${env.APP_URL}/#t/abc` };
   const usedSample: string[] = [];
   const sample = await sampleValues();
   const render = (text: string) => text.replace(PLACEHOLDER, (_m, raw: string) => {
     const key = raw.trim();
     if (key in given) return given[key]!;
     usedSample.push(key);
-    return sample[key] ?? `{{${key}}}`;
+    return own[key] ?? sample[key] ?? `{{${key}}}`;
   });
   const body = render(String(template.body));
   const subject = template.subject ? render(String(template.subject)) : undefined;
@@ -143,7 +145,7 @@ export async function previewTemplate(id: string, input: S.PreviewInput) {
     channel: template.channel, subject, body, buttons: template.buttons ?? [],
     sampleValuesUsedFor: [...new Set(usedSample)],
     ...(template.channel === 'sms' ? { sms: smsSegments(body) } : {}),
-    delivery: template.channel === 'email' ? 'SMTP' : 'Marichi Talks',
+    delivery: template.channel === 'email' ? 'E-mail connection' : `${CHANNEL_NAMES[template.channel as keyof typeof CHANNEL_NAMES] ?? template.channel} connection`,
   };
 }
 

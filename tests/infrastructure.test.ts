@@ -75,7 +75,7 @@ test('security headers are sent and the console is served', async () => {
   assert.match(r.headers['content-security-policy']!, /default-src 'self'/);
   assert.equal(r.headers['x-powered-by'], undefined);
   const page = await request(app).get('/console/').expect(200);
-  assert.match(page.text, /Marichi Fleet API/);
+  assert.match(page.text, /<title>API<\/title>/);
   await request(app).get('/console/app.js').expect(200).expect('Content-Type', /javascript/);
 });
 

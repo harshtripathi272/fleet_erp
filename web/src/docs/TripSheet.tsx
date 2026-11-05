@@ -1,4 +1,5 @@
 import { useApp } from "../store";
+import { Watermark } from "../ui/brand";
 import { byId, loadedKm, toBase, tripFuelUsed, tripKm, volume20 } from "../domain/calc";
 import { placeName, routeLabel } from "../domain/helpers";
 import { BrandMark } from "../ui/brand";
@@ -32,6 +33,7 @@ export function TripSheet({ tripId }: { tripId: string }) {
   const fuelCargo = product?.kind === "fuel";
   return (
     <article className="paper sheet">
+      <Watermark forDocument />
       <header className="sheet-head">
         <div className="sheet-brand">
           <BrandMark size={34} />

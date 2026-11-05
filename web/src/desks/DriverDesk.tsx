@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useBrand } from "../ui/brand";
 import { AnimatePresence, motion } from "motion/react";
 import { Camera, ChevronRight, Fuel, MapPin, Wallet } from "lucide-react";
 import { useApp } from "../store";
@@ -23,6 +24,7 @@ const DOC_LABEL: Record<DocKind, string> = {
 
 export function DriverDesk() {
   const { data, driverId } = useApp();
+  const brand = useBrand();
   const [app, setApp] = useState<"whatsapp" | "driver">("whatsapp");
   const driver = byId(data.drivers, driverId)!;
   const trip = data.trips.filter((t) => t.driverId === driver.id && activeTrip(t)).at(-1) ?? data.trips.filter((t) => t.driverId === driver.id && !t.cancelledAt).at(-1);
@@ -37,7 +39,7 @@ export function DriverDesk() {
           onChange={setApp}
           options={[
             { value: "whatsapp", label: "WhatsApp" },
-            { value: "driver", label: "Marichi Driver app" },
+            { value: "driver", label: `${brand.shortName} driver app` },
           ]}
         />
         <motion.div className="driver-phone" initial={{ y: 40, rotateX: 14, opacity: 0 }} animate={{ y: 0, rotateX: 0, opacity: 1 }} transition={{ type: "spring", stiffness: 160, damping: 20 }}>
@@ -45,7 +47,7 @@ export function DriverDesk() {
             <AnimatePresence mode="wait" initial={false}>
               {app === "whatsapp" ? (
                 <motion.div key="wa" className="app-fill" initial={{ opacity: 0, scale: 0.98 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 1.02 }} transition={{ duration: 0.18 }}>
-                  <WhatsApp threads={[{ key: thread, name: "Marichi Fleet", status: "Business account", avatar: <BotAvatar /> }]} driverId={driver.id} tripId={trip?.id} />
+                  <WhatsApp threads={[{ key: thread, name: brand.productName, status: "Business account", avatar: <BotAvatar /> }]} driverId={driver.id} tripId={trip?.id} />
                 </motion.div>
               ) : (
                 <motion.div key="app" className="app-fill" initial={{ opacity: 0, scale: 0.98 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 1.02 }} transition={{ duration: 0.18 }}>

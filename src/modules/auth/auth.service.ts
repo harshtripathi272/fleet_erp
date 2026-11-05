@@ -1,3 +1,4 @@
+import { productName } from '../company/brand.service.js';
 import { Types } from 'mongoose';
 type Id = Types.ObjectId | string;
 import { env } from '../../config/env.js';
@@ -233,9 +234,10 @@ export async function issuePasswordReset(emailAddress: string, purpose: 'reset' 
   });
   // The web app opens a "choose your password" screen for this link.
   const link = `${env.APP_URL}/#reset=${token}`;
+  const product = await productName();
   const sent = await sendMail({
     to: user.email!,
-    subject: purpose === 'invite' ? 'You have been invited to Marichi Fleet' : 'Reset your Marichi Fleet password',
+    subject: purpose === 'invite' ? `You have been invited to ${product}` : `Reset your ${product} password`,
     text: purpose === 'invite'
       ? `Hello ${user.name},\n\nAn account was created for you. Set your password here (valid for 72 hours):\n${link}\n`
       : `Hello ${user.name},\n\nUse this link to choose a new password. It is valid for ${env.PASSWORD_RESET_TTL_MINUTES} minutes and can be used once:\n${link}\n\nIf you did not ask for this, ignore this e-mail.`,

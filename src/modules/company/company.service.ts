@@ -1,3 +1,4 @@
+import { clearAreasCache } from './areas.js';
 import { ConflictError, NotFoundError } from '../../core/errors/index.js';
 import { audit, comparable, diff } from '../../core/masters/audit.js';
 import { getRefTarget } from '../../core/masters/registry.js';
@@ -32,6 +33,7 @@ export async function saveCompany(input: Plain, actorId?: string, requestId?: st
   if (!existing) {
     if (!changes.legalName) throw new ValidationError('Legal name is required', { legalName: ['Required'] });
     const created = await Company.create({ ...Object.fromEntries(Object.entries(changes).filter(([, v]) => v !== null)), updatedBy: actorId });
+    clearAreasCache();
     await audit({ entity: 'company', entityId: created._id, action: 'create', actorId, requestId, changes: diff({}, auditable(created.toObject() as Plain)) });
     return present(created.toObject() as Plain);
   }
@@ -45,11 +47,18 @@ export async function saveCompany(input: Plain, actorId?: string, requestId?: st
       const merged = { ...((before.regional as Plain | undefined) ?? {}), ...(value as Plain) };
       existing.set(key, Object.fromEntries(Object.entries(merged).filter(([, v]) => v !== null && v !== undefined)));
     }
+    // Brand and watermark merge the same way; a null clears that one setting (a logo removed, say).
+    else if ((key === 'brand' || key === 'watermark') && value) {
+      const merged: Plain = { ...((before[key] as Plain | undefined) ?? {}) };
+      for (const [k, v] of Object.entries(value as Plain)) { if (v === null) delete merged[k]; else merged[k] = v; }
+      existing.set(key, merged);
+    }
     else existing.set(key, value === null ? undefined : value);
   }
   if (!existing.isModified()) return present(before);
   existing.set('updatedBy', actorId);
   await existing.save();
+  clearAreasCache();
   await audit({ entity: 'company', entityId: existing._id, action: 'update', actorId, requestId, changes: diff(auditable(before), auditable(existing.toObject() as Plain)) });
   return present(existing.toObject() as Plain);
 }

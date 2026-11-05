@@ -1,3 +1,4 @@
+import { documentBrand } from '../company/brand.service.js';
 import { createHash, randomUUID } from 'node:crypto';
 import * as Fmt from '../../core/format/regional.js';
 import type { Plain } from '../../core/masters/types.js';
@@ -122,7 +123,7 @@ export async function tripSheetPdf(tripId: string): Promise<{ name: string; body
     }
   }
   blocks.push({ kind: 'signatures', labels: ((layout?.signatureLines ?? []) as string[]) });
-  return { name: fileName('Trip sheet', trip.number), body: renderPdf(blocks, pageOf(layout)) };
+  return { name: fileName('Trip sheet', trip.number), body: renderPdf(blocks, { ...pageOf(layout), ...(await documentBrand('tripSheet')) }) };
 }
 
 /** The driver statement for a settlement as a PDF. */
@@ -151,7 +152,7 @@ export async function statementPdf(settlementId: string): Promise<{ name: string
   );
   if (s.settlement.note) blocks.push({ kind: 'text', text: String(s.settlement.note) });
   blocks.push({ kind: 'signatures', labels: ((layout?.signatureLines ?? ['Finance', 'Driver']) as string[]) });
-  return { name: fileName('Statement', s.settlement.number), body: renderPdf(blocks, pageOf(layout)) };
+  return { name: fileName('Statement', s.settlement.number), body: renderPdf(blocks, { ...pageOf(layout), ...(await documentBrand('statement')) }) };
 }
 
 /** Stores a printout so a message can attach it; `null` when there is nobody to file it under. */

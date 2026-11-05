@@ -11,7 +11,7 @@ export const messageTemplateShape = {
   subject: text(200).optional(),
   body: z.string().min(1).max(4096),
   buttons: z.array(z.strictObject({ label: text(20), action: z.enum(BUTTON_ACTIONS) })).max(3).optional(),
-  providerTemplateId: z.string().trim().regex(/^[a-zA-Z0-9_.-]{1,80}$/, 'Template name registered with Marichi Talks').optional(),
+  providerTemplateId: z.string().trim().regex(/^[a-zA-Z0-9_.-]{1,80}$/, 'Template name registered with the WhatsApp provider').optional(),
   ...baseShape,
 };
 

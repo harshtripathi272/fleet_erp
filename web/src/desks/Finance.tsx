@@ -103,6 +103,7 @@ export function FinanceToday() {
                   </strong>
                   <span className="muted">
                     {driver?.name} · recorded by Operations · {ago(data, e.at)}
+                    {e.movedUpFrom ? ` · ${e.movedUpFrom} did not decide in time` : ""}
                   </span>
                 </div>
                 <span className="row-buttons">
@@ -212,6 +213,7 @@ export function Approval({ request, picked, onPick }: { request: FundRequest; pi
             {truck?.plate} · {driver?.name}
           </button>
           {request.level && request.level.current > 1 && <Status tone="wait">Approval {request.level.current} of {request.level.of}</Status>}
+          {request.movedUpFrom && <Status tone="wait">{request.movedUpFrom} did not decide in time</Status>}
         </div>
         <span className="muted">
           <span className="mono">{trip.no}</span> · {routeLabel(data, trip)} · asked {ago(data, request.createdAt)} ago

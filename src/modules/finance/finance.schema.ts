@@ -18,6 +18,8 @@ export const exchangeRateShape = {
   baseCurrencyId: objectId,
   quoteCurrencyId: objectId,
   rate: positive,
+  buyingRate: positive.optional(),
+  sellingRate: positive.optional(),
   effectiveDate: day,
   source: z.enum(RATE_SOURCES).optional(),
   ...baseShape,

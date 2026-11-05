@@ -296,7 +296,7 @@ function ConnectionForm({ connection, providers, onClose }: { connection: Connec
             <Field label="SMTP server" hint={hint("host")}><input className="input" value={form.host} onChange={(e) => set("host", e.target.value)} placeholder="smtp.gmail.com" /></Field>
             <Field label="Port" hint={hint("port")}><input className="input" type="number" value={form.port} onChange={(e) => set("port", e.target.value)} placeholder="587" /></Field>
             <Field label="User" hint={hint("user")}><input className="input" value={form.user} onChange={(e) => set("user", e.target.value)} /></Field>
-            <Field label="From" hint={hint("from")}><input className="input" value={form.from} onChange={(e) => set("from", e.target.value)} placeholder="Marichi Fleet <fleet@company.com>" /></Field>
+            <Field label="From" hint={hint("from")}><input className="input" value={form.from} onChange={(e) => set("from", e.target.value)} placeholder="Acme Haulage <fleet@company.com>" /></Field>
           </div>
         )}
         {form.channel === "sms" && (
