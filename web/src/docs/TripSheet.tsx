@@ -316,7 +316,7 @@ export function TripSheet({ tripId }: { tripId: string }) {
             <span className="sign-line" />
             <span>
               {who}
-              {who === "Operations" ? ` · ${data.settings.people.operations}` : who === "Finance" ? ` · ${data.settings.people.finance}` : driver ? ` · ${driver.name}` : ""}
+              {who === "Operations" ? (data.settings.people.operations === who ? "" : ` · ${data.settings.people.operations}`) : who === "Finance" ? (data.settings.people.finance === who ? "" : ` · ${data.settings.people.finance}`) : driver ? ` · ${driver.name}` : ""}
             </span>
           </div>
         ))}

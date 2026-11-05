@@ -542,14 +542,18 @@ async function announceArrival(trip: Plain, index: number, at: Date, ctx: OpsCon
  * Why the truck can't be at this stop yet, if it can't. Stops follow the cargo: nothing after the loading
  * point before the loading is recorded, and nothing after the offloading point before the delivery is.
  */
-export async function arrivalRefusal(trip: HydratedDocument<any>, index: number): Promise<string | undefined> {
+export async function arrivalRefusal(trip: HydratedDocument<any>, index: number, ctx: OpsContext): Promise<string | undefined> {
   const stops = trip.get('stops') as Array<{ kind: string; placeId: unknown }>;
   const loadIndex = stops.findIndex((s) => s.kind === 'load');
   const offloadIndex = stops.findIndex((s) => s.kind === 'offload');
   if (loadIndex < 0 || index <= loadIndex) return undefined;
   const consignments = await Consignment.find({ tripId: trip._id }).select('delivered').lean();
-  if (!consignments.length) return 'Record the loading first.';
-  if (offloadIndex >= 0 && index > offloadIndex && consignments.some((c) => !c.delivered)) return `Record the delivery at ${await placeName(stops[offloadIndex]!.placeId)} first.`;
+  // The office records these; a driver can only wait for it.
+  if (!consignments.length) return ctx.asDriver ? 'Waiting for Operations to record the loading.' : 'Record the loading first.';
+  if (offloadIndex >= 0 && index > offloadIndex && consignments.some((c) => !c.delivered)) {
+    const place = await placeName(stops[offloadIndex]!.placeId);
+    return ctx.asDriver ? `Waiting for Operations to record the delivery at ${place}.` : `Record the delivery at ${place} first.`;
+  }
   return undefined;
 }
 
@@ -557,7 +561,7 @@ export async function arrivalRefusal(trip: HydratedDocument<any>, index: number)
 export async function arriveAt(trip: HydratedDocument<any>, index: number, at: Date, ctx: OpsContext, via: ArrivalSource, quiet = false) {
   const stops = trip.get('stops') as Array<{ legKm: number; arrivedAt?: Date; leftAt?: Date; arrivedVia?: ArrivalSource; kind: string }>;
   if (!stops[index]?.arrivedAt) {
-    const refusal = await arrivalRefusal(trip, index);
+    const refusal = await arrivalRefusal(trip, index, ctx);
     if (refusal) throw refuse(refusal);
   }
   const stamped = stampArrival(stops, index, at);
@@ -615,7 +619,7 @@ export async function arriveAtStop(id: string, stopId: string, ctx: OpsContext) 
   if (index < 0) throw new NotFoundError('Stop not found');
   // Checked before the tracking moves, so a refused arrival leaves the truck where it was.
   if (!(stops[index] as { arrivedAt?: Date }).arrivedAt) {
-    const refusal = await arrivalRefusal(trip, index);
+    const refusal = await arrivalRefusal(trip, index, ctx);
     if (refusal) throw refuse(refusal);
   }
   const via = ctx.asDriver ? 'driver' : 'office';

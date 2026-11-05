@@ -332,6 +332,9 @@ export function queueFor(data: AppData, desk: Desk): QueueItem[] {
     const mine = step.actor === desk || (desk === "owner" && step.actor === "owner");
     if (!mine) continue;
     if (desk === "finance" && (step.move === "settle" || step.move === "expenses")) continue;
+    // Each request is an item of its own below: a trip with two waiting is two things to do, not one.
+    if (desk === "finance" && (step.move === "approve" || step.move === "issue")) continue;
+    if (desk === "owner" && step.move === "owner-approve") continue;
     items.push({
       key: `${trip.id}-${step.move}`,
       tripId: trip.id,
@@ -345,12 +348,11 @@ export function queueFor(data: AppData, desk: Desk): QueueItem[] {
     if (desk === "finance") {
       for (const r of data.requests.filter((r) => r.status === "pending" || r.status === "approved")) {
         const trip = byId(data.trips, r.tripId)!;
-        if (!trip.dispatchedAt) continue;
         items.push({
           key: r.id,
           tripId: trip.id,
           title: `${r.status === "pending" ? "Approve" : "Pay"} the ${r.kind === "fuel" ? "fuel" : "advance"} ${r.kind === "fuel" ? litres(r.amount) : money(r.amount, r.currency)}`,
-          detail: `${trip.no} · on the road · ${r.reason ?? r.no}`,
+          detail: `${trip.no}${trip.dispatchedAt ? " · on the road" : ""} · ${r.reason ?? r.no}`,
           since: r.trail.at(-1)?.at,
           move: r.status === "pending" ? "approve" : "issue",
         });
@@ -395,12 +397,11 @@ export function queueFor(data: AppData, desk: Desk): QueueItem[] {
     } else {
       for (const r of data.requests.filter((r) => r.status === "owner")) {
         const trip = byId(data.trips, r.tripId)!;
-        if (!trip.dispatchedAt) continue;
         items.push({
           key: r.id,
           tripId: trip.id,
           title: `Approve the ${r.kind === "fuel" ? "fuel" : "advance"} ${r.kind === "fuel" ? litres(r.amount) : money(r.amount, r.currency)}`,
-          detail: `${trip.no} · on the road · ${r.reason ?? ""}`,
+          detail: `${trip.no}${trip.dispatchedAt ? " · on the road" : ""} · ${r.reason ?? r.no}`,
           since: r.trail.at(-1)?.at,
           move: "owner-approve",
         });

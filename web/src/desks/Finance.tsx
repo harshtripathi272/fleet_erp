@@ -4,7 +4,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { ArrowRight, Check, CircleDollarSign, Droplets } from "lucide-react";
 import { useApp } from "../store";
 import { useMay } from "../api/session";
-import { byId, carriedIn, driverBalance, funding } from "../domain/calc";
+import { byId, driverBalance, funding } from "../domain/calc";
 import { routeLabel, toSettle } from "../domain/helpers";
 import type { FundRequest } from "../domain/types";
 import { Avatar, Button, Status } from "../ui/kit";
@@ -173,7 +173,8 @@ export function Approval({ request, picked, onPick }: { request: FundRequest; pi
   const [note, setNote] = useState("");
   const amount = request.kind === "fuel" ? L(request.amount) : cash(request.amount, request.currency);
   const over = request.amount > request.suggested + 0.001;
-  const holds = carriedIn(data, trip);
+  // What the driver holds now, this trip's advances included: a top-up on the road is decided against that.
+  const holds = trip.driverId ? driverBalance(data, trip.driverId) : 0;
   const context = useMemo(
     () =>
       request.kind === "fuel"
