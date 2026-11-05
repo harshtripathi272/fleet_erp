@@ -10,6 +10,7 @@ export const TAX_MODES = ['none', 'single', 'per_customer_product'] as const;
 export const INVOICE_FROM = ['trip', 'nomination', 'on_demand'] as const;
 export const BILL_ON = ['delivered', 'loaded'] as const;
 export const SHORTAGE_ON_INVOICE = ['deduct', 'none'] as const;
+export const REVALUATION = ['off', 'monthly', 'quarterly'] as const;
 
 export const MONEY_DEFAULTS = {
   /** Which of a day's rates conversions use. A rate without a buying or selling figure falls back to its mid rate. */
@@ -32,6 +33,10 @@ export const BILLING_DEFAULTS = {
   billOn: 'delivered' as (typeof BILL_ON)[number],
   /** A shortage beyond the allowance is taken off the customer's invoice at the shortage price. */
   shortageOnInvoice: 'deduct' as (typeof SHORTAGE_ON_INVOICE)[number],
+  /** Open foreign-currency invoices revalued at each month's or quarter's end (#62). */
+  revaluation: 'off' as (typeof REVALUATION)[number],
+  /** Where the ageing columns end, in days past due: current, 1–30, 31–60, 61–90, over 90. */
+  ageingBucketsDays: [30, 60, 90] as number[],
 };
 
 const moneyPart = new Schema({
@@ -49,6 +54,8 @@ const billingPart = new Schema({
   paymentTermsDays: { type: Number, min: 0, max: 365 },
   billOn: { type: String, enum: BILL_ON },
   shortageOnInvoice: { type: String, enum: SHORTAGE_ON_INVOICE },
+  revaluation: { type: String, enum: REVALUATION },
+  ageingBucketsDays: { type: [Number], default: undefined },
 }, { _id: false, strict: 'throw' });
 
 const financeSettingsSchema = new Schema({

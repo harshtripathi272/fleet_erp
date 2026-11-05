@@ -11,7 +11,7 @@ export const EVENTS = [
   'fund_request.created', 'fund_request.approved', 'fund_request.rejected', 'fund_request.paid',
   'expense.submitted', 'expense.approved', 'expense.rejected',
   'document.expiring', 'document.expired', 'settlement.posted', 'nomination.sent', 'user.invited', 'password.reset',
-  'invoice.sent', 'payment.received',
+  'invoice.sent', 'payment.received', 'statement.sent',
 ] as const;
 /** Each event as people say it: what has just happened. */
 export const EVENT_NAMES: Record<(typeof EVENTS)[number], string> = {
@@ -23,7 +23,7 @@ export const EVENT_NAMES: Record<(typeof EVENTS)[number], string> = {
   'expense.approved': 'An expense is approved', 'expense.rejected': 'An expense is rejected', 'document.expiring': 'A document is about to expire',
   'document.expired': 'A document has expired', 'settlement.posted': 'A driver is settled', 'nomination.sent': 'A nomination goes to the customer',
   'user.invited': 'Someone is invited', 'password.reset': 'A password reset is asked for',
-  'invoice.sent': 'An invoice or credit note is sent', 'payment.received': "A customer's payment is received",
+  'invoice.sent': 'An invoice or credit note is sent', 'payment.received': "A customer's payment is received", 'statement.sent': 'A customer statement is sent',
 };
 export const CHANNEL_NAMES: Record<(typeof MESSAGE_CHANNELS)[number], string> = { whatsapp: 'WhatsApp', sms: 'SMS', email: 'E-mail' };
 /** Placeholders a template may use, written {{name}}. */
@@ -31,7 +31,7 @@ export const VARIABLES = [
   'company.name', 'company.signature', 'user.name', 'driver.name', 'driver.phone', 'vehicle.registration', 'trailer.registration', 'trip.number',
   'route.name', 'place.name', 'customer.name', 'amount', 'currency', 'document.name', 'document.number', 'document.expiryDate',
   'reason', 'link', 'date',
-  'invoice.number', 'invoice.kind', 'invoice.total', 'invoice.due', 'payment.number', 'payment.amount', 'payment.invoices',
+  'invoice.number', 'invoice.kind', 'invoice.total', 'invoice.due', 'payment.number', 'payment.amount', 'payment.invoices', 'statement.period', 'statement.balance',
 ] as const;
 
 /** A WhatsApp or SMS message sent through Marichi Talks, or an e-mail sent over SMTP. */
