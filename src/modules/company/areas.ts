@@ -18,7 +18,7 @@ export { AREAS, AREA_KEYS, DEFAULT_AREAS, areaOf, type Area, type AreaKey, type 
 const EVENT_AREAS: [RegExp, AreaKey][] = [
   [/^(trip|nomination)\./, 'trips'],
   [/^(fund_request|expense|settlement)\./, 'finance'],
-  [/^(invoice|payment)\./, 'billing'],
+  [/^(invoice|payment|statement)\./, 'billing'],
   [/^(service|work_order)\./, 'maintenance'],
 ];
 export const areaOfEvent = (event: string) => EVENT_AREAS.find(([re]) => re.test(event))?.[1];
