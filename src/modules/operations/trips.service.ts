@@ -220,7 +220,7 @@ async function tripDoc(id: unknown) {
 
 /* ---------- Busy checks ---------- */
 
-async function assertFree(field: 'vehicleId' | 'driverId' | 'trailerId', id: unknown, label: string, except?: unknown) {
+export async function assertFree(field: 'vehicleId' | 'driverId' | 'trailerId', id: unknown, label: string, except?: unknown) {
   if (!id) return;
   const filter: Plain = { [field]: id, active: true };
   if (except) filter._id = { $ne: except };
@@ -229,7 +229,7 @@ async function assertFree(field: 'vehicleId' | 'driverId' | 'trailerId', id: unk
 
 /* ---------- Plan ---------- */
 
-export async function createTrip(input: S.CreateTripInput, ctx: OpsContext, extra: { nominationId?: unknown } = {}) {
+export async function createTrip(input: S.CreateTripInput, ctx: OpsContext, extra: { nominationId?: unknown; transferredFromTripId?: unknown } = {}) {
   need(ctx, 'trips', 'create');
   const at = new Date();
   const customer = await customerParty(input.customerId);
@@ -253,7 +253,7 @@ export async function createTrip(input: S.CreateTripInput, ctx: OpsContext, extr
   };
   const trip = new Trip({
     ...draft, ...(await budgets(draft, truck)), number: await nextNumber('trips', 'TRIP', at),
-    openingFuelL: truck.fuelL, tripTypeId: tripType?._id, stages: await stageSnapshot(tripType?._id), createdBy: ctx.actorId, updatedBy: ctx.actorId,
+    openingFuelL: truck.fuelL, tripTypeId: tripType?._id, stages: await stageSnapshot(tripType?._id), transferredFromTripId: extra.transferredFromTripId, createdBy: ctx.actorId, updatedBy: ctx.actorId,
   });
   recordEvent(trip, 'created', at, ctx.actorId);
   await save(trip, `${truck.plate}, its driver or its trailer is already on a trip.`);
@@ -326,6 +326,7 @@ export async function cancelTrip(id: string, input: S.ReasonInput, ctx: OpsConte
   need(ctx, 'trips', 'update');
   const at = new Date();
   const trip = await tripDoc(id);
+  if (await Consignment.exists({ tripId: trip._id, inTransit: true })) throw conflict("This trip carries a load from another truck. Say what happens to the load with \"Can't deliver\".");
   if (trip.get('dispatchedAt')) throw conflict('The truck has left. End the trip instead.');
   if (!activeTrip(trip.toObject())) throw conflict('This trip is already closed.');
   // Cash already paid or spent on the trip stays with the driver; the trip then goes on their next settlement.
@@ -354,6 +355,23 @@ export async function cancelTrip(id: string, input: S.ReasonInput, ctx: OpsConte
  * and driver are free. Cash already paid stays with the driver and the trip goes on their next
  * settlement, like an ended trip. A company can switch this off (operations.stopBeforeLoading).
  */
+/** Closes a trip that won't reach its end: the truck is where it is, open money requests are cancelled, and cash paid goes to settlement. */
+export async function closeEarly(trip: HydratedDocument<any>, close: { reason: string; placeId: unknown; closingFuelL: number; requestNote: string }, at: Date, ctx: OpsContext) {
+  trip.set({ endedAt: at, stopReason: close.reason, closingFuelL: close.closingFuelL, active: false, updatedBy: ctx.actorId });
+  const tracking = trip.get('tracking');
+  if (tracking) trip.set('tracking.speed', 0);
+  await save(trip);
+  await setVehicleState(trip.get('vehicleId'), { placeId: close.placeId, fuelL: close.closingFuelL }, ctx.actorId);
+  for (const request of await FundRequest.find({ tripId: trip._id, status: { $in: OPEN_REQUEST } })) {
+    request.set('status', 'cancelled');
+    request.get('trail').push({ desk: ctx.desk, userId: ctx.actorId, name: ctx.name, what: 'cancelled', at, note: close.requestNote, via: 'app' });
+    await save(request);
+    await resolve(String(request._id), 'Trip stopped');
+    await resolve(`${request._id}-issue`, 'Trip stopped');
+  }
+  await resolve(`${trip._id}-end`, 'Trip stopped');
+}
+
 export async function stopTrip(id: string, input: S.StopTripInput, ctx: OpsContext) {
   need(ctx, 'trips', 'update');
   const at = new Date();
@@ -367,19 +385,7 @@ export async function stopTrip(id: string, input: S.StopTripInput, ctx: OpsConte
   const stops = trip.get('stops') as Array<{ placeId: unknown; arrivedAt?: Date }>;
   // Where the truck is: the place given, or the last stop it reached.
   const placeId = input.placeId ?? [...stops].reverse().find((s) => s.arrivedAt)?.placeId ?? stops[0]!.placeId;
-  trip.set({ endedAt: at, stopReason: input.reason, closingFuelL: input.closingFuelL, active: false, updatedBy: ctx.actorId });
-  const tracking = trip.get('tracking');
-  if (tracking) trip.set('tracking.speed', 0);
-  await save(trip);
-  await setVehicleState(trip.get('vehicleId'), { placeId, fuelL: input.closingFuelL }, ctx.actorId);
-  for (const request of await FundRequest.find({ tripId: trip._id, status: { $in: OPEN_REQUEST } })) {
-    request.set('status', 'cancelled');
-    request.get('trail').push({ desk: ctx.desk, userId: ctx.actorId, name: ctx.name, what: 'cancelled', at, note: 'Trip stopped before loading', via: 'app' });
-    await save(request);
-    await resolve(String(request._id), 'Trip stopped');
-    await resolve(`${request._id}-issue`, 'Trip stopped');
-  }
-  await resolve(`${trip._id}-end`, 'Trip stopped');
+  await closeEarly(trip, { reason: input.reason, placeId, closingFuelL: input.closingFuelL, requestNote: 'Trip stopped before loading' }, at, ctx);
   const place = await placeName(placeId);
   const number = String(trip.get('number'));
   if (trip.get('driverId')) await post(driverThread(trip.get('driverId')), at, { title: `${number} stopped`, text: `${input.reason} Park the truck at ${place}.` }, ctx);
@@ -436,6 +442,8 @@ export async function dispatchTrip(id: string, ctx: OpsContext) {
   stops[0].arrivedAt ??= at;
   stops[0].leftAt = at;
   recordEvent(trip, 'dispatched', at, ctx.actorId);
+  // A trip that took over a load from another truck leaves already loaded.
+  if (await Consignment.exists({ tripId: trip._id })) recordEvent(trip, 'loaded', at, ctx.actorId);
   trip.set({ dispatchedAt: at, openingFuelL: Math.max(0, round(truck.fuelL - issued, 0)), tracking: { km: 0, speed: 0, heading: 0, at }, updatedBy: ctx.actorId });
   await save(trip);
   await resolve(`${trip._id}-dispatch`, 'Dispatched');

@@ -7,6 +7,7 @@ export const AUDIENCES = ['driver', 'operations', 'finance', 'owner', 'customer'
 export const BUTTON_ACTIONS = ['approve', 'reject', 'send_photo', 'open_link', 'reply'] as const;
 export const EVENTS = [
   'trip.created', 'trip.dispatched', 'trip.arrived_loading', 'trip.loaded', 'trip.arrived_offloading', 'trip.delivered', 'trip.closed',
+  'trip.load_returned', 'trip.load_transferred', 'trip.load_written_off',
   'fund_request.created', 'fund_request.approved', 'fund_request.rejected', 'fund_request.paid',
   'expense.submitted', 'expense.approved', 'expense.rejected',
   'document.expiring', 'document.expired', 'settlement.posted', 'nomination.sent', 'user.invited', 'password.reset',
@@ -15,6 +16,7 @@ export const EVENTS = [
 /** Each event as people say it: what has just happened. */
 export const EVENT_NAMES: Record<(typeof EVENTS)[number], string> = {
   'trip.created': 'A trip is created', 'trip.dispatched': 'A trip leaves', 'trip.arrived_loading': 'A truck reaches loading',
+  'trip.load_returned': 'A load is going back', 'trip.load_transferred': 'A load moves to another truck', 'trip.load_written_off': 'A load is written off',
   'trip.loaded': 'A truck is loaded', 'trip.arrived_offloading': 'A truck reaches offloading', 'trip.delivered': 'A load is delivered',
   'trip.closed': 'A trip is closed', 'fund_request.created': 'Fuel or cash is requested', 'fund_request.approved': 'A request is approved',
   'fund_request.rejected': 'A request is rejected', 'fund_request.paid': 'A request is paid out', 'expense.submitted': 'An expense is sent in',

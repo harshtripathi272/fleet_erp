@@ -17,12 +17,13 @@ import { useApp } from "../store";
 import { useMay } from "../api/session";
 import { useMine } from "./mine";
 import { byId, tripKm } from "../domain/calc";
-import { placeName, routeLabel } from "../domain/helpers";
+import { activeTrip, placeName, routeLabel } from "../domain/helpers";
 import { ACTOR_NAME, nextStep, STAGES, stageIndex, stageTimes } from "../domain/turn";
 import type { Move, NextStep, StageId } from "../domain/turn";
 import type { Action, Desk, Trip } from "../domain/types";
 import { Avatar, Button, Empty, Field, Modal, Segmented } from "../ui/kit";
 import { ago, day, hm, km, stamp } from "../ui/format";
+import { CantDeliver, UndeliveredNote } from "./CantDeliver";
 import { NewTrip } from "./NewTrip";
 import { DriverMessages, StagePanel } from "./stages";
 import { TripAside } from "./TripAside";
@@ -208,7 +209,7 @@ function TripView({
   onStage: (stage: StageId) => void;
   onBack: () => void;
 }) {
-  const { data, role, setOverlay } = useApp();
+  const { data, role, setOverlay, me } = useApp();
   const may = useMay();
   const step = nextStep(data, trip);
   const truck = byId(data.trucks, trip.truckId)!;
@@ -221,6 +222,11 @@ function TripView({
   const panelRef = useRef<HTMLDivElement>(null);
   const [cancelOpen, setCancelOpen] = useState(false);
   const [stopOpen, setStopOpen] = useState(false);
+  const [cantDeliverOpen, setCantDeliverOpen] = useState(false);
+  // On the truck and not delivered, and nothing already waiting for the owner.
+  const onBoard = data.consignments.find((c) => c.tripId === trip.id && !c.delivered && activeTrip(trip));
+  const mayCantDeliver = Boolean(onBoard) && onBoard!.writeOff?.status !== "pending" && data.settings.loadedTripOutcomes.length > 0 && may("trip.undelivered")
+    && me.roles.some((r) => ["owner", "admin", ...data.settings.loadedTripRoles].includes(r));
   const focus = (s: StageId) => {
     onStage(s);
     requestAnimationFrame(() => panelRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }));
@@ -262,7 +268,13 @@ function TripView({
               <span>Stop trip</span>
             </button>
           )}
-          {!trip.dispatchedAt && !trip.cancelledAt && may("trip.cancel") && (
+          {mayCantDeliver && (
+            <button className="icon-btn with-label" onClick={() => setCantDeliverOpen(true)}>
+              <XCircle size={18} />
+              <span>Can't deliver</span>
+            </button>
+          )}
+          {!trip.dispatchedAt && !trip.cancelledAt && !onBoard && may("trip.cancel") && (
             <button className="icon-btn with-label" onClick={() => setCancelOpen(true)}>
               <XCircle size={18} />
               <span>Cancel trip</span>
@@ -273,7 +285,8 @@ function TripView({
 
       <Stepper trip={trip} step={step} selected={selectedStage} onSelect={onStage} />
       <NextStepBar trip={trip} step={step} onGo={focus} viewing={selectedStage} />
-      {trip.stopReason && <p className="drawer-note">Stopped before loading: {trip.stopReason}</p>}
+      {trip.stopReason && !trip.undelivered && <p className="drawer-note">Stopped before loading: {trip.stopReason}</p>}
+      <UndeliveredNote trip={trip} load={data.consignments.find((c) => c.tripId === trip.id)} />
 
       <div className="trip-body">
         <div className="trip-main" ref={panelRef}>
@@ -284,6 +297,7 @@ function TripView({
       </div>
       <CancelTrip trip={trip} open={cancelOpen} onClose={() => setCancelOpen(false)} />
       {stopOpen && <StopTrip trip={trip} onClose={() => setStopOpen(false)} />}
+      {cantDeliverOpen && <CantDeliver trip={trip} onClose={() => setCantDeliverOpen(false)} />}
     </article>
   );
 }
