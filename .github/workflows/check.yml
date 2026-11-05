@@ -199,7 +199,7 @@ jobs:
           q() { docker compose exec -T mongo mongosh fleet --quiet --eval "$1"; }
           check() { got="$(q "$2")"; echo "$1: $got"; [ "$got" = "$3" ] || { echo "expected $3"; exit 1; }; }
           check "product name" 'db.companies.findOne().brand.productName' 'Acme Fleet'
-          check "logo stored" 'String(db.storedfiles.countDocuments({ _id: db.companies.findOne().brand.logoFileId }))' '1'
+          check "logo stored" 'String(db.files.countDocuments({ _id: db.companies.findOne().brand.logoFileId }))' '1'
           check "areas" 'db.companies.findOne().modules.join(",")' 'masters,trips,finance,tracking'
           check "vehicles" 'String(db.vehicles.countDocuments())' '2'
           check "role" 'String(db.roles.countDocuments({ key: "dispatcher" }))' '1'
