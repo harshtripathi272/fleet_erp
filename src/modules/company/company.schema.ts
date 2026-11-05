@@ -3,7 +3,7 @@ import { email, objectId, phone, text } from '../../core/masters/zod.js';
 import { SETTLEMENT_PERIODS } from './company.model.js';
 
 import { AREA_KEYS } from './areaList.js';
-import { CARGO_KINDS } from './company.model.js';
+import { CARGO_KINDS, LOADED_TRIP_OUTCOMES, WRITE_OFF_CARRIERS } from './company.model.js';
 
 export const MODULES = AREA_KEYS;
 const timezone = z.string().refine((tz) => Intl.supportedValuesOf('timeZone').includes(tz) || tz === 'UTC', 'Unknown time zone');
@@ -49,6 +49,11 @@ const companyShape = {
   /** Only the settings sent change; the rest keep their values. */
   operations: z.strictObject({
     cargoKinds: z.array(z.enum(CARGO_KINDS)).min(1, 'Keep at least one kind of cargo').max(3).optional(),
+    loadedTripOutcomes: z.array(z.enum(LOADED_TRIP_OUTCOMES)).max(3).optional(),
+    writeOffCarriers: z.array(z.enum(WRITE_OFF_CARRIERS)).max(3).optional(),
+    writeOffDefaultCarrier: z.enum(WRITE_OFF_CARRIERS).optional(),
+    loadedTripRoles: z.array(z.string().trim().regex(/^[a-z][a-z0-9_-]{0,39}$/, 'A role key')).max(30).optional(),
+    writeOffNeedsOwner: z.boolean().optional(),
     tripStartsFromTruck: z.boolean().optional(),
     roadDistanceFactor: z.number().min(1).max(3).optional(),
     averageSpeedKmh: z.number().min(10).max(120).optional(),
@@ -59,7 +64,9 @@ const companyShape = {
     defaultFuelReservePercent: z.number().min(0).max(50).optional(),
     settlementPeriod: z.enum(SETTLEMENT_PERIODS).optional(),
     stopBeforeLoading: z.boolean().optional(),
-  }).refine((o) => o.densityMinKgM3 === undefined || o.densityMaxKgM3 === undefined || o.densityMinKgM3 < o.densityMaxKgM3, 'Minimum density must be below the maximum').optional(),
+  })
+    .refine((o) => !o.writeOffDefaultCarrier || !o.writeOffCarriers || o.writeOffCarriers.includes(o.writeOffDefaultCarrier), 'The default must be one of those allowed to carry a write-off')
+    .refine((o) => o.densityMinKgM3 === undefined || o.densityMaxKgM3 === undefined || o.densityMinKgM3 < o.densityMaxKgM3, 'Minimum density must be below the maximum').optional(),
 };
 
 /** First save creates the company; later saves must send the version they edited. */

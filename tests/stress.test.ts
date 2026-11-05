@@ -98,12 +98,13 @@ describe('load', () => {
 
   test('200 creates in a row keep the audit trail complete', async () => {
     const before = await mongoose.connection.db!.collection('auditlogs').countDocuments({ entity: 'cancellation-reasons' });
+    const sample = (await api().get('/api/v1/cancellation-reasons').query({ limit: 1 }).set(bearer(owner)).expect(200)).body.meta.total as number;
     for (let i = 0; i < 200; i += 1) await post('/cancellation-reasons', { code: `BULK-${i}`, name: `Bulk ${i}`, appliesTo: ['trip'] }).expect(201);
     const after = await mongoose.connection.db!.collection('auditlogs').countDocuments({ entity: 'cancellation-reasons' });
     assert.equal(after - before, 200);
     const list = await api().get('/api/v1/cancellation-reasons').query({ limit: 100, page: 3 }).set(bearer(owner)).expect(200);
-    assert.equal(list.body.meta.total, 201);
-    assert.equal(list.body.data.length, 1);
+    assert.equal(list.body.meta.total, 200 + sample);
+    assert.equal(list.body.data.length, sample);
   });
 });
 

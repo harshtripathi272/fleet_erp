@@ -106,6 +106,12 @@ export interface Settings {
   stopBeforeLoading: boolean;
   /** Company trip settings: the kinds of cargo it carries. */
   cargoKinds: string[];
+  /** Company trip settings: a loaded trip that can't deliver (#64). */
+  loadedTripOutcomes: string[];
+  writeOffCarriers: string[];
+  writeOffDefaultCarrier: string;
+  loadedTripRoles: string[];
+  writeOffNeedsOwner: boolean;
   clockOffsetMs: number;
   seq: Record<string, number>;
   people: Record<Desk, string>;
@@ -155,6 +161,10 @@ export interface Trip {
   cancelledAt?: string;
   /** Stopped after leaving, before loading: why. The trip is closed like an ended one. */
   stopReason?: string;
+  /** What was decided for a load this trip couldn't deliver. */
+  undelivered?: { outcome: "return" | "transfer" | "write_off"; reason: string; at: string };
+  transferredToTripId?: string;
+  transferredFromTripId?: string;
   /** Cancelled after cash was paid or spent on it: it still goes on the driver's next settlement. */
   settleAfterCancel?: boolean;
   tracking?: Tracking;
@@ -282,6 +292,7 @@ export interface Consignment {
   load: Measure;
   delivered?: Measure & { at: string; podNo: string; docId?: string };
   shortage?: Shortage;
+  writeOff?: { status: "pending" | "approved" | "rejected"; carrier: string; amountZmw: number; reason?: string; requestedByName?: string; decidedAt?: string; note?: string };
 }
 
 export interface Expense {
@@ -317,6 +328,7 @@ export interface Settlement {
   advancesZmw: number;
   expensesZmw: number;
   shortagesZmw: number;
+  writeOffsZmw: number;
   /** Positive: driver handed cash back. Negative: company paid the driver. */
   cashZmw: number;
   closingZmw: number;
@@ -466,6 +478,10 @@ export type Action =
     }
   | { type: "trip.cancel"; tripId: string; reason: string }
   | { type: "trip.stop"; tripId: string; reason: string; closingFuelL: number; placeId?: string }
+  | { type: "trip.undelivered"; tripId: string; reasonId: string; note?: string; outcome: "return"; returnPlaceId?: string }
+  | { type: "trip.undelivered"; tripId: string; reasonId: string; note?: string; outcome: "transfer"; vehicleId: string; driverId?: string; trailerId?: string; placeId?: string; closingFuelL: number }
+  | { type: "trip.undelivered"; tripId: string; reasonId: string; note?: string; outcome: "write_off"; carrier?: string; insurerPartyId?: string; claimReference?: string; amount?: number; placeId?: string; closingFuelL: number }
+  | { type: "writeoff.decide"; consignmentId: string; approve: boolean; note?: string; via?: "app" | "WhatsApp" }
   | { type: "request.create"; tripId: string; kind: "fuel" | "cash"; amount: number; currency: Currency; reason?: string }
   | { type: "request.decide"; id: string; approve: boolean; note?: string; via?: "app" | "WhatsApp" }
   | { type: "request.issue"; id: string; medium: string; reference: string; station?: string; via?: "app" | "WhatsApp" }

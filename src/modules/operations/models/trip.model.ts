@@ -61,6 +61,13 @@ const tripSchema = new Schema<any>({
   cancelReason: String,
   /** Stopped after leaving, before anything was loaded; the trip is closed like an ended one. */
   stopReason: String,
+  /** What was decided for a load this trip couldn't deliver (#64). */
+  undelivered: {
+    type: new Schema({ outcome: { type: String, enum: ['return', 'transfer', 'write_off'], required: true }, reasonId: { type: ObjectId, ref: 'CancellationReason' }, reason: String, at: Date, by: { type: ObjectId, ref: 'User' } }, { _id: false }),
+    default: undefined,
+  },
+  transferredToTripId: { type: ObjectId, ref: 'Trip' },
+  transferredFromTripId: { type: ObjectId, ref: 'Trip' },
   /** Cancelled after cash was paid or spent on it: the trip still goes on the driver's next settlement. */
   settleAfterCancel: Boolean,
   /** The latest position. `source` says where it came from; `simulator` positions are a demo, not the truck. */

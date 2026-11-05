@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { baseShape, code, integer, isoDate, money, name, objectId, percent, text, toUpdateSchema } from '../../../core/masters/zod.js';
-import { BILL_ON, INVOICE_FROM, RATE_BASES as CONVERT_AT, SHORTAGE_ON_INVOICE, TAX_MODES } from '../models/financeSettings.model.js';
-import { RATE_BASES } from './billing.model.js';
+import { BILL_ON, INVOICE_FROM, RATE_BASES as CONVERT_AT, REVALUATION, SHORTAGE_ON_INVOICE, TAX_MODES } from '../models/financeSettings.model.js';
+import { POSTING_ROLES, RATE_BASES } from './billing.model.js';
 
 const day = isoDate.transform((d) => new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate())));
 
@@ -23,6 +23,14 @@ export const customerRateShape = {
 export const createCustomerRateSchema = z.strictObject(customerRateShape);
 export const updateCustomerRateSchema = toUpdateSchema(customerRateShape);
 
+export const accountCodeShape = {
+  code, name, description: text(500).optional(),
+  postsFor: z.array(z.enum(POSTING_ROLES)).max(POSTING_ROLES.length).refine((v) => new Set(v).size === v.length, 'Each posting once').optional(),
+  ...baseShape,
+};
+export const createAccountCodeSchema = z.strictObject(accountCodeShape);
+export const updateAccountCodeSchema = toUpdateSchema(accountCodeShape);
+
 /* ---------- Settings ---------- */
 
 export const financeSettingsSchema = z.strictObject({
@@ -40,6 +48,9 @@ export const financeSettingsSchema = z.strictObject({
     paymentTermsDays: integer(0, 365).nullable().optional(),
     billOn: z.enum(BILL_ON).nullable().optional(),
     shortageOnInvoice: z.enum(SHORTAGE_ON_INVOICE).nullable().optional(),
+    revaluation: z.enum(REVALUATION).nullable().optional(),
+    ageingBucketsDays: z.array(integer(1, 3650)).min(1).max(6)
+      .refine((d) => d.every((n, i) => i === 0 || n > d[i - 1]!), 'Each column must end later than the one before').nullable().optional(),
   }).optional(),
   version: z.number().int().min(0).optional(),
 }).refine((v) => v.money || v.billing, 'Send at least one setting');

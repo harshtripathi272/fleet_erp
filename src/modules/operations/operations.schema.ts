@@ -81,6 +81,20 @@ export type EndTripInput = z.infer<typeof endTripSchema>;
 export const stopTripSchema = z.strictObject({ reason: text(300), closingFuelL: litresValue, placeId: objectId.optional() });
 export type StopTripInput = z.infer<typeof stopTripSchema>;
 
+/* What happens to a load a trip can't deliver (#64). */
+const undelivered = { reasonId: objectId, note: text(300).optional() };
+export const undeliveredSchema = z.discriminatedUnion('outcome', [
+  z.strictObject({ ...undelivered, outcome: z.literal('return'), returnPlaceId: objectId.optional() }),
+  z.strictObject({ ...undelivered, outcome: z.literal('transfer'), vehicleId: objectId, driverId: objectId.optional(), trailerId: objectId.optional(), placeId: objectId.optional(), closingFuelL: litresValue }),
+  z.strictObject({
+    ...undelivered, outcome: z.literal('write_off'), carrier: z.enum(['driver', 'company', 'insurance']).optional(), insurerPartyId: objectId.optional(), claimReference: text(60).optional(),
+    amount: money.optional(), placeId: objectId.optional(), closingFuelL: litresValue,
+  }),
+]);
+export type UndeliveredInput = z.infer<typeof undeliveredSchema>;
+export const writeOffDecisionSchema = z.strictObject({ approve: z.boolean(), note: text(300).optional(), via });
+export type WriteOffDecisionInput = z.infer<typeof writeOffDecisionSchema>;
+
 export const vehicleStateSchema = z.strictObject({ placeId: objectId.optional(), fuelL: litresValue.optional() })
   .refine((v) => v.placeId !== undefined || v.fuelL !== undefined, 'Send the place, the fuel or both');
 export type VehicleStateInput = z.infer<typeof vehicleStateSchema>;

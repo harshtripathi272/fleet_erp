@@ -52,6 +52,8 @@ router.post('/trips/:id/stops/:stopId/arrive', authorize('trips', 'update'), val
 router.post('/trips/:id/remind', authorize('messages', 'create'), validate(id), C.remind);
 router.post('/trips/:id/end', authorize('trips', 'update'), validate({ ...id, body: S.endTripSchema }), C.endTrip);
 router.post('/trips/:id/stop', authorize('trips', 'update'), validate({ ...id, body: S.stopTripSchema }), C.stopTrip);
+router.post('/trips/:id/undelivered', authorize('trips', 'update'), validate({ ...id, body: S.undeliveredSchema }), C.undelivered);
+router.post('/consignments/:id/write-off-decision', authorize('consignments', 'read'), validate({ ...id, body: S.writeOffDecisionSchema }), C.decideWriteOff);
 router.post('/trips/:id/stages/complete', authorize('trips', 'read'), validate(id), C.completeStage);
 
 router.get('/vehicle-states', authorize('vehicle-states', 'read'), C.listVehicleStates);

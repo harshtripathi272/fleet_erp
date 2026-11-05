@@ -104,6 +104,27 @@ const shortageSchema = new Schema({
   approval: { type: approvalSchema, default: undefined },
 }, { _id: false, strict: 'throw' });
 
+/** A load given up for lost: what it was worth, who carries that, and the owner's decision where one is needed. */
+const writeOffSchema = new Schema({
+  status: { type: String, enum: ['pending', 'approved', 'rejected'], required: true },
+  carrier: { type: String, enum: ['driver', 'company', 'insurance'], required: true },
+  insurerPartyId: { type: ObjectId, ref: 'Party' },
+  claimReference: String,
+  amount: { type: moneySchema, required: true },
+  baseAmountMinor: { type: Number, required: true },
+  reasonId: { type: ObjectId, ref: 'CancellationReason' },
+  reason: String,
+  /** Where the truck is and what is in the tank: the trip closes with these once it is approved. */
+  placeId: { type: ObjectId, ref: 'Place' },
+  closingFuelL: Number,
+  requestedAt: Date,
+  requestedBy: { type: ObjectId, ref: 'User' },
+  requestedByName: String,
+  decidedAt: Date,
+  decidedBy: { type: ObjectId, ref: 'User' },
+  note: String,
+}, { _id: false, strict: 'throw' });
+
 /** What was loaded on a trip and what was delivered, with any shortage beyond the allowance. */
 const consignmentSchema = new Schema<any>({
   number: { type: String, required: true },
@@ -119,6 +140,11 @@ const consignmentSchema = new Schema<any>({
   /** True from loading until delivery; one load in transit per trip. */
   inTransit: { type: Boolean, default: true },
   shortage: { type: shortageSchema, default: undefined },
+  /** Going back to the consignor instead of on to the consignee (#64). */
+  returned: { type: new Schema({ at: Date, by: { type: ObjectId, ref: 'User' }, reason: String, placeId: { type: ObjectId, ref: 'Place' } }, { _id: false }), default: undefined },
+  /** Each move to another truck, oldest first; `tripId` is the trip carrying it now. */
+  transfers: { type: [new Schema({ fromTripId: { type: ObjectId, ref: 'Trip' }, toTripId: { type: ObjectId, ref: 'Trip' }, at: Date, by: { type: ObjectId, ref: 'User' }, reason: String }, { _id: false })], default: undefined },
+  writeOff: { type: writeOffSchema, default: undefined },
   createdBy: { type: ObjectId, ref: 'User' },
   updatedBy: { type: ObjectId, ref: 'User' },
 }, schemaOptions);
