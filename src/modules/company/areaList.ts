@@ -9,7 +9,7 @@ export const AREAS = [
   { key: 'tracking', name: 'Tracking', description: "Where each truck is and how fast it moves, from the driver's phone or a tracker.", state: 'live', defaultOn: true },
   { key: 'driver-app', name: 'Driver app', description: 'Drivers sign in on their phone to see their trip, send receipts and report arrivals.', state: 'live', defaultOn: true },
   { key: 'maintenance', name: 'Maintenance', description: 'Service plans, repairs and work orders, parts and tyres for each truck.', state: 'not-built', defaultOn: false },
-  { key: 'billing', name: 'Billing', description: 'Customer rates, invoices, payments received and exchange gain or loss.', state: 'not-built', defaultOn: false },
+  { key: 'billing', name: 'Billing', description: 'Customer rates, invoices, payments received and exchange gain or loss.', state: 'early', defaultOn: false },
   { key: 'customer-portal', name: 'Customer portal', description: 'Customers sign in to follow their own loads, delivery proof and invoices.', state: 'not-built', defaultOn: false },
 ] as const satisfies readonly Area[];
 
