@@ -103,6 +103,14 @@ export function TripSheet({ tripId }: { tripId: string }) {
                 <dd>{c ? `${num(c.load.qty, 2)} ${c.load.unit}` : "—"}</dd>
                 <dt>Delivered</dt>
                 <dd>{c?.delivered ? `${num(c.delivered.qty, 2)} ${c.delivered.unit}` : "—"}</dd>
+                {c?.shortage && (
+                  <>
+                    <dt>Net shortage</dt>
+                    <dd>{`${num(c.shortage.netShortL, 2)} ${c.shortage.unit}`}</dd>
+                    <dt>Charged to driver</dt>
+                    <dd>{c.shortage.status === "charged" ? `${n0(c.shortage.amountZmw)} ZMW` : c.shortage.status === "waived" ? "Waived" : "—"}</dd>
+                  </>
+                )}
               </>
             )}
             <dt>Invoice</dt>
