@@ -33,6 +33,7 @@ import operationsRouter, { webhookRouter } from './modules/operations/operations
 import organisationRouter from './modules/organisation/organisation.router.js';
 import partiesRouter from './modules/parties/parties.router.js';
 import rolesRouter from './modules/roles/roles.router.js';
+import setupKitRouter from './modules/setup/setup.router.js';
 import tripsRouter from './modules/trips/trips.router.js';
 import usersRouter from './modules/users/users.router.js';
 
@@ -46,6 +47,8 @@ app.use(requestLogger);
 app.use('/api', compressJson);
 // Signed calls from outside services, checked over the exact bytes sent, so before the JSON parser (#59).
 app.use('/api/v1/hooks', hooksRouter);
+// The Company kit carries logos and spreadsheets, so it has its own, larger body limit (#76).
+app.use('/api/v1/setup-kit', express.json({ limit: '40mb' }), rejectOperators, authenticate, setupKitRouter);
 app.use(express.json({ limit: '1mb' }));
 app.use(rejectOperators);
 

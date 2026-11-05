@@ -20,6 +20,7 @@
     "rates:fetch:dev": "tsx src/jobs/fetchRates.ts",
     "approvals:escalate": "node dist/jobs/escalate.js",
     "approvals:escalate:dev": "tsx src/jobs/escalate.ts",
+    "kit": "tsx src/jobs/kit.ts",
     "build:web": "cd web && npm install --no-audit --no-fund && npm run build"
   },
   "dependencies": {

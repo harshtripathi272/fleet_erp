@@ -23,6 +23,8 @@ COPY package.json package-lock.json ./
 RUN npm ci --omit=dev && npm cache clean --force
 COPY --from=build /app/dist ./dist
 COPY public ./public
+# The deploy scripts a company kit carries (#76), for kits built from the app.
+COPY deploy ./deploy
 COPY --from=web /app/web/dist ./web/dist
 USER node
 EXPOSE 3000

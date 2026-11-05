@@ -6,6 +6,7 @@ import { logger } from './core/logger/index.js';
 import { ensureFirstOwner } from './modules/auth/auth.service.js';
 import { ensureDefaultMessages } from './modules/messaging/defaults.js';
 import { migrateToConnections } from './modules/connections/migrate.js';
+import { applyCompanyFile } from './modules/setup/apply.js';
 import { settleSends, startOutboxWorker, stopOutboxWorker } from './modules/messaging/dispatcher.js';
 import { startEscalationWorker, stopEscalationWorker } from './modules/operations/escalation.js';
 import { ensureSystemRoles } from './modules/roles/roles.service.js';
@@ -15,6 +16,9 @@ await syncIndexes();
 await ensureSystemRoles();
 // Message connections and the rate feed move onto connections, once (#59).
 await migrateToConnections();
+// A company kit's file: the company, its brand, areas, connections, roles, people and data (#76). Before the
+// first owner, so the invitation goes out with the company's brand and over its e-mail server.
+if (env.COMPANY_CONFIG) await applyCompanyFile(env.COMPANY_CONFIG);
 await ensureFirstOwner();
 // A new installation starts with the default message templates and rules, once (#43).
 await ensureDefaultMessages();

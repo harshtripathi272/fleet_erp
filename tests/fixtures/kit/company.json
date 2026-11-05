@@ -1,0 +1,38 @@
+{
+  "format": 1,
+  "company": {
+    "key": "acme-haulage",
+    "legalName": "Acme Haulage Ltd",
+    "tradingName": "Acme Haulage",
+    "phone": "+260211000111",
+    "email": "office@acme-haulage.example"
+  },
+  "regional": { "country": "ZM", "baseCurrency": "ZMW", "timezone": "Africa/Lusaka", "dateFormat": "DD/MM/YYYY", "fiscalYearStartMonth": 1 },
+  "brand": { "productName": "Acme Fleet", "accent": "#7a2e1d", "emailSenderName": "Acme Dispatch", "files": { "logo": "files/logo.png" } },
+  "areas": ["masters", "trips", "finance", "tracking"],
+  "operations": { "roadDistanceFactor": 1.3 },
+  "connections": [
+    { "code": "SMS", "name": "Africa's Talking", "kind": "sms", "provider": "africastalking", "enabled": true, "settings": { "username": "acme", "senderId": "ACME" }, "secrets": { "apiKey": "CONNECTION_AT_KEY" } }
+  ],
+  "roles": [
+    { "key": "dispatcher", "name": "Dispatcher", "description": "Plans and follows trips.", "permissions": [{ "resource": "trips", "actions": ["read", "create", "update"] }] }
+  ],
+  "owner": { "name": "Grace Banda", "email": "grace@acme-haulage.example" },
+  "staff": [
+    { "name": "Peter Phiri", "email": "peter@acme-haulage.example", "roles": ["dispatcher"] }
+  ],
+  "data": {
+    "files": [
+      { "master": "currencies", "file": "data/currencies.csv" },
+      { "master": "countries", "file": "data/countries.csv" },
+      { "master": "vehicle-types", "file": "data/vehicle-types.csv" },
+      { "master": "vehicle-makes", "file": "data/vehicle-makes.csv" },
+      { "master": "vehicles", "file": "data/vehicles.csv" }
+    ]
+  },
+  "deploy": {
+    "target": "compose",
+    "domain": "fleet.acme-haulage.example",
+    "smtp": { "host": "smtp.acme-haulage.example", "port": 587, "user": "fleet@acme-haulage.example", "from": "Acme Fleet <fleet@acme-haulage.example>" }
+  }
+}

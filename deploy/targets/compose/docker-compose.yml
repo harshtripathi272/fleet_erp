@@ -1,0 +1,82 @@
+# One company on one server: the app, MongoDB, HTTPS (Caddy, with a Let's Encrypt certificate) and nightly
+# backups. Settings come from .env (copy .env.example and fill in the SECRET lines).
+#
+#   docker compose up -d --build        start, or apply a changed company.json or version
+#   docker compose logs -f app          the log, with "Company file applied" on start
+#   docker compose down                 stop (the volumes, and so the data, stay)
+
+services:
+  app:
+    # This company's image: the shared one with company.json, files/ and data/ (see Dockerfile).
+    build:
+      context: .
+      args:
+        IMAGE: ${FLEET_IMAGE:?Set FLEET_IMAGE in .env}:${FLEET_VERSION:?Set FLEET_VERSION in .env}
+    image: fleet-company:${FLEET_VERSION}
+    env_file: .env
+    restart: unless-stopped
+    depends_on:
+      mongo:
+        condition: service_healthy
+    volumes:
+      - files:/data/files
+    # Reachable from this server only, for checks; everyone else comes through Caddy.
+    ports:
+      - "127.0.0.1:3000:3000"
+
+  mongo:
+    image: mongo:8.2.6
+    restart: unless-stopped
+    volumes:
+      - db:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.runCommand({ ping: 1 }).ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  caddy:
+    image: caddy:2.8.4
+    restart: unless-stopped
+    depends_on:
+      - app
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      DOMAIN: ${DOMAIN:?Set DOMAIN in .env}
+      CERTIFICATE_EMAIL: ${CERTIFICATE_EMAIL:-}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+
+  # Every hour, the exchange-rate fetch: it fetches once a day, after the time set in the app, when a feed is on.
+  jobs:
+    image: fleet-company:${FLEET_VERSION}
+    env_file: .env
+    restart: unless-stopped
+    depends_on:
+      - app
+    entrypoint: ["sh", "-c", "while true; do node dist/jobs/fetchRates.js; sleep 3600; done"]
+
+  # Every night: the database and the uploaded files into ./backups, kept BACKUP_DAYS days.
+  backup:
+    image: mongo:8.2.6
+    restart: unless-stopped
+    depends_on:
+      mongo:
+        condition: service_healthy
+    env_file: .env
+    entrypoint: ["sh", "/deploy/backup.sh"]
+    volumes:
+      - ./deploy/backup.sh:/deploy/backup.sh:ro
+      - ./backups:/backups
+      - files:/data/files:ro
+
+volumes:
+  db:
+  files:
+  caddy-data:
+  caddy-config:

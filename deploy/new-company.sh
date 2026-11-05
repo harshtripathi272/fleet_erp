@@ -8,6 +8,8 @@
 # environment or are asked for, and go straight into Secret Manager. Every step checks what exists
 # first, so the script can be run again after a failure or to change a setting.
 # DRY_RUN=1 prints the commands instead of running them.
+# KIT_DIR=<folder> deploys a company kit (#76; deploy/gcp.sh in the kit sets it): its company.json, files/ and
+# data/ are copied into the bucket, which the service mounts read-only and applies on start.
 #
 # What it creates, all named after COMPANY:
 #   a service account that can read only this company's secrets and bucket;
@@ -58,6 +60,19 @@ run gcloud storage buckets update "gs://$BUCKET" --versioning
 # The service only stores, reads and deletes objects in its own bucket.
 run gcloud storage buckets add-iam-policy-binding "gs://$BUCKET" \
   --member "serviceAccount:$SA_EMAIL" --role roles/storage.objectAdmin
+
+kit_flags=()
+if [ -n "${KIT_DIR:-}" ]; then
+  say "Company kit into gs://$BUCKET/kit"
+  [ -f "$KIT_DIR/company.json" ] || fail "No company.json in $KIT_DIR"
+  run gcloud storage cp "$KIT_DIR/company.json" "gs://$BUCKET/kit/company.json"
+  for folder in files data; do
+    if [ -d "$KIT_DIR/$folder" ]; then run gcloud storage rsync "$KIT_DIR/$folder" "gs://$BUCKET/kit/$folder" --recursive --delete-unmatched-destination-objects; fi
+  done
+  # The bucket is mounted read-only (Cloud Storage volumes need the second-generation environment).
+  kit_flags=(--execution-environment gen2 --clear-volumes --clear-volume-mounts
+    --add-volume "name=bucket,type=cloud-storage,bucket=$BUCKET,readonly=true" --add-volume-mount "volume=bucket,mount-path=/mnt/bucket")
+fi
 
 say "Secrets"
 put_secret "$COMPANY-mongodb-uri" "$MONGODB_URI_VALUE"
@@ -120,6 +135,7 @@ env_vars="APP_URL=$APP_URL,OWNER_EMAIL=$OWNER_EMAIL,TRUST_PROXY=$TRUST_PROXY,FIL
 env_vars="$env_vars,SMTP_HOST=$SMTP_HOST,SMTP_PORT=$SMTP_PORT,SMTP_SECURE=$SMTP_SECURE,CONSOLE_ENABLED=$CONSOLE_ENABLED,IN_PROCESS_JOBS=false,UPLOAD_MAX_MB=$UPLOAD_MAX_MB"
 [ -z "$SMTP_USER" ] || env_vars="$env_vars,SMTP_USER=$SMTP_USER"
 [ -z "$REDIS_URL" ] || env_vars="$env_vars,REDIS_URL=$REDIS_URL"
+[ -z "${KIT_DIR:-}" ] || env_vars="$env_vars,COMPANY_CONFIG=/mnt/bucket/kit/company.json"
 # The settings go in a YAML file, since values such as SMTP_FROM hold spaces and angle brackets.
 env_file="$(mktemp)"
 trap 'rm -f "$env_file"' EXIT
@@ -138,7 +154,7 @@ run gcloud run deploy "$SERVICE" --project "$PROJECT_ID" --region "$REGION" \
   --min-instances "$MIN_INSTANCES" --max-instances "$MAX_INSTANCES" --cpu "$CPU" --memory "$MEMORY" \
   --ingress "$ingress" --allow-unauthenticated \
   --startup-probe "httpGet.path=/api/v1/health/ready,initialDelaySeconds=5,periodSeconds=5,failureThreshold=24" \
-  "${egress_flags[@]}"
+  "${egress_flags[@]}" "${kit_flags[@]}"
 
 say "Daily exchange rates: Cloud Run job $RATES_JOB, started every hour by Cloud Scheduler ($SCHEDULER_REGION)"
 # The job fetches only when due (after the fetch time set in the app, until a fetch that day succeeds),
