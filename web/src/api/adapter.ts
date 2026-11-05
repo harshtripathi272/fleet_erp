@@ -1,8 +1,9 @@
 import type {
   ActivityEvent, AppData, Consignment, Customer, Decision, Driver, DriverDoc, Expense, ExpenseCategory, FundRequest, Message, MsgButton,
-  Nomination, Pairing, Place, Product, RouteTemplate, Settlement, Trailer, Trip, Truck, Unit,
+  Nomination, Pairing, Place, Product, RouteTemplate, Settings, Settlement, Trailer, Trip, Truck, Unit,
 } from "../domain/types";
 import { setBaseCurrencyCode } from "../ui/format";
+import { DEFAULT_DESKS, DEFAULT_STAGES, DEFAULT_WORDS } from "../domain/words";
 
 /**
  * Maps API records onto the shape the desks were built against (`AppData` from the trip-flow mock), so
@@ -18,6 +19,8 @@ export type Rec = Record<string, any>;
 export interface Reference {
   me: { id: string; name: string; roles: string[]; permissions: { resource: string; actions: string[] }[] };
   company: Rec | null;
+  /** The company's words, stages and desks (#73), from /meta/workspace. */
+  workspace: Rec | null;
   currencies: Rec[];
   rates: Rec[];
   countries: Rec[];
@@ -285,6 +288,9 @@ export function toAppData(ref: Reference, ops: Operations): AppData {
       roadDistanceFactor: Number(ref.company?.operations?.roadDistanceFactor ?? 1.28),
       averageSpeedKmh: Number(ref.company?.operations?.averageSpeedKmh ?? 62),
       stopBeforeLoading: ref.company?.operations?.stopBeforeLoading !== false,
+      words: (ref.workspace?.words as Settings["words"] | undefined) ?? DEFAULT_WORDS,
+      stages: (ref.workspace?.stages as Settings["stages"] | undefined)?.map((s) => ({ key: s.key, name: s.name, on: s.on })) ?? DEFAULT_STAGES,
+      desks: (ref.workspace?.desks as Settings["desks"] | undefined) ?? DEFAULT_DESKS,
       clockOffsetMs: 0,
       seq: {},
       people: { owner: named("owner", "Owner"), operations: named("operations", "Operations"), finance: named("finance", "Finance") },

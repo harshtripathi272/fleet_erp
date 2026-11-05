@@ -46,6 +46,7 @@ export const VIEWS = [
   { key: 'trips', name: 'Trips', area: 'trips' },
   { key: 'nominations', name: 'Nominations', area: 'trips' },
   { key: 'accounts', name: 'Driver accounts', area: 'finance' },
+  { key: 'billing', name: 'Billing', area: 'billing' },
   { key: 'maintenance', name: 'Maintenance', area: 'maintenance' },
   { key: 'masters', name: 'Masters' },
 ] as const;
@@ -56,9 +57,9 @@ export const DESK_ICONS = ['gauge', 'grid', 'wallet', 'wrench', 'truck', 'clipbo
 
 /** Today's desks: who sees each is decided by permissions (`kind`), unless the company names roles. */
 export const DEFAULT_DESKS = [
-  { key: 'owner', name: 'Overview and approvals', icon: 'gauge', views: ['overview', 'trips', 'nominations', 'accounts', 'masters'], kind: 'owner' },
+  { key: 'owner', name: 'Overview and approvals', icon: 'gauge', views: ['overview', 'trips', 'nominations', 'accounts', 'billing', 'masters'], kind: 'owner' },
   { key: 'operations', name: 'Operations', icon: 'grid', views: ['trips', 'nominations', 'accounts', 'masters'], kind: 'operations' },
-  { key: 'finance', name: 'Finance', icon: 'wallet', views: ['today', 'trips', 'accounts', 'masters'], kind: 'finance' },
+  { key: 'finance', name: 'Finance', icon: 'wallet', views: ['today', 'trips', 'accounts', 'billing', 'masters'], kind: 'finance' },
 ] as const;
 
 const text = (max: number) => z.string().trim().min(1).max(max);
@@ -87,17 +88,40 @@ export async function workspace() {
   const words = Object.fromEntries(TERM_KEYS.map((k) => {
     const own = company?.vocabulary?.[k];
     return [k, { singular: own?.singular ?? TERMS[k][0], plural: own?.plural ?? TERMS[k][1] }];
-  }));
+  })) as Record<Term, { singular: string; plural: string }>;
   const stages = STAGES.map((s) => {
     const own = company?.stages?.[s.key];
     const areaOff = 'area' in s && !on.has(s.area);
-    return { key: s.key, name: own?.name ?? s.name, defaultName: s.name, optional: 'optional' in s && s.optional, on: !areaOff && !(own?.off && 'optional' in s && s.optional), areaOff };
+    const optional = 'optional' in s && s.optional;
+    // `switchedOff` is the company's own choice, kept apart from an area being off, so the settings screen shows both.
+    return { key: s.key, name: own?.name ?? s.name, defaultName: s.name, optional, on: !areaOff && !(own?.off && optional), switchedOff: Boolean(own?.off && optional), areaOff, area: 'area' in s ? s.area : undefined };
   });
   const views = VIEWS.filter((v) => !('area' in v) || on.has(v.area)).map((v) => v.key as string);
-  const desks = ((company?.desks?.length ? company.desks : DEFAULT_DESKS) as Array<{ key: string; name: string; icon: string; views: string[]; kind: string; roleKeys?: string[]; actsAs?: string }>)
+  const setup = (company?.desks?.length ? company.desks : DEFAULT_DESKS) as Array<{ key: string; name: string; icon: string; views: string[]; kind: string; roleKeys?: string[]; actsAs?: string }>;
+  const desks = setup
     .map((d) => ({ ...d, actsAs: d.kind === 'roles' ? d.actsAs ?? 'operations' : d.kind, views: d.views.filter((v) => views.includes(v)) }))
     .filter((d) => d.views.length > 0);
-  return { words, stages, desks, views: VIEWS.map((v) => ({ key: v.key, name: v.name, on: views.includes(v.key) })), icons: DESK_ICONS };
+  return {
+    words,
+    stages,
+    desks,
+    views: VIEWS.map((v) => ({ key: v.key, name: v.name, on: views.includes(v.key), area: 'area' in v ? v.area : undefined })),
+    icons: DESK_ICONS,
+    // For the settings screen: the defaults, and the desks as the company set them, before areas that are off took screens out.
+    terms: Object.fromEntries(TERM_KEYS.map((k) => [k, { singular: TERMS[k][0], plural: TERMS[k][1] }])),
+    deskSetup: setup,
+    defaultDesks: DEFAULT_DESKS,
+    customised: { vocabulary: Object.keys(company?.vocabulary ?? {}).length > 0, stages: Object.keys(company?.stages ?? {}).length > 0, desks: Boolean(company?.desks?.length) },
+  };
+}
+
+/** Every term as the company says it, for an app that needs only the words (the driver's phone). */
+export async function words() {
+  const company = await Company.findOne().select('vocabulary').lean<Stored>();
+  return Object.fromEntries(TERM_KEYS.map((k) => {
+    const own = company?.vocabulary?.[k];
+    return [k, { singular: own?.singular ?? TERMS[k][0], plural: own?.plural ?? TERMS[k][1] }];
+  })) as Record<Term, { singular: string; plural: string }>;
 }
 
 /** One term as the company says it, for server text (PDF titles, e-mail subjects). */

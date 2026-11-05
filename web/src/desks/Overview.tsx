@@ -2,7 +2,7 @@ import { ArrowRight } from "lucide-react";
 import { useApp } from "../store";
 import { byId, driverBalance } from "../domain/calc";
 import { activeTrip } from "../domain/helpers";
-import { nextStep, queueFor, STAGES, stageIndex } from "../domain/turn";
+import { nextStep, queueFor, stageIndex, visibleStages } from "../domain/turn";
 import { FleetMap } from "../tracking/FleetMap";
 import { ago, L, zmw } from "../ui/format";
 import { Card } from "./stages";
@@ -16,7 +16,7 @@ export function Overview() {
   const weekAgo = new Date(Date.now() + data.settings.clockOffsetMs - 7 * 864e5).toISOString();
   const fuelWeek = data.requests.filter((r) => r.kind === "fuel" && r.status === "issued" && (r.issuedAt ?? "") > weekAgo).reduce((s, r) => s + r.amount, 0);
   const cashOut = data.drivers.reduce((s, d) => s + Math.max(0, driverBalance(data, d.id)), 0);
-  const byStage = STAGES.map((s) => ({
+  const byStage = visibleStages(data).map((s) => ({
     ...s,
     trips: data.trips.filter((t) => !t.cancelledAt && !t.settlementId && nextStep(data, t).stage === s.id),
   }));

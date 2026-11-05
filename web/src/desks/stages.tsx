@@ -26,6 +26,7 @@ import { ACCEPT, uploadFile } from "../api/files";
 import { useSim } from "../tracking/sim";
 import { MiniRoute } from "../tracking/MiniRoute";
 import { StopsTimeline } from "./Trips";
+import { wl } from "../domain/words";
 
 export function StagePanel({ trip, stage, step }: { trip: Trip; stage: StageId; step: NextStep }) {
   return (
@@ -457,7 +458,7 @@ function FundingPanel({ trip, step }: { trip: Trip; step: NextStep }) {
           rows={[
             ["Budget", zmw(f.cash.budget)],
             [f.cash.holds >= 0 ? `${driver?.name.split(" ")[0] ?? "Driver"} already holds` : "Company owes the driver", zmw(Math.abs(f.cash.holds))],
-            ["Paid on this trip", zmw(f.cash.issued)],
+            [`Paid on this ${wl(data, "trip")}`, zmw(f.cash.issued)],
             ["Waiting", zmw(f.cash.open)],
           ]}
           parts={[
@@ -1386,7 +1387,7 @@ function ClosePanel({ trip }: { trip: Trip }) {
   if (!delivered)
     return (
       <Card>
-        <Empty title="Close the trip after delivery" />
+        <Empty title={`Close the ${wl(data, "trip")} after delivery`} />
       </Card>
     );
   return (
@@ -1454,7 +1455,7 @@ function SettlePanel({ trip }: { trip: Trip }) {
               </tr>
             )}
             <tr className="total">
-              <td>Left with {driver?.name.split(" ")[0]} from this trip</td>
+              <td>Left with {driver?.name.split(" ")[0]} from this {wl(data, "trip")}</td>
               <td className="num">{zmw(adv - exp + sh)}</td>
             </tr>
           </tbody>

@@ -7,6 +7,7 @@ import type { Rec } from "../api/adapter";
 import { can } from "../api/session";
 import { useApp } from "../store";
 import { Button, ChoiceChips, Drawer, Empty, Field, FieldGroup, Status, Switch, SwitchField, UnitInput } from "../ui/kit";
+import { WorkspacePanel } from "./WorkspacePanel";
 import { CompanyPanel } from "./CompanyPanel";
 import { DriverAccess } from "./DriverAccess";
 import { UserAccess } from "./UserAccess";
@@ -110,6 +111,7 @@ export function MastersScreen({ initialEntity }: { initialEntity?: string }) {
           const pages = [
             { key: "setup", label: "Set up the company", badge: readiness.data?.missing.length ?? 0, show: can(me, "company", "read") },
             { key: "company", label: "Company", show: can(me, "company", "read") },
+            { key: "workspace", label: "Words, stages and desks", show: can(me, "company", "read") },
             { key: "messaging", label: "Sending messages", show: can(me, "message-connections", "read") },
             { key: AUDIT_VIEW, label: "Audit log", show: can(me, "audit-logs", "read") },
           ].filter((p) => p.show && (!filter || p.label.toLowerCase().includes(filter.toLowerCase())));
@@ -145,6 +147,7 @@ export function MastersScreen({ initialEntity }: { initialEntity?: string }) {
         <button className="masters-back link-btn" onClick={() => { setBrowsing(true); window.scrollTo({ top: 0 }); }}><ChevronLeft size={16} /> All masters</button>
         {selected === "setup" ? <CompanySetup defs={defs} onOpen={(key) => setSelected(key)} />
           : selected === "company" ? <CompanyPanel />
+          : selected === "workspace" ? <WorkspacePanel />
           : selected === "messaging" ? <MessagingSettings />
           : selected === AUDIT_VIEW && can(me, "audit-logs", "read") ? <AuditLog onOpen={(entity, id) => setSelected(entity, id)} />
           : custom ? <CustomRecords master={custom} defs={defs} />

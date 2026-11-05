@@ -9,6 +9,7 @@ import type { AppData, Nomination } from "../domain/types";
 import { Avatar, Button, Drawer, Empty, Field, Modal, Segmented, Status } from "../ui/kit";
 import { ago, day, hoursText, km, localDate } from "../ui/format";
 import { Turn } from "./Trips";
+import { w, wl } from "../domain/words";
 
 const STEPS = ["draft", "sent", "accepted", "converted"] as const;
 const STEP_LABEL = { draft: "Draft", sent: "With customer", accepted: "Accepted", converted: "Trips created" };
@@ -32,7 +33,7 @@ export function Nominations() {
     <div className="desk">
       <div className="desk-tools">
         <Segmented
-          label="Nominations"
+          label={w(data, "nomination", true)}
           value={filter}
           onChange={setFilter}
           options={[
@@ -42,7 +43,7 @@ export function Nominations() {
         />
         {may("nomination.save") && (
           <Button tone="primary" onClick={() => setEditing("new")}>
-            <Plus /> New nomination
+            <Plus /> New {wl(data, "nomination")}
           </Button>
         )}
       </div>
@@ -242,7 +243,7 @@ function NominationForm({ open, editing, onClose }: { open: boolean; editing?: N
   return (
     <Drawer
       open={open}
-      title={editing ? `Edit ${editing.no}` : "New nomination"}
+      title={editing ? `Edit ${editing.no}` : `New ${wl(data, "nomination")}`}
       onClose={onClose}
       width={640}
       footer={
