@@ -33,7 +33,7 @@ Owners: LD = lakshya-desktop, LT = lakshya-t3, HD = harsh-desktop, HT = harsh-t3
 | First-run set-up page: what a first trip needs, with counts, Open and Import | Built | #45 | |
 | Import any master from a spreadsheet, with a dry run | Built | #41 | Follows the company's field names (#65) |
 | Export any master to a spreadsheet | Proposed | — | |
-| Company setup kit: configure once, download a deployable package | Planned | #76 | HD |
+| Company setup kit: configure once, download a deployable package | Building | #76 | Compose tested in CI, Google Cloud by dry run; AWS, Azure, Render, Fly and Railway scripted, not yet tested |
 
 ## Brand, region and language
 
@@ -191,9 +191,9 @@ Owners: LD = lakshya-desktop, LT = lakshya-t3, HD = harsh-desktop, HT = harsh-t3
 | Google Cloud: Cloud Run, Atlas, Secret Manager, Cloud Storage, Cloud Scheduler; runbook and scripts | Built | #14, #26 | Needs a Google Cloud account to go live |
 | Docker image built, started and checked in CI | Built | — | |
 | Production hardening: headers, rate limits, compression, simulators off in production | Built | #18 | |
-| Company setup kit: wizard, configuration file, deployable zip | Planned | #76 | HD |
-| Guides and scripts for AWS, Azure, any VM with Docker Compose, Render, Fly.io, Railway | Planned | #76 | HD |
-| Upgrades and rollbacks between versions | Planned | #76 | HD |
+| Company setup kit: wizard, configuration file, deployable zip | Building | #76 | Masters → Company kit, or `npm run kit` |
+| Guides and scripts for AWS, Azure, any VM with Docker Compose, Render, Fly.io, Railway | Building | #76 | docs/deploy/; Compose tested in CI |
+| Upgrades and rollbacks between versions | Building | #76 | docs/deploy/README.md |
 | Backups and restore drills | Proposed | — | Atlas does backups on Google Cloud; Compose needs its own |
 | Health checks, error alerts and uptime monitoring | Proposed | — | `/health` exists |
 | Many companies on one installation (SaaS) | Proposed | — | Today's design is one company per installation, by decision |

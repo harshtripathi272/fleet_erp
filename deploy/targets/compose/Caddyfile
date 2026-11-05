@@ -1,0 +1,8 @@
+# HTTPS for the company's address: Caddy gets and renews the certificate, and redirects http:// to https://.
+{
+	email {$CERTIFICATE_EMAIL}
+}
+
+{$DOMAIN} {
+	reverse_proxy app:3000
+}

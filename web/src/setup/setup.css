@@ -1,0 +1,20 @@
+/* Masters → Company kit (#76). */
+.kit-head-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.kit-applied { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0 0 16px; color: var(--ink-2); }
+.kit-colour { display: flex; gap: 8px; align-items: center; min-width: 0; }
+.kit-colour input[type="color"] { width: 40px; height: 40px; padding: 2px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--surface); flex: none; }
+.kit-colour .input { flex: 1 1 auto; min-width: 0; }
+.kit-file { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 0; }
+.kit-file img { height: 40px; max-width: 160px; object-fit: contain; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--surface); }
+.kit-card { border: 1px solid var(--line); border-radius: var(--radius); padding: 12px 14px; margin-bottom: 12px; min-width: 0; }
+.kit-card > header { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 8px; }
+.kit-problem { color: var(--rust); }
+.kit-problems { border: 1px solid var(--rust); border-radius: var(--radius); background: var(--rust-50); padding: 12px 16px; margin: 16px 0; }
+.kit-problems h3 { margin: 0 0 8px; font-size: 15px; }
+.kit-problems ul { margin: 0; padding-left: 18px; display: grid; gap: 4px; }
+.kit-problems li { overflow-wrap: anywhere; }
+.kit-problems code { margin-right: 6px; }
+.kit-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; margin: 16px 0 24px; }
+@media (max-width: 560px) {
+  .kit-actions > .btn { flex: 1 1 100%; }
+}
