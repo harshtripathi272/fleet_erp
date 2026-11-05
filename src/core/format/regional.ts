@@ -86,6 +86,9 @@ export function time(value: Date | string | number, r: Regional = current): stri
 
 export const dateTime = (value: Date | string | number, r: Regional = current) => `${date(value, r)} ${time(value, r)}`;
 
+/** A calendar day stored as midnight UTC (an invoice's date, a due date), written as that day whatever the time zone. */
+export const calendarDate = (value: Date | string | number, r: Regional = current) => date(value, { ...r, timeZone: 'UTC' });
+
 /** The calendar day of `at` in the company's time zone, as midnight UTC of that day (how dates without times are stored). */
 export function companyDay(at: Date, r: Regional = current): Date {
   const { y, m, d } = parts(at, r.timeZone);

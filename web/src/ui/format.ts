@@ -63,6 +63,12 @@ export function fullDate(iso: string | number | Date) {
   const { y, m, d } = parts(iso);
   return regional.dateFormat === "YYYY-MM-DD" ? `${y}-${m}-${d}` : regional.dateFormat === "MM/DD/YYYY" ? `${m}/${d}/${y}` : `${d}/${m}/${y}`;
 }
+/** A calendar day stored as midnight UTC (an invoice's date, a due date), written as that day whatever the time zone. */
+export function calendarDate(iso: string | number | Date) {
+  const zone = regional.timeZone;
+  regional = { ...regional, timeZone: "UTC" };
+  try { return fullDate(iso); } finally { regional = { ...regional, timeZone: zone }; }
+}
 /** A date without its year, for short lines: 05/11, 11/05 or 11-05. */
 export function shortDate(iso: string | number | Date) {
   const { m, d } = parts(iso);

@@ -1,4 +1,5 @@
 import { NotFoundError, ValidationError } from '../../../core/errors/index.js';
+import * as Fmt from '../../../core/format/regional.js';
 import { logger } from '../../../core/logger/index.js';
 import type { Plain } from '../../../core/masters/types.js';
 import { dispatch, type DispatchInput } from '../../messaging/dispatcher.js';
@@ -319,7 +320,7 @@ export async function sendInvoice(id: string, ctx: OpsContext) {
     event: 'invoice.sent', partyId: String(plain.customerId), receives: 'invoices', ref: { kind: 'invoices', id: String(plain._id) }, actorId: ctx.actorId,
     variables: {
       'invoice.number': String(plain.number), 'invoice.kind': plain.kind === 'credit_note' ? 'credit note' : 'invoice',
-      'invoice.total': formatMoney(Number(plain.totalMinor), currency), 'invoice.due': plain.kind === 'invoice' && plain.dueDate ? `Payment is due by ${new Date(plain.dueDate as string).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' })}.` : '',
+      'invoice.total': formatMoney(Number(plain.totalMinor), currency), 'invoice.due': plain.kind === 'invoice' && plain.dueDate ? `Payment is due by ${Fmt.calendarDate(plain.dueDate as string)}.` : '',
     },
     attachments: async () => [await invoiceFile(String(plain._id), ctx.actorId)],
   };
