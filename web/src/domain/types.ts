@@ -1,9 +1,19 @@
 export type Role = "owner" | "operations" | "finance" | "driver";
 export type Desk = Exclude<Role, "driver">;
+export interface WorkspaceDesk {
+  key: string;
+  name: string;
+  icon: string;
+  views: string[];
+  kind: Desk | "roles";
+  roleKeys?: string[];
+  actsAs: Desk;
+}
 /** An ISO currency code. The base currency comes from the company settings. */
 export type Currency = string;
 export type StopKind = "start" | "load" | "via" | "border" | "offload" | "end";
-export type Unit = "L" | "t" | "bags" | "pallets";
+/** A product's unit, from the Units of measure master: "L", "t", "kg", "bags"… */
+export type Unit = string;
 
 export interface Place {
   id: string;
@@ -76,7 +86,10 @@ export interface Product {
   id: string;
   name: string;
   kind: "fuel" | "general";
+  /** How it is measured: corrected to 20 °C, weighed on a weighbridge, or counted in its unit. */
+  measure: "volume" | "weighed" | "counted";
   unit: Unit;
+  decimals: number;
   fuelGroup?: "diesel" | "petrol" | "jet";
   /** Allowed transit loss in percent of the 20 °C loaded volume. */
   shortagePct?: number;
@@ -100,12 +113,20 @@ export interface Settings {
   averageSpeedKmh: number;
   /** Company trip settings: a trip that left but never loaded may be stopped. */
   stopBeforeLoading: boolean;
+  /** Company trip settings: the kinds of cargo it carries. */
+  cargoKinds: string[];
   /** Company trip settings: a loaded trip that can't deliver (#64). */
   loadedTripOutcomes: string[];
   writeOffCarriers: string[];
   writeOffDefaultCarrier: string;
   loadedTripRoles: string[];
   writeOffNeedsOwner: boolean;
+  /** The company's words for the app's core terms (#73): `words.trip.plural` and so on. */
+  words: Record<string, { singular: string; plural: string }>;
+  /** The desks' stages as the company names them, and which are on. */
+  stages: { key: string; name: string; on: boolean }[];
+  /** The company's desks (#73): each lists its screens and who sees it; `actsAs` is the built-in desk whose queues it follows. */
+  desks: WorkspaceDesk[];
   clockOffsetMs: number;
   seq: Record<string, number>;
   people: Record<Desk, string>;
@@ -155,6 +176,7 @@ export interface Trip {
   cancelledAt?: string;
   /** Stopped after leaving, before loading: why. The trip is closed like an ended one. */
   stopReason?: string;
+  custom?: Record<string, unknown>;
   /** What was decided for a load this trip couldn't deliver. */
   undelivered?: { outcome: "return" | "transfer" | "write_off"; reason: string; at: string };
   transferredToTripId?: string;
@@ -176,6 +198,7 @@ export interface Decision {
   via: "app" | "WhatsApp";
 }
 export interface FundRequest {
+  custom?: Record<string, unknown>;
   id: string;
   no: string;
   tripId: string;
@@ -251,8 +274,13 @@ export interface Measure {
   vcf?: number;
   std20L?: number;
   certStd20L?: number;
+  gross?: number;
+  tare?: number;
+  ticketNo?: string;
 }
 export interface Shortage {
+  /** What its figures are in: for fuel, litres at 20 °C. */
+  unit: Unit;
   loaded20L: number;
   delivered20L: number;
   lossL: number;
@@ -269,6 +297,7 @@ export interface Shortage {
   mayWaive?: boolean;
 }
 export interface Consignment {
+  custom?: Record<string, unknown>;
   id: string;
   no: string;
   tripId: string;
@@ -285,6 +314,7 @@ export interface Consignment {
 }
 
 export interface Expense {
+  custom?: Record<string, unknown>;
   id: string;
   no: string;
   tripId?: string;
@@ -307,6 +337,7 @@ export interface Expense {
 }
 
 export interface Settlement {
+  custom?: Record<string, unknown>;
   id: string;
   no: string;
   driverId: string;
@@ -326,6 +357,7 @@ export interface Settlement {
 }
 
 export interface Nomination {
+  custom?: Record<string, unknown>;
   id: string;
   version?: number;
   no: string;
@@ -347,7 +379,7 @@ export interface Nomination {
   tripIds: string[];
 }
 
-export type Nav = { tripId?: string; view?: string; docId?: string; driverId?: string; masterEntity?: string };
+export type Nav = { masterId?: string; tripId?: string; view?: string; docId?: string; driverId?: string; masterEntity?: string };
 export interface MsgButton {
   label: string;
   action?: Action;
@@ -420,6 +452,7 @@ export type MasterEntity =
 export type Action =
   | {
       type: "nomination.save";
+      custom?: Record<string, unknown>;
       id?: string;
       /** The version the edit started from, so a save over someone else's is refused. */
       version?: number;
@@ -439,6 +472,7 @@ export type Action =
   | { type: "nomination.cancel"; id: string }
   | {
       type: "trip.create";
+      custom?: Record<string, unknown>;
       customerId: string;
       truckId: string;
       driverId?: string;
@@ -471,11 +505,11 @@ export type Action =
   | { type: "trip.undelivered"; tripId: string; reasonId: string; note?: string; outcome: "transfer"; vehicleId: string; driverId?: string; trailerId?: string; placeId?: string; closingFuelL: number }
   | { type: "trip.undelivered"; tripId: string; reasonId: string; note?: string; outcome: "write_off"; carrier?: string; insurerPartyId?: string; claimReference?: string; amount?: number; placeId?: string; closingFuelL: number }
   | { type: "writeoff.decide"; consignmentId: string; approve: boolean; note?: string; via?: "app" | "WhatsApp" }
-  | { type: "request.create"; tripId: string; kind: "fuel" | "cash"; amount: number; currency: Currency; reason?: string }
-  | { type: "request.decide"; id: string; approve: boolean; note?: string; via?: "app" | "WhatsApp" }
-  | { type: "request.issue"; id: string; medium: string; reference: string; station?: string; via?: "app" | "WhatsApp" }
+  | { type: "request.create"; custom?: Record<string, unknown>; tripId: string; kind: "fuel" | "cash"; amount: number; currency: Currency; reason?: string }
+  | { type: "request.decide"; custom?: Record<string, unknown>; id: string; approve: boolean; note?: string; via?: "app" | "WhatsApp" }
+  | { type: "request.issue"; custom?: Record<string, unknown>; id: string; medium: string; reference: string; station?: string; via?: "app" | "WhatsApp" }
   | { type: "request.cancel"; id: string }
-  | { type: "trip.dispatch"; tripId: string }
+  | { type: "trip.dispatch"; custom?: Record<string, unknown>; tripId: string }
   | { type: "trip.ping"; tripId: string; km: number; speed: number; advanceMs?: number }
   | { type: "trip.arrive"; tripId: string; stopId: string }
   | { type: "trip.remind"; tripId: string }
@@ -494,6 +528,7 @@ export type Action =
   | { type: "doc.done"; docId: string }
   | {
       type: "load.record";
+      custom?: Record<string, unknown>;
       tripId: string;
       docId?: string;
       productId: string;
@@ -505,9 +540,13 @@ export type Action =
       tempC?: number;
       density?: number;
       certStd20L?: number;
+      gross?: number;
+      tare?: number;
+      ticketNo?: string;
     }
   | {
       type: "delivery.record";
+      custom?: Record<string, unknown>;
       consignmentId: string;
       docId?: string;
       podNo: string;
@@ -516,10 +555,14 @@ export type Action =
       tempC?: number;
       density?: number;
       certStd20L?: number;
+      gross?: number;
+      tare?: number;
+      ticketNo?: string;
     }
   | { type: "shortage.decide"; consignmentId: string; charge: boolean; note?: string; via?: "app" | "WhatsApp" }
   | {
       type: "expense.record";
+      custom?: Record<string, unknown>;
       driverId: string;
       tripId?: string;
       categoryId: string;
@@ -529,10 +572,10 @@ export type Action =
       docId?: string;
       note?: string;
     }
-  | { type: "expense.decide"; id: string; approve: boolean; reason?: string; via?: "app" | "WhatsApp" }
-  | { type: "trip.end"; tripId: string; closingFuelL: number }
+  | { type: "expense.decide"; custom?: Record<string, unknown>; id: string; approve: boolean; reason?: string; via?: "app" | "WhatsApp" }
+  | { type: "trip.end"; custom?: Record<string, unknown>; tripId: string; closingFuelL: number }
   | { type: "settlement.request"; driverId: string }
-  | { type: "settlement.post"; driverId: string; tripIds: string[]; cashBase: number; note?: string }
+  | { type: "settlement.post"; custom?: Record<string, unknown>; driverId: string; tripIds: string[]; cashBase: number; note?: string }
   | { type: "thread.read"; thread: string }
   | { type: "chat.send"; thread: string; text: string }
   | { type: "customer.reply"; nominationId: string };

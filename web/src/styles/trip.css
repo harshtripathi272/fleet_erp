@@ -357,7 +357,8 @@
 .stop-row {
   position: relative;
   display: grid;
-  grid-template-columns: 16px 150px minmax(0, 1fr) 150px 34px;
+  /* Fixed leg and Remove columns, so every stop's place box lines up whether or not the row has them. */
+  grid-template-columns: 16px 150px minmax(0, 1fr) 200px 96px;
   gap: 10px;
   align-items: center;
   padding: 6px 0;
@@ -1233,6 +1234,10 @@
 .truck-tile span {
   font-size: 13px;
 }
+.truck-tile:disabled {
+  cursor: not-allowed;
+  background: var(--surface-2);
+}
 .truck-tile:hover {
   border-color: var(--pine-200);
 }
@@ -1308,7 +1313,7 @@
     max-width: 220px;
   }
   .stop-row {
-    grid-template-columns: 16px 1fr 34px;
+    grid-template-columns: 16px minmax(0, 1fr) max-content;
   }
   .stop-row .stop-kind {
     grid-column: 2 / 4;
@@ -1463,3 +1468,6 @@
 /* A write-off waiting for the owner, on the trip. */
 .undelivered-wait { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; justify-content: space-between; }
 .undelivered-wait > span:first-child { flex: 1 1 280px; min-width: 0; }
+
+/* Company fields drawn at a step. */
+.placement-fields { margin-bottom: 12px; }

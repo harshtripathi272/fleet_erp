@@ -12,6 +12,8 @@ export interface StoredFileRecord {
   uploadedBy: Types.ObjectId;
   /** Set when a driver uploaded it from the driver app. */
   driverId?: Types.ObjectId;
+  /** The storage connection that holds it; absent for the server's own storage (FILE_STORAGE). */
+  connectionId?: Types.ObjectId;
   at: Date;
 }
 
@@ -24,6 +26,7 @@ const storedFileSchema = new Schema<StoredFileRecord>({
   key: { type: String, required: true },
   uploadedBy: { type: ObjectId, ref: 'User', required: true },
   driverId: { type: ObjectId, ref: 'Driver' },
+  connectionId: { type: ObjectId, ref: 'Connection' },
   at: { type: Date, required: true },
 }, { ...schemaOptions, collection: 'files' });
 storedFileSchema.index({ key: 1 }, { unique: true });

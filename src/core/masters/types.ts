@@ -54,6 +54,8 @@ export interface MasterDefinition {
   labels?: Record<string, string>;
   /** The area of the business this master belongs to (#56); while the company has it off, the master is hidden and refuses. */
   module?: string;
+  /** Fields that belong to an area of their own inside the master: hidden while it is off ({ parts: 'parts' }). */
+  fieldModules?: Record<string, string>;
   /** Fields the app's logic reads beyond the required ones: a company may rename and move them but not hide them (#65). */
   fixedFields?: string[];
   /** Choice lists the app acts on: a company may rename and reorder their values but not retire them (#65). */

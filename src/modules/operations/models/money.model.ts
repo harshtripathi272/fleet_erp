@@ -18,6 +18,7 @@ const expenseSchema = new Schema<any>({
   status: { type: String, enum: ['pending', 'approved', 'rejected'], default: 'pending' },
   approval: { type: approvalSchema, default: undefined },
   recordedByDesk: { type: String, enum: DESKS },
+  custom: { type: Schema.Types.Mixed, default: undefined },
   decidedAt: Date,
   decidedBy: { type: ObjectId, ref: 'User' },
   reason: String,
@@ -53,6 +54,7 @@ const settlementSchema = new Schema<any>({
   expensesMinor: { type: Number, required: true },
   shortagesMinor: { type: Number, required: true },
   writeOffsMinor: { type: Number, default: 0 },
+  custom: { type: Schema.Types.Mixed, default: undefined },
   cashMinor: { type: Number, required: true },
   closingMinor: { type: Number, required: true },
   note: String,
@@ -80,6 +82,7 @@ export const DriverAccount = opsModel('DriverAccount', driverAccountSchema);
 
 /** A customer's order naming trucks (and drivers) for a load. Accepted nominations become trips. */
 const nominationSchema = new Schema<any>({
+  custom: { type: Schema.Types.Mixed, default: undefined },
   number: { type: String, required: true },
   customerId: { type: ObjectId, ref: 'Party', required: true },
   orderSourceId: { type: ObjectId, ref: 'OrderSource' },

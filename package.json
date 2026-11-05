@@ -22,6 +22,9 @@
     "approvals:escalate:dev": "tsx src/jobs/escalate.ts",
     "billing:revalue": "node dist/jobs/revalue.js",
     "billing:revalue:dev": "tsx src/jobs/revalue.ts",
+    "maintenance:remind": "node dist/jobs/serviceReminders.js",
+    "maintenance:remind:dev": "tsx src/jobs/serviceReminders.ts",
+    "kit": "tsx src/jobs/kit.ts",
     "build:web": "cd web && npm install --no-audit --no-fund && npm run build"
   },
   "dependencies": {

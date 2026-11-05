@@ -1,9 +1,12 @@
+import { Fragment } from "react";
+import { useCompanyFields } from "../desks/usePlacement";
 import { useApp } from "../store";
 import { Watermark } from "../ui/brand";
 import { byId, loadedKm, toBase, tripFuelUsed, tripKm, volume20 } from "../domain/calc";
 import { placeName, routeLabel } from "../domain/helpers";
 import { BrandMark } from "../ui/brand";
 import { cash, clock, day, num, stamp, baseLabel } from "../ui/format";
+import { w } from "../domain/words";
 
 const n0 = (v?: number) => (v == null ? "—" : num(v));
 
@@ -31,6 +34,13 @@ export function TripSheet({ tripId }: { tripId: string }) {
   const c = consignments[0];
   const product = byId(data.products, c?.productId ?? trip.productId);
   const fuelCargo = product?.kind === "fuel";
+  const company = useCompanyFields();
+  // Company fields marked to print on the trip sheet (#67).
+  const printed = (company.data ?? [])
+    .filter((f) => f.printOn.includes("trip_sheet"))
+    .map((f): [string, unknown] => [f.label, f.entity === "trips" ? trip.custom?.[f.key] : f.entity === "consignments" ? c?.custom?.[f.key] : undefined])
+    .filter(([, v]) => v !== undefined)
+    .map(([label, v]): [string, string] => [label, Array.isArray(v) ? v.join(", ") : v === true ? "Yes" : v === false ? "No" : String(v)]);
   return (
     <article className="paper sheet">
       <Watermark forDocument />
@@ -43,7 +53,7 @@ export function TripSheet({ tripId }: { tripId: string }) {
           </div>
         </div>
         <div className="sheet-title">
-          <h1>Trip sheet</h1>
+          <h1>{w(data, "tripSheet")}</h1>
           <span className="mono">{trip.no}</span>
           {settlement && <span className="mono">{settlement.no}</span>}
         </div>
@@ -55,7 +65,7 @@ export function TripSheet({ tripId }: { tripId: string }) {
 
       <section className="sheet-boxes">
         <div className="sheet-box">
-          <h2>Trip</h2>
+          <h2>{w(data, "trip")}</h2>
           <dl>
             <dt>Customer</dt>
             <dd className="wrap">{customer?.name}</dd>
@@ -90,10 +100,10 @@ export function TripSheet({ tripId }: { tripId: string }) {
                 <dd>{n0(volume20(c?.delivered))} L</dd>
                 <dt>Loss, allowance {c?.shortage?.allowancePct ?? 0.3}%</dt>
                 <dd>
-                  {n0(c?.shortage?.lossL)}, {n0(c?.shortage?.allowanceL)} L
+                  {n0(c?.shortage?.lossL)}, {n0(c?.shortage?.allowanceL)} {c?.shortage?.unit ?? "L"}
                 </dd>
                 <dt>Net shortage</dt>
-                <dd>{c?.shortage ? `${n0(c.shortage.netShortL)} L` : "—"}</dd>
+                <dd>{c?.shortage ? `${n0(c.shortage.netShortL)} ${c.shortage.unit}` : "—"}</dd>
                 <dt>Charged to driver</dt>
                 <dd>{c?.shortage?.status === "charged" ? `${n0(c.shortage.amountBase)} ${baseLabel()}` : c?.shortage?.status === "waived" ? "Waived" : "—"}</dd>
               </>
@@ -103,8 +113,22 @@ export function TripSheet({ tripId }: { tripId: string }) {
                 <dd>{c ? `${num(c.load.qty, 2)} ${c.load.unit}` : "—"}</dd>
                 <dt>Delivered</dt>
                 <dd>{c?.delivered ? `${num(c.delivered.qty, 2)} ${c.delivered.unit}` : "—"}</dd>
+                {c?.shortage && (
+                  <>
+                    <dt>Net shortage</dt>
+                    <dd>{`${num(c.shortage.netShortL, 2)} ${c.shortage.unit}`}</dd>
+                    <dt>Charged to driver</dt>
+                    <dd>{c.shortage.status === "charged" ? `${n0(c.shortage.amountBase)} ${baseLabel()}` : c.shortage.status === "waived" ? "Waived" : "—"}</dd>
+                  </>
+                )}
               </>
             )}
+            {printed.map(([label, value]) => (
+              <Fragment key={label}>
+                <dt>{label}</dt>
+                <dd className="wrap">{value}</dd>
+              </Fragment>
+            ))}
             <dt>Invoice</dt>
             <dd className="mono">{c?.invoiceNo ?? "—"}</dd>
             <dt>Delivery note</dt>

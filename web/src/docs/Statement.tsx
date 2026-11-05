@@ -4,6 +4,7 @@ import { byId, driverLedger, tripKm } from "../domain/calc";
 import { routeLabel } from "../domain/helpers";
 import { BrandMark } from "../ui/brand";
 import { dayYear, num, stamp, baseLabel } from "../ui/format";
+import { w } from "../domain/words";
 
 export function Statement({ id }: { id: string }) {
   const { data } = useApp();
@@ -52,11 +53,11 @@ export function Statement({ id }: { id: string }) {
         </div>
       </section>
       <section className="sheet-section">
-        <h2>Trips</h2>
+        <h2>{w(data, "trip", true)}</h2>
         <table>
           <thead>
             <tr>
-              <th>Trip</th>
+              <th>{w(data, "trip")}</th>
               <th>Route</th>
               <th>Truck</th>
               <th>Left</th>

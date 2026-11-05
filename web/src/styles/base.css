@@ -947,3 +947,4 @@ select.input {
     transition-duration: 0.01ms !important;
   }
 }
+.coming-soon { margin-left: 6px; vertical-align: middle; }

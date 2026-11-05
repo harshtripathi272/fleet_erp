@@ -6,9 +6,12 @@
  */
 import { connectMongo, disconnectMongo } from '../core/db/mongo.js';
 import { logger } from '../core/logger/index.js';
+import { refreshRegional } from '../modules/company/regional.js';
 import { revaluationDue, revalue } from '../modules/finance/billing/revaluation.service.js';
 
 await connectMongo();
+// Its messages use the company's formats, like the server's.
+await refreshRegional();
 let failed = false;
 try {
   const due = await revaluationDue();

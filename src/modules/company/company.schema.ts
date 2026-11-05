@@ -1,15 +1,17 @@
+import { workspaceInput } from './workspace.js';
 import { z } from 'zod';
 import { email, objectId, phone, text } from '../../core/masters/zod.js';
 import { SETTLEMENT_PERIODS } from './company.model.js';
 import { DATE_FORMATS, DECIMAL_SEPARATORS, THOUSANDS_SEPARATORS, TIME_FORMATS, UNIT_SYSTEMS, WEEK_STARTS } from '../../core/format/regional.js';
 
 import { AREA_KEYS } from './areaList.js';
-import { LOADED_TRIP_OUTCOMES, WRITE_OFF_CARRIERS } from './company.model.js';
+import { CARGO_KINDS, LOADED_TRIP_OUTCOMES, WRITE_OFF_CARRIERS } from './company.model.js';
 
 export const MODULES = AREA_KEYS;
 const timezone = z.string().refine((tz) => Intl.supportedValuesOf('timeZone').includes(tz) || tz === 'UTC', 'Unknown time zone');
 
 const companyShape = {
+  ...workspaceInput,
   legalName: text(200).optional(),
   tradingName: text(200).nullable().optional(),
   registrationNumber: text(60).nullable().optional(),
@@ -57,7 +59,16 @@ const companyShape = {
     screens: z.boolean().optional(),
   }).optional(),
   /** Only the settings sent change; the rest keep their values. */
+  maintenance: z.strictObject({
+    workOrderStopsTruck: z.boolean().optional(),
+    defectStopsTruck: z.boolean().optional(),
+    dueSoonKm: z.number().min(0).max(100_000).optional(),
+    dueSoonDays: z.number().min(0).max(365).optional(),
+    dueSoonHours: z.number().min(0).max(10_000).optional(),
+  }).optional(),
+  /** Only the settings sent change; the rest keep their values. */
   operations: z.strictObject({
+    cargoKinds: z.array(z.enum(CARGO_KINDS)).min(1, 'Keep at least one kind of cargo').max(3).optional(),
     loadedTripOutcomes: z.array(z.enum(LOADED_TRIP_OUTCOMES)).max(3).optional(),
     writeOffCarriers: z.array(z.enum(WRITE_OFF_CARRIERS)).max(3).optional(),
     writeOffDefaultCarrier: z.enum(WRITE_OFF_CARRIERS).optional(),

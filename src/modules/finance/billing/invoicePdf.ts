@@ -2,7 +2,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { NotFoundError } from '../../../core/errors/index.js';
 import * as Fmt from '../../../core/format/regional.js';
 import type { Plain } from '../../../core/masters/types.js';
-import { fileStore } from '../../../core/storage/index.js';
+import { storeForNew } from '../../../core/storage/index.js';
 import { Company } from '../../company/company.model.js';
 import { StoredFile } from '../../files/file.model.js';
 import { PrintLayout } from '../../messaging/models/messaging.model.js';
@@ -71,7 +71,7 @@ export async function invoiceFile(id: string, actorId?: string): Promise<{ fileI
   const { name, body } = await invoicePdf(id);
   const at = new Date();
   const key = `${at.toISOString().slice(0, 7)}/${randomUUID()}.pdf`;
-  await (await fileStore()).put(key, body, 'application/pdf');
+  await (await storeForNew()).store.put(key, body, 'application/pdf');
   const file = await StoredFile.create({ name, mime: 'application/pdf', size: body.length, sha256: createHash('sha256').update(body).digest('hex'), key, uploadedBy: actorId, at });
   await Invoice.updateOne({ _id: id }, { $set: { fileId: file._id } });
   return { fileId: String(file._id) };

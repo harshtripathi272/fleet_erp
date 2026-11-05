@@ -4,6 +4,7 @@ import { ExpenseCategory } from '../trips/models/expense.model.js';
 import { approveAs, highestEligible, notifyLevel, routeApproval, waitingOn, type Approval } from './approvals.js';
 import { DriverDocument } from './models/cargo.model.js';
 import { Expense } from './models/money.model.js';
+import { stepCustom } from './placements.js';
 import { Trip } from './models/trip.model.js';
 import { announce, moneyValues } from './notices.js';
 import {
@@ -67,7 +68,10 @@ export async function recordExpense(input: S.ExpenseInput, ctx: OpsContext) {
   const upTo = highestEligible(ctx, approval);
   if (upTo >= 0) approveAs(ctx, approval, upTo, at);
   const approved = approval.current >= approval.levels.length;
+  // Approved as it is recorded: the same person answers both steps' fields.
+  const custom = approved ? await stepCustom('expenses', 'approve', input.custom, undefined, ['submit']) : await stepCustom('expenses', 'submit', input.custom);
   const expense = new Expense({
+    custom,
     number: await nextNumber('expenses', 'EXP', at), tripId: trip?._id, driverId: driver._id, categoryId: category._id,
     amount: input.amount, baseAmountMinor: baseMinor, rate, receiptNo: input.receiptNo, docId: input.docId, note: input.note,
     status: approved ? 'approved' : 'pending', approval, recordedByDesk: ctx.desk, decidedAt: approved ? at : undefined, decidedBy: approved ? ctx.actorId : undefined,
@@ -104,7 +108,10 @@ export async function decideExpense(id: string, input: S.ExpenseDecisionInput, c
   const upTo = highestEligible(ctx, approval);
   if (upTo < 0) throw new ForbiddenError(`Waiting for ${waitingOn(approval)?.label ?? 'the approver'} to decide ${expense.get('number')}.`);
   if (!input.approve && !input.reason) throw refuse('Give a reason.');
-  if (input.approve) approveAs(ctx, approval, upTo, at);
+  if (input.approve) {
+    expense.set('custom', await stepCustom('expenses', 'approve', input.custom, (expense.toObject() as Plain).custom as Plain | undefined));
+    approveAs(ctx, approval, upTo, at);
+  }
   const done = !input.approve || approval.current >= approval.levels.length;
   expense.set({ approval, updatedBy: ctx.actorId, ...(done ? { status: input.approve ? 'approved' : 'rejected', decidedAt: at, decidedBy: ctx.actorId, reason: input.reason } : {}) });
   await save(expense);

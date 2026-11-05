@@ -12,5 +12,5 @@ coverage
 tests
 *.log
 data
-deploy
+deploy/companies
 docs

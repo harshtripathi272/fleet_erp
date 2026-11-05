@@ -12,11 +12,14 @@ export const EVENTS = [
   'expense.submitted', 'expense.approved', 'expense.rejected',
   'document.expiring', 'document.expired', 'settlement.posted', 'nomination.sent', 'user.invited', 'password.reset',
   'invoice.sent', 'payment.received', 'statement.sent',
+  'service.due',
+  'invoice.sent', 'payment.received',
 ] as const;
 /** Each event as people say it: what has just happened. */
 export const EVENT_NAMES: Record<(typeof EVENTS)[number], string> = {
   'trip.created': 'A trip is created', 'trip.dispatched': 'A trip leaves', 'trip.arrived_loading': 'A truck reaches loading',
   'trip.load_returned': 'A load is going back', 'trip.load_transferred': 'A load moves to another truck', 'trip.load_written_off': 'A load is written off',
+  'service.due': 'A service is due on a truck',
   'trip.loaded': 'A truck is loaded', 'trip.arrived_offloading': 'A truck reaches offloading', 'trip.delivered': 'A load is delivered',
   'trip.closed': 'A trip is closed', 'fund_request.created': 'Fuel or cash is requested', 'fund_request.approved': 'A request is approved',
   'fund_request.rejected': 'A request is rejected', 'fund_request.paid': 'A request is paid out', 'expense.submitted': 'An expense is sent in',

@@ -9,6 +9,7 @@ import { useAreaList } from "../api/areas";
 import { ChoiceChips, Empty, Field, SaveBar, Segmented, SettingRow, SettingsSection, Switch, UnitInput } from "../ui/kit";
 import { contrastWithWhite, useReloadBrand } from "../ui/brand";
 import { BrandUpload } from "./BrandUpload";
+import { ComingSoonRows, ComingSoonTag } from "../ui/comingSoon";
 
 /**
  * The company's own settings (GET/PUT /company): details, base currency and time zone, which areas are
@@ -28,6 +29,7 @@ const regionalForm = (stored: Rec): Record<string, string> => ({
   ...Object.fromEntries(REGIONAL_KEYS.map((k) => [k, String(stored[k] ?? "")])),
   numberFormat: NUMBER_FORMATS.find((n) => n.decimal === stored.decimalSeparator && n.thousands === stored.thousandsSeparator)?.value ?? "",
 });
+const CARGO_KINDS = [{ value: "volume", label: "Liquids corrected to 20 °C" }, { value: "weighed", label: "Weighed goods" }, { value: "counted", label: "Counted goods" }];
 const OUTCOMES = [{ value: "return", label: "Return it to the consignor" }, { value: "transfer", label: "Move it to another truck" }, { value: "write_off", label: "Write it off" }];
 const CARRIERS = [{ value: "driver", label: "The driver" }, { value: "company", label: "The company" }, { value: "insurance", label: "An insurance claim" }];
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
@@ -43,14 +45,21 @@ const NUMBERS: { key: string; title: string; description: string; unit: string; 
   { key: "defaultShortageAllowancePercent", title: "Shortage allowance", description: "How much of a load may go missing before it counts as a shortage, when no shortage policy or product sets it.", unit: "%", step: 0.01, fallback: 0.3 },
   { key: "deliveredOverLoadedPercent", title: "Delivered above loaded", description: "A delivery may show up to this much more than was loaded (both at 20 °C) before it is questioned.", unit: "%", step: 0.1, fallback: 2 },
 ];
+/** How close a service is before the Maintenance desk shows it as due. */
+const DUE_SOON = [
+  { key: "dueSoonKm", title: "Due soon, by distance", description: "A service shows as due when the truck is this close to its km, and a reminder goes out.", unit: "km", step: 100, fallback: 1000 },
+  { key: "dueSoonDays", title: "Due soon, by date", description: "The same for a service counted in days.", unit: "days", step: 1, fallback: 14 },
+  { key: "dueSoonHours", title: "Due soon, by engine hours", description: "The same for a service counted in engine hours.", unit: "hours", step: 5, fallback: 50 },
+];
 const DENSITY = { min: { key: "densityMinKgM3", fallback: 600 }, max: { key: "densityMaxKgM3", fallback: 1000 } };
 const ALL_NUMBERS = [...NUMBERS.map((n) => ({ key: n.key, fallback: n.fallback })), DENSITY.min, DENSITY.max];
 
-type Form = Record<string, unknown> & { operations: Record<string, unknown>; modules: string[]; regional: Record<string, string>; brand: Record<string, string>; watermark: Record<string, unknown> };
+type Form = Record<string, unknown> & { operations: Record<string, unknown>; maintenance: Record<string, unknown>; modules: string[]; regional: Record<string, string>; brand: Record<string, string>; watermark: Record<string, unknown> };
 const BRAND_KEYS = ["productName", "shortName", "accent", "emailSenderName", "signature", "logoFileId", "logoDarkFileId", "iconFileId", "logoPdfFileId"] as const;
 
 function formFrom(company: Rec | null): Form {
   const ops = company?.operations ?? {};
+  const upkeep = company?.maintenance ?? {};
   return {
     legalName: company?.legalName ?? "",
     tradingName: company?.tradingName ?? "",
@@ -73,6 +82,7 @@ function formFrom(company: Rec | null): Form {
     operations: {
       tripStartsFromTruck: ops.tripStartsFromTruck ?? true,
       stopBeforeLoading: ops.stopBeforeLoading ?? true,
+      cargoKinds: ops.cargoKinds ?? ["volume", "weighed", "counted"],
       loadedTripOutcomes: ops.loadedTripOutcomes ?? ["return", "transfer", "write_off"],
       writeOffCarriers: ops.writeOffCarriers ?? ["driver", "company", "insurance"],
       writeOffDefaultCarrier: ops.writeOffDefaultCarrier ?? "company",
@@ -80,6 +90,11 @@ function formFrom(company: Rec | null): Form {
       writeOffNeedsOwner: ops.writeOffNeedsOwner ?? true,
       settlementPeriod: ops.settlementPeriod ?? "any",
       ...Object.fromEntries(ALL_NUMBERS.map((n) => [n.key, ops[n.key] ?? n.fallback])),
+    },
+    maintenance: {
+      workOrderStopsTruck: upkeep.workOrderStopsTruck ?? true,
+      defectStopsTruck: upkeep.defectStopsTruck ?? false,
+      ...Object.fromEntries(DUE_SOON.map((n) => [n.key, upkeep[n.key] ?? n.fallback])),
     },
   };
 }
@@ -103,6 +118,7 @@ export function CompanyPanel() {
   useEffect(() => { if (company.data !== undefined) setForm(formFrom(company.data)); }, [company.data]);
   const writable = can(me, "company", "update");
   const set = (key: string, value: unknown) => setForm((f) => ({ ...f, [key]: value }));
+  const setUpkeep = (key: string, value: unknown) => setForm((f) => ({ ...f, maintenance: { ...f.maintenance, [key]: value } }));
   const setOp = (key: string, value: unknown) => setForm((f) => ({ ...f, operations: { ...f.operations, [key]: value } }));
   const setReg = (key: string, value: string) => setForm((f) => ({ ...f, regional: { ...f.regional, [key]: value } }));
   // What applies now: the company's choice, else its country's, else the defaults (from the server).
@@ -132,6 +148,7 @@ export function CompanyPanel() {
         phone: textOrNull(form.phone), email: textOrNull(form.email), website: textOrNull(form.website),
         allowSelfRegistration: form.allowSelfRegistration, modules: form.modules,
         operations: { ...form.operations, ...Object.fromEntries(ALL_NUMBERS.map((n) => [n.key, Number(form.operations[n.key])])) },
+        maintenance: { ...form.maintenance, ...Object.fromEntries(DUE_SOON.map((n) => [n.key, Number(form.maintenance[n.key])])) },
         brand: Object.fromEntries(BRAND_KEYS.map((k) => [k, textOrNull(form.brand[k])])),
         watermark: { ...form.watermark, text: textOrNull(form.watermark.text), opacity: Number(form.watermark.opacity), angle: Number(form.watermark.angle) },
       };
@@ -287,7 +304,7 @@ export function CompanyPanel() {
           {(areas.data ?? []).map((a) => (
             <SettingRow key={a.key} title={<>{a.name}{a.state === "early" && <span className="status status-info area-early">Early</span>}</>} description={a.description}>
               {a.always ? <span className="setting-fixed">Always on</span>
-                : a.state === "not-built" ? <span className="setting-fixed">Not built yet</span>
+                : a.state === "not-built" ? <ComingSoonTag />
                 : <Switch label={a.name} checked={has(a.key)} onChange={(on) => toggleModule(a.key, on)} />}
             </SettingRow>
           ))}
@@ -297,6 +314,7 @@ export function CompanyPanel() {
           <SettingRow title="Let people create their own account" description="Anyone with the app's address can sign up. They start as Viewer, able to see but not change anything, until someone gives them a role.">
             <Switch label="Let people create their own account" checked={Boolean(form.allowSelfRegistration)} onChange={(on) => set("allowSelfRegistration", on)} />
           </SettingRow>
+          <ComingSoonRows place="accounts" />
         </SettingsSection>
 
         <SettingsSection title="Trips" description="Rules the trip desks follow. Masters such as fuel norms, routes and shortage policies take precedence where they set a value.">
@@ -305,6 +323,9 @@ export function CompanyPanel() {
           </SettingRow>
           <SettingRow title="Allow stopping a trip before loading" description="Operations can stop a trip that left but never loaded, and free the truck for other work.">
             <Switch label="Allow stopping a trip before loading" checked={Boolean(form.operations.stopBeforeLoading)} onChange={(on) => setOp("stopBeforeLoading", on)} />
+          </SettingRow>
+          <SettingRow title="Kinds of cargo the company carries" description="Loading offers only products of these kinds. Liquids are corrected to 20 °C, weighed goods take a weighbridge ticket, and counted goods take a count in the product's unit.">
+            <ChoiceChips label="Kinds of cargo the company carries" options={CARGO_KINDS} value={form.operations.cargoKinds as string[]} onChange={(v) => v.length && setOp("cargoKinds", v)} />
           </SettingRow>
           <SettingRow title="A loaded trip that can't deliver may" description="What the office can do with the load after an accident or a refusal. Switch off what the company never does.">
             <ChoiceChips label="A loaded trip that can't deliver may" options={OUTCOMES} value={form.operations.loadedTripOutcomes as string[]} onChange={(v) => setOp("loadedTripOutcomes", v)} />
@@ -338,6 +359,24 @@ export function CompanyPanel() {
           <SettingRow title="How often drivers are settled" description="Any time: Finance settles a driver whenever it chooses. Otherwise settlements follow the period.">
             <Segmented choice label="How often drivers are settled" value={String(form.operations.settlementPeriod)} options={PERIODS} onChange={(v) => setOp("settlementPeriod", v)} disabled={!writable} />
           </SettingRow>
+        </SettingsSection>
+        {has("maintenance") && (
+          <SettingsSection title="Maintenance" description="How services and work orders behave on the Maintenance desk.">
+            <SettingRow title="A new work order stops the truck" description="While the order is not done, the truck can't be given a trip or leave on one. Each order can say otherwise.">
+              <Switch label="A new work order stops the truck" checked={Boolean(form.maintenance.workOrderStopsTruck)} onChange={(on) => setUpkeep("workOrderStopsTruck", on)} />
+            </SettingRow>
+            <SettingRow title="A defect the driver reports stops the truck" description="Off: the order is opened and the office decides, since the driver is usually on the road.">
+              <Switch label="A defect the driver reports stops the truck" checked={Boolean(form.maintenance.defectStopsTruck)} onChange={(on) => setUpkeep("defectStopsTruck", on)} />
+            </SettingRow>
+            {DUE_SOON.map((n) => (
+              <SettingRow key={n.key} title={n.title} description={n.description}>
+                <UnitInput label={n.title} value={Number(form.maintenance[n.key])} unit={n.unit} step={n.step} onChange={(v) => setUpkeep(n.key, v)} />
+              </SettingRow>
+            ))}
+          </SettingsSection>
+        )}
+        <SettingsSection title="Coming soon" description="Planned for after the first release. Each will appear here as a setting when it is built.">
+          <ComingSoonRows place="company" />
         </SettingsSection>
       </fieldset>
       {writable && <SaveBar dirty={dirty} busy={busy} onSave={() => void save()} onDiscard={() => setForm(saved)} />}

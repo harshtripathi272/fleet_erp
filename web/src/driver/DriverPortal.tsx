@@ -1,3 +1,4 @@
+import { FieldInput } from "../desks/usePlacement";
 import { useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -11,6 +12,7 @@ import { DocThumb } from "../docs/DocThumb";
 import { Wordmark } from "../ui/brand";
 import { Button } from "../ui/kit";
 import { stamp, num } from "../ui/format";
+import { DEFAULT_WORDS } from "../domain/words";
 
 /**
  * The driver web app (issue #5): a driver signed in on their own phone sees only their own trip,
@@ -25,12 +27,16 @@ const STOP_LABEL: Record<string, string> = { start: "Start", load: "Loading", vi
 interface Stop { id: string; kind: string; place: string; legKm?: number; arrivedAt?: string; arrivedVia?: string }
 interface Doc { id: string; kind: Kind; status: string; at: string; note?: string; returnReason?: string; simulated?: boolean; file?: { fileId?: string; name?: string; mime?: string; sampleId?: string } }
 interface Home {
+  questions?: { key: string; label: string; type: string; required: boolean; options?: string[]; min?: number; max?: number; helpText?: string }[];
+  canReportDefect?: boolean;
   driver: { id: string; name: string; code?: string };
   trip: null | {
     id: string; number: string; truck: string; trailer?: string; customer: string; product: string; dispatchedAt?: string;
     stops: Stop[]; next?: Kind | null; issued: { id: string; number: string; kind: string; text: string; at?: string }[]; documents: Doc[];
   };
   account: { balance: string; direction: "holds" | "owed" | "even"; settlements: { id: string; number: string; at: string }[] };
+  /** The company's words (#73); an older server sends none. */
+  words?: Record<string, { singular: string; plural: string }>;
 }
 interface Msg { id: string; at: string; from: string; title?: string; text?: string; rows?: [string, string][]; upload?: Kind }
 
@@ -102,6 +108,10 @@ export function DriverPortal({ me }: { me: Me }) {
   }
   const h = home.data;
   const trip = h.trip;
+  const say = (term: string, plural = false) => {
+    const own = h.words?.[term] ?? DEFAULT_WORDS[term];
+    return own ? (plural ? own.plural : own.singular) : term;
+  };
   const nextStop = trip?.stops.find((s) => !s.arrivedAt);
 
   return (
@@ -123,8 +133,8 @@ export function DriverPortal({ me }: { me: Me }) {
 
       {!trip && (
         <section className="drv-card">
-          <h2>No trip right now</h2>
-          <p className="muted">When the office plans your next trip it shows here.</p>
+          <h2>No {say("trip").toLowerCase()} right now</h2>
+          <p className="muted">When the office plans your next {say("trip").toLowerCase()} it shows here.</p>
         </section>
       )}
 
@@ -199,6 +209,9 @@ export function DriverPortal({ me }: { me: Me }) {
         )}
       </section>
 
+      {(h.questions?.length ?? 0) > 0 && <Questions questions={h.questions!} />}
+      {h.canReportDefect && trip && <ReportDefect />}
+
       <Conversation
         messages={messages.data ?? []}
         waiting={outbox.items.filter((i) => i.type === "send" && i.note && !i.file).map((i) => ({ id: i.id, text: i.note!, at: i.at }))}
@@ -220,7 +233,7 @@ export function DriverPortal({ me }: { me: Me }) {
         )}
         {h.account.settlements.length > 0 && (
           <>
-            <h4>Settlements</h4>
+            <h4>{say("settlement", true)}</h4>
             <ul className="drv-list">
               {h.account.settlements.map((s) => <li key={s.id}><span>{s.number}</span><span className="muted">{stamp(s.at)}</span><StatementLink id={s.id} number={s.number} /></li>)}
             </ul>
@@ -267,6 +280,44 @@ function Conversation({ messages, waiting, onPick, onSend }: { messages: Msg[]; 
       <form className="drv-compose" onSubmit={submit}>
         <input value={text} onChange={(e) => setText(e.target.value)} placeholder="Write to the office" aria-label="Message to the office" maxLength={1000} />
         <Button tone="primary" type="submit" aria-label="Send"><Send /></Button>
+      </form>
+    </section>
+  );
+}
+
+/** What the company asks the driver about this trip and load. Answers wait on the phone like everything else it sends. */
+function Questions({ questions }: { questions: NonNullable<Home["questions"]> }) {
+  const [values, setValues] = useState<Record<string, unknown>>({});
+  const outbox = useOutbox();
+  const sent = new Set(outbox.items.filter((i) => i.type === "fields").flatMap((i) => Object.keys(i.values ?? {})));
+  const open = questions.filter((q) => !sent.has(q.key));
+  if (!open.length) return null;
+  const answered = Object.fromEntries(Object.entries(values).filter(([k, v]) => v !== undefined && v !== "" && open.some((q) => q.key === k)));
+  return (
+    <section className="drv-card">
+      <h3>Questions from the office</h3>
+      <div className="drv-defect">
+        {open.map((q) => <FieldInput key={q.key} field={q} value={values[q.key]} onChange={(v) => setValues((old) => ({ ...old, [q.key]: v }))} />)}
+        <Button disabled={!Object.keys(answered).length} onClick={() => void enqueue({ type: "fields", values: answered, label: "Answers for the office" })}>Send to the office</Button>
+      </div>
+    </section>
+  );
+}
+
+function ReportDefect() {
+  const [text, setText] = useState("");
+  const submit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!text.trim()) return;
+    void enqueue({ type: "defect", note: text.trim(), label: "Problem with the truck" });
+    setText("");
+  };
+  return (
+    <section className="drv-card">
+      <h3>Report a problem with the truck</h3>
+      <form className="drv-defect" onSubmit={submit}>
+        <textarea className="input" rows={2} value={text} onChange={(e) => setText(e.target.value)} placeholder="What is wrong?" aria-label="What is wrong with the truck" />
+        <Button type="submit" disabled={!text.trim()}>Send to the office</Button>
       </form>
     </section>
   );

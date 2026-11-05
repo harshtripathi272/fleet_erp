@@ -61,6 +61,8 @@ const tripSchema = new Schema<any>({
   cancelReason: String,
   /** Stopped after leaving, before anything was loaded; the trip is closed like an ended one. */
   stopReason: String,
+  /** Company fields, asked at each field's step (#67). */
+  custom: { type: Schema.Types.Mixed, default: undefined },
   /** What was decided for a load this trip couldn't deliver (#64). */
   undelivered: {
     type: new Schema({ outcome: { type: String, enum: ['return', 'transfer', 'write_off'], required: true }, reasonId: { type: ObjectId, ref: 'CancellationReason' }, reason: String, at: Date, by: { type: ObjectId, ref: 'User' } }, { _id: false }),

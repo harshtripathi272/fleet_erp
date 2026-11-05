@@ -1,3 +1,7 @@
+import { driverAnswers, driverQuestions } from './placements.js';
+import { isAreaOn } from '../company/areas.js';
+import type { DefectInput } from '../maintenance/maintenance.schema.js';
+import { reportDefect as openDefect } from '../maintenance/maintenance.service.js';
 import { ForbiddenError, NotFoundError } from '../../core/errors/index.js';
 import * as Fmt from '../../core/format/regional.js';
 import type { Plain } from '../../core/masters/types.js';
@@ -13,8 +17,9 @@ import { Settlement } from './models/money.model.js';
 import { Trip } from './models/trip.model.js';
 import type * as S from './operations.schema.js';
 import { statementPdf as settlementStatementPdf } from './printouts.js';
-import { baseCurrency, currencyInfo, driverThread, formatMoney, type OpsContext } from './support.js';
+import { baseCurrency, currencyInfo, driverThread, formatMoney, log, save, type OpsContext } from './support.js';
 import { arriveAtStop, partyName, placeName, plateOf, trailerPlate } from './trips.service.js';
+import { words } from '../company/workspace.js';
 
 /**
  * The driver app: a driver signed in with their own account (a user linked to their driver record).
@@ -93,9 +98,10 @@ export async function home(actor: DriverActor) {
   }
   const entries = await driverLedger(actor.driverId);
   const balanceMinor = entries.reduce((sum, e) => sum + e.amountMinor, 0);
-  const [settlements, categories] = await Promise.all([
+  const [settlements, categories, terms] = await Promise.all([
     Settlement.find({ driverId: actor.driverId }).sort({ postedAt: -1, _id: -1 }).limit(10).lean(),
     ExpenseCategory.find({ status: 'active' }).select('name').sort({ name: 1 }).lean(),
+    words(),
   ]);
   return {
     driver: { id: String(driver._id), name: driver.name, code: driver.code },
@@ -110,6 +116,12 @@ export async function home(actor: DriverActor) {
       settlements: settlements.map((s) => ({ id: String(s._id), number: s.number, at: iso(s.postedAt ?? s.createdAt) })),
     },
     expenseCategories: categories.map((c) => ({ id: String(c._id), name: c.name })),
+    /** What the company asks the driver about this trip and its load (#67). */
+    questions: trip ? await driverQuestions(trip, await Consignment.find({ tripId: trip._id }).lean() as Plain[]) : [],
+    /** The company's words (#73), so the phone says "load" where the company does. */
+    words: terms,
+    /** Maintenance is on, so a defect can be reported from the phone (#63). */
+    canReportDefect: await isAreaOn('maintenance'),
   };
 }
 
@@ -133,6 +145,23 @@ export async function send(actor: DriverActor, input: S.DriverSendInput) {
     file: input.fileId ? { fileId: input.fileId } : undefined, reading: input.reading, channel: 'app',
   }, driverContext(actor));
 }
+
+/** The driver answers what the company asks of them about their trip and load (#67). */
+export async function answerFields(actor: DriverActor, input: S.DriverFieldsInput) {
+  const plain = await ownTrip(actor.driverId);
+  if (!plain) throw new NotFoundError('You have no trip on the road');
+  const trip = await Trip.findById(plain._id);
+  const consignment = await Consignment.findOne({ tripId: plain._id, inTransit: true });
+  await driverAnswers(trip!, consignment, input.values);
+  await save(trip!);
+  if (consignment) await save(consignment);
+  const ctx = driverContext(actor);
+  await log(ctx, new Date(), `${ctx.name} answered ${Object.keys(input.values).join(', ')}`, { tripId: plain._id });
+  return { ok: true };
+}
+
+/** The driver reports something wrong with their truck: it becomes a work order. */
+export const reportDefect = (actor: DriverActor, input: DefectInput) => openDefect(actor.driverId, input, driverContext(actor));
 
 /** The driver says they have reached a stop on their own trip. */
 export async function arrive(actor: DriverActor, stopId: string) {

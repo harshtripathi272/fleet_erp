@@ -12,6 +12,7 @@ router.get('/overview', MetaController.overview);
 router.get('/stats', MetaController.stats);
 router.get('/readiness', authorize('company', 'read'), MetaController.readiness);
 router.get('/areas', MetaController.areas);
+router.get('/workspace', MetaController.workspace);
 router.get('/outbox', authorize('users', 'update'), MetaController.outbox);
 /** `full` (default): ten trucks with trips at every stage. `small`: the masters with two trucks, which the tests use. */
 const sampleBody = z.strictObject({ size: z.enum(['small', 'full']).default('full') }).default({ size: 'full' });

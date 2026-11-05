@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { isoDate, money, objectId, text } from '../../core/masters/zod.js';
+import { customKey, isoDate, money, objectId, text } from '../../core/masters/zod.js';
 import { DOC_CHANNELS, DOC_KINDS } from './models/cargo.model.js';
 import { STOP_KINDS } from './models/trip.model.js';
 
@@ -13,6 +13,8 @@ const via = z.enum(['app', 'whatsapp']).optional();
 const litresValue = z.number().min(0).max(200000);
 const quantity = z.number().min(0).max(1e7);
 const reasonText = text(500);
+/** Company fields answered at a step (#67). The step checks them against the definitions. */
+const custom = z.record(z.string().regex(customKey), z.unknown()).optional();
 const sinceQuery = isoDate.optional();
 
 export const tripStopParams = z.strictObject({ id: objectId, stopId: objectId });
@@ -45,6 +47,7 @@ export const createTripSchema = z.strictObject({
   trailerId: objectId.optional(),
   routeId: objectId.optional(),
   stops: z.array(stopPlan).min(2).max(30).optional(),
+  custom,
   plannedStart: isoDate,
   productId: objectId.optional(),
   plannedQty: quantity.optional(),
@@ -75,7 +78,9 @@ export const positionSchema = z.strictObject({
 });
 export type PositionInput = z.infer<typeof positionSchema>;
 
-export const endTripSchema = z.strictObject({ closingFuelL: litresValue });
+export const dispatchSchema = z.strictObject({ custom }).optional();
+export type DispatchInput = z.infer<typeof dispatchSchema>;
+export const endTripSchema = z.strictObject({ closingFuelL: litresValue, custom });
 export type EndTripInput = z.infer<typeof endTripSchema>;
 /** Where the truck is now and what is left in the tank, when a trip is stopped before loading. */
 export const stopTripSchema = z.strictObject({ reason: text(300), closingFuelL: litresValue, placeId: objectId.optional() });
@@ -110,12 +115,12 @@ export const requestListQuery = z.strictObject({
 export type RequestListQuery = z.infer<typeof requestListQuery>;
 
 export const createRequestSchema = z.discriminatedUnion('kind', [
-  z.strictObject({ tripId: objectId, kind: z.literal('fuel'), litres: z.number().positive().max(200000), reason: reasonText.optional() }),
-  z.strictObject({ tripId: objectId, kind: z.literal('cash'), amount: money.refine((m) => m.amountMinor > 0, 'Enter an amount'), reason: reasonText.optional() }),
+  z.strictObject({ tripId: objectId, kind: z.literal('fuel'), litres: z.number().positive().max(200000), reason: reasonText.optional(), custom }),
+  z.strictObject({ tripId: objectId, kind: z.literal('cash'), amount: money.refine((m) => m.amountMinor > 0, 'Enter an amount'), reason: reasonText.optional(), custom }),
 ]);
-export type CreateRequestInput = { tripId: string; kind: 'fuel' | 'cash'; litres?: number; amount?: { amountMinor: number; currencyId: string }; reason?: string };
+export type CreateRequestInput = { tripId: string; kind: 'fuel' | 'cash'; litres?: number; amount?: { amountMinor: number; currencyId: string }; reason?: string; custom?: Record<string, unknown> };
 
-export const decideSchema = z.strictObject({ approve: z.boolean(), note: reasonText.optional(), via });
+export const decideSchema = z.strictObject({ approve: z.boolean(), note: reasonText.optional(), via, custom });
 export type DecideInput = z.infer<typeof decideSchema>;
 
 export const issueSchema = z.strictObject({
@@ -124,6 +129,7 @@ export const issueSchema = z.strictObject({
   reference: text(60).optional(),
   station: text(120).optional(),
   via,
+  custom,
 }).refine((v) => v.paymentMethodId || v.medium, 'Choose the payment method');
 export type IssueInput = z.infer<typeof issueSchema>;
 
@@ -177,12 +183,17 @@ export const consignmentListQuery = z.strictObject({ ...page, tripId: objectId.o
 export type ConsignmentListQuery = z.infer<typeof consignmentListQuery>;
 
 const measured = {
-  qty: quantity,
+  /** Optional only for weighed goods with a ticket: the net is gross less tare. */
+  qty: quantity.optional(),
   ambientL: litresValue.optional(),
   tempC: z.number().min(-30).max(80).optional(),
   density: z.number().min(0).max(2000).optional(),
   certStd20L: litresValue.optional(),
+  gross: quantity.optional(),
+  tare: quantity.optional(),
+  ticketNo: text(60).optional(),
   docId: objectId.optional(),
+  custom,
 };
 
 export const loadingSchema = z.strictObject({
@@ -192,7 +203,7 @@ export const loadingSchema = z.strictObject({
   consignor: text(200, 0).optional(),
   consignee: text(200, 0).optional(),
   ...measured,
-  qty: quantity.refine((v) => v > 0, 'Enter the loaded quantity'),
+  qty: quantity.refine((v) => v > 0, 'Enter the loaded quantity').optional(),
 });
 export type LoadingInput = z.infer<typeof loadingSchema>;
 
@@ -208,6 +219,7 @@ export const expenseListQuery = z.strictObject({ ...page, tripId: objectId.optio
 export type ExpenseListQuery = z.infer<typeof expenseListQuery>;
 
 export const expenseSchema = z.strictObject({
+  custom,
   driverId: objectId,
   tripId: objectId.optional(),
   categoryId: objectId,
@@ -218,7 +230,7 @@ export const expenseSchema = z.strictObject({
 });
 export type ExpenseInput = z.infer<typeof expenseSchema>;
 
-export const expenseDecisionSchema = z.strictObject({ approve: z.boolean(), reason: reasonText.optional(), via });
+export const expenseDecisionSchema = z.strictObject({ approve: z.boolean(), reason: reasonText.optional(), via, custom });
 export type ExpenseDecisionInput = z.infer<typeof expenseDecisionSchema>;
 
 /* ---------- Settlement ---------- */
@@ -232,6 +244,7 @@ export const settlementSchema = z.strictObject({
   /** Positive: the driver hands cash back. Negative: the company pays the driver. Base-currency minor units. */
   cashMinor: z.number().int().min(-1e13).max(1e13),
   note: text(500).optional(),
+  custom,
 });
 export type SettlementInput = z.infer<typeof settlementSchema>;
 
@@ -250,6 +263,7 @@ const nominationShape = {
   requiredDate: isoDate,
   trucks: z.array(z.strictObject({ vehicleId: objectId, driverId: objectId.optional() })).min(1, 'Pick at least one truck').max(100),
   note: text(1000).optional(),
+  custom,
 };
 export const nominationSchema = z.strictObject(nominationShape);
 export type NominationInput = z.infer<typeof nominationSchema>;
@@ -307,6 +321,9 @@ export type InboundInput = z.infer<typeof inboundSchema>;
 /* ---------- Driver app ---------- */
 
 /** What a driver sends from the driver app: an uploaded file, a message, or both. */
+/** What a driver answers about their trip and load (#67). */
+export const driverFieldsSchema = z.strictObject({ values: z.record(z.string().regex(customKey), z.unknown()) });
+export type DriverFieldsInput = z.infer<typeof driverFieldsSchema>;
 export const driverSendSchema = z.strictObject({
   kind: z.enum(DOC_KINDS),
   fileId: objectId.optional(),

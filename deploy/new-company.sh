@@ -8,6 +8,8 @@
 # environment or are asked for, and go straight into Secret Manager. Every step checks what exists
 # first, so the script can be run again after a failure or to change a setting.
 # DRY_RUN=1 prints the commands instead of running them.
+# KIT_DIR=<folder> deploys a company kit (#76; deploy/gcp.sh in the kit sets it): its company.json, files/ and
+# data/ are copied into the bucket, which the service mounts read-only and applies on start.
 #
 # What it creates, all named after COMPANY:
 #   a service account that can read only this company's secrets and bucket;
@@ -59,6 +61,19 @@ run gcloud storage buckets update "gs://$BUCKET" --versioning
 run gcloud storage buckets add-iam-policy-binding "gs://$BUCKET" \
   --member "serviceAccount:$SA_EMAIL" --role roles/storage.objectAdmin
 
+kit_flags=()
+if [ -n "${KIT_DIR:-}" ]; then
+  say "Company kit into gs://$BUCKET/kit"
+  [ -f "$KIT_DIR/company.json" ] || fail "No company.json in $KIT_DIR"
+  run gcloud storage cp "$KIT_DIR/company.json" "gs://$BUCKET/kit/company.json"
+  for folder in files data; do
+    if [ -d "$KIT_DIR/$folder" ]; then run gcloud storage rsync "$KIT_DIR/$folder" "gs://$BUCKET/kit/$folder" --recursive --delete-unmatched-destination-objects; fi
+  done
+  # The bucket is mounted read-only (Cloud Storage volumes need the second-generation environment).
+  kit_flags=(--execution-environment gen2 --clear-volumes --clear-volume-mounts
+    --add-volume "name=bucket,type=cloud-storage,bucket=$BUCKET,readonly=true" --add-volume-mount "volume=bucket,mount-path=/mnt/bucket")
+fi
+
 say "Secrets"
 put_secret "$COMPANY-mongodb-uri" "$MONGODB_URI_VALUE"
 put_secret_once "$COMPANY-jwt-secret" "$( [ "$DRY_RUN" = 1 ] && echo '<generated>' || openssl rand -base64 48 | tr -d '\n')"
@@ -74,6 +89,20 @@ if [ -n "${RATE_FEED_API_KEY:-}" ]; then
 elif exists gcloud secrets describe "$COMPANY-rate-feed-key" --project "$PROJECT_ID"; then
   secrets="$secrets,RATE_FEED_API_KEY=$COMPANY-rate-feed-key:latest"
 fi
+# Connections' secrets (#59): each CONNECTION_* variable in the environment goes to Secret Manager as
+# <company>-connection-<name> (CONNECTION_TWILIO_TOKEN → acme-connection-twilio-token), and each one
+# stored on an earlier run is mounted again, so a re-run never drops a connection's key.
+connection_secrets=()
+for var in $(compgen -e | grep -E '^CONNECTION_[A-Z0-9_]{1,50}$' || true); do
+  put_secret "$COMPANY-connection-$(printf '%s' "${var#CONNECTION_}" | tr 'A-Z_' 'a-z-')" "${!var}"
+  connection_secrets+=("$var")
+done
+for stored in $(capture "" gcloud secrets list --project "$PROJECT_ID" --filter "name~^projects/.*/secrets/$COMPANY-connection-" --format 'value(name.basename())'); do
+  connection_secrets+=("CONNECTION_$(printf '%s' "${stored#"$COMPANY-connection-"}" | tr 'a-z-' 'A-Z_')")
+done
+for var in $(printf '%s\n' "${connection_secrets[@]}" | sort -u); do
+  secrets="$secrets,$var=$COMPANY-connection-$(printf '%s' "${var#CONNECTION_}" | tr 'A-Z_' 'a-z-'):latest"
+done
 
 egress_flags=()
 if [ "$EGRESS" = static ]; then
@@ -106,6 +135,7 @@ env_vars="APP_URL=$APP_URL,OWNER_EMAIL=$OWNER_EMAIL,TRUST_PROXY=$TRUST_PROXY,FIL
 env_vars="$env_vars,SMTP_HOST=$SMTP_HOST,SMTP_PORT=$SMTP_PORT,SMTP_SECURE=$SMTP_SECURE,CONSOLE_ENABLED=$CONSOLE_ENABLED,IN_PROCESS_JOBS=false,UPLOAD_MAX_MB=$UPLOAD_MAX_MB"
 [ -z "$SMTP_USER" ] || env_vars="$env_vars,SMTP_USER=$SMTP_USER"
 [ -z "$REDIS_URL" ] || env_vars="$env_vars,REDIS_URL=$REDIS_URL"
+[ -z "${KIT_DIR:-}" ] || env_vars="$env_vars,COMPANY_CONFIG=/mnt/bucket/kit/company.json"
 # The settings go in a YAML file, since values such as SMTP_FROM hold spaces and angle brackets.
 env_file="$(mktemp)"
 trap 'rm -f "$env_file"' EXIT
@@ -124,7 +154,7 @@ run gcloud run deploy "$SERVICE" --project "$PROJECT_ID" --region "$REGION" \
   --min-instances "$MIN_INSTANCES" --max-instances "$MAX_INSTANCES" --cpu "$CPU" --memory "$MEMORY" \
   --ingress "$ingress" --allow-unauthenticated \
   --startup-probe "httpGet.path=/api/v1/health/ready,initialDelaySeconds=5,periodSeconds=5,failureThreshold=24" \
-  "${egress_flags[@]}"
+  "${egress_flags[@]}" "${kit_flags[@]}"
 
 say "Daily exchange rates: Cloud Run job $RATES_JOB, started every hour by Cloud Scheduler ($SCHEDULER_REGION)"
 # The job fetches only when due (after the fetch time set in the app, until a fetch that day succeeds),
@@ -145,22 +175,30 @@ run gcloud scheduler jobs "$schedule_verb" http "$RATES_JOB-hourly" --project "$
   --uri "https://run.googleapis.com/v2/projects/$PROJECT_ID/locations/$REGION/jobs/$RATES_JOB:run" \
   --oauth-service-account-email "$SA_EMAIL" --oauth-token-scope https://www.googleapis.com/auth/cloud-platform
 
+# Work the service would do on a timer if it stayed awake. It scales to zero when idle, so a scheduler starts these.
+scheduled_job() {
+  local job="$1" script="$2" trigger="$3" schedule="$4"
+  run gcloud run jobs deploy "$job" --project "$PROJECT_ID" --region "$REGION" \
+    --image "$IMAGE" --service-account "$SA_EMAIL" \
+    --env-vars-file "$env_file" --set-secrets "$secrets" \
+    --command node --args "$script" \
+    --tasks 1 --max-retries 0 --task-timeout 300s --cpu 1 --memory 512Mi \
+    "${egress_flags[@]}"
+  run gcloud run jobs add-iam-policy-binding "$job" --project "$PROJECT_ID" --region "$REGION" \
+    --member "serviceAccount:$SA_EMAIL" --role roles/run.invoker --quiet
+  local verb=create
+  if exists gcloud scheduler jobs describe "$trigger" --location "$SCHEDULER_REGION" --project "$PROJECT_ID"; then verb=update; fi
+  run gcloud scheduler jobs "$verb" http "$trigger" --project "$PROJECT_ID" --location "$SCHEDULER_REGION" \
+    --schedule "$schedule" --time-zone UTC --http-method POST \
+    --uri "https://run.googleapis.com/v2/projects/$PROJECT_ID/locations/$REGION/jobs/$job:run" \
+    --oauth-service-account-email "$SA_EMAIL" --oauth-token-scope https://www.googleapis.com/auth/cloud-platform
+}
+
 say "Approval escalation: Cloud Run job $ESCALATION_JOB, started every 15 minutes by Cloud Scheduler ($SCHEDULER_REGION)"
-# The service scales to zero when idle, so requests waiting overnight need a scheduler to move them up.
-run gcloud run jobs deploy "$ESCALATION_JOB" --project "$PROJECT_ID" --region "$REGION" \
-  --image "$IMAGE" --service-account "$SA_EMAIL" \
-  --env-vars-file "$env_file" --set-secrets "$secrets" \
-  --command node --args dist/jobs/escalate.js \
-  --tasks 1 --max-retries 0 --task-timeout 300s --cpu 1 --memory 512Mi \
-  "${egress_flags[@]}"
-run gcloud run jobs add-iam-policy-binding "$ESCALATION_JOB" --project "$PROJECT_ID" --region "$REGION" \
-  --member "serviceAccount:$SA_EMAIL" --role roles/run.invoker --quiet
-schedule_verb=create
-if exists gcloud scheduler jobs describe "$ESCALATION_JOB-15min" --location "$SCHEDULER_REGION" --project "$PROJECT_ID"; then schedule_verb=update; fi
-run gcloud scheduler jobs "$schedule_verb" http "$ESCALATION_JOB-15min" --project "$PROJECT_ID" --location "$SCHEDULER_REGION" \
-  --schedule "*/15 * * * *" --time-zone UTC --http-method POST \
-  --uri "https://run.googleapis.com/v2/projects/$PROJECT_ID/locations/$REGION/jobs/$ESCALATION_JOB:run" \
-  --oauth-service-account-email "$SA_EMAIL" --oauth-token-scope https://www.googleapis.com/auth/cloud-platform
+scheduled_job "$ESCALATION_JOB" dist/jobs/escalate.js "$ESCALATION_JOB-15min" "*/15 * * * *"
+
+say "Service reminders: Cloud Run job $REMINDERS_JOB, started every hour by Cloud Scheduler ($SCHEDULER_REGION)"
+scheduled_job "$REMINDERS_JOB" dist/jobs/serviceReminders.js "$REMINDERS_JOB-hourly" "20 * * * *"
 
 dns=""
 if [ "$DOMAIN_MODE" = lb ]; then

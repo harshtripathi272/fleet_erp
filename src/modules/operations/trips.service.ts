@@ -3,6 +3,8 @@ import * as Fmt from '../../core/format/regional.js';
 import { env } from '../../config/env.js';
 import { ForbiddenError, NotFoundError } from '../../core/errors/index.js';
 import type { Plain } from '../../core/masters/types.js';
+import { isAreaOn } from '../company/areas.js';
+import { WorkOrder } from '../maintenance/models/maintenance.model.js';
 import { Branch } from '../organisation/models/branch.model.js';
 import { Product } from '../cargo/models/product.model.js';
 import { Driver } from '../drivers/models/driver.model.js';
@@ -20,6 +22,7 @@ import {
   type StopLeg, type StopPlan,
 } from './calc.js';
 import { waitingOn, type Approval } from './approvals.js';
+import { stepCustom } from './placements.js';
 import { issueButtons, requestAmount, requestButtons } from './funding.service.js';
 import { assertStageAllows, currentStage, recordEvent, stageSnapshot, tripTypeFor } from './stages.js';
 import { carriedIn, driverBalance } from './ledger.js';
@@ -221,6 +224,18 @@ async function tripDoc(id: unknown) {
 
 /* ---------- Busy checks ---------- */
 
+/** A work order that stops the truck keeps it off new trips (#63). While Maintenance is off, no order holds anything. */
+async function assertNotHeld(vehicleId: unknown, plate: string) {
+  if (!(await isAreaOn('maintenance'))) return;
+  const order = await WorkOrder.findOne({ vehicleId, status: 'active', stopsTruck: true, stage: { $ne: 'done' } }).select('number stage').lean<{ number: string; stage: string }>();
+  if (order) throw conflict(`${plate} is ${order.stage === 'in_workshop' ? 'in the workshop' : 'waiting for the workshop'} on work order ${order.number}. Finish the order, or say it doesn't stop the truck, before giving it a trip.`);
+}
+
+/** The km a finished trip drove go on the truck's reading. A truck with no reading yet has nothing to add to. */
+async function addToOdometer(vehicleId: unknown, km: number) {
+  if (km > 0) await Vehicle.updateOne({ _id: vehicleId, odometerKm: { $exists: true } }, { $inc: { odometerKm: Math.round(km) } });
+}
+
 export async function assertFree(field: 'vehicleId' | 'driverId' | 'trailerId', id: unknown, label: string, except?: unknown) {
   if (!id) return;
   const filter: Plain = { [field]: id, active: true };
@@ -236,6 +251,7 @@ export async function createTrip(input: S.CreateTripInput, ctx: OpsContext, extr
   const customer = await customerParty(input.customerId);
   const truck = await truckFacts(input.vehicleId);
   await assertFree('vehicleId', input.vehicleId, truck.plate);
+  await assertNotHeld(input.vehicleId, truck.plate);
   const driver = input.driverId ? await activeDriver(input.driverId) : null;
   if (driver) await assertFree('driverId', input.driverId, String(driver.name));
   const trailer = input.trailerId ? await activeRecord(Trailer, input.trailerId, 'trailer') : null;
@@ -254,6 +270,8 @@ export async function createTrip(input: S.CreateTripInput, ctx: OpsContext, extr
   };
   const trip = new Trip({
     ...draft, ...(await budgets(draft, truck)), number: await nextNumber('trips', 'TRIP', at),
+    // A transfer or a nomination's trip has no one to ask here: anything required is asked before it leaves.
+    custom: extra.transferredFromTripId || extra.nominationId ? input.custom : await stepCustom('trips', 'create', input.custom),
     openingFuelL: truck.fuelL, tripTypeId: tripType?._id, stages: await stageSnapshot(tripType?._id), transferredFromTripId: extra.transferredFromTripId, createdBy: ctx.actorId, updatedBy: ctx.actorId,
   });
   recordEvent(trip, 'created', at, ctx.actorId);
@@ -386,6 +404,7 @@ export async function stopTrip(id: string, input: S.StopTripInput, ctx: OpsConte
   const stops = trip.get('stops') as Array<{ placeId: unknown; arrivedAt?: Date }>;
   // Where the truck is: the place given, or the last stop it reached.
   const placeId = input.placeId ?? [...stops].reverse().find((s) => s.arrivedAt)?.placeId ?? stops[0]!.placeId;
+  await addToOdometer(trip.get('vehicleId'), Number(trip.get('tracking')?.km ?? 0));
   await closeEarly(trip, { reason: input.reason, placeId, closingFuelL: input.closingFuelL, requestNote: 'Trip stopped before loading' }, at, ctx);
   const place = await placeName(placeId);
   const number = String(trip.get('number'));
@@ -426,7 +445,7 @@ export async function getFunding(id: string) {
 
 /* ---------- On the road ---------- */
 
-export async function dispatchTrip(id: string, ctx: OpsContext) {
+export async function dispatchTrip(id: string, ctx: OpsContext, input?: S.DispatchInput) {
   need(ctx, 'trips', 'update');
   const at = new Date();
   const trip = await tripDoc(id);
@@ -438,10 +457,12 @@ export async function dispatchTrip(id: string, ctx: OpsContext) {
   const open = await FundRequest.findOne({ tripId: trip._id, status: { $in: OPEN_REQUEST } }).lean();
   if (open) throw conflict(open.status === 'approved' ? `${open.number} still has to be paid.` : `${waitingOn(open.approval as Approval)?.label ?? 'The approver'} still has to approve ${open.number}.`);
   const truck = await truckFacts(trip.get('vehicleId'), false);
+  await assertNotHeld(trip.get('vehicleId'), truck.plate);
   const issued = (await FundRequest.find({ tripId: trip._id, kind: 'fuel', status: 'issued' }).lean()).reduce((s, r) => s + Number(r.litres ?? 0), 0);
   const stops = trip.get('stops');
   stops[0].arrivedAt ??= at;
   stops[0].leftAt = at;
+  trip.set('custom', await stepCustom('trips', 'dispatch', input?.custom, (trip.toObject() as Plain).custom as Plain | undefined, ['create']));
   recordEvent(trip, 'dispatched', at, ctx.actorId);
   // A trip that took over a load from another truck leaves already loaded.
   if (await Consignment.exists({ tripId: trip._id })) recordEvent(trip, 'loaded', at, ctx.actorId);
@@ -638,11 +659,13 @@ export async function endTrip(id: string, input: S.EndTripInput, ctx: OpsContext
   for (let i = 0; i < stops.length; i += 1) stampArrival(stops, i, at);
   stops.at(-1)!.leftAt = undefined;
   const endPlace = stops.at(-1)!.placeId;
+  trip.set('custom', await stepCustom('trips', 'close', input.custom, (trip.toObject() as Plain).custom as Plain | undefined));
   recordEvent(trip, 'ended', at, ctx.actorId);
   trip.set({ endedAt: at, closingFuelL: input.closingFuelL, active: false, tracking: { ...(trip.get('tracking')?.toObject?.() ?? { heading: 0 }), km: tripKm(stops), speed: 0, at }, updatedBy: ctx.actorId });
   trip.markModified('stops');
   await save(trip);
   await setVehicleState(trip.get('vehicleId'), { placeId: endPlace, fuelL: input.closingFuelL }, ctx.actorId);
+  await addToOdometer(trip.get('vehicleId'), tripKm(stops));
   await resolve(`${trip._id}-end`, 'Trip ended');
   const plain = trip.toObject() as Plain;
   const place = await placeName(endPlace);

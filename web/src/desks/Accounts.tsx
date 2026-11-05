@@ -1,3 +1,4 @@
+import { usePlacement } from "./usePlacement";
 import { useEffect, useMemo, useState } from "react";
 import { ArrowLeft, Check, FileText, Search } from "lucide-react";
 import { useApp } from "../store";
@@ -127,6 +128,7 @@ function StatementBuilder({ driver }: { driver: Driver }) {
     [data, picked],
   );
   const finance = may("settlement.post");
+  const company = usePlacement("settlements", "post");
   // After posting, open the new statement once it arrives from the API.
   const [awaiting, setAwaiting] = useState<number | null>(null);
   useEffect(() => {
@@ -139,7 +141,7 @@ function StatementBuilder({ driver }: { driver: Driver }) {
   }, [awaiting, data.settlements, driver.id, setOverlay]);
   const post = async () => {
     const before = data.settlements.filter((s) => s.driverId === driver.id).length;
-    if (await run({ type: "settlement.post", driverId: driver.id, tripIds: picked, cashBase: cashValue }, "Statement posted. The driver has it on WhatsApp.")) setAwaiting(before);
+    if (await run({ type: "settlement.post", custom: company.custom, driverId: driver.id, tripIds: picked, cashBase: cashValue }, "Statement posted. The driver has it on WhatsApp.")) setAwaiting(before);
   };
   if (!closed.length)
     return (
@@ -244,7 +246,7 @@ function StatementBuilder({ driver }: { driver: Driver }) {
         )}
         <footer>
           {finance ? (
-            <Button tone="primary" size="lg" disabled={!picked.length || blockers.length > 0} onClick={post}>
+            <Button tone="primary" size="lg" disabled={!picked.length || blockers.length > 0 || !company.ready} onClick={post}>
               <Check /> Post statement
             </Button>
           ) : may("settlement.request") ? (

@@ -41,8 +41,8 @@ export async function saveCompany(input: Plain, actorId?: string, requestId?: st
   if (version !== existing.version) throw new ConflictError('Company details were changed by someone else. Reload and try again.', { currentVersion: existing.version });
   const before = existing.toObject() as Plain;
   for (const [key, value] of Object.entries(changes)) {
-    // Operations settings merge, so saving one setting doesn't reset the others.
-    if (key === 'operations' && value) existing.set(key, { ...((before.operations as Plain | undefined) ?? {}), ...(value as Plain) });
+    // Operations and Maintenance settings merge, so saving one setting doesn't reset the others.
+    if ((key === 'operations' || key === 'maintenance') && value) existing.set(key, { ...((before[key] as Plain | undefined) ?? {}), ...(value as Plain) });
     else if (key === 'regional' && value) {
       const merged = { ...((before.regional as Plain | undefined) ?? {}), ...(value as Plain) };
       existing.set(key, Object.fromEntries(Object.entries(merged).filter(([, v]) => v !== null && v !== undefined)));

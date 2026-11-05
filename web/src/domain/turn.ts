@@ -1,7 +1,8 @@
-import { baseCurrencyCode } from "../ui/format";
+import { baseCurrencyCode, num } from "../ui/format";
 import { byId, driverBalance, funding, volume20 } from "./calc";
 import { closedAt, firstName, litres, money, placeName, toSettle, inBase } from "./helpers";
 import type { AppData, Desk, Role, Trip } from "./types";
+import { stageName, stageOn } from "./words";
 
 export type StageId = "plan" | "funding" | "loading" | "transit" | "offloading" | "close" | "settle";
 export const STAGES: { id: StageId; label: string }[] = [
@@ -58,7 +59,23 @@ export function isMine(step: NextStep, role: Role) {
   return false;
 }
 
+/** The stages the company works (#73), under its own names, in their fixed physical order. */
+export function visibleStages(data: AppData): { id: StageId; label: string }[] {
+  return STAGES.filter((s) => stageOn(data, s.id)).map((s) => ({ id: s.id, label: stageName(data, s.id) }));
+}
+
+/**
+ * The trip's next step, for a company that may not work every stage: without Funding, dispatch belongs to the
+ * plan; without Settlement, a closed trip is complete.
+ */
 export function nextStep(data: AppData, trip: Trip): NextStep {
+  const step = workedStep(data, trip);
+  if (step.stage === "funding" && !stageOn(data, "funding")) return { ...step, stage: "plan" };
+  if (step.stage === "settle" && !stageOn(data, "settle")) return { actor: "done", stage: "close", move: "none", title: "Complete", waiting: "Complete", since: step.since };
+  return step;
+}
+
+function workedStep(data: AppData, trip: Trip): NextStep {
   const driver = byId(data.drivers, trip.driverId);
   const who = firstName(driver?.name) || "The driver";
   const load = trip.stops.find((s) => s.kind === "load");
@@ -121,7 +138,8 @@ export function nextStep(data: AppData, trip: Trip): NextStep {
       };
     const f = funding(data, trip);
     const issued = requests.some((r) => r.status === "issued");
-    if (!issued && (f.fuel.suggested > 0 || f.cash.suggested > 0))
+    // A company that doesn't fund trips (Funding off) goes straight from the plan to dispatch.
+    if (!issued && stageOn(data, "funding") && (f.fuel.suggested > 0 || f.cash.suggested > 0))
       return {
         actor: "operations",
         stage: "funding",
@@ -244,9 +262,9 @@ export function nextStep(data: AppData, trip: Trip): NextStep {
       actor: "finance",
       stage: "settle",
       move: "shortage",
-      title: "Decide the fuel shortage",
-      waiting: "Finance is reviewing the fuel shortage",
-      detail: `${litres(shortage.shortage!.netShortL)} beyond the allowance · ${inBase(shortage.shortage!.amountBase)}`,
+      title: shortage.shortage!.unit === "L" ? "Decide the fuel shortage" : "Decide the shortage",
+      waiting: shortage.shortage!.unit === "L" ? "Finance is reviewing the fuel shortage" : "Finance is reviewing the shortage",
+      detail: `${shortage.shortage!.unit === "L" ? litres(shortage.shortage!.netShortL) : `${num(shortage.shortage!.netShortL, 0, 2)} ${shortage.shortage!.unit}`} beyond the allowance · ${inBase(shortage.shortage!.amountBase)}`,
       since: shortage.delivered?.at,
       refId: shortage.id,
     };
@@ -273,8 +291,9 @@ export function nextStep(data: AppData, trip: Trip): NextStep {
   };
 }
 
-export function stageIndex(stage: StageId) {
-  return STAGES.findIndex((s) => s.id === stage);
+/** Where a stage sits among the stages the company works; with no data, among all of them. */
+export function stageIndex(stage: StageId, data?: AppData) {
+  return (data ? visibleStages(data) : STAGES).findIndex((s) => s.id === stage);
 }
 
 /** When each stage finished, for the stepper. */

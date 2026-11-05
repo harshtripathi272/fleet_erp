@@ -1,3 +1,4 @@
+import { stepCustom } from './placements.js';
 import { Types } from 'mongoose';
 import { ForbiddenError, NotFoundError } from '../../core/errors/index.js';
 import { mayDecideAll, routeApproval } from './approvals.js';
@@ -119,7 +120,9 @@ export async function postSettlement(input: S.SettlementInput, ctx: OpsContext) 
   const sumKind = (kind: string) => sumOf(selected.filter((e) => e.kind === kind));
   const starts = trips.map((t) => (t.dispatchedAt ?? t.createdAt) as Date).sort((a, b) => a.getTime() - b.getTime());
   const ends = trips.map((t) => (t.endedAt ?? t.cancelledAt) as Date).sort((a, b) => a.getTime() - b.getTime());
+  const custom = await stepCustom('settlements', 'post', input.custom);
   const settlement = await Settlement.create({
+    custom,
     number: await nextNumber('settlements', 'SET', at), driverId: driver._id, tripIds: input.tripIds, from: starts[0], to: ends.at(-1),
     currencyId: base.id, openingMinor: opening, advancesMinor: sumKind('advance'), expensesMinor: -sumKind('expense'), shortagesMinor: sumKind('shortage'), writeOffsMinor: sumKind('write_off'),
     cashMinor: input.cashMinor, closingMinor: before - input.cashMinor, note: input.note, postedAt: at, createdBy: ctx.actorId, updatedBy: ctx.actorId,
@@ -142,7 +145,7 @@ export async function postSettlement(input: S.SettlementInput, ctx: OpsContext) 
     text: cash > 0 ? `You returned ${money(cash)}. ${carry}` : cash < 0 ? `${money(-cash)} paid to you. ${carry}` : `${money(Math.abs(closing))} carries forward${closing < 0 ? ' in your favour' : ''}.`,
     rows: [
       ['Trips', trips.map((t) => t.number).join(', ')], ['Advances', money(Number(s.advancesMinor))], ['Approved expenses', money(Number(s.expensesMinor))],
-      ...(Number(s.shortagesMinor) ? [['Fuel shortage', money(Number(s.shortagesMinor))] as [string, string]] : []),
+      ...(Number(s.shortagesMinor) ? [['Shortage', money(Number(s.shortagesMinor))] as [string, string]] : []),
       ...(Number(s.writeOffsMinor) ? [['Load written off', money(Number(s.writeOffsMinor))] as [string, string]] : []),
     ],
     buttons: [{ label: 'View statement', nav: { view: 'statement', driverId: String(driver._id) } }],

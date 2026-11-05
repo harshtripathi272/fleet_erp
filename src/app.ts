@@ -18,8 +18,10 @@ import authRouter from './modules/auth/auth.router.js';
 import cargoRouter from './modules/cargo/cargo.router.js';
 import companyRouter from './modules/company/company.router.js';
 import filesRouter from './modules/files/files.router.js';
+import maintenanceRouter from './modules/maintenance/maintenance.router.js';
 import complianceRouter from './modules/compliance/compliance.router.js';
 import configurationRouter from './modules/configuration/configuration.router.js';
+import connectionsRouter, { hooksRouter } from './modules/connections/connections.router.js';
 import driversRouter from './modules/drivers/drivers.router.js';
 import financeRouter from './modules/finance/finance.router.js';
 import fleetRouter from './modules/fleet/fleet.router.js';
@@ -32,6 +34,7 @@ import operationsRouter, { webhookRouter } from './modules/operations/operations
 import organisationRouter from './modules/organisation/organisation.router.js';
 import partiesRouter from './modules/parties/parties.router.js';
 import rolesRouter from './modules/roles/roles.router.js';
+import setupKitRouter from './modules/setup/setup.router.js';
 import tripsRouter from './modules/trips/trips.router.js';
 import usersRouter from './modules/users/users.router.js';
 
@@ -43,14 +46,19 @@ app.use(cors);
 app.use(requestId);
 app.use(requestLogger);
 app.use('/api', compressJson);
+// Signed calls from outside services, checked over the exact bytes sent, so before the JSON parser (#59).
+app.use('/api/v1/hooks', hooksRouter);
+// The Company kit carries logos and spreadsheets, so it has its own, larger body limit (#76).
+app.use('/api/v1/setup-kit', express.json({ limit: '40mb' }), rejectOperators, authenticate, setupKitRouter);
 app.use(express.json({ limit: '1mb' }));
 app.use(rejectOperators);
 
 if (env.CONSOLE_ENABLED) {
   app.use('/console', express.static(fileURLToPath(new URL('../public/console', import.meta.url)), { index: 'index.html', maxAge: 0 }));
   app.use('/api/v1/meta', publicMetaRouter);
-  app.use('/api/v1/brand', brandRouter);
 }
+// The company's brand, without a session: the sign-in page needs it, so it is served with or without the console.
+app.use('/api/v1/brand', brandRouter);
 
 app.use('/api/v1/health', healthRouter);
 app.use('/api/v1/auth', authRouter);
@@ -69,11 +77,13 @@ app.use('/api/v1', authenticate, geographyRouter);
 app.use('/api/v1', authenticate, financeRouter);
 app.use('/api/v1', authenticate, partiesRouter);
 app.use('/api/v1', authenticate, fleetRouter);
+app.use('/api/v1', authenticate, maintenanceRouter);
 app.use('/api/v1', authenticate, driversRouter);
 app.use('/api/v1', authenticate, complianceRouter);
 app.use('/api/v1', authenticate, cargoRouter);
 app.use('/api/v1', authenticate, tripsRouter);
 app.use('/api/v1', authenticate, messagingRouter);
+app.use('/api/v1', authenticate, connectionsRouter);
 app.use('/api/v1', authenticate, configurationRouter);
 
 // The web app (web/dist), when built: hashed assets cached for a year, the page itself never,

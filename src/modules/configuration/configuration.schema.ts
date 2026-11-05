@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { FIELD_TYPES } from '../../core/masters/dynamicFields.js';
+import { FIELD_ANSWERERS, FIELD_DOCUMENTS } from './models/configuration.model.js';
 import { baseShape, code, customKey, integer, name, objectId, regexText, text, toUpdateSchema } from '../../core/masters/zod.js';
 
 export const listShape = {
@@ -32,6 +33,9 @@ const fieldSpec = {
 export const fieldDefinitionShape = {
   entity: z.string().regex(/^[a-z][a-z0-9-]{1,39}$/, 'A master key such as "drivers"'),
   ...fieldSpec,
+  placement: z.string().regex(/^[a-z_]{2,30}$/).optional(),
+  askedOf: z.enum(FIELD_ANSWERERS).optional(),
+  printOn: z.array(z.enum(FIELD_DOCUMENTS)).max(2).optional(),
   ...baseShape,
 };
 

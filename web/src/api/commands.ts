@@ -43,6 +43,7 @@ export async function runCommand(action: Action, ctx: { data: AppData; role: Rol
     case "nomination.save": {
       const source = data.orderSources?.find((s) => s.name === action.source) ?? data.orderSources?.[0];
       const body = clean({
+        custom: action.custom,
         customerId: action.customerId, orderSourceId: source?.id, reference: blank(action.reference?.trim()), loadingPlaceId: action.loadingPlaceId,
         productId: blank(action.productId), qtyPerTruck: blank(action.qtyPerTruck), requiredDate: action.requiredDate,
         trucks: action.trucks.map((t) => clean({ vehicleId: t.truckId, driverId: blank(t.driverId) })), note: blank(action.note?.trim()),
@@ -64,6 +65,7 @@ export async function runCommand(action: Action, ctx: { data: AppData; role: Rol
       await api("/trips", {
         method: "POST",
         body: clean({
+          custom: action.custom,
           customerId: action.customerId, vehicleId: action.truckId, driverId: blank(action.driverId), trailerId: blank(action.trailerId),
           routeId: blank(action.routeId), stops: action.stops, plannedStart: new Date(action.plannedStart).toISOString(),
           productId: blank(action.productId), plannedQty: blank(action.plannedQty),
@@ -85,7 +87,7 @@ export async function runCommand(action: Action, ctx: { data: AppData; role: Rol
       return;
     }
     case "trip.cancel": await api(`/trips/${action.tripId}/cancel`, { method: "POST", body: { reason: action.reason.trim() } }); return;
-    case "trip.dispatch": await api(`/trips/${action.tripId}/dispatch`, { method: "POST" }); return;
+    case "trip.dispatch": await api(`/trips/${action.tripId}/dispatch`, { method: "POST", body: clean({ custom: action.custom }) }); return;
     case "trip.ping": await api(`/trips/${action.tripId}/position`, { method: "POST", body: { km: Math.max(0, action.km), speed: Math.max(0, Math.min(200, action.speed)), source: "simulator" } }); return;
     case "trip.arrive": await api(`/trips/${action.tripId}/stops/${action.stopId}/arrive`, { method: "POST" }); return;
     case "trip.remind": await api(`/trips/${action.tripId}/remind`, { method: "POST" }); return;
@@ -97,24 +99,24 @@ export async function runCommand(action: Action, ctx: { data: AppData; role: Rol
       return;
     }
     case "writeoff.decide": await api(`/consignments/${action.consignmentId}/write-off-decision`, { method: "POST", body: clean({ approve: action.approve, note: blank(action.note?.trim()), via: viaOf(action.via) }) }); return;
-    case "trip.end": await api(`/trips/${action.tripId}/end`, { method: "POST", body: { closingFuelL: action.closingFuelL } }); return;
+    case "trip.end": await api(`/trips/${action.tripId}/end`, { method: "POST", body: clean({ closingFuelL: action.closingFuelL, custom: action.custom }) }); return;
 
     /* Money requests */
     case "request.create":
       await api("/fund-requests", {
         method: "POST",
         body: action.kind === "fuel"
-          ? clean({ tripId: action.tripId, kind: "fuel", litres: action.amount, reason: blank(action.reason?.trim()) })
-          : clean({ tripId: action.tripId, kind: "cash", amount: money(data, action.amount, action.currency), reason: blank(action.reason?.trim()) }),
+          ? clean({ custom: action.custom, tripId: action.tripId, kind: "fuel", litres: action.amount, reason: blank(action.reason?.trim()) })
+          : clean({ custom: action.custom, tripId: action.tripId, kind: "cash", amount: money(data, action.amount, action.currency), reason: blank(action.reason?.trim()) }),
       });
       return;
-    case "request.decide": await api(`/fund-requests/${action.id}/decide`, { method: "POST", body: clean({ approve: action.approve, note: blank(action.note?.trim()), via: viaOf(action.via) }) }); return;
+    case "request.decide": await api(`/fund-requests/${action.id}/decide`, { method: "POST", body: clean({ custom: action.custom, approve: action.approve, note: blank(action.note?.trim()), via: viaOf(action.via) }) }); return;
     case "request.issue": {
       const command = action as typeof action & { paymentMethodId?: string };
       const method = paymentMethod(data, action.medium, command.paymentMethodId);
       await api(`/fund-requests/${action.id}/issue`, {
         method: "POST",
-        body: clean({ paymentMethodId: method?.id, medium: method ? undefined : blank(action.medium?.trim()), reference: blank(action.reference?.trim()), station: blank(action.station?.trim()), via: viaOf(action.via) }),
+        body: clean({ custom: action.custom, paymentMethodId: method?.id, medium: method ? undefined : blank(action.medium?.trim()), reference: blank(action.reference?.trim()), station: blank(action.station?.trim()), via: viaOf(action.via) }),
       });
       return;
     }
@@ -137,13 +139,13 @@ export async function runCommand(action: Action, ctx: { data: AppData; role: Rol
     case "load.record":
       await api("/consignments", {
         method: "POST",
-        body: clean({ tripId: action.tripId, docId: blank(action.docId), productId: action.productId, invoiceNo: action.invoiceNo.trim(), consignor: action.consignor, consignee: action.consignee, qty: action.qty, ambientL: blank(action.ambientL), tempC: action.tempC ?? undefined, density: action.density ?? undefined, certStd20L: blank(action.certStd20L) }),
+        body: clean({ custom: action.custom, tripId: action.tripId, docId: blank(action.docId), productId: action.productId, invoiceNo: action.invoiceNo.trim(), consignor: action.consignor, consignee: action.consignee, qty: action.qty || undefined, ambientL: blank(action.ambientL), tempC: action.tempC ?? undefined, density: action.density ?? undefined, certStd20L: blank(action.certStd20L), gross: blank(action.gross), tare: blank(action.tare), ticketNo: blank(action.ticketNo) }),
       });
       return;
     case "delivery.record":
       await api(`/consignments/${action.consignmentId}/delivery`, {
         method: "POST",
-        body: clean({ docId: blank(action.docId), podNo: action.podNo.trim(), qty: action.qty, ambientL: blank(action.ambientL), tempC: action.tempC ?? undefined, density: action.density ?? undefined, certStd20L: blank(action.certStd20L) }),
+        body: clean({ custom: action.custom, docId: blank(action.docId), podNo: action.podNo.trim(), qty: action.qty || undefined, ambientL: blank(action.ambientL), tempC: action.tempC ?? undefined, density: action.density ?? undefined, certStd20L: blank(action.certStd20L), gross: blank(action.gross), tare: blank(action.tare), ticketNo: blank(action.ticketNo) }),
       });
       return;
     case "shortage.decide": await api(`/consignments/${action.consignmentId}/shortage-decision`, { method: "POST", body: clean({ charge: action.charge, note: blank(action.note?.trim()), via: viaOf(action.via) }) }); return;
@@ -152,13 +154,13 @@ export async function runCommand(action: Action, ctx: { data: AppData; role: Rol
     case "expense.record":
       await api("/expenses", {
         method: "POST",
-        body: clean({ driverId: action.driverId, tripId: blank(action.tripId), categoryId: action.categoryId, amount: money(data, action.amount, action.currency), receiptNo: blank(action.receiptNo?.trim()), docId: blank(action.docId), note: blank(action.note?.trim()) }),
+        body: clean({ custom: action.custom, driverId: action.driverId, tripId: blank(action.tripId), categoryId: action.categoryId, amount: money(data, action.amount, action.currency), receiptNo: blank(action.receiptNo?.trim()), docId: blank(action.docId), note: blank(action.note?.trim()) }),
       });
       return;
-    case "expense.decide": await api(`/expenses/${action.id}/decide`, { method: "POST", body: clean({ approve: action.approve, reason: blank(action.reason?.trim()), via: viaOf(action.via) }) }); return;
+    case "expense.decide": await api(`/expenses/${action.id}/decide`, { method: "POST", body: clean({ custom: action.custom, approve: action.approve, reason: blank(action.reason?.trim()), via: viaOf(action.via) }) }); return;
     case "settlement.request": await api(`/driver-accounts/${action.driverId}/settlement-request`, { method: "POST" }); return;
     case "settlement.post":
-      await api("/settlements", { method: "POST", body: clean({ driverId: action.driverId, tripIds: action.tripIds, cashMinor: Math.round(action.cashBase * 10 ** (data.baseCurrency?.minorUnits ?? 2)), note: blank(action.note?.trim()) }) });
+      await api("/settlements", { method: "POST", body: clean({ custom: action.custom, driverId: action.driverId, tripIds: action.tripIds, cashMinor: Math.round(action.cashBase * 10 ** (data.baseCurrency?.minorUnits ?? 2)), note: blank(action.note?.trim()) }) });
       return;
 
     /* Messages */

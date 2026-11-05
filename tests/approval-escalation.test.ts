@@ -5,7 +5,8 @@ import { after, before, beforeEach, describe, test } from 'node:test';
 import mongoose from 'mongoose';
 import { env } from '../src/config/env.js';
 import { setSmtpTransportFactory } from '../src/core/mail/mailer.js';
-import { registerSmsAdapter } from '../src/core/sms/index.js';
+import { z } from 'zod';
+import { registerProvider } from '../src/core/connections/index.js';
 import { settleSends } from '../src/modules/messaging/dispatcher.js';
 import { OutboundMessage } from '../src/modules/messaging/models/connection.model.js';
 import { escalateDue } from '../src/modules/operations/escalation.js';
@@ -205,12 +206,32 @@ describe('the scheduled job', () => {
     assert.equal(moved.trail.at(-1).what, 'escalated');
     assert.equal((await inThread('role:owner', raised.id)).length, 1);
   });
+
+  test('it writes in the company\'s number format, not the default', async () => {
+    await setLevel('ADV-ZMW', 1, { escalateAfterHours: 24 });
+    const company = ok(await as(owner).get('/company'));
+    ok(await as(owner).put('/company', { version: company.version, regional: { decimalSeparator: ',', thousandsSeparator: '.' } }));
+    const trip = await newTrip();
+    const raised = ok(await as(ops).post('/fund-requests', { tripId: trip.id, kind: 'cash', amount: { amountMinor: 1_234_50, currencyId: ids.ZMW }, reason: 'Fees' }), 201);
+    await FundRequest.updateOne({ _id: raised.id }, { $set: { 'approval.escalateAt': new Date(Date.now() - 1000) } });
+    const { host, port, name } = mongoose.connection;
+    const run = spawnSync(process.execPath, ['--import', 'tsx', 'src/jobs/escalate.ts'], { env: { ...process.env, MONGODB_URI: `mongodb://${host}:${port}/${name}` }, encoding: 'utf8', timeout: 60_000 });
+    assert.equal(run.status, 0, run.stderr || run.stdout);
+    const [told] = await inThread(ok(await as(owner).get(`/fund-requests/${raised.id}`)).approval.levels[1].thread, raised.id);
+    const amount = told.rows.find(([label]: [string]) => label === 'Amount')[1];
+    assert.match(amount, /1\.234,5/, amount);
+  });
 });
 
 describe('approval channels', () => {
   const smtp: Array<{ to: string; subject: string; text: string }> = [];
   const sms: Array<{ to: string; text: string }> = [];
-  registerSmsAdapter({ key: 'approval-sms', label: 'Test provider', simulated: false, async send(m) { sms.push(m); return { providerRef: `s-${sms.length}`, simulated: false }; } });
+  registerProvider({
+    kind: 'sms', key: 'approval-sms', label: 'Test provider', fields: z.strictObject({ account: z.string().optional(), senderId: z.string().optional() }),
+    secrets: [{ key: 'apiKey', label: 'API key', required: true }],
+    test: async () => ({ ok: true, message: 'ready' }),
+    open: () => ({ async send(m) { sms.push({ to: m.to, text: m.text }); return { providerRef: `s-${sms.length}` }; } }),
+  });
 
   beforeEach(() => {
     smtp.length = 0;
@@ -220,9 +241,9 @@ describe('approval channels', () => {
   });
 
   test('SMS and e-mail go to the level\'s people through the connections, and show in the outbox', async () => {
-    ok(await as(owner).post('/message-connections', { code: 'SMTP', name: 'Company SMTP', channel: 'email', provider: 'smtp', enabled: true, host: 'smtp.example.com', from: 'Fleet <fleet@example.com>' }), 201);
+    ok(await as(owner).post('/connections', { code: 'SMTP', name: 'Company SMTP', kind: 'email', provider: 'smtp', enabled: true, settings: { host: 'smtp.example.com', from: 'Fleet <fleet@example.com>' } }), 201);
     process.env.MESSAGING_APPROVAL_SMS_KEY = 'key';
-    ok(await as(owner).post('/message-connections', { code: 'SMS', name: 'SMS', channel: 'sms', provider: 'approval-sms', enabled: true, user: 'marichi', senderId: 'MARICHI', secretEnv: 'MESSAGING_APPROVAL_SMS_KEY' }), 201);
+    ok(await as(owner).post('/connections', { code: 'SMS', name: 'SMS', kind: 'sms', provider: 'approval-sms', enabled: true, settings: { account: 'marichi', senderId: 'MARICHI' }, secrets: { apiKey: 'MESSAGING_APPROVAL_SMS_KEY' } }), 201);
     await setLevel('FUEL-L', 1, { channels: ['app', 'sms', 'email'] });
     await User.updateOne({ _id: fin.userId }, { $set: { phone: '+260971000001' } });
     const other = await userWithRole(owner, 'finance', 'Faith Finance');

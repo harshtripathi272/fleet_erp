@@ -59,6 +59,7 @@ const fundRequestSchema = new Schema<any>({
   status: { type: String, enum: REQUEST_STATUSES, default: 'pending' },
   approval: { type: approvalSchema, default: undefined },
   trail: { type: [decisionSchema], default: [] },
+  custom: { type: Schema.Types.Mixed, default: undefined },
   paymentMethodId: { type: ObjectId, ref: 'PaymentMethod' },
   medium: String,
   reference: String,

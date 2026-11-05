@@ -1,8 +1,10 @@
+import { printedFields } from './placements.js';
+import { word } from '../company/workspace.js';
 import { documentBrand } from '../company/brand.service.js';
 import { createHash, randomUUID } from 'node:crypto';
 import * as Fmt from '../../core/format/regional.js';
 import type { Plain } from '../../core/masters/types.js';
-import { fileStore } from '../../core/storage/index.js';
+import { storeForNew } from '../../core/storage/index.js';
 import { Product } from '../cargo/models/product.model.js';
 import { Company } from '../company/company.model.js';
 import { StoredFile } from '../files/file.model.js';
@@ -60,8 +62,9 @@ async function money(amount: unknown) {
 async function store(name: string, body: Buffer, actorId: string) {
   const at = new Date();
   const key = `${at.toISOString().slice(0, 7)}/${randomUUID()}.pdf`;
-  await (await fileStore()).put(key, body, 'application/pdf');
-  const file = await StoredFile.create({ name, mime: 'application/pdf', size: body.length, sha256: createHash('sha256').update(body).digest('hex'), key, uploadedBy: actorId, at });
+  const { store: files, connectionId } = await storeForNew();
+  await files.put(key, body, 'application/pdf');
+  const file = await StoredFile.create({ name, mime: 'application/pdf', size: body.length, sha256: createHash('sha256').update(body).digest('hex'), key, uploadedBy: actorId, connectionId, at });
   return { fileId: String(file._id) };
 }
 
@@ -73,7 +76,9 @@ export async function tripSheetPdf(tripId: string): Promise<{ name: string; body
   const trip = sheet.trip;
   const tripType = trip.tripTypeId ? await TripType.findById(trip.tripTypeId).select('printLayoutId').lean() as Plain | null : null;
   const layout = await layoutFor('trip_sheet', tripType?.printLayoutId);
-  const blocks: PdfBlock[] = await companyBlocks(`Trip sheet ${trip.number}`);
+  const sheetWord = await word('tripSheet');
+  const blocks: PdfBlock[] = await companyBlocks(`${sheetWord} ${trip.number}`);
+  const companyRows = await printedFields('trip_sheet', [['trips', trip], ...sheet.consignments.map((c): [string, Plain] => ['consignments', c as Plain])]);
   const stops = (trip.stops ?? []) as Array<{ kind: string; placeId: unknown; arrivedAt?: Date; leftAt?: Date; legKm?: number }>;
   const products = new Map((await Product.find({ _id: { $in: sheet.consignments.map((c) => c.productId) } }).select('name').lean()).map((p) => [String(p._id), String(p.name)]));
   const categories = new Map((await ExpenseCategory.find({ _id: { $in: sheet.expenses.map((e) => e.categoryId) } }).select('name').lean()).map((c) => [String(c._id), String(c.name)]));
@@ -90,6 +95,7 @@ export async function tripSheetPdf(tripId: string): Promise<{ name: string; body
           ['Truck', await plateOf(trip.vehicleId)],
           ['Trailer', await trailerPlate(trip.trailerId)],
           ['Driver', await driverName(trip.driverId)],
+          ...companyRows,
           ['Dispatched', when(trip.dispatchedAt)],
           ['Ended', when(trip.endedAt)],
           ['Distance', `${Fmt.number(Math.round(Number(trip.totalKm ?? 0)))} km`],
@@ -101,7 +107,7 @@ export async function tripSheetPdf(tripId: string): Promise<{ name: string; body
         columns: [{ label: 'Consignment', width: 2 }, { label: 'Product', width: 2 }, { label: 'Invoice', width: 2 }, { label: 'Loaded', width: 2, align: 'right' }, { label: 'Delivered', width: 2, align: 'right' }, { label: 'Delivery note', width: 2 }, { label: 'Shortage', width: 1.6, align: 'right' }],
         rows: sheet.consignments.map((c) => {
           const shortage = c.shortage as Plain | undefined;
-          return [String(c.number), products.get(String(c.productId)) ?? '', String(c.invoiceNo ?? ''), measure(c.load as Plain), measure(c.delivered as Plain), String((c.delivered as Plain | undefined)?.podNo ?? ''), shortage ? litres(Number(shortage.netShortL ?? 0)) : '—'];
+          return [String(c.number), products.get(String(c.productId)) ?? '', String(c.invoiceNo ?? ''), measure(c.load as Plain), measure(c.delivered as Plain), String((c.delivered as Plain | undefined)?.podNo ?? ''), shortage ? measure({ qty: shortage.netShortL ?? 0, unit: shortage.unit ?? 'L' }) : '—'];
         }),
       });
     } else if (section === 'movement') {
@@ -123,7 +129,7 @@ export async function tripSheetPdf(tripId: string): Promise<{ name: string; body
     }
   }
   blocks.push({ kind: 'signatures', labels: ((layout?.signatureLines ?? []) as string[]) });
-  return { name: fileName('Trip sheet', trip.number), body: renderPdf(blocks, { ...pageOf(layout), ...(await documentBrand('tripSheet')) }) };
+  return { name: fileName(sheetWord, trip.number), body: renderPdf(blocks, { ...pageOf(layout), ...(await documentBrand('tripSheet')) }) };
 }
 
 /** The driver statement for a settlement as a PDF. */
@@ -132,7 +138,8 @@ export async function statementPdf(settlementId: string): Promise<{ name: string
   const layout = await layoutFor('driver_statement');
   const base = s.currency;
   const amount = (minor: unknown) => formatMoney(Number(minor ?? 0), base);
-  const blocks: PdfBlock[] = await companyBlocks(`Driver statement ${s.settlement.number}`);
+  const statementWord = `${await word('driver')} ${(await word('statement')).toLowerCase()}`;
+  const blocks: PdfBlock[] = await companyBlocks(`${statementWord} ${s.settlement.number}`);
   blocks.push(
     { kind: 'heading', text: 'Driver' },
     { kind: 'facts', rows: [['Driver', String(s.driver?.name ?? '')], ['Code', String(s.driver?.code ?? '')], ['Phone', String(s.driver?.phone ?? '')], ['Trips', s.trips.map((t) => t.number).join(', ')], ['Period', `${when(s.settlement.from)} to ${when(s.settlement.to)}`], ['Posted', when(s.settlement.postedAt)]] },
@@ -141,10 +148,11 @@ export async function statementPdf(settlementId: string): Promise<{ name: string
     { kind: 'heading', text: 'Summary' },
     {
       kind: 'facts', rows: [
+        ...await printedFields('driver_statement', [['settlements', s.settlement as unknown as Plain]]),
         ['Opening balance', amount(s.settlement.openingMinor)],
         ['Advances', amount(s.settlement.advancesMinor)],
         ['Approved expenses', amount(s.settlement.expensesMinor)],
-        ...(Number(s.settlement.shortagesMinor) ? [['Fuel shortage', amount(s.settlement.shortagesMinor)] as [string, string]] : []),
+        ...(Number(s.settlement.shortagesMinor) ? [['Shortage', amount(s.settlement.shortagesMinor)] as [string, string]] : []),
         ...(Number(s.settlement.writeOffsMinor) ? [['Load written off', amount(s.settlement.writeOffsMinor)] as [string, string]] : []),
         [Number(s.settlement.cashMinor) < 0 ? 'Paid to the driver' : 'Returned by the driver', amount(Math.abs(Number(s.settlement.cashMinor)))],
         ['Carried forward', amount(s.settlement.closingMinor)],
@@ -153,7 +161,7 @@ export async function statementPdf(settlementId: string): Promise<{ name: string
   );
   if (s.settlement.note) blocks.push({ kind: 'text', text: String(s.settlement.note) });
   blocks.push({ kind: 'signatures', labels: ((layout?.signatureLines ?? ['Finance', 'Driver']) as string[]) });
-  return { name: fileName('Statement', s.settlement.number), body: renderPdf(blocks, { ...pageOf(layout), ...(await documentBrand('statement')) }) };
+  return { name: fileName(await word('statement'), s.settlement.number), body: renderPdf(blocks, { ...pageOf(layout), ...(await documentBrand('statement')) }) };
 }
 
 /** Stores a printout so a message can attach it; `null` when there is nobody to file it under. */

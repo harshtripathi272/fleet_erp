@@ -1,0 +1,3 @@
+Code *;Registration number *;Make *;Vehicle type *;Odometer (km)
+T01;"ABC 1234";Volvo;TANKER;120000
+T02;ABC 5678;Scania;TANKER;98000

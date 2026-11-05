@@ -26,7 +26,7 @@ describe('the full sample', () => {
   test('a fleet of ten trucks, trailers and drivers with their documents', async () => {
     assert.ok(created > 200, `created ${created}`);
     for (const master of ['vehicles', 'trailers', 'drivers']) assert.equal(await total(`/${master}`), 10, master);
-    assert.equal(await total('/parties'), 7);
+    assert.equal(await total('/parties'), 8);
     assert.equal(await total('/routes'), 3);
     assert.equal(await total('/compliance-documents'), 3 + 16, 'road tax and a licence for each added truck and driver');
   });

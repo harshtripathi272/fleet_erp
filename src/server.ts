@@ -4,7 +4,10 @@ import { connectRedis, disconnectRedis } from './core/cache/redis.js';
 import { connectMongo, disconnectMongo, syncIndexes } from './core/db/mongo.js';
 import { logger } from './core/logger/index.js';
 import { ensureFirstOwner } from './modules/auth/auth.service.js';
+import { startMaintenanceWorker, stopMaintenanceWorker } from './modules/maintenance/maintenance.service.js';
 import { ensureBillingMessages, ensureDefaultMessages } from './modules/messaging/defaults.js';
+import { migrateToConnections } from './modules/connections/migrate.js';
+import { applyCompanyFile } from './modules/setup/apply.js';
 import { settleSends, startOutboxWorker, stopOutboxWorker } from './modules/messaging/dispatcher.js';
 import { startEscalationWorker, stopEscalationWorker } from './modules/operations/escalation.js';
 import { ensureSystemRoles } from './modules/roles/roles.service.js';
@@ -13,7 +16,15 @@ import { refreshRegional } from './modules/company/regional.js';
 await connectMongo();
 await syncIndexes();
 await ensureSystemRoles();
+// Message connections and the rate feed move onto connections, once (#59).
+await migrateToConnections();
+// A company kit's file: the company, its brand, areas, connections, roles, people and data (#76). Before the
+// first owner, so the invitation goes out with the company's brand and over its e-mail server.
+if (env.COMPANY_CONFIG) await applyCompanyFile(env.COMPANY_CONFIG);
+// Dates and numbers in the company's formats (#72); after the company file, which may set them.
 await refreshRegional();
+// With several instances, a change saved on one reaches the others within a minute.
+setInterval(() => { refreshRegional().catch((err) => logger.error({ err }, 'Could not refresh the regional settings')); }, 60_000).unref();
 await ensureFirstOwner();
 // A new installation starts with the default message templates and rules, once (#43).
 await ensureDefaultMessages();
@@ -21,7 +32,10 @@ await ensureBillingMessages();
 await connectRedis();
 // Retries and delayed messages go out from here: only in the server, so scripts and tests that load the app don't start it.
 startOutboxWorker();
-if (env.IN_PROCESS_JOBS) startEscalationWorker();
+if (env.IN_PROCESS_JOBS) {
+  startEscalationWorker();
+  startMaintenanceWorker();
+}
 
 const server = app.listen(env.PORT, env.HOST, () => {
   logger.info({ host: env.HOST, port: env.PORT, environment: env.NODE_ENV }, 'Server started');
@@ -45,6 +59,7 @@ function shutdown(reason: string, exitCode: number) {
     if (err) { logger.error({ err }, 'Shutdown failed'); process.exitCode = 1; }
     stopOutboxWorker();
     stopEscalationWorker();
+    stopMaintenanceWorker();
     await settleSends();
     await Promise.allSettled([disconnectMongo(), disconnectRedis()]);
     logger.info({}, 'Server stopped');

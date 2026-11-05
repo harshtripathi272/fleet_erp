@@ -1,3 +1,4 @@
+import { customValues } from './placements.js';
 import { env } from '../../config/env.js';
 import * as Fmt from '../../core/format/regional.js';
 import { logger } from '../../core/logger/index.js';
@@ -37,6 +38,7 @@ export async function tripValues(trip: Plain | null | undefined): Promise<Values
   if (!trip) return {};
   const stops = (trip.stops ?? []) as Array<{ kind: string; placeId: unknown }>;
   return {
+    ...customValues('trip', trip.custom),
     'trip.number': String(trip.number ?? ''),
     'vehicle.registration': await plateOf(trip.vehicleId),
     'trailer.registration': await trailerPlate(trip.trailerId),

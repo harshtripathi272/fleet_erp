@@ -1,0 +1,12 @@
+# This company's image: the shared image, with this kit's company.json, files/ and data/ in /kit, applied on
+# start. The deploy scripts build it: docker build --build-arg IMAGE=<shared image>:<version> .
+ARG IMAGE
+FROM ${IMAGE}
+USER root
+# Uploaded files go to /data/files on platforms that mount a disk there; the app runs as "node".
+RUN mkdir -p /data/files && chown -R node:node /data
+COPY --chown=node:node company.json /kit/company.json
+COPY --chown=node:node files /kit/files
+COPY --chown=node:node data /kit/data
+USER node
+ENV COMPANY_CONFIG=/kit/company.json
