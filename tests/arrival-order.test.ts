@@ -75,7 +75,7 @@ describe('arrivals follow the cargo', () => {
     ok(await arrive('load'));
     const border = await arrive('border');
     assert.equal(border.status, 422);
-    assert.equal(border.body.error.message, 'Record the loading first.');
+    assert.equal(border.body.error.message, 'Waiting for Operations to record the loading.');
 
     const consignment = await load(trip);
     ok(await arrive('border'), 200);
@@ -83,7 +83,7 @@ describe('arrivals follow the cargo', () => {
     const kmAtOffload = (await tripNow(trip)).tracking!.km;
     const early = await arrive('end');
     assert.equal(early.status, 422);
-    assert.equal(early.body.error.message, `Record the delivery at ${await offloadPlace(trip)} first.`);
+    assert.equal(early.body.error.message, `Waiting for Operations to record the delivery at ${await offloadPlace(trip)}.`);
     const held = await tripNow(trip);
     assert.equal(stop(held, 'end').arrivedAt, undefined, 'the final stop is not stamped');
     assert.equal(held.tracking!.km, kmAtOffload, 'a refused arrival leaves the truck where it was');

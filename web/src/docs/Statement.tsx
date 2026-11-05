@@ -140,7 +140,11 @@ export function Statement({ id }: { id: string }) {
         </div>
       </section>
       <footer className="sheet-sign">
-        {[`Finance · ${data.settings.people.finance}`, `Driver · ${driver.name}`].map((who) => (
+        {[
+          // A driver can't read the user list, so the name falls back to the desk: don't say it twice.
+          data.settings.people.finance === "Finance" ? "Finance" : `Finance · ${data.settings.people.finance}`,
+          `Driver · ${driver.name}`,
+        ].map((who) => (
           <div key={who}>
             <span className="sign-line" />
             <span>{who}</span>
