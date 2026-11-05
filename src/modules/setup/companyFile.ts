@@ -75,8 +75,11 @@ const smtp = z.strictObject({
 const common = {
   /** The public address, e.g. fleet.acme.example. Empty: the platform's own address. */
   domain: z.string().trim().toLowerCase().regex(/^(?=.{4,253}$)([a-z0-9-]{1,63}\.)+[a-z]{2,63}$/, 'A host name such as fleet.acme.example').optional(),
-  /** The shared image, without its version: the version is chosen when deploying, never kept here. */
-  image: z.string().trim().regex(/^[a-z0-9.-]+(:\d+)?(\/[a-z0-9._-]+)+$/, 'An image name without a tag, e.g. ghcr.io/acme/fleet-erp').default('africa-south1-docker.pkg.dev/marichi-fleet/fleet/fleet-erp'),
+  /**
+   * The shared image, without its version: the version is chosen when deploying, never kept here. On Google
+   * Cloud it defaults to the project's own registry (<region>-docker.pkg.dev/<project>/fleet/fleet-erp).
+   */
+  image: z.string().trim().regex(/^[a-z0-9.-]+(:\d+)?(\/[a-z0-9._-]+)+$/, 'An image name without a tag, e.g. ghcr.io/acme/fleet-erp').optional(),
   smtp: smtp.optional(),
 };
 export const TARGETS = ['gcp', 'compose', 'aws', 'azure', 'render', 'fly', 'railway'] as const;

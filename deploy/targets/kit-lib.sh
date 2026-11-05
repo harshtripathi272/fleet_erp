@@ -26,7 +26,8 @@ load_kit() {
   # shellcheck disable=SC1091
   if [ -f "$kit/.env" ]; then . "$kit/.env"; fi
   set +a
-  SHARED_IMAGE="$IMAGE_REPO:$VERSION"
+  # Google Cloud's script has its own default (the project's registry); every other target names the image.
+  SHARED_IMAGE="${IMAGE_REPO:-}:$VERSION"
 }
 
 # The server settings named in .env.example: "secret" ones (marked "# SECRET." on the line above) or "plain".

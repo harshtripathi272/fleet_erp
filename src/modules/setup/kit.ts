@@ -44,6 +44,7 @@ export function checkKit(file: CompanyFile, attachments: Map<string, Buffer>): s
   }
   const storage = file.connections.find((c) => c.kind === 'storage' && c.enabled);
   if (file.deploy.target === 'aws' && !storage) problems.push('deploy: on AWS uploaded files need a storage connection (Amazon S3), switched on: App Runner has no lasting disk');
+  if (file.deploy.target !== 'gcp' && !file.deploy.image) problems.push('deploy.image: name the shared image to run, without its version (where deploy/build-image.sh pushed it)');
   if (NEEDS_DOMAIN.includes(file.deploy.target) && !file.deploy.domain) problems.push(`deploy.domain: on ${TARGET_LABEL[file.deploy.target]} the company's address is needed before the first start, for password links`);
   if (file.deploy.target === 'gcp' && file.deploy.domainMode !== 'none' && !file.deploy.domain) problems.push(`deploy.domain: domainMode ${file.deploy.domainMode} needs a domain`);
   if (!file.deploy.smtp && !file.connections.some((c) => c.kind === 'email' && c.enabled && c.provider === 'smtp')) {

@@ -33,6 +33,7 @@
   "deploy": {
     "target": "compose",
     "domain": "fleet.acme-haulage.example",
+    "image": "registry.example.com/fleet/fleet-erp",
     "smtp": { "host": "smtp.acme-haulage.example", "port": 587, "user": "fleet@acme-haulage.example", "from": "Acme Fleet <fleet@acme-haulage.example>" }
   }
 }

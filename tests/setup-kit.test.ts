@@ -111,7 +111,7 @@ describe('the kit', () => {
       ['aws', {}, 'deploy/aws.sh'], ['azure', {}, 'deploy/azure.sh'], ['render', {}, 'deploy/render.sh'], ['fly', {}, 'deploy/fly.sh'], ['railway', {}, 'deploy/railway.sh'],
     ] as const) {
       const raw = fixture();
-      raw.deploy = { target, domain: 'fleet.acme-haulage.example', smtp: raw.deploy.smtp, ...extra };
+      raw.deploy = { target, domain: 'fleet.acme-haulage.example', image: raw.deploy.image, smtp: raw.deploy.smtp, ...extra };
       if (target === 'aws') raw.connections.push({ code: 'FILES', name: 'S3', kind: 'storage', provider: 's3', enabled: true, settings: { bucket: 'acme-files' }, secrets: { accessKeyId: 'CONNECTION_S3_ID', secretAccessKey: 'CONNECTION_S3_SECRET' } });
       const file = parsed(raw);
       assert.deepEqual(checkKit(file, attachmentsOf(file)), [], target);
@@ -127,9 +127,10 @@ describe('the kit', () => {
     const file = parsed();
     assert.deepEqual(checkKit(file, new Map()).map((p) => p.split(':')[0]), ['brand.files.logo', 'data.files.0', 'data.files.1', 'data.files.2', 'data.files.3', 'data.files.4']);
     const aws = parsed({ ...fixture(), deploy: { target: 'aws', smtp: fixture().deploy.smtp } });
+    assert.ok(checkKit(aws, attachmentsOf(aws)).some((p) => /deploy\.image/.test(p)));
     assert.ok(checkKit(aws, attachmentsOf(aws)).some((p) => /storage connection/.test(p)));
     assert.ok(checkKit(aws, attachmentsOf(aws)).some((p) => /deploy\.domain/.test(p)));
-    const noMail = parsed({ ...fixture(), deploy: { target: 'compose', domain: 'fleet.acme-haulage.example' } });
+    const noMail = parsed({ ...fixture(), deploy: { target: 'compose', domain: 'fleet.acme-haulage.example', image: 'registry.example.com/fleet/fleet-erp' } });
     assert.ok(checkKit(noMail, attachmentsOf(noMail)).some((p) => /deploy\.smtp/.test(p)));
   });
 
@@ -268,7 +269,7 @@ describe('the Company kit screen\'s API', () => {
   test('checks a file and builds its kit; problems come back with where they are', async () => {
     const file = fixture();
     const attachments = [...attachmentsOf(parsed())].map(([path, v]) => ({ path, data: v.toString('base64') }));
-    const checked = (await api().post('/api/v1/setup-kit/check').set(bearer(owner)).send({ file: { ...file, deploy: { target: 'compose' } }, attachments }).expect(200)).body.data;
+    const checked = (await api().post('/api/v1/setup-kit/check').set(bearer(owner)).send({ file: { ...file, deploy: { target: 'compose', image: 'registry.example.com/fleet/fleet-erp' } }, attachments }).expect(200)).body.data;
     assert.equal(checked.ok, false);
     assert.deepEqual(checked.problems.map((p: { path: string }) => p.path).sort(), ['deploy.domain', 'deploy.smtp']);
     const res = await api().post('/api/v1/setup-kit/kit').set(bearer(owner)).send({ file, attachments }).buffer(true).parse((r, done) => {

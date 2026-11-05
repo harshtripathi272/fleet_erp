@@ -314,6 +314,9 @@ export function CompanyKit() {
             <Field label="Address" hint={problemAt("deploy.domain") ?? "The company's own, e.g. fleet.acme.example. Point it at the platform once deployed."}>
               <input className="input" value={String(deploy.domain ?? "")} onChange={(e) => set("deploy.domain", e.target.value.trim().toLowerCase())} placeholder="fleet.acme.example" />
             </Field>
+            <Field label="Image" hint={problemAt("deploy.image") ?? (deploy.target === "gcp" ? "Empty: the project's own registry." : "The shared image, without its version, e.g. ghcr.io/acme/fleet-erp.")}>
+              <input className="input" value={String(deploy.image ?? "")} onChange={(e) => set("deploy.image", e.target.value.trim())} />
+            </Field>
             {deploy.target === "gcp" && <>
               <Field label="Google Cloud project" hint={problemAt("deploy.projectId")}><input className="input" value={String(deploy.projectId ?? "")} onChange={(e) => set("deploy.projectId", e.target.value)} /></Field>
               <Field label="Region"><input className="input" value={String(deploy.region ?? "")} onChange={(e) => set("deploy.region", e.target.value)} placeholder="africa-south1" /></Field>
