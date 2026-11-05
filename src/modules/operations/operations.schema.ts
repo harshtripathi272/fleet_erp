@@ -163,11 +163,15 @@ export const consignmentListQuery = z.strictObject({ ...page, tripId: objectId.o
 export type ConsignmentListQuery = z.infer<typeof consignmentListQuery>;
 
 const measured = {
-  qty: quantity,
+  /** Optional only for weighed goods with a ticket: the net is gross less tare. */
+  qty: quantity.optional(),
   ambientL: litresValue.optional(),
   tempC: z.number().min(-30).max(80).optional(),
   density: z.number().min(0).max(2000).optional(),
   certStd20L: litresValue.optional(),
+  gross: quantity.optional(),
+  tare: quantity.optional(),
+  ticketNo: text(60).optional(),
   docId: objectId.optional(),
 };
 
@@ -178,7 +182,7 @@ export const loadingSchema = z.strictObject({
   consignor: text(200, 0).optional(),
   consignee: text(200, 0).optional(),
   ...measured,
-  qty: quantity.refine((v) => v > 0, 'Enter the loaded quantity'),
+  qty: quantity.refine((v) => v > 0, 'Enter the loaded quantity').optional(),
 });
 export type LoadingInput = z.infer<typeof loadingSchema>;
 

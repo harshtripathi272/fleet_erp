@@ -3,7 +3,8 @@ export type Desk = Exclude<Role, "driver">;
 /** An ISO currency code. The base currency comes from the company settings (ZMW in the sample). */
 export type Currency = string;
 export type StopKind = "start" | "load" | "via" | "border" | "offload" | "end";
-export type Unit = "L" | "t" | "bags" | "pallets";
+/** A product's unit, from the Units of measure master: "L", "t", "kg", "bags"… */
+export type Unit = string;
 
 export interface Place {
   id: string;
@@ -76,7 +77,10 @@ export interface Product {
   id: string;
   name: string;
   kind: "fuel" | "general";
+  /** How it is measured: corrected to 20 °C, weighed on a weighbridge, or counted in its unit. */
+  measure: "volume" | "weighed" | "counted";
   unit: Unit;
+  decimals: number;
   fuelGroup?: "diesel" | "petrol" | "jet";
   /** Allowed transit loss in percent of the 20 °C loaded volume. */
   shortagePct?: number;
@@ -100,6 +104,8 @@ export interface Settings {
   averageSpeedKmh: number;
   /** Company trip settings: a trip that left but never loaded may be stopped. */
   stopBeforeLoading: boolean;
+  /** Company trip settings: the kinds of cargo it carries. */
+  cargoKinds: string[];
   clockOffsetMs: number;
   seq: Record<string, number>;
   people: Record<Desk, string>;
@@ -239,8 +245,13 @@ export interface Measure {
   vcf?: number;
   std20L?: number;
   certStd20L?: number;
+  gross?: number;
+  tare?: number;
+  ticketNo?: string;
 }
 export interface Shortage {
+  /** What its figures are in: for fuel, litres at 20 °C. */
+  unit: Unit;
   loaded20L: number;
   delivered20L: number;
   lossL: number;
@@ -486,6 +497,9 @@ export type Action =
       tempC?: number;
       density?: number;
       certStd20L?: number;
+      gross?: number;
+      tare?: number;
+      ticketNo?: string;
     }
   | {
       type: "delivery.record";
@@ -497,6 +511,9 @@ export type Action =
       tempC?: number;
       density?: number;
       certStd20L?: number;
+      gross?: number;
+      tare?: number;
+      ticketNo?: string;
     }
   | { type: "shortage.decide"; consignmentId: string; charge: boolean; note?: string; via?: "app" | "WhatsApp" }
   | {

@@ -75,12 +75,18 @@ const measureSchema = new Schema({
   vcf: Number,
   std20L: Number,
   certStd20L: Number,
+  /** Weighed goods: the weighbridge ticket's figures, in the product's unit; `qty` is the net. */
+  gross: Number,
+  tare: Number,
+  ticketNo: String,
   at: Date,
   podNo: String,
   docId: { type: ObjectId, ref: 'DriverDocument' },
 }, { _id: false, strict: 'throw' });
 
+/** In the product's unit (`unit`): for fuel, litres at 20 °C, as the field names say; for other cargo, its own quantity. */
 const shortageSchema = new Schema({
+  unit: String,
   loaded20L: Number,
   delivered20L: Number,
   lossL: Number,

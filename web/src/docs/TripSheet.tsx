@@ -88,10 +88,10 @@ export function TripSheet({ tripId }: { tripId: string }) {
                 <dd>{n0(volume20(c?.delivered))} L</dd>
                 <dt>Loss, allowance {c?.shortage?.allowancePct ?? 0.3}%</dt>
                 <dd>
-                  {n0(c?.shortage?.lossL)}, {n0(c?.shortage?.allowanceL)} L
+                  {n0(c?.shortage?.lossL)}, {n0(c?.shortage?.allowanceL)} {c?.shortage?.unit ?? "L"}
                 </dd>
                 <dt>Net shortage</dt>
-                <dd>{c?.shortage ? `${n0(c.shortage.netShortL)} L` : "—"}</dd>
+                <dd>{c?.shortage ? `${n0(c.shortage.netShortL)} ${c.shortage.unit}` : "—"}</dd>
                 <dt>Charged to driver</dt>
                 <dd>{c?.shortage?.status === "charged" ? `${n0(c.shortage.amountZmw)} ZMW` : c?.shortage?.status === "waived" ? "Waived" : "—"}</dd>
               </>

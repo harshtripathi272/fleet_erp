@@ -6,7 +6,11 @@ import { ObjectId, schemaOptions } from '../../core/masters/schema.js';
  * How this company runs trips. The first client's way of working ships as the defaults; every value
  * can be changed per company (see the founding principle in the README).
  */
+export const CARGO_KINDS = ['volume', 'weighed', 'counted'] as const;
+
 export const OPERATIONS_DEFAULTS = {
+  /** The kinds of cargo the company carries: its screens show only those measures (#75). */
+  cargoKinds: [...CARGO_KINDS] as string[],
   /** A trip's first stop is where its truck is now. */
   tripStartsFromTruck: true,
   /** Road distance when no route gives the leg: straight-line distance × this factor. */
@@ -30,6 +34,7 @@ export const OPERATIONS_DEFAULTS = {
 export const SETTLEMENT_PERIODS = ['any', 'weekly', 'fortnightly', 'monthly'] as const;
 
 const operationsSchema = new Schema({
+  cargoKinds: { type: [{ type: String, enum: CARGO_KINDS }], default: () => [...OPERATIONS_DEFAULTS.cargoKinds] },
   tripStartsFromTruck: { type: Boolean, default: OPERATIONS_DEFAULTS.tripStartsFromTruck },
   roadDistanceFactor: { type: Number, min: 1, max: 3, default: OPERATIONS_DEFAULTS.roadDistanceFactor },
   averageSpeedKmh: { type: Number, min: 10, max: 120, default: OPERATIONS_DEFAULTS.averageSpeedKmh },

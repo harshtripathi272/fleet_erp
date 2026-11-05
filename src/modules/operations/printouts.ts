@@ -111,7 +111,7 @@ export async function tripSheetPdf(tripId: string): Promise<{ name: string; body
         columns: [{ label: 'Consignment', width: 2 }, { label: 'Product', width: 2 }, { label: 'Invoice', width: 2 }, { label: 'Loaded', width: 2, align: 'right' }, { label: 'Delivered', width: 2, align: 'right' }, { label: 'Delivery note', width: 2 }, { label: 'Shortage', width: 1.6, align: 'right' }],
         rows: sheet.consignments.map((c) => {
           const shortage = c.shortage as Plain | undefined;
-          return [String(c.number), products.get(String(c.productId)) ?? '', String(c.invoiceNo ?? ''), measure(c.load as Plain), measure(c.delivered as Plain), String((c.delivered as Plain | undefined)?.podNo ?? ''), shortage ? litres(Number(shortage.netShortL ?? 0)) : '—'];
+          return [String(c.number), products.get(String(c.productId)) ?? '', String(c.invoiceNo ?? ''), measure(c.load as Plain), measure(c.delivered as Plain), String((c.delivered as Plain | undefined)?.podNo ?? ''), shortage ? measure({ qty: shortage.netShortL ?? 0, unit: shortage.unit ?? 'L' }) : '—'];
         }),
       });
     } else if (section === 'movement') {
@@ -155,7 +155,7 @@ export async function statementPdf(settlementId: string): Promise<{ name: string
         ['Opening balance', amount(s.settlement.openingMinor)],
         ['Advances', amount(s.settlement.advancesMinor)],
         ['Approved expenses', amount(s.settlement.expensesMinor)],
-        ...(Number(s.settlement.shortagesMinor) ? [['Fuel shortage', amount(s.settlement.shortagesMinor)] as [string, string]] : []),
+        ...(Number(s.settlement.shortagesMinor) ? [['Shortage', amount(s.settlement.shortagesMinor)] as [string, string]] : []),
         [Number(s.settlement.cashMinor) < 0 ? 'Paid to the driver' : 'Returned by the driver', amount(Math.abs(Number(s.settlement.cashMinor)))],
         ['Carried forward', amount(s.settlement.closingMinor)],
       ],

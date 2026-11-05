@@ -5,13 +5,14 @@ import type { Rec } from "../api/adapter";
 import { can } from "../api/session";
 import { useApp } from "../store";
 import { useAreaList } from "../api/areas";
-import { Empty, Field, SaveBar, Segmented, SettingRow, SettingsSection, Switch, UnitInput } from "../ui/kit";
+import { ChoiceChips, Empty, Field, SaveBar, Segmented, SettingRow, SettingsSection, Switch, UnitInput } from "../ui/kit";
 
 /**
  * The company's own settings (GET/PUT /company): details, base currency and time zone, which areas are
  * switched on, self sign-up, and the trip settings that replace values once fixed in code.
  */
 
+const CARGO_KINDS = [{ value: "volume", label: "Liquids corrected to 20 °C" }, { value: "weighed", label: "Weighed goods" }, { value: "counted", label: "Counted goods" }];
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 const DATE_FORMATS = ["DD/MM/YYYY", "MM/DD/YYYY", "YYYY-MM-DD"];
 const PERIODS: { value: string; label: string }[] = [{ value: "any", label: "Any time" }, { value: "weekly", label: "Weekly" }, { value: "fortnightly", label: "Fortnightly" }, { value: "monthly", label: "Monthly" }];
@@ -50,6 +51,7 @@ function formFrom(company: Rec | null): Form {
     operations: {
       tripStartsFromTruck: ops.tripStartsFromTruck ?? true,
       stopBeforeLoading: ops.stopBeforeLoading ?? true,
+      cargoKinds: ops.cargoKinds ?? ["volume", "weighed", "counted"],
       settlementPeriod: ops.settlementPeriod ?? "any",
       ...Object.fromEntries(ALL_NUMBERS.map((n) => [n.key, ops[n.key] ?? n.fallback])),
     },
@@ -180,6 +182,9 @@ export function CompanyPanel() {
           </SettingRow>
           <SettingRow title="Allow stopping a trip before loading" description="Operations can stop a trip that left but never loaded, and free the truck for other work.">
             <Switch label="Allow stopping a trip before loading" checked={Boolean(form.operations.stopBeforeLoading)} onChange={(on) => setOp("stopBeforeLoading", on)} />
+          </SettingRow>
+          <SettingRow title="Kinds of cargo the company carries" description="Loading offers only products of these kinds. Liquids are corrected to 20 °C, weighed goods take a weighbridge ticket, and counted goods take a count in the product's unit.">
+            <ChoiceChips label="Kinds of cargo the company carries" options={CARGO_KINDS} value={form.operations.cargoKinds as string[]} onChange={(v) => v.length && setOp("cargoKinds", v)} />
           </SettingRow>
           {NUMBERS.map((n) => (
             <SettingRow key={n.key} title={n.title} description={n.description}>

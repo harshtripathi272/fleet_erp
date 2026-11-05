@@ -177,7 +177,9 @@ export function toAppData(ref: Reference, ops: Operations): AppData {
     const price = p.shortagePricePerUnit as Rec | undefined;
     return {
       id: p.id, name: p.name, kind: p.volumeCorrected ? "fuel" : "general",
-      unit: (p.volumeCorrected ? "L" : ["L", "t", "bags", "pallets"].includes(symbol) ? symbol : symbol.toLowerCase() === "kg" ? "t" : "t") as Unit,
+      measure: p.volumeCorrected ? "volume" : units.get(String(p.unitId))?.dimension === "mass" ? "weighed" : "counted",
+      unit: p.volumeCorrected ? "L" : symbol,
+      decimals: Number(units.get(String(p.unitId))?.decimals ?? 2),
       shortagePct: p.shortageAllowancePercent,
       shortagePricePerL: price ? inBase(price) : undefined,
     };
@@ -228,6 +230,7 @@ export function toAppData(ref: Reference, ops: Operations): AppData {
     loadedAt: c.loadedAt, loadDocId: c.loadDocId, load: c.load,
     delivered: c.delivered ? { ...c.delivered, at: c.delivered.at, podNo: c.delivered.podNo, docId: c.delivered.docId } : undefined,
     shortage: c.shortage ? {
+      unit: c.shortage.unit ?? "L",
       loaded20L: c.shortage.loaded20L, delivered20L: c.shortage.delivered20L, lossL: c.shortage.lossL, allowancePct: c.shortage.allowancePercent,
       allowanceL: c.shortage.allowanceL, netShortL: c.shortage.netShortL,
       pricePerL: c.shortage.pricePerL ? Math.round(inBase(c.shortage.pricePerL) * 100) / 100 : 0,
@@ -282,6 +285,7 @@ export function toAppData(ref: Reference, ops: Operations): AppData {
       roadDistanceFactor: Number(ref.company?.operations?.roadDistanceFactor ?? 1.28),
       averageSpeedKmh: Number(ref.company?.operations?.averageSpeedKmh ?? 62),
       stopBeforeLoading: ref.company?.operations?.stopBeforeLoading !== false,
+      cargoKinds: ref.company?.operations?.cargoKinds ?? ["volume", "weighed", "counted"],
       clockOffsetMs: 0,
       seq: {},
       people: { owner: named("owner", "Owner"), operations: named("operations", "Operations"), finance: named("finance", "Finance") },

@@ -142,7 +142,7 @@ export async function postSettlement(input: S.SettlementInput, ctx: OpsContext) 
     text: cash > 0 ? `You returned ${money(cash)}. ${carry}` : cash < 0 ? `${money(-cash)} paid to you. ${carry}` : `${money(Math.abs(closing))} carries forward${closing < 0 ? ' in your favour' : ''}.`,
     rows: [
       ['Trips', trips.map((t) => t.number).join(', ')], ['Advances', money(Number(s.advancesMinor))], ['Approved expenses', money(Number(s.expensesMinor))],
-      ...(Number(s.shortagesMinor) ? [['Fuel shortage', money(Number(s.shortagesMinor))] as [string, string]] : []),
+      ...(Number(s.shortagesMinor) ? [['Shortage', money(Number(s.shortagesMinor))] as [string, string]] : []),
     ],
     buttons: [{ label: 'View statement', nav: { view: 'statement', driverId: String(driver._id) } }],
   }, ctx);

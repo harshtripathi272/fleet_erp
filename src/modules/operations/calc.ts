@@ -77,13 +77,17 @@ export function vcf20(observedDensity: number, tempC: number) {
   return { vcf: round(factor, 5), density20: round(rho20, 1) };
 }
 
-export interface MeasureInput { qty: number; ambientL?: number; tempC?: number; density?: number; certStd20L?: number }
-export interface Measure { qty: number; unit: string; ambientL?: number; tempC?: number; density?: number; vcf?: number; std20L?: number; certStd20L?: number }
+export interface MeasureInput { qty: number; ambientL?: number; tempC?: number; density?: number; certStd20L?: number; gross?: number; tare?: number; ticketNo?: string }
+export interface Measure { qty: number; unit: string; ambientL?: number; tempC?: number; density?: number; vcf?: number; std20L?: number; certStd20L?: number; gross?: number; tare?: number; ticketNo?: string }
 
 /** A load or delivery as recorded. Volume-corrected products with temperature and density get their 20 °C volume. */
 export function measure(product: { volumeCorrected?: boolean; unit: string }, input: MeasureInput): Measure {
   const ambient = input.ambientL ?? input.qty;
-  if (!product.volumeCorrected || input.tempC == null || input.density == null) return { qty: input.qty, unit: product.unit };
+  if (!product.volumeCorrected || input.tempC == null || input.density == null) {
+    // A weighbridge ticket's figures stay with the net they make.
+    const ticket = input.gross != null ? { gross: input.gross, tare: input.tare, ticketNo: input.ticketNo } : {};
+    return { qty: input.qty, unit: product.unit, ...ticket };
+  }
   const { vcf } = vcf20(input.density, input.tempC);
   return {
     qty: ambient, unit: 'L', ambientL: ambient, tempC: input.tempC, density: input.density, vcf,
@@ -94,11 +98,11 @@ export function measure(product: { volumeCorrected?: boolean; unit: string }, in
 /** The certificate's 20 °C volume when given, otherwise the computed one. */
 export const volume20 = (m?: Partial<Measure>) => m?.certStd20L ?? m?.std20L;
 
-/** Transit loss beyond the allowance, in litres at 20 °C. */
-export function shortageLitres(loaded20L: number, delivered20L: number, allowancePercent: number) {
-  const lossL = Math.max(0, round(loaded20L - delivered20L, 0));
-  const allowanceL = round((loaded20L * allowancePercent) / 100, 0);
-  return { loaded20L, delivered20L, lossL, allowancePercent, allowanceL, netShortL: Math.max(0, round(lossL - allowanceL, 0)) };
+/** Transit loss beyond the allowance, in the product's unit: for fuel, whole litres at 20 °C. */
+export function shortageLitres(loaded20L: number, delivered20L: number, allowancePercent: number, decimals = 0) {
+  const lossL = Math.max(0, round(loaded20L - delivered20L, decimals));
+  const allowanceL = round((loaded20L * allowancePercent) / 100, decimals);
+  return { loaded20L, delivered20L, lossL, allowancePercent, allowanceL, netShortL: Math.max(0, round(lossL - allowanceL, decimals)) };
 }
 
 /**

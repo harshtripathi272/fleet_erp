@@ -5,7 +5,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { ArrowRight, Check, CircleDollarSign, Clock, Droplets, FileText, Fuel, MapPin, Pause, Play, Plus, RotateCcw, Send, Trash2, Undo2, Upload } from "lucide-react";
 import { useApp } from "../store";
 import { can, useMay } from "../api/session";
-import { byId, carriedIn, cumulativeKm, driverBalance, fuelEstimate, fuelNow, funding, leg, legLoaded, measureFuel, shortageFor, toZmw, tripFuelUsed, tripHours, tripKm, validateStops, volume20 } from "../domain/calc";
+import { byId, carriedIn, round, cumulativeKm, driverBalance, fuelEstimate, fuelNow, funding, leg, legLoaded, measureFuel, shortageFor, toZmw, tripFuelUsed, tripHours, tripKm, validateStops, volume20 } from "../domain/calc";
 import { activeTrip, placeName } from "../domain/helpers";
 import type { NextStep, StageId } from "../domain/turn";
 import type {
@@ -49,6 +49,9 @@ export function StagePanel({ trip, stage, step }: { trip: Trip; stage: StageId; 
     </AnimatePresence>
   );
 }
+
+/** A quantity in its unit: litres as everywhere else, other units with their symbol. */
+const inUnit = (value: number, unit: string) => (unit === "L" ? L(value) : `${value.toLocaleString("en-GB")}\u00a0${unit}`);
 
 export function Card({
   title,
@@ -852,15 +855,26 @@ function MeasureForm({
   const [temp, setTemp] = useState(read.tempC != null ? String(read.tempC) : "");
   const [density, setDensity] = useState(read.density != null ? String(read.density) : "");
   const [cert, setCert] = useState("");
+  const [ticketNo, setTicketNo] = useState("");
+  const [gross, setGross] = useState("");
+  const [tare, setTare] = useState("");
   const fuel = product.kind === "fuel";
+  const weighed = product.measure === "weighed";
+  const net = gross !== "" && tare !== "" && Number(gross) > Number(tare) ? round(Number(gross) - Number(tare), product.decimals) : undefined;
+  const quantity = weighed ? net : qty === "" ? undefined : Number(qty);
+  // Only the kinds of cargo the company carries, and always the product already on this trip.
+  const offered = data.products.filter((p) => data.settings.cargoKinds.includes(p.measure) || p.id === productId);
   const measure = fuel && qty && temp && density ? measureFuel(product, { ambientL: Number(qty), tempC: Number(temp), density: Number(density) }) : undefined;
   const preview =
     mode === "deliver" && consignment && measure
       ? shortageFor(data, { ...consignment, delivered: { ...measure, certStd20L: cert ? Number(cert) : undefined, at: "", podNo: "" } })
-      : undefined;
+      : mode === "deliver" && consignment && !fuel && quantity != null
+        ? shortageFor(data, { ...consignment, delivered: { qty: quantity, unit: product.unit, at: "", podNo: "" } })
+        : undefined;
   const submit = async () => {
     const common = {
-      qty: Number(qty),
+      qty: quantity ?? 0,
+      ...(weighed ? { gross: Number(gross), tare: Number(tare), ticketNo: ticketNo.trim() || undefined } : {}),
       ambientL: fuel ? Number(qty) : undefined,
       tempC: fuel ? Number(temp) : undefined,
       density: fuel ? Number(density) : undefined,
@@ -879,7 +893,7 @@ function MeasureForm({
         {mode === "load" && (
           <Field label="Product">
             <select value={productId} onChange={(e) => setProductId(e.target.value)}>
-              {data.products.map((p) => (
+              {offered.map((p) => (
                 <option key={p.id} value={p.id}>
                   {p.name}
                 </option>
@@ -900,9 +914,29 @@ function MeasureForm({
             </Field>
           </>
         )}
-        <Field label={fuel ? "Observed litres" : `Quantity (${product.unit})`}>
-          <input type="number" inputMode="decimal" value={qty} onChange={(e) => setQty(e.target.value)} />
-        </Field>
+        {weighed ? (
+          <>
+            <Field label="Weighbridge ticket no.">
+              <input value={ticketNo} onChange={(e) => setTicketNo(e.target.value)} />
+            </Field>
+            <Field label="Gross">
+              <span className="suffix">
+                <input type="number" inputMode="decimal" value={gross} onChange={(e) => setGross(e.target.value)} />
+                <span>{product.unit}</span>
+              </span>
+            </Field>
+            <Field label="Tare">
+              <span className="suffix">
+                <input type="number" inputMode="decimal" value={tare} onChange={(e) => setTare(e.target.value)} />
+                <span>{product.unit}</span>
+              </span>
+            </Field>
+          </>
+        ) : (
+          <Field label={fuel ? "Observed litres" : `Quantity (${product.unit})`}>
+            <input type="number" inputMode="decimal" value={qty} onChange={(e) => setQty(e.target.value)} />
+          </Field>
+        )}
         {fuel && (
           <>
             <Field label="Temperature">
@@ -942,9 +976,21 @@ function MeasureForm({
           )}
         </div>
       )}
+      {!fuel && quantity != null && (weighed || preview) && (
+        <div className="calc-strip" aria-live="polite">
+          {weighed && <strong>{inUnit(quantity, product.unit)} net</strong>}
+          {preview && (
+            <span className={`calc-short ${preview.netShortL > 0 ? "bad" : "ok"}`}>
+              {preview.netShortL > 0
+                ? `${inUnit(preview.netShortL, preview.unit)} short beyond ${preview.allowancePct}% · ${zmw(preview.amountZmw)}`
+                : `Loss ${inUnit(preview.lossL, preview.unit)}, within ${preview.allowancePct}%`}
+            </span>
+          )}
+        </div>
+      )}
       <div className="measure-actions">
         {doc && <ReturnDoc doc={doc} />}
-        <Button tone="primary" size="lg" disabled={!docNo.trim() || !(Number(qty) > 0) || (fuel && (!temp || !density))} onClick={submit}>
+        <Button tone="primary" size="lg" disabled={!docNo.trim() || !(Number(quantity) > 0) || (fuel && (!temp || !density))} onClick={submit}>
           <Check /> {mode === "load" ? "Confirm loading" : "Confirm delivery"}
         </Button>
       </div>
@@ -998,12 +1044,30 @@ function Ticket({ consignment, part }: { consignment: Consignment; part: "load" 
             </div>
           </>
         ) : (
-          <div>
-            <dt>Quantity</dt>
-            <dd>
-              {num(m.qty, 2)} {m.unit}
-            </dd>
-          </div>
+          <>
+            {m.gross != null && (
+              <>
+                <div>
+                  <dt>Gross</dt>
+                  <dd>{inUnit(m.gross, m.unit)}</dd>
+                </div>
+                <div>
+                  <dt>Tare</dt>
+                  <dd>{inUnit(m.tare ?? 0, m.unit)}</dd>
+                </div>
+                {m.ticketNo && (
+                  <div>
+                    <dt>Weighbridge ticket</dt>
+                    <dd className="mono">{m.ticketNo}</dd>
+                  </div>
+                )}
+              </>
+            )}
+            <div>
+              <dt>{m.gross != null ? "Net" : "Quantity"}</dt>
+              <dd>{inUnit(m.qty, m.unit)}</dd>
+            </div>
+          </>
         )}
       </dl>
       {fuel && (
@@ -1250,7 +1314,7 @@ function OffloadingPanel({ trip }: { trip: Trip }) {
             <Clock className="waiting-icon" size={18} aria-hidden />
             <div>
               <strong>{offload?.arrivedAt ? "Waiting for the delivery note" : `Driving to ${placeName(data, offload?.placeId)}`}</strong>
-              <span className="muted">Loaded {consignment.load.unit === "L" ? L(volume20(consignment.load)) + " at 20 °C" : `${consignment.load.qty} ${consignment.load.unit}`}.</span>
+              <span className="muted">Loaded {consignment.load.unit === "L" ? L(volume20(consignment.load)) + " at 20 °C" : inUnit(consignment.load.qty, consignment.load.unit)}.</span>
             </div>
             {(ops || may("doc.send")) && offload?.arrivedAt && (
               <div className="waiting-actions">
@@ -1270,6 +1334,8 @@ export function ShortageCard({ consignment }: { consignment: Consignment }) {
   const { run } = useApp();
   const may = useMay();
   const s = consignment.shortage!;
+  const fuel = s.unit === "L";
+  const amount = (value: number) => inUnit(value, s.unit);
   const [note, setNote] = useState("");
   const [waiving, setWaiving] = useState(false);
   const finance = may("shortage.decide");
@@ -1277,7 +1343,7 @@ export function ShortageCard({ consignment }: { consignment: Consignment }) {
   const mayWaive = s.mayWaive ?? finance;
   return (
     <Card
-      title="Fuel reconciliation"
+      title={fuel ? "Fuel reconciliation" : "Reconciliation"}
       tone={s.status === "pending" && (finance || mayWaive) ? "mine" : undefined}
       aside={
         s.status === "none" ? (
@@ -1294,28 +1360,28 @@ export function ShortageCard({ consignment }: { consignment: Consignment }) {
       <table className="recon">
         <tbody>
           <tr>
-            <td>Loaded at 20 °C</td>
-            <td className="num">{L(s.loaded20L)}</td>
+            <td>{fuel ? "Loaded at 20 °C" : "Loaded"}</td>
+            <td className="num">{amount(s.loaded20L)}</td>
           </tr>
           <tr>
-            <td>Delivered at 20 °C</td>
-            <td className="num">− {L(s.delivered20L)}</td>
+            <td>{fuel ? "Delivered at 20 °C" : "Delivered"}</td>
+            <td className="num">− {amount(s.delivered20L)}</td>
           </tr>
           <tr className="sub">
             <td>Transit loss</td>
-            <td className="num">{L(s.lossL)}</td>
+            <td className="num">{amount(s.lossL)}</td>
           </tr>
           <tr>
             <td>Allowance {s.allowancePct}%</td>
-            <td className="num">− {L(s.allowanceL)}</td>
+            <td className="num">− {amount(s.allowanceL)}</td>
           </tr>
           <tr className="sub">
             <td>Net shortage</td>
-            <td className="num">{L(s.netShortL)}</td>
+            <td className="num">{amount(s.netShortL)}</td>
           </tr>
           <tr className="total">
             <td>
-              At {zmw(s.pricePerL)} per litre
+              At {zmw(s.pricePerL)} per {fuel ? "litre" : s.unit}
             </td>
             <td className="num">{zmw(s.amountZmw)}</td>
           </tr>

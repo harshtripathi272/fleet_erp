@@ -3,6 +3,7 @@ import { email, objectId, phone, text } from '../../core/masters/zod.js';
 import { SETTLEMENT_PERIODS } from './company.model.js';
 
 import { AREA_KEYS } from './areaList.js';
+import { CARGO_KINDS } from './company.model.js';
 
 export const MODULES = AREA_KEYS;
 const timezone = z.string().refine((tz) => Intl.supportedValuesOf('timeZone').includes(tz) || tz === 'UTC', 'Unknown time zone');
@@ -26,6 +27,7 @@ const companyShape = {
   logoUrl: z.url().max(2000).nullable().optional(),
   /** Only the settings sent change; the rest keep their values. */
   operations: z.strictObject({
+    cargoKinds: z.array(z.enum(CARGO_KINDS)).min(1, 'Keep at least one kind of cargo').max(3).optional(),
     tripStartsFromTruck: z.boolean().optional(),
     roadDistanceFactor: z.number().min(1).max(3).optional(),
     averageSpeedKmh: z.number().min(10).max(120).optional(),

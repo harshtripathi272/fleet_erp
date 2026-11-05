@@ -130,13 +130,13 @@ export async function runCommand(action: Action, ctx: { data: AppData; role: Rol
     case "load.record":
       await api("/consignments", {
         method: "POST",
-        body: clean({ tripId: action.tripId, docId: blank(action.docId), productId: action.productId, invoiceNo: action.invoiceNo.trim(), consignor: action.consignor, consignee: action.consignee, qty: action.qty, ambientL: blank(action.ambientL), tempC: action.tempC ?? undefined, density: action.density ?? undefined, certStd20L: blank(action.certStd20L) }),
+        body: clean({ tripId: action.tripId, docId: blank(action.docId), productId: action.productId, invoiceNo: action.invoiceNo.trim(), consignor: action.consignor, consignee: action.consignee, qty: action.qty || undefined, ambientL: blank(action.ambientL), tempC: action.tempC ?? undefined, density: action.density ?? undefined, certStd20L: blank(action.certStd20L), gross: blank(action.gross), tare: blank(action.tare), ticketNo: blank(action.ticketNo) }),
       });
       return;
     case "delivery.record":
       await api(`/consignments/${action.consignmentId}/delivery`, {
         method: "POST",
-        body: clean({ docId: blank(action.docId), podNo: action.podNo.trim(), qty: action.qty, ambientL: blank(action.ambientL), tempC: action.tempC ?? undefined, density: action.density ?? undefined, certStd20L: blank(action.certStd20L) }),
+        body: clean({ docId: blank(action.docId), podNo: action.podNo.trim(), qty: action.qty || undefined, ambientL: blank(action.ambientL), tempC: action.tempC ?? undefined, density: action.density ?? undefined, certStd20L: blank(action.certStd20L), gross: blank(action.gross), tare: blank(action.tare), ticketNo: blank(action.ticketNo) }),
       });
       return;
     case "shortage.decide": await api(`/consignments/${action.consignmentId}/shortage-decision`, { method: "POST", body: clean({ charge: action.charge, note: blank(action.note?.trim()), via: viaOf(action.via) }) }); return;
