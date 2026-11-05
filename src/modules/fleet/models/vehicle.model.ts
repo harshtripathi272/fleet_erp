@@ -25,7 +25,9 @@ const vehicleSchema = masterSchema({
   financierPartyId: { type: ObjectId, ref: 'Party' },
   dealerPartyId: { type: ObjectId, ref: 'Party' },
   homeBranchId: { type: ObjectId, ref: 'Branch', index: true },
+  /** Moves on when a trip ends and when a workshop records a reading. */
   odometerKm: { type: Number, min: 0 },
+  engineHours: { type: Number, min: 0 },
   tankCapacityL: Number,
   fuelTypeId: { type: ObjectId, ref: 'FuelType' },
   kmPerLLoaded: Number,

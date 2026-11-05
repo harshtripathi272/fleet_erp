@@ -141,6 +141,14 @@ function permissionsFor(def: MasterDefinition, auth?: AuthContext) {
   return Object.fromEntries(ACTIONS.map((a) => [a, auth?.can(def.key, a) ?? false]));
 }
 
+/** The form's schema without the fields of an area that is off. */
+function withoutFieldsOff(def: MasterDefinition, schema: unknown, on: Set<string>) {
+  const off = Object.entries(def.fieldModules ?? {}).filter(([, area]) => !on.has(area)).map(([field]) => field);
+  const properties = (schema as { properties?: Plain } | undefined)?.properties;
+  if (!off.length || !properties) return schema;
+  return { ...(schema as Plain), properties: Object.fromEntries(Object.entries(properties).filter(([field]) => !off.includes(field))) };
+}
+
 export async function describeMasters(auth?: AuthContext) {
   const keys = modelKeyMap();
   const customFields = await withChoices(await FieldDefinition.find({ status: 'active' }).sort({ order: 1 }).lean() as Plain[]);
@@ -179,14 +187,15 @@ export async function describeMasters(auth?: AuthContext) {
     immutable: def.immutable ?? [],
     filters: Object.entries(def.filters ?? {}).map(([key, f]) => ({ key, description: f.description, schema: toJson(f.schema) })),
     references: refsOf(def).map((r) => ({ path: r.path, target: r.target, ...(r.partyRoles ? { partyRoles: r.partyRoles } : {}), ...(r.usageOnly ? { usageOnly: true } : {}) })),
-    fields: withLayout(describeSchema(def.model.schema, def, keys), layout, fixed, fieldPaths(def)),
+    // A field of an area that is off is not offered, like a master of one.
+    fields: withLayout(describeSchema(def.model.schema, def, keys).filter((f) => { const area = def.fieldModules?.[f.path.split('.')[0]!]; return !area || on.has(area); }), layout, fixed, fieldPaths(def)),
     customFields: customFields.filter((f) => f.entity === def.key).map((f) => ({
       id: String(f._id), key: f.key, label: f.label, type: f.type, required: f.required,
       ...(f.choices ? { choices: f.choices } : {}), ...(f.referenceMaster ? { referenceMaster: f.referenceMaster } : {}), ...(f.helpText ? { helpText: f.helpText } : {}),
     })),
     indexes: def.model.schema.indexes().map(([fields, options]) => ({ fields, unique: Boolean(options.unique), partial: options.partialFilterExpression ?? null })),
-    createSchema: toJson(def.createSchema),
-    updateSchema: toJson(def.updateSchema),
+    createSchema: withoutFieldsOff(def, toJson(def.createSchema), on),
+    updateSchema: withoutFieldsOff(def, toJson(def.updateSchema), on),
     endpoints: def.router ? endpointsOf(def.router, `/api/v1/${def.key}`, true) : [],
     permissions: permissionsFor(def, auth),
   });

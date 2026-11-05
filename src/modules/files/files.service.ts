@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import type { Readable } from 'node:stream';
 import { ForbiddenError, NotFoundError, ValidationError } from '../../core/errors/index.js';
-import { fileStore } from '../../core/storage/index.js';
+import { storeForNew, storeOf } from '../../core/storage/index.js';
 import { DriverDocument } from '../operations/models/cargo.model.js';
 import { StoredFile } from './file.model.js';
 
@@ -37,10 +37,11 @@ export async function upload(body: Buffer, rawName: string | undefined, actor: F
   const name = (rawName ?? '').replace(/[\\/\u0000-\u001f]/g, '').trim().slice(0, 200) || `document.${kind.ext}`;
   const at = new Date();
   const key = `${at.toISOString().slice(0, 7)}/${randomUUID()}.${kind.ext}`;
-  await (await fileStore()).put(key, body, kind.mime);
+  const { store, connectionId } = await storeForNew();
+  await store.put(key, body, kind.mime);
   const file = await StoredFile.create({
     name, mime: kind.mime, size: body.length, sha256: createHash('sha256').update(body).digest('hex'), key,
-    uploadedBy: actor.userId, driverId: actor.driverId, at,
+    uploadedBy: actor.userId, driverId: actor.driverId, connectionId, at,
   });
   return present(file);
 }
@@ -52,7 +53,7 @@ export async function open(id: string, actor: FileActor): Promise<{ file: Return
   const own = String(file.uploadedBy) === actor.userId;
   const forDriver = actor.driverId ? Boolean(await DriverDocument.exists({ driverId: actor.driverId, 'file.fileId': file._id })) : false;
   if (!own && !forDriver && (actor.driverId || !actor.can('driver-documents', 'read'))) throw new NotFoundError('File not found');
-  return { file: present(file), stream: await (await fileStore()).open(file.key) };
+  return { file: present(file), stream: await (await storeOf(file)).open(file.key) };
 }
 
 /** A file named in a record must exist and be one the person filing it may use. */

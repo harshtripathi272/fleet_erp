@@ -13,6 +13,7 @@ import {
   KeyRound,
   LogOut,
   MessageCircle,
+  Wrench,
   MoreHorizontal,
   Settings2,
   Truck,
@@ -20,16 +21,19 @@ import {
   Wallet,
   X,
   Receipt,
+  Users,
+  Map as MapIcon,
 } from "lucide-react";
 import { AppProvider, useApp, useSharedData } from "./store";
 import type { Overlay, Toast } from "./store";
 import { forDesk } from "./api/adapter";
 import { ApiError } from "./api/client";
 import { Refusal } from "./api/commands";
-import { AccountDialog, DESK_SESSION, desksFor, signOut, useMay, type Me } from "./api/session";
+import { AccountDialog, can, DESK_SESSION, desksFor, signOut, useMay, type Me } from "./api/session";
 import { useAreas, VIEW_AREA } from "./api/areas";
 import { nextStep, queueFor, type QueueItem } from "./domain/turn";
-import type { Action, Desk, Nav, Role } from "./domain/types";
+import type { Action, AppData, Desk, Nav, Role, WorkspaceDesk } from "./domain/types";
+import { w } from "./domain/words";
 import { Waiting, Wordmark } from "./ui/brand";
 import { Avatar, Modal } from "./ui/kit";
 import { useMine } from "./desks/mine";
@@ -44,13 +48,16 @@ const FinanceToday = lazy(() => import("./desks/Finance").then((m) => ({ default
 const Billing = lazy(() => import("./billing/Billing").then((m) => ({ default: m.Billing })));
 const Accounts = lazy(() => import("./desks/Accounts").then((m) => ({ default: m.Accounts })));
 const Nominations = lazy(() => import("./desks/Nominations").then((m) => ({ default: m.Nominations })));
+const Maintenance = lazy(() => import("./desks/Maintenance").then((m) => ({ default: m.Maintenance })));
 const MastersScreen = lazy(() => import("./masters/MastersScreen").then((m) => ({ default: m.MastersScreen })));
 const Overview = lazy(() => import("./desks/Overview").then((m) => ({ default: m.Overview })));
 const DriverDesk = lazy(() => import("./desks/DriverDesk").then((m) => ({ default: m.DriverDesk })));
 const Tracking = lazy(() => import("./tracking/Tracking"));
 
-type View = "overview" | "today" | "trips" | "nominations" | "accounts" | "billing" | "masters" | "driver";
+type View = "overview" | "today" | "trips" | "nominations" | "accounts" | "billing" | "maintenance" | "masters" | "driver";
 interface Session {
+  /** The company desk (#73) by key; `role` is the built-in desk it acts as, or "driver". */
+  desk?: string;
   role?: Role;
   driverId?: string;
   view?: View;
@@ -63,7 +70,7 @@ const readSession = (): Session => {
   const params = new URLSearchParams(location.search);
   const desk = params.get("desk") as Role | null;
   if (desk && ["operations", "finance", "owner", "driver"].includes(desk)) {
-    const session: Session = { role: desk, driverId: desk === "driver" ? params.get("driver") ?? undefined : undefined };
+    const session: Session = desk === "driver" ? { role: desk, driverId: params.get("driver") ?? undefined } : { role: desk, desk };
     sessionStorage.setItem(DESK_SESSION, JSON.stringify(session));
     history.replaceState(null, "", location.pathname);
     return session;
@@ -78,37 +85,32 @@ const readSession = (): Session => {
 };
 
 /** `short` is the label in the phone tab bar, where there is room for one word. */
-const NAV: Record<Role, { id: View; label: string; short?: string; icon: typeof Truck }[]> = {
-  operations: [
-    { id: "trips", label: "Trips", icon: Truck },
-    { id: "nominations", label: "Nominations", icon: ClipboardList },
-    { id: "accounts", label: "Driver accounts", short: "Accounts", icon: Wallet },
-    { id: "masters", label: "Masters", icon: Settings2 },
-  ],
-  finance: [
-    { id: "today", label: "Approvals", icon: Inbox },
-    { id: "trips", label: "Trips", icon: Truck },
-    { id: "accounts", label: "Settlements", icon: Wallet },
-    { id: "billing", label: "Billing", icon: Receipt },
-    { id: "masters", label: "Masters", icon: Settings2 },
-  ],
-  owner: [
-    { id: "overview", label: "Overview", icon: Gauge },
-    { id: "trips", label: "Trips", icon: Truck },
-    { id: "nominations", label: "Nominations", icon: ClipboardList },
-    { id: "accounts", label: "Driver accounts", short: "Accounts", icon: Wallet },
-    { id: "billing", label: "Billing", icon: Receipt },
-    { id: "masters", label: "Masters", icon: Settings2 },
-  ],
-  driver: [{ id: "driver", label: "My trip", icon: Truck }],
+type NavItem = { id: View; label: string; short?: string; icon: typeof Truck };
+
+/** The icons a company can give its desks; the keys match the server's DESK_ICONS. */
+const DESK_ICON: Record<string, typeof Truck> = {
+  gauge: Gauge, grid: LayoutGrid, wallet: Wallet, wrench: Wrench, truck: Truck, clipboard: ClipboardList, users: Users, map: MapIcon,
 };
-const HOME: Record<Role, View> = { operations: "trips", finance: "today", owner: "overview", driver: "driver" };
-export const ROLE_LABEL: Record<Role, string> = {
-  owner: "Owner",
-  operations: "Operations",
-  finance: "Finance",
-  driver: "Driver",
-};
+
+/** The screens a desk can list, named in the company's words. A screen this build doesn't have yet is left out. */
+function viewItem(data: AppData, desk: WorkspaceDesk, id: string): NavItem | undefined {
+  switch (id) {
+    case "overview": return { id, label: "Overview", icon: Gauge };
+    case "today": return { id, label: "Approvals", icon: Inbox };
+    case "trips": return { id, label: w(data, "trip", true), icon: Truck };
+    case "nominations": return { id, label: w(data, "nomination", true), icon: ClipboardList };
+    case "accounts":
+      return desk.actsAs === "finance"
+        ? { id, label: w(data, "settlement", true), icon: Wallet }
+        : { id, label: `${w(data, "driver")} accounts`, short: "Accounts", icon: Wallet };
+    case "billing": return { id, label: "Billing", icon: Receipt };
+    case "maintenance": return { id, label: "Maintenance", icon: Wrench };
+    case "masters": return { id, label: "Masters", icon: Settings2 };
+    default: return undefined;
+  }
+}
+const deskItems = (data: AppData, desk: WorkspaceDesk) => desk.views.map((v) => viewItem(data, desk, v)).filter((i): i is NavItem => Boolean(i));
+const DRIVER_NAV: NavItem[] = [{ id: "driver", label: "My trip", icon: Truck }];
 
 /** The office desks the person's permissions allow. Loaded after sign-in, so drivers and the sign-in screen never download it. */
 export default function Desks({ me }: { me: Me }) {
@@ -119,6 +121,20 @@ export default function Desks({ me }: { me: Me }) {
   const areaOn = useAreas();
   // A desk whose work is switched off for the company isn't offered (#56); Overview and Masters always are.
   const allowed = useMemo(() => desksFor(me, approvers).filter((d) => (d === "finance" ? areaOn("finance") : d === "operations" ? areaOn("trips") : d === "driver" ? areaOn("driver-app") : true)), [me, approvers, areaOn]);
+  // The company's desks (#73): a built-in kind follows the permissions above; a desk the company added names its roles.
+  // An administrator sees every desk, to set them up.
+  const desks = useMemo(
+    () =>
+      shared
+        ? shared.settings.desks.filter(
+            (d) =>
+              (d.kind === "roles" ? can(me, "*", "create") || (d.roleKeys ?? []).some((k) => me.roles.includes(k)) : allowed.includes(d.kind)) &&
+              deskItems(shared, d).length > 0,
+          )
+        : [],
+    [shared, allowed, me],
+  );
+  const driverDesk = allowed.includes("driver");
   const setSession = useCallback((patch: Session) => {
     setSessionState((current) => {
       const next = { ...current, ...patch };
@@ -131,8 +147,10 @@ export default function Desks({ me }: { me: Me }) {
     setToasts((list) => [...list.slice(-2), { id, text, tone }]);
     window.setTimeout(() => setToasts((list) => list.filter((t) => t.id !== id)), tone === "error" ? 5200 : 2800);
   }, []);
-  // With a single desk there is nothing to choose: open it.
-  const role = session.role && allowed.includes(session.role) ? session.role : allowed.length === 1 ? allowed[0] : undefined;
+  // With a single desk there is nothing to choose: open it. A session from before #73 kept only the role, which was the desk's key.
+  const deskKey = session.desk ?? (session.role !== "driver" ? session.role : undefined);
+  const desk = session.role === "driver" ? undefined : desks.find((d) => d.key === deskKey) ?? (desks.length === 1 && !driverDesk ? desks[0] : undefined);
+  const role: Role | undefined = session.role === "driver" && driverDesk ? "driver" : desk?.actsAs;
   // The desk's phone shows every work thread this person sees (the API already filtered them by permission).
   const data = useMemo(() => (shared && role ? forDesk(shared, role) : shared), [shared, role]);
   const run = useCallback(
@@ -150,6 +168,8 @@ export default function Desks({ me }: { me: Me }) {
     },
     [perform, role, toast],
   );
+  // A record to open in Masters, for this visit only: leaving or reloading doesn't reopen it.
+  const [masterId, setMasterId] = useState<string>();
   const nav = useCallback(
     (target: Nav) => {
       if (!role || !data) return;
@@ -173,7 +193,11 @@ export default function Desks({ me }: { me: Me }) {
         return;
       }
       if (target.view === "nominations") setSession({ view: "nominations" });
-      if (target.view === "masters" && role !== "driver") setSession({ view: "masters", masterEntity: target.masterEntity });
+      if (target.view === "masters" && role !== "driver") {
+        setMasterId(target.masterId);
+        setSession({ view: "masters", masterEntity: target.masterEntity });
+      }
+      if (target.view === "maintenance" && role !== "driver") setSession({ view: "maintenance" });
       if (target.view === "finance" && role === "finance") setSession({ view: "today" });
       setOverlay({});
     },
@@ -193,25 +217,32 @@ export default function Desks({ me }: { me: Me }) {
           company={data.settings.company}
           office={data.settings.office}
           me={me}
-          desks={allowed.filter((d): d is Desk => d !== "driver")}
-          drivers={allowed.includes("driver") ? data.drivers : []}
-          onPick={(nextRole, driverId) => setSession({ role: nextRole, driverId, view: wantsAuditLog() && nextRole !== "driver" ? "masters" : HOME[nextRole] })}
+          desks={desks}
+          drivers={driverDesk ? data.drivers : []}
+          onDesk={(next) => setSession({ desk: next.key, role: next.actsAs, driverId: undefined, view: wantsAuditLog() ? "masters" : deskItems(data, next)[0]?.id })}
+          onDriver={(driverId) => setSession({ desk: undefined, role: "driver", driverId, view: "driver" })}
         />
         <Toasts toasts={toasts} />
       </>
     );
 
-  const view = session.view && NAV[role].some((n) => n.id === session.view) ? session.view : HOME[role];
+  const items = role === "driver" || !desk ? DRIVER_NAV : deskItems(data, desk);
+  const view = session.view && items.some((n) => n.id === session.view) ? session.view : items[0].id;
   return (
     <AppProvider value={ctx}>
       <SimProvider>
         <Shell
           role={role}
+          items={items}
+          deskName={desk?.name ?? "Driver"}
           view={view}
           person={role === "driver" ? data.drivers.find((d) => d.id === session.driverId)?.name ?? "Driver" : me.name}
-          canSwitch={allowed.length > 1}
-          onView={(next) => setSession({ view: next })}
-          onSwitch={() => setSession({ role: undefined, driverId: undefined })}
+          canSwitch={desks.length + (driverDesk ? 1 : 0) > 1}
+          onView={(next) => {
+            setMasterId(undefined);
+            setSession({ view: next });
+          }}
+          onSwitch={() => setSession({ desk: undefined, role: undefined, driverId: undefined })}
           onSignOut={() => void signOut()}
           me={me}
         >
@@ -230,7 +261,8 @@ export default function Desks({ me }: { me: Me }) {
               <Accounts driverId={session.accountDriverId} onDriver={(id) => setSession({ accountDriverId: id })} />
             )}
             {view === "billing" && <Billing />}
-            {view === "masters" && <MastersScreen key={session.masterEntity || "masters"} initialEntity={session.masterEntity} />}
+            {view === "maintenance" && <Maintenance />}
+            {view === "masters" && <MastersScreen key={`${session.masterEntity || "masters"}-${masterId ?? ""}`} initialEntity={session.masterEntity} initialId={masterId} />}
             {view === "driver" && <DriverDesk />}
           </Suspense>
         </Shell>
@@ -266,26 +298,22 @@ function Toasts({ toasts }: { toasts: Toast[] }) {
   );
 }
 
-const DESK_TITLE: Record<Desk, { title: string; icon: typeof Truck }> = {
-  operations: { title: "Operations", icon: LayoutGrid },
-  finance: { title: "Finance", icon: Wallet },
-  owner: { title: "Overview and approvals", icon: Gauge },
-};
-
 function RolePicker({
   company,
   office,
   me,
   desks,
   drivers,
-  onPick,
+  onDesk,
+  onDriver,
 }: {
   company: string;
   office: string;
   me: Me;
-  desks: Desk[];
+  desks: WorkspaceDesk[];
   drivers: { id: string; name: string; phone: string }[];
-  onPick: (role: Role, driverId?: string) => void;
+  onDesk: (desk: WorkspaceDesk) => void;
+  onDriver: (driverId: string) => void;
 }) {
   return (
     <div className="picker">
@@ -297,14 +325,14 @@ function RolePicker({
         <h1>Which desk, {me.name.split(" ")[0]}?</h1>
         <div className="picker-desks">
           {desks.map((desk) => {
-            const { title, icon: Icon } = DESK_TITLE[desk];
+            const Icon = DESK_ICON[desk.icon] ?? LayoutGrid;
             return (
-              <button key={desk} className="picker-desk" onClick={() => onPick(desk)}>
+              <button key={desk.key} className="picker-desk" onClick={() => onDesk(desk)}>
                 <span className="picker-icon">
                   <Icon size={20} />
                 </span>
                 <span className="picker-text">
-                  <strong>{title}</strong>
+                  <strong>{desk.name}</strong>
                 </span>
                 <ChevronRight size={18} className="picker-chev" />
               </button>
@@ -316,7 +344,7 @@ function RolePicker({
             <h2>Simulated driver phones</h2>
             <div className="picker-drivers">
               {drivers.slice(0, 8).map((driver) => (
-                <button key={driver.id} className="picker-driver" onClick={() => onPick("driver", driver.id)}>
+                <button key={driver.id} className="picker-driver" onClick={() => onDriver(driver.id)}>
                   <Avatar name={driver.name} size={34} />
                   <span>
                     <strong>{driver.name}</strong>
@@ -337,6 +365,8 @@ function RolePicker({
 
 function Shell({
   role,
+  items: deskViews,
+  deskName,
   view,
   person,
   canSwitch,
@@ -348,6 +378,8 @@ function Shell({
 }: {
   me: Me;
   role: Role;
+  items: NavItem[];
+  deskName: string;
   view: View;
   person: string;
   canSwitch: boolean;
@@ -359,7 +391,7 @@ function Shell({
   const [more, setMore] = useState(false);
   const [account, setAccount] = useState(false);
   const areaOn = useAreas();
-  const items = NAV[role].filter((i) => !VIEW_AREA[i.id] || areaOn(VIEW_AREA[i.id]!));
+  const items = deskViews.filter((i) => !VIEW_AREA[i.id] || areaOn(VIEW_AREA[i.id]!));
   const current = items.find((i) => i.id === view);
   const main = useRef<HTMLElement>(null);
   useEffect(() => {
@@ -381,7 +413,7 @@ function Shell({
             <Avatar name={person} tone="dark" size={34} />
             <span>
               <strong title={person}>{person}</strong>
-              <span>{ROLE_LABEL[role]}</span>
+              <span>{deskName}</span>
             </span>
           </div>
           {canSwitch && (
@@ -425,7 +457,7 @@ function Shell({
           <Avatar name={person} size={36} />
           <span>
             <strong>{person}</strong>
-            <span>{ROLE_LABEL[role]}</span>
+            <span>{deskName}</span>
           </span>
         </div>
         <div className="more-list">
@@ -465,7 +497,7 @@ function NavButton({
   role,
   compact,
 }: {
-  item: { id: View; label: string; short?: string; icon: typeof Truck };
+  item: NavItem;
   active: boolean;
   onClick: () => void;
   role: Role;

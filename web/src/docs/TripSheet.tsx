@@ -4,6 +4,7 @@ import { byId, loadedKm, toZmw, tripFuelUsed, tripKm, volume20 } from "../domain
 import { placeName, routeLabel } from "../domain/helpers";
 import { BrandMark } from "../ui/brand";
 import { cash, clock, day, num, stamp } from "../ui/format";
+import { w } from "../domain/words";
 
 const n0 = (v?: number) => (v == null ? "—" : num(v));
 
@@ -43,7 +44,7 @@ export function TripSheet({ tripId }: { tripId: string }) {
           </div>
         </div>
         <div className="sheet-title">
-          <h1>Trip sheet</h1>
+          <h1>{w(data, "tripSheet")}</h1>
           <span className="mono">{trip.no}</span>
           {settlement && <span className="mono">{settlement.no}</span>}
         </div>
@@ -55,7 +56,7 @@ export function TripSheet({ tripId }: { tripId: string }) {
 
       <section className="sheet-boxes">
         <div className="sheet-box">
-          <h2>Trip</h2>
+          <h2>{w(data, "trip")}</h2>
           <dl>
             <dt>Customer</dt>
             <dd className="wrap">{customer?.name}</dd>

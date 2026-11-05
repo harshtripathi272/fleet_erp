@@ -37,7 +37,7 @@ const ok = <T = any>(res: { status: number; body: any }, status = 200): T => {
 /** For every event: an e-mail and an SMS, to the driver, Finance and the customer's contact. */
 async function rulesForEveryEvent() {
   const finance = await find(owner, 'roles', 'finance');
-  ok(await as(owner).post('/message-connections', { code: 'SMTP', name: 'Company SMTP', channel: 'email', provider: 'smtp', enabled: true, host: 'smtp.example.com', from: 'Fleet <fleet@example.com>' }), 201);
+  ok(await as(owner).post('/connections', { code: 'SMTP', name: 'Company SMTP', kind: 'email', provider: 'smtp', enabled: true, settings: { host: 'smtp.example.com', from: 'Fleet <fleet@example.com>' } }), 201);
   for (const [i, event] of EVENTS.entries()) {
     const email = ok(await as(owner).post('/message-templates', { code: `T-EM-${i}`, name: `${event} e-mail`, channel: 'email', event, subject: `[${event}] {{trip.number}}`, body: BODY }), 201);
     const sms = ok(await as(owner).post('/message-templates', { code: `T-SMS-${i}`, name: `${event} SMS`, channel: 'sms', event, body: BODY }), 201);

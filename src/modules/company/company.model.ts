@@ -8,6 +8,17 @@ import { ObjectId, schemaOptions } from '../../core/masters/schema.js';
  */
 export const LOADED_TRIP_OUTCOMES = ['return', 'transfer', 'write_off'] as const;
 export const WRITE_OFF_CARRIERS = ['driver', 'company', 'insurance'] as const;
+/** The company's Maintenance rules (#63). */
+export const MAINTENANCE_DEFAULTS = {
+  /** A new work order stops its truck until it is done; each order can say otherwise. */
+  workOrderStopsTruck: true,
+  /** A defect the driver reports stops the truck only if the company says so: the driver is usually on the road. */
+  defectStopsTruck: false,
+  /** How close a service is before it shows as due. */
+  dueSoonKm: 1000,
+  dueSoonDays: 14,
+  dueSoonHours: 50,
+};
 
 export const OPERATIONS_DEFAULTS = {
   /** What may happen to a load that can't be delivered (#64). */
@@ -59,6 +70,14 @@ const operationsSchema = new Schema({
   stopBeforeLoading: { type: Boolean, default: OPERATIONS_DEFAULTS.stopBeforeLoading },
 }, { _id: false, strict: 'throw' });
 
+const maintenanceSchema = new Schema({
+  workOrderStopsTruck: { type: Boolean, default: MAINTENANCE_DEFAULTS.workOrderStopsTruck },
+  defectStopsTruck: { type: Boolean, default: MAINTENANCE_DEFAULTS.defectStopsTruck },
+  dueSoonKm: { type: Number, min: 0, max: 100_000, default: MAINTENANCE_DEFAULTS.dueSoonKm },
+  dueSoonDays: { type: Number, min: 0, max: 365, default: MAINTENANCE_DEFAULTS.dueSoonDays },
+  dueSoonHours: { type: Number, min: 0, max: 10_000, default: MAINTENANCE_DEFAULTS.dueSoonHours },
+}, { _id: false, strict: 'throw' });
+
 /**
  * Where daily exchange rates come from (Exchange rates → Rate feed). "manual" means none: people type
  * rates in. The provider's API key is the RATE_FEED_API_KEY secret, never stored here.
@@ -87,6 +106,7 @@ const companySchema = new Schema<any>({
   allowSelfRegistration: { type: Boolean, default: false },
   modules: { type: [String], default: () => [...DEFAULT_AREAS] },
   operations: { type: operationsSchema, default: () => ({}) },
+  maintenance: { type: maintenanceSchema, default: () => ({}) },
   rateFeed: { type: rateFeedSchema, default: () => ({}) },
   address: { line1: String, line2: String, city: String, postalCode: String },
   phone: String,
@@ -123,6 +143,10 @@ const companySchema = new Schema<any>({
     }, { _id: false }),
     default: () => ({}),
   },
+  /** The company's own words, stages and desks (#73): only its changes over the defaults in workspace.ts. */
+  vocabulary: { type: Schema.Types.Mixed, default: undefined },
+  stages: { type: Schema.Types.Mixed, default: undefined },
+  desks: { type: [Schema.Types.Mixed], default: undefined },
   updatedBy: { type: ObjectId, ref: 'User' },
 }, { ...schemaOptions, minimize: true });
 companySchema.index({ singleton: 1 }, { unique: true });

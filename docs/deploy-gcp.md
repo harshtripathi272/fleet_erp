@@ -114,6 +114,21 @@ Without a version, both scripts use the current git commit, and they stop if tha
 
 To change a setting, edit the company file and run `new-company.sh` again. To replace a secret, for example after the SMTP password changes, run `new-company.sh` with the new value; the service picks up `:latest` on its next revision. The JWT secret isn't replaced on re-runs. To rotate it on purpose, add a new version with `gcloud secrets versions add <company>-jwt-secret` and redeploy; everyone signs in again.
 
+## Keys for connections
+
+Masters → Connections (#59) sets up every outside service: SMS, WhatsApp, GPS trackers, map routing, file storage and the rest. A connection never holds a password or key. It names the server setting that holds it, either a name starting with `CONNECTION_`, or `SMTP_PASS` or `RATE_FEED_API_KEY`. The screen shows whether the server has each one.
+
+To give the server a connection's key, run `new-company.sh` again with it in the environment:
+
+```sh
+CONNECTION_TWILIO_TOKEN='…' CONNECTION_TRACKER_SIGNING_SECRET='…' deploy/new-company.sh ~/companies/acme.env [version]
+```
+
+- **Where it goes:** each `CONNECTION_*` variable is stored in Secret Manager as `<company>-connection-<name>`, here `acme-connection-twilio-token`. The service and the rates job get it under the same variable name.
+- **Re-runs:** keys stored on an earlier run are mounted again, so you only pass the ones that are new or changed.
+- **Signed calls:** a service that calls us, such as a tracker webhook, signs each call with the connection's signing secret. Its web address is shown on the connection once it's saved. Unsigned calls are refused.
+- **File storage on Google Cloud Storage** needs no key: the service account already has the bucket (see above). An S3 bucket needs its two keys as `CONNECTION_*` secrets.
+
 ## Daily exchange rates
 
 `new-company.sh` also sets up the exchange-rate fetch (#22):
@@ -138,6 +153,16 @@ The job fetches only when it's due: after the fetch time set in the app (Masters
 - **`IN_PROCESS_JOBS=false`** on the service and the job, so the service doesn't run the same work on a timer. Locally and in Docker Compose it stays on, and a timer does the work every minute.
 - **Updates:** `update-company.sh` moves the job to the new version together with the service.
 - **What happened:** Cloud Run → Jobs → `fleet-<company>-escalate` → Executions (exit 1 means the run failed). Each move is in the audit log as "System".
+
+## Service reminders
+
+For companies with Maintenance on, `new-company.sh` also sets up the "Service due" reminders (#63), for the same reason:
+
+- **A Cloud Run job**, `fleet-<company>-service-reminders`, which runs `node dist/jobs/serviceReminders.js`. While Maintenance is off it does nothing.
+- **A Cloud Scheduler trigger**, `fleet-<company>-service-reminders-hourly`, at twenty past every hour.
+- **`IN_PROCESS_JOBS=false`** turns off the server's timer for this too. Locally and in Docker Compose a timer checks every 15 minutes.
+
+The job and the trigger exist for every company, so switching Maintenance on needs no redeploy.
 
 ## Backups and restore
 

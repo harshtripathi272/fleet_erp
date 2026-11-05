@@ -20,14 +20,15 @@ async function list(path: string, query: Record<string, string> = {}): Promise<R
 }
 
 async function loadReference(me: Me): Promise<Reference> {
-  const [company, currencies, rates, countries, cities, places, borderPosts, routes, tripBudgets, parties, orderSources, vehicles, vehicleModels, fuelNorms, trailers, trailerTypes, pairings, drivers, branches, products, units, categories, paymentMethods] = await Promise.all([
+  const [workspace, company, currencies, rates, countries, cities, places, borderPosts, routes, tripBudgets, parties, orderSources, vehicles, vehicleModels, fuelNorms, trailers, trailerTypes, pairings, drivers, branches, products, units, categories, paymentMethods] = await Promise.all([
+    api<Rec>("/meta/workspace").catch(() => null),
     api<Rec>("/company").catch(() => null),
     list("/currencies", { status: "all" }), list("/exchange-rates"), list("/countries"), list("/cities"), list("/places", { status: "all" }), list("/border-posts"),
     list("/routes"), list("/trip-budgets"), list("/parties", { status: "all" }), list("/order-sources"), list("/vehicles", { status: "all" }), list("/vehicle-models"),
     list("/fuel-norms"), list("/trailers", { status: "all" }), list("/trailer-types"), list("/pairings", { status: "all" }), list("/drivers", { status: "all" }),
     list("/branches"), list("/products", { status: "all" }), list("/units"), list("/expense-categories", { status: "all" }), list("/payment-methods"),
   ]);
-  return { me: { id: me.id, name: me.name, roles: me.roles, permissions: me.permissions }, company, currencies, rates, countries, cities, places, borderPosts, routes, tripBudgets, parties, orderSources, vehicles, vehicleModels, fuelNorms, trailers, trailerTypes, pairings, drivers, branches, products, units, categories, paymentMethods };
+  return { me: { id: me.id, name: me.name, roles: me.roles, permissions: me.permissions }, workspace, company, currencies, rates, countries, cities, places, borderPosts, routes, tripBudgets, parties, orderSources, vehicles, vehicleModels, fuelNorms, trailers, trailerTypes, pairings, drivers, branches, products, units, categories, paymentMethods };
 }
 
 /** Who approval policies name, by role key or user id, with the level, for offering desks. */
