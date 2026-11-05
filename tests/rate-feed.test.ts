@@ -1,3 +1,4 @@
+import { ExchangeRate } from '../src/modules/finance/models/exchangeRate.model.js';
 import assert from 'node:assert/strict';
 import { after, afterEach, before, beforeEach, describe, test } from 'node:test';
 import { env } from '../src/config/env.js';
@@ -32,6 +33,8 @@ beforeEach(async () => {
   await resetDatabase();
   owner = await signUp('Owner');
   await loadSample(owner);
+  // The sample's rates are dated yesterday, so a fixed day here would meet them on one day of the year.
+  await ExchangeRate.deleteMany({});
   for (const code of ['ZMW', 'USD', 'TZS']) ids[code] = (await find(owner, 'currencies', code)).id;
   answer = { USD: 1 / 26.5, TZS: 2710 / 26.5 }; // per 1 ZMW
   fail = null;
