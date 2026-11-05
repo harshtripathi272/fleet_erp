@@ -32,7 +32,7 @@ Owners: LD = lakshya-desktop, LT = lakshya-t3, HD = harsh-desktop, HT = harsh-t3
 | First-run set-up page: what a first trip needs, with counts, Open and Import | Built | #45 | |
 | Import any master from a spreadsheet, with a dry run | Built | #41 | Follows the company's field names (#65) |
 | Export any master to a spreadsheet | Proposed | — | |
-| Company setup kit: configure once, download a deployable package | Building | #76 | Compose and Google Cloud tested; AWS, Azure, Render, Fly and Railway scripted, not yet tested in CI |
+| Company setup kit: configure once, download a deployable package | Building | #76 | Compose tested in CI, Google Cloud by dry run; AWS, Azure, Render, Fly and Railway scripted, not yet tested |
 
 ## Brand, region and language
 
