@@ -8,6 +8,7 @@ import { useAreaList } from "../api/areas";
 import { ChoiceChips, Empty, Field, SaveBar, Segmented, SettingRow, SettingsSection, Switch, UnitInput } from "../ui/kit";
 import { contrastWithWhite, useReloadBrand } from "../ui/brand";
 import { BrandUpload } from "./BrandUpload";
+import { ComingSoonRows, ComingSoonTag } from "../ui/comingSoon";
 
 /**
  * The company's own settings (GET/PUT /company): details, base currency and time zone, which areas are
@@ -260,7 +261,7 @@ export function CompanyPanel() {
           {(areas.data ?? []).map((a) => (
             <SettingRow key={a.key} title={<>{a.name}{a.state === "early" && <span className="status status-info area-early">Early</span>}</>} description={a.description}>
               {a.always ? <span className="setting-fixed">Always on</span>
-                : a.state === "not-built" ? <span className="setting-fixed">Not built yet</span>
+                : a.state === "not-built" ? <ComingSoonTag />
                 : <Switch label={a.name} checked={has(a.key)} onChange={(on) => toggleModule(a.key, on)} />}
             </SettingRow>
           ))}
@@ -270,6 +271,7 @@ export function CompanyPanel() {
           <SettingRow title="Let people create their own account" description="Anyone with the app's address can sign up. They start as Viewer, able to see but not change anything, until someone gives them a role.">
             <Switch label="Let people create their own account" checked={Boolean(form.allowSelfRegistration)} onChange={(on) => set("allowSelfRegistration", on)} />
           </SettingRow>
+          <ComingSoonRows place="accounts" />
         </SettingsSection>
 
         <SettingsSection title="Trips" description="Rules the trip desks follow. Masters such as fuel norms, routes and shortage policies take precedence where they set a value.">
@@ -330,6 +332,9 @@ export function CompanyPanel() {
             ))}
           </SettingsSection>
         )}
+        <SettingsSection title="Coming soon" description="Planned for after the first release. Each will appear here as a setting when it is built.">
+          <ComingSoonRows place="company" />
+        </SettingsSection>
       </fieldset>
       {writable && <SaveBar dirty={dirty} busy={busy} onSave={() => void save()} onDiscard={() => setForm(saved)} />}
     </div>

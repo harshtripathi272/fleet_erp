@@ -49,6 +49,9 @@ export const envSchema = z.object({
   RATE_FEED_API_KEY: optionalText,
   SMTP_FROM: z.string().trim().min(3).default('no-reply@fleet.local'),
 
+  /** A company kit's company.json (#76), applied on every start: the first time in full, then only what it changed. */
+  COMPANY_CONFIG: optionalText,
+
   /** Folder of the built web app; defaults to web/dist next to the API. The app is served only when it has been built. */
   WEB_DIR: z.string().trim().min(1).optional(),
 
