@@ -10,6 +10,7 @@ interface Money { rateBasis: "mid" | "buying" | "selling"; viaPivot: boolean; pi
 interface Billing {
   taxMode: "none" | "single" | "per_customer_product"; taxRatePercent: number; taxLabel: string; pricesIncludeTax: boolean;
   invoiceFrom: "trip" | "nomination" | "on_demand"; paymentTermsDays: number; billOn: "delivered" | "loaded"; shortageOnInvoice: "deduct" | "none";
+  revaluation: "off" | "monthly" | "quarterly"; ageingBucketsDays: number[];
 }
 interface Settings { money: Money; billing: Billing; version: number }
 
@@ -17,6 +18,7 @@ const BASES = [{ value: "mid", label: "Mid" }, { value: "buying", label: "Buying
 const TAX = [{ value: "none", label: "None" }, { value: "single", label: "One VAT rate" }, { value: "per_customer_product", label: "Per customer and product" }] as const;
 const FROM = [{ value: "trip", label: "Each closed trip" }, { value: "nomination", label: "A nomination" }, { value: "on_demand", label: "On demand" }] as const;
 const BILL_ON = [{ value: "delivered", label: "Delivered" }, { value: "loaded", label: "Loaded" }] as const;
+const REVALUE = [{ value: "off", label: "Off" }, { value: "monthly", label: "Monthly" }, { value: "quarterly", label: "Quarterly" }] as const;
 
 /**
  * Company → Money (#61): which of a day's rates conversions use and whether they go through a pivot currency,
@@ -29,7 +31,8 @@ export function MoneySettings({ billing }: { billing: boolean }) {
   const currencies = useQuery({ queryKey: ["money-currencies"], queryFn: () => api<Rec[]>("/currencies", { query: { status: "active", limit: 100 } }) });
   const [form, setForm] = useState<Settings | null>(null);
   const [busy, setBusy] = useState(false);
-  useEffect(() => { if (saved.data) setForm(saved.data); }, [saved.data]);
+  const [bucketsText, setBucketsText] = useState("");
+  useEffect(() => { if (saved.data) { setForm(saved.data); setBucketsText(saved.data.billing.ageingBucketsDays.join(", ")); } }, [saved.data]);
   if (!saved.data || !form) return null;
   const writable = can(me, "finance-settings", "update");
   const dirty = JSON.stringify(form) !== JSON.stringify(saved.data);
@@ -95,6 +98,12 @@ export function MoneySettings({ billing }: { billing: boolean }) {
                 </SettingRow>
               </>
             )}
+            <SettingRow title="Revalue open invoices" description="At each month's or quarter's end, invoices still owed in another currency are valued at that day's rate, and the unrealised gain or loss is recorded. The next run reverses it first.">
+              <Segmented choice label="Revalue open invoices" value={form.billing.revaluation} options={[...REVALUE]} onChange={(v) => setBilling({ revaluation: v })} disabled={!writable} />
+            </SettingRow>
+            <SettingRow title="Ageing columns" description="Where each column ends, in days past the due date. 30, 60, 90 gives current, 1–30, 31–60, 61–90 and over 90." htmlFor="money-ageing">
+              <input id="money-ageing" className="input" value={bucketsText} onChange={(e) => setBucketsText(e.target.value)} onBlur={() => { const days = bucketsText.split(/[\s,]+/).filter(Boolean).map(Number); if (days.length && days.every((d) => Number.isInteger(d) && d > 0)) setBilling({ ageingBucketsDays: days }); else setBucketsText(form.billing.ageingBucketsDays.join(", ")); }} />
+            </SettingRow>
             <SettingRow title="Invoice numbers" description="INV/26/0001 unless a numbering series for invoices is set up under Numbering series. Credit notes are CRN/26/0001 and receipts RCT/26/0001 the same way.">
               <span className="setting-fixed">Numbering series</span>
             </SettingRow>

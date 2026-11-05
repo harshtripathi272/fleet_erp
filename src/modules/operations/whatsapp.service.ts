@@ -1,3 +1,4 @@
+import { decideWriteOff } from './undelivered.service.js';
 import { z } from 'zod';
 import { createHash, timingSafeEqual } from 'node:crypto';
 import { env } from '../../config/env.js';
@@ -98,6 +99,7 @@ export async function executeCommand(command: Plain, ctx: OpsContext): Promise<u
       return recordExpense(parse(Schemas.expenseSchema, { driverId: command.driverId, tripId: command.tripId, categoryId: command.categoryId, amount, receiptNo: command.receiptNo, docId: command.docId }), ctx);
     }
     case 'shortage.decide': return decideShortage(String(command.consignmentId), parse(Schemas.shortageDecisionSchema, { charge: command.charge, note: command.note || undefined, ...via }), ctx);
+    case 'writeoff.decide': return decideWriteOff(String(command.consignmentId), parse(Schemas.writeOffDecisionSchema, { approve: command.approve, note: command.note || undefined, ...via }), ctx);
     case 'doc.done': return markDone(String(command.docId), ctx);
     case 'doc.return': return returnDocument(String(command.docId), parse(Schemas.reasonSchema, { reason: command.reason }), ctx);
     case 'load.record': {

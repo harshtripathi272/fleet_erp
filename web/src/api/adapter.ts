@@ -195,7 +195,7 @@ export function toAppData(ref: Reference, ops: Operations): AppData {
     stops: (t.stops ?? []).map((s: Rec) => ({ id: String(s.id ?? s._id), placeId: s.placeId, kind: s.kind, legKm: s.legKm, legHours: s.legHours, arrivedAt: s.arrivedAt, arrivedVia: s.arrivedVia, leftAt: s.leftAt })),
     productId: t.productId, plannedQty: t.plannedQty, plannedStart: t.plannedStart,
     fuelBudgetL: t.fuelBudgetL ?? 0, cashBudgetBase: baseMajor(t.cashBudget?.amountMinor), openingFuelL: t.openingFuelL ?? 0,
-    createdAt: t.createdAt, dispatchedAt: t.dispatchedAt, endedAt: t.endedAt, closingFuelL: t.closingFuelL, stopReason: t.stopReason, cancelledAt: t.cancelledAt, settleAfterCancel: t.settleAfterCancel,
+    createdAt: t.createdAt, dispatchedAt: t.dispatchedAt, endedAt: t.endedAt, closingFuelL: t.closingFuelL, stopReason: t.stopReason, undelivered: t.undelivered, transferredToTripId: t.transferredToTripId, transferredFromTripId: t.transferredFromTripId, cancelledAt: t.cancelledAt, settleAfterCancel: t.settleAfterCancel,
     tracking: t.tracking ? { km: t.tracking.km ?? 0, speed: t.tracking.speed ?? 0, heading: t.tracking.heading ?? 0, at: t.tracking.at, source: t.tracking.source } : undefined,
     settlementId: t.settlementId,
     stages: (t.stages ?? []).map((s: Rec) => ({ code: s.code, name: s.name, completesOn: s.completesOn, completedAt: s.completedAt })),
@@ -238,6 +238,10 @@ export function toAppData(ref: Reference, ops: Operations): AppData {
       amountBase: baseMajor(c.shortage.baseAmountMinor), status: c.shortage.status, decidedAt: c.shortage.decidedAt, note: c.shortage.note,
       mayWaive: c.shortage.status === "pending" ? mayDecideFinal(ref.me, c.shortage.approval) : undefined,
     } : undefined,
+    writeOff: c.writeOff ? {
+      status: c.writeOff.status, carrier: c.writeOff.carrier, amountBase: baseMajor(c.writeOff.baseAmountMinor), reason: c.writeOff.reason,
+      requestedByName: c.writeOff.requestedByName, decidedAt: c.writeOff.decidedAt, note: c.writeOff.note,
+    } : undefined,
   })).sort((a, b) => a.loadedAt.localeCompare(b.loadedAt));
 
   const expenses: Expense[] = ops.expenses.map((e) => ({
@@ -253,7 +257,7 @@ export function toAppData(ref: Reference, ops: Operations): AppData {
   const settlements: Settlement[] = ops.settlements.map((s) => ({
     id: s.id, no: s.number, driverId: s.driverId, tripIds: s.tripIds, from: s.from, to: s.to,
     openingBase: baseMajor(s.openingMinor), advancesBase: baseMajor(s.advancesMinor), expensesBase: baseMajor(s.expensesMinor),
-    shortagesBase: baseMajor(s.shortagesMinor), cashBase: baseMajor(s.cashMinor), closingBase: baseMajor(s.closingMinor), note: s.note, postedAt: s.postedAt,
+    shortagesBase: baseMajor(s.shortagesMinor), writeOffsBase: baseMajor(s.writeOffsMinor ?? 0), cashBase: baseMajor(s.cashMinor), closingBase: baseMajor(s.closingMinor), note: s.note, postedAt: s.postedAt,
   })).sort((a, b) => a.postedAt.localeCompare(b.postedAt));
 
   const sources = index(ref.orderSources);
@@ -287,6 +291,11 @@ export function toAppData(ref: Reference, ops: Operations): AppData {
       roadDistanceFactor: Number(ref.company?.operations?.roadDistanceFactor ?? 1.28),
       averageSpeedKmh: Number(ref.company?.operations?.averageSpeedKmh ?? 62),
       stopBeforeLoading: ref.company?.operations?.stopBeforeLoading !== false,
+      loadedTripOutcomes: ref.company?.operations?.loadedTripOutcomes ?? ["return", "transfer", "write_off"],
+      writeOffCarriers: ref.company?.operations?.writeOffCarriers ?? ["driver", "company", "insurance"],
+      writeOffDefaultCarrier: ref.company?.operations?.writeOffDefaultCarrier ?? "company",
+      loadedTripRoles: ref.company?.operations?.loadedTripRoles ?? ["operations"],
+      writeOffNeedsOwner: ref.company?.operations?.writeOffNeedsOwner !== false,
       clockOffsetMs: 0,
       seq: {},
       people: { owner: named("owner", "Owner"), operations: named("operations", "Operations"), finance: named("finance", "Finance") },

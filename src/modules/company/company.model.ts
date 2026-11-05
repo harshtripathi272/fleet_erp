@@ -7,7 +7,19 @@ import { DECIMAL_SEPARATORS, THOUSANDS_SEPARATORS, TIME_FORMATS, UNIT_SYSTEMS, W
  * How this company runs trips. The first client's way of working ships as the defaults; every value
  * can be changed per company (see the founding principle in the README).
  */
+export const LOADED_TRIP_OUTCOMES = ['return', 'transfer', 'write_off'] as const;
+export const WRITE_OFF_CARRIERS = ['driver', 'company', 'insurance'] as const;
+
 export const OPERATIONS_DEFAULTS = {
+  /** What may happen to a load that can't be delivered (#64). */
+  loadedTripOutcomes: [...LOADED_TRIP_OUTCOMES] as string[],
+  /** Who may carry a write-off, and who does unless the person deciding says otherwise. */
+  writeOffCarriers: [...WRITE_OFF_CARRIERS] as string[],
+  writeOffDefaultCarrier: 'company',
+  /** Role keys that may decide; owners and administrators always may. */
+  loadedTripRoles: ['operations'] as string[],
+  /** A write-off asked for by anyone else waits for the owner's approval. */
+  writeOffNeedsOwner: true,
   /** A trip's first stop is where its truck is now. */
   tripStartsFromTruck: true,
   /** Road distance when no route gives the leg: straight-line distance × this factor. */
@@ -31,6 +43,11 @@ export const OPERATIONS_DEFAULTS = {
 export const SETTLEMENT_PERIODS = ['any', 'weekly', 'fortnightly', 'monthly'] as const;
 
 const operationsSchema = new Schema({
+  loadedTripOutcomes: { type: [{ type: String, enum: LOADED_TRIP_OUTCOMES }], default: () => [...OPERATIONS_DEFAULTS.loadedTripOutcomes] },
+  writeOffCarriers: { type: [{ type: String, enum: WRITE_OFF_CARRIERS }], default: () => [...OPERATIONS_DEFAULTS.writeOffCarriers] },
+  writeOffDefaultCarrier: { type: String, enum: WRITE_OFF_CARRIERS, default: OPERATIONS_DEFAULTS.writeOffDefaultCarrier },
+  loadedTripRoles: { type: [String], default: () => [...OPERATIONS_DEFAULTS.loadedTripRoles] },
+  writeOffNeedsOwner: { type: Boolean, default: OPERATIONS_DEFAULTS.writeOffNeedsOwner },
   tripStartsFromTruck: { type: Boolean, default: OPERATIONS_DEFAULTS.tripStartsFromTruck },
   roadDistanceFactor: { type: Number, min: 1, max: 3, default: OPERATIONS_DEFAULTS.roadDistanceFactor },
   averageSpeedKmh: { type: Number, min: 10, max: 120, default: OPERATIONS_DEFAULTS.averageSpeedKmh },

@@ -14,7 +14,7 @@ export interface LedgerEntry {
   at: string;
   tripId?: string;
   settlementId?: string;
-  kind: 'opening' | 'advance' | 'expense' | 'shortage' | 'cash';
+  kind: 'opening' | 'advance' | 'expense' | 'shortage' | 'write_off' | 'cash';
   label: string;
   /** Base-currency minor units. Positive: the driver holds company money. */
   amountMinor: number;
@@ -39,10 +39,12 @@ export async function driverLedger(driverId: unknown): Promise<LedgerEntry[]> {
   if (opening?.amountMinor) {
     entries.push({ id: `open-${id}`, at: OPENING_AT, kind: 'opening', label: 'Carried in', amountMinor: (await toBase(opening.amountMinor, opening.currencyId)).baseMinor, settlementId: 'opening' });
   }
-  const [advances, expenses, shortages, settlements] = await Promise.all([
+  const [advances, expenses, shortages, writeOffs, settlements] = await Promise.all([
     FundRequest.find({ tripId: { $in: tripIds }, kind: 'cash', status: 'issued' }).lean(),
     Expense.find({ driverId: id, status: 'approved' }).lean(),
     Consignment.find({ tripId: { $in: tripIds }, 'shortage.status': 'charged' }).lean(),
+    // A load written off and carried by the driver is recovered through their account (#64).
+    Consignment.find({ tripId: { $in: tripIds }, 'writeOff.status': 'approved', 'writeOff.carrier': 'driver' }).lean(),
     Settlement.find({ driverId: id, cashMinor: { $ne: 0 } }).lean(),
   ]);
   const categories = new Map((await ExpenseCategory.find({ _id: { $in: expenses.map((e) => e.categoryId) } }).select('name').lean()).map((c) => [String(c._id), String(c.name)]));
@@ -65,6 +67,10 @@ export async function driverLedger(driverId: unknown): Promise<LedgerEntry[]> {
       id: `short-${c._id}`, at: (s.decidedAt as Date).toISOString(), tripId: String(c.tripId), settlementId: settlementOf(c.tripId),
       kind: 'shortage', label: `Fuel shortage ${c.number} · ${Fmt.number(Number(s.netShortL), { max: 2 })} L`, amountMinor: Number(s.baseAmountMinor ?? 0),
     });
+  }
+  for (const c of writeOffs) {
+    const w = c.writeOff as Plain;
+    entries.push({ id: `writeoff-${c._id}`, at: (w.decidedAt as Date).toISOString(), tripId: String(c.tripId), settlementId: settlementOf(c.tripId), kind: 'write_off', label: `Load written off ${c.number}`, amountMinor: Number(w.baseAmountMinor) });
   }
   for (const s of settlements) {
     const cash = Number(s.cashMinor);

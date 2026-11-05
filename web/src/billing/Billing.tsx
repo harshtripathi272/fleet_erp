@@ -9,13 +9,14 @@ import { Button, Drawer, Empty, Field, FieldGroup, Modal, Rows, Segmented, Statu
 import { Card } from "../desks/stages";
 import { baseCurrencyCode, calendarDate, num } from "../ui/format";
 import { MoneySettings } from "./MoneySettings";
+import { AccountingExport, Ageing, Revaluations } from "./Receivables";
 
 /**
  * Billing (#61): closed trips waiting for an invoice, invoices and credit notes from draft to paid, payments
  * received with their exchange gain or loss, and the money settings. Amounts come from the API in minor units.
  */
 
-type Tab = "invoice" | "invoices" | "payments" | "settings";
+type Tab = "invoice" | "invoices" | "payments" | "ageing" | "export" | "settings";
 const PAGE = 25;
 /** An amount in an invoice's or payment's currency, or in the base currency (gains and losses). */
 const money = (minor: unknown, of: Rec | "base") => {
@@ -36,6 +37,7 @@ export function Billing() {
   const [open, setOpen] = useState<string | null>(null);
   const tabs: { value: Tab; label: string }[] = [
     { value: "invoice", label: "To invoice" }, { value: "invoices", label: "Invoices" }, { value: "payments", label: "Payments received" },
+    { value: "ageing", label: "Owed" }, { value: "export", label: "Export" },
     ...(can(me, "finance-settings", "read") ? [{ value: "settings" as Tab, label: "Settings" }] : []),
   ];
   return (
@@ -52,7 +54,9 @@ export function Billing() {
       {tab === "invoice" && <ToInvoice onOpen={(id) => { setTab("invoices"); setOpen(id); }} />}
       {tab === "invoices" && <Invoices onOpen={setOpen} />}
       {tab === "payments" && <Payments onOpen={setOpen} />}
-      {tab === "settings" && <MoneySettings billing />}
+      {tab === "ageing" && <Ageing />}
+      {tab === "export" && <AccountingExport />}
+      {tab === "settings" && <><MoneySettings billing /><Revaluations /></>}
       <InvoiceDrawer id={open} onClose={() => setOpen(null)} onOpen={setOpen} />
     </div>
   );

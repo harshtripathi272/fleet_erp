@@ -287,7 +287,7 @@ export interface LedgerEntry {
   at: string;
   tripId?: string;
   settlementId?: string;
-  kind: "opening" | "advance" | "expense" | "shortage" | "cash";
+  kind: "opening" | "advance" | "expense" | "shortage" | "write_off" | "cash";
   label: string;
   amountBase: number;
 }
@@ -347,6 +347,12 @@ export function driverLedger(data: AppData, driverId: string): LedgerEntry[] {
       label: `Fuel shortage ${item.no} · ${num(item.shortage.netShortL, 0, 2)} L`,
       amountBase: item.shortage.amountBase,
     });
+  }
+  // A load written off and carried by the driver is recovered through their account (#64).
+  for (const item of data.consignments) {
+    const trip = trips.get(item.tripId);
+    if (!trip || item.writeOff?.status !== "approved" || item.writeOff.carrier !== "driver") continue;
+    entries.push({ id: `writeoff-${item.id}`, at: item.writeOff.decidedAt!, tripId: trip.id, settlementId: trip.settlementId, kind: "write_off", label: `Load written off ${item.no}`, amountBase: item.writeOff.amountBase });
   }
   for (const s of data.settlements) {
     if (s.driverId !== driverId || !s.cashBase) continue;

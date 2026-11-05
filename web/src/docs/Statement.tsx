@@ -12,7 +12,7 @@ export function Statement({ id }: { id: string }) {
   const driver = byId(data.drivers, s.driverId)!;
   const trips = s.tripIds.map((t) => byId(data.trips, t)!).filter(Boolean);
   const lines = driverLedger(data, driver.id).filter((e) => e.tripId && s.tripIds.includes(e.tripId));
-  const before = s.openingBase + s.advancesBase - s.expensesBase + s.shortagesBase;
+  const before = s.openingBase + s.advancesBase - s.expensesBase + s.shortagesBase + s.writeOffsBase;
   return (
     <article className="paper statement">
       <Watermark forDocument />
@@ -127,6 +127,12 @@ export function Statement({ id }: { id: string }) {
           <span>Shortage charged</span>
           <strong>{num(s.shortagesBase)}</strong>
         </div>
+        {s.writeOffsBase > 0 && (
+          <div>
+            <span>Load written off</span>
+            <strong>{num(s.writeOffsBase)}</strong>
+          </div>
+        )}
         <div className="final">
           <span>Carried forward</span>
           <strong>{num(s.closingBase)}</strong>

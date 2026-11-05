@@ -6,7 +6,7 @@ import type { Rec } from "../api/adapter";
 import { can } from "../api/session";
 import { useApp } from "../store";
 import { useAreaList } from "../api/areas";
-import { Empty, Field, SaveBar, Segmented, SettingRow, SettingsSection, Switch, UnitInput } from "../ui/kit";
+import { ChoiceChips, Empty, Field, SaveBar, Segmented, SettingRow, SettingsSection, Switch, UnitInput } from "../ui/kit";
 import { contrastWithWhite, useReloadBrand } from "../ui/brand";
 import { BrandUpload } from "./BrandUpload";
 
@@ -28,6 +28,8 @@ const regionalForm = (stored: Rec): Record<string, string> => ({
   ...Object.fromEntries(REGIONAL_KEYS.map((k) => [k, String(stored[k] ?? "")])),
   numberFormat: NUMBER_FORMATS.find((n) => n.decimal === stored.decimalSeparator && n.thousands === stored.thousandsSeparator)?.value ?? "",
 });
+const OUTCOMES = [{ value: "return", label: "Return it to the consignor" }, { value: "transfer", label: "Move it to another truck" }, { value: "write_off", label: "Write it off" }];
+const CARRIERS = [{ value: "driver", label: "The driver" }, { value: "company", label: "The company" }, { value: "insurance", label: "An insurance claim" }];
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 const DATE_FORMATS = ["DD/MM/YYYY", "MM/DD/YYYY", "YYYY-MM-DD"];
 const PERIODS: { value: string; label: string }[] = [{ value: "any", label: "Any time" }, { value: "weekly", label: "Weekly" }, { value: "fortnightly", label: "Fortnightly" }, { value: "monthly", label: "Monthly" }];
@@ -71,6 +73,11 @@ function formFrom(company: Rec | null): Form {
     operations: {
       tripStartsFromTruck: ops.tripStartsFromTruck ?? true,
       stopBeforeLoading: ops.stopBeforeLoading ?? true,
+      loadedTripOutcomes: ops.loadedTripOutcomes ?? ["return", "transfer", "write_off"],
+      writeOffCarriers: ops.writeOffCarriers ?? ["driver", "company", "insurance"],
+      writeOffDefaultCarrier: ops.writeOffDefaultCarrier ?? "company",
+      loadedTripRoles: ops.loadedTripRoles ?? ["operations"],
+      writeOffNeedsOwner: ops.writeOffNeedsOwner ?? true,
       settlementPeriod: ops.settlementPeriod ?? "any",
       ...Object.fromEntries(ALL_NUMBERS.map((n) => [n.key, ops[n.key] ?? n.fallback])),
     },
@@ -85,6 +92,7 @@ export function CompanyPanel() {
   const client = useQueryClient();
   // The areas come from the server's list, so a new area appears here without a change to this screen (#56).
   const areas = useAreaList();
+  const roles = useQuery({ queryKey: ["company-roles"], queryFn: () => api<Rec[]>("/roles", { query: { limit: 100 } }).catch(() => []) });
   const company = useQuery({ queryKey: ["company"], queryFn: () => api<Rec>("/company").catch(() => null) });
   const currencies = useQuery({ queryKey: ["company-currencies"], queryFn: () => api<Rec[]>("/currencies", { query: { limit: 100, status: "active" } }) });
   const countries = useQuery({ queryKey: ["company-countries"], queryFn: () => api<Rec[]>("/countries", { query: { limit: 100, status: "active" } }) });
@@ -297,6 +305,23 @@ export function CompanyPanel() {
           </SettingRow>
           <SettingRow title="Allow stopping a trip before loading" description="Operations can stop a trip that left but never loaded, and free the truck for other work.">
             <Switch label="Allow stopping a trip before loading" checked={Boolean(form.operations.stopBeforeLoading)} onChange={(on) => setOp("stopBeforeLoading", on)} />
+          </SettingRow>
+          <SettingRow title="A loaded trip that can't deliver may" description="What the office can do with the load after an accident or a refusal. Switch off what the company never does.">
+            <ChoiceChips label="A loaded trip that can't deliver may" options={OUTCOMES} value={form.operations.loadedTripOutcomes as string[]} onChange={(v) => setOp("loadedTripOutcomes", v)} />
+          </SettingRow>
+          <SettingRow title="Who may carry a write-off" description="A driver's share goes on their account and comes off at settlement. An insurance claim names the insurer.">
+            <ChoiceChips label="Who may carry a write-off" options={CARRIERS} value={form.operations.writeOffCarriers as string[]} onChange={(v) => setOp("writeOffCarriers", v)} />
+          </SettingRow>
+          <SettingRow title="Who carries it unless someone says otherwise" description="Chosen first when someone writes off a load." htmlFor="co-carrier">
+            <select id="co-carrier" className="input" value={String(form.operations.writeOffDefaultCarrier)} onChange={(e) => setOp("writeOffDefaultCarrier", e.target.value)}>
+              {CARRIERS.filter((c) => (form.operations.writeOffCarriers as string[]).includes(c.value)).map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
+            </select>
+          </SettingRow>
+          <SettingRow title="Who decides what happens to the load" description="The owner and administrators always may. Everyone else needs one of these roles.">
+            <ChoiceChips label="Who decides what happens to the load" options={(roles.data ?? []).filter((r) => !["owner", "admin"].includes(String(r.key))).map((r) => ({ value: String(r.key), label: String(r.name) }))} value={form.operations.loadedTripRoles as string[]} onChange={(v) => setOp("loadedTripRoles", v)} />
+          </SettingRow>
+          <SettingRow title="A write-off needs the owner's approval" description="The trip stays open until the owner decides. Off: it takes effect when the person deciding confirms it.">
+            <Switch label="A write-off needs the owner's approval" checked={Boolean(form.operations.writeOffNeedsOwner)} onChange={(on) => setOp("writeOffNeedsOwner", on)} />
           </SettingRow>
           {NUMBERS.map((n) => (
             <SettingRow key={n.key} title={n.title} description={n.description}>
