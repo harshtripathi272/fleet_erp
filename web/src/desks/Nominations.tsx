@@ -12,7 +12,7 @@ import { Turn } from "./Trips";
 import { w, wl } from "../domain/words";
 
 const STEPS = ["draft", "sent", "accepted", "converted"] as const;
-const STEP_LABEL = { draft: "Draft", sent: "With customer", accepted: "Accepted", converted: "Trips created" };
+const STEP_LABEL = { draft: "Draft", sent: "With customer", accepted: "Accepted", converted: "" };
 
 /** The default "Loading at": the first place a truck can load at (not a border). */
 const firstLoadingPlace = (data: AppData) => data.places.find((p) => p.kind !== "border")?.id ?? "";
@@ -81,7 +81,7 @@ function NominationCard({ n, onEdit, onConvert }: { n: Nomination; onEdit: () =>
             {STEPS.map((s, i) => (
               <li key={s} className={i < at ? "done" : i === at ? "now" : ""}>
                 <i>{i < at && <Check size={10} strokeWidth={3} />}</i>
-                {STEP_LABEL[s]}
+                {s === "converted" ? `${w(data, "trip", true)} created` : STEP_LABEL[s]}
               </li>
             ))}
           </ol>
@@ -378,10 +378,10 @@ function Convert({ n, onClose }: { n: Nomination | null; onClose: () => void }) 
             tone="primary"
             disabled={!chosen && !offloadId}
             onClick={async () => {
-              if (n && (await run({ type: "nomination.convert", id: n.id, routeId: chosen || undefined, offloadPlaceId: chosen ? undefined : offloadId }, "Trips created. Each driver has theirs on WhatsApp."))) onClose();
+              if (n && (await run({ type: "nomination.convert", id: n.id, routeId: chosen || undefined, offloadPlaceId: chosen ? undefined : offloadId }, `${w(data, "trip", true)} created. Each ${wl(data, "driver")} has theirs on WhatsApp.`))) onClose();
             }}
           >
-            <Check /> Create trips
+            <Check /> Create {wl(data, "trip", true)}
           </Button>
         </>
       }
