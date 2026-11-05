@@ -161,6 +161,7 @@ export interface Trip {
   cancelledAt?: string;
   /** Stopped after leaving, before loading: why. The trip is closed like an ended one. */
   stopReason?: string;
+  custom?: Record<string, unknown>;
   /** What was decided for a load this trip couldn't deliver. */
   undelivered?: { outcome: "return" | "transfer" | "write_off"; reason: string; at: string };
   transferredToTripId?: string;
@@ -182,6 +183,7 @@ export interface Decision {
   via: "app" | "WhatsApp";
 }
 export interface FundRequest {
+  custom?: Record<string, unknown>;
   id: string;
   no: string;
   tripId: string;
@@ -280,6 +282,7 @@ export interface Shortage {
   mayWaive?: boolean;
 }
 export interface Consignment {
+  custom?: Record<string, unknown>;
   id: string;
   no: string;
   tripId: string;
@@ -296,6 +299,7 @@ export interface Consignment {
 }
 
 export interface Expense {
+  custom?: Record<string, unknown>;
   id: string;
   no: string;
   tripId?: string;
@@ -318,6 +322,7 @@ export interface Expense {
 }
 
 export interface Settlement {
+  custom?: Record<string, unknown>;
   id: string;
   no: string;
   driverId: string;
@@ -337,6 +342,7 @@ export interface Settlement {
 }
 
 export interface Nomination {
+  custom?: Record<string, unknown>;
   id: string;
   version?: number;
   no: string;
@@ -431,6 +437,7 @@ export type MasterEntity =
 export type Action =
   | {
       type: "nomination.save";
+      custom?: Record<string, unknown>;
       id?: string;
       /** The version the edit started from, so a save over someone else's is refused. */
       version?: number;
@@ -450,6 +457,7 @@ export type Action =
   | { type: "nomination.cancel"; id: string }
   | {
       type: "trip.create";
+      custom?: Record<string, unknown>;
       customerId: string;
       truckId: string;
       driverId?: string;
@@ -482,11 +490,11 @@ export type Action =
   | { type: "trip.undelivered"; tripId: string; reasonId: string; note?: string; outcome: "transfer"; vehicleId: string; driverId?: string; trailerId?: string; placeId?: string; closingFuelL: number }
   | { type: "trip.undelivered"; tripId: string; reasonId: string; note?: string; outcome: "write_off"; carrier?: string; insurerPartyId?: string; claimReference?: string; amount?: number; placeId?: string; closingFuelL: number }
   | { type: "writeoff.decide"; consignmentId: string; approve: boolean; note?: string; via?: "app" | "WhatsApp" }
-  | { type: "request.create"; tripId: string; kind: "fuel" | "cash"; amount: number; currency: Currency; reason?: string }
-  | { type: "request.decide"; id: string; approve: boolean; note?: string; via?: "app" | "WhatsApp" }
-  | { type: "request.issue"; id: string; medium: string; reference: string; station?: string; via?: "app" | "WhatsApp" }
+  | { type: "request.create"; custom?: Record<string, unknown>; tripId: string; kind: "fuel" | "cash"; amount: number; currency: Currency; reason?: string }
+  | { type: "request.decide"; custom?: Record<string, unknown>; id: string; approve: boolean; note?: string; via?: "app" | "WhatsApp" }
+  | { type: "request.issue"; custom?: Record<string, unknown>; id: string; medium: string; reference: string; station?: string; via?: "app" | "WhatsApp" }
   | { type: "request.cancel"; id: string }
-  | { type: "trip.dispatch"; tripId: string }
+  | { type: "trip.dispatch"; custom?: Record<string, unknown>; tripId: string }
   | { type: "trip.ping"; tripId: string; km: number; speed: number; advanceMs?: number }
   | { type: "trip.arrive"; tripId: string; stopId: string }
   | { type: "trip.remind"; tripId: string }
@@ -505,6 +513,7 @@ export type Action =
   | { type: "doc.done"; docId: string }
   | {
       type: "load.record";
+      custom?: Record<string, unknown>;
       tripId: string;
       docId?: string;
       productId: string;
@@ -522,6 +531,7 @@ export type Action =
     }
   | {
       type: "delivery.record";
+      custom?: Record<string, unknown>;
       consignmentId: string;
       docId?: string;
       podNo: string;
@@ -537,6 +547,7 @@ export type Action =
   | { type: "shortage.decide"; consignmentId: string; charge: boolean; note?: string; via?: "app" | "WhatsApp" }
   | {
       type: "expense.record";
+      custom?: Record<string, unknown>;
       driverId: string;
       tripId?: string;
       categoryId: string;
@@ -546,10 +557,10 @@ export type Action =
       docId?: string;
       note?: string;
     }
-  | { type: "expense.decide"; id: string; approve: boolean; reason?: string; via?: "app" | "WhatsApp" }
-  | { type: "trip.end"; tripId: string; closingFuelL: number }
+  | { type: "expense.decide"; custom?: Record<string, unknown>; id: string; approve: boolean; reason?: string; via?: "app" | "WhatsApp" }
+  | { type: "trip.end"; custom?: Record<string, unknown>; tripId: string; closingFuelL: number }
   | { type: "settlement.request"; driverId: string }
-  | { type: "settlement.post"; driverId: string; tripIds: string[]; cashZmw: number; note?: string }
+  | { type: "settlement.post"; custom?: Record<string, unknown>; driverId: string; tripIds: string[]; cashZmw: number; note?: string }
   | { type: "thread.read"; thread: string }
   | { type: "chat.send"; thread: string; text: string }
   | { type: "customer.reply"; nominationId: string };

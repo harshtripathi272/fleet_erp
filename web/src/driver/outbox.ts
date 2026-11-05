@@ -17,7 +17,9 @@ export interface OutboxItem {
   at: string;
   /** What the driver sees in "Waiting to send". */
   label: string;
-  type: "send" | "arrive";
+  type: "send" | "arrive" | "fields";
+  /** Answers to what the company asks of the driver. */
+  values?: Record<string, unknown>;
   kind?: DocKind;
   note?: string;
   stopId?: string;
@@ -84,6 +86,10 @@ async function deliver(item: OutboxItem) {
   const headers = { "Idempotency-Key": item.id };
   if (item.type === "arrive") {
     await api(`/driver-app/stops/${item.stopId}/arrive`, { method: "POST", headers });
+    return;
+  }
+  if (item.type === "fields") {
+    await api("/driver-app/fields", { method: "POST", headers, body: { values: item.values } });
     return;
   }
   let fileId = item.fileId;

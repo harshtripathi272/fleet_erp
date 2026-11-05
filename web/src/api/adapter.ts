@@ -195,7 +195,7 @@ export function toAppData(ref: Reference, ops: Operations): AppData {
     stops: (t.stops ?? []).map((s: Rec) => ({ id: String(s.id ?? s._id), placeId: s.placeId, kind: s.kind, legKm: s.legKm, legHours: s.legHours, arrivedAt: s.arrivedAt, arrivedVia: s.arrivedVia, leftAt: s.leftAt })),
     productId: t.productId, plannedQty: t.plannedQty, plannedStart: t.plannedStart,
     fuelBudgetL: t.fuelBudgetL ?? 0, cashBudgetZmw: baseMajor(t.cashBudget?.amountMinor), openingFuelL: t.openingFuelL ?? 0,
-    createdAt: t.createdAt, dispatchedAt: t.dispatchedAt, endedAt: t.endedAt, closingFuelL: t.closingFuelL, stopReason: t.stopReason, undelivered: t.undelivered, transferredToTripId: t.transferredToTripId, transferredFromTripId: t.transferredFromTripId, cancelledAt: t.cancelledAt, settleAfterCancel: t.settleAfterCancel,
+    createdAt: t.createdAt, dispatchedAt: t.dispatchedAt, endedAt: t.endedAt, closingFuelL: t.closingFuelL, stopReason: t.stopReason, custom: t.custom, undelivered: t.undelivered, transferredToTripId: t.transferredToTripId, transferredFromTripId: t.transferredFromTripId, cancelledAt: t.cancelledAt, settleAfterCancel: t.settleAfterCancel,
     tracking: t.tracking ? { km: t.tracking.km ?? 0, speed: t.tracking.speed ?? 0, heading: t.tracking.heading ?? 0, at: t.tracking.at, source: t.tracking.source } : undefined,
     settlementId: t.settlementId,
     stages: (t.stages ?? []).map((s: Rec) => ({ code: s.code, name: s.name, completesOn: s.completesOn, completedAt: s.completedAt })),
@@ -209,6 +209,7 @@ export function toAppData(ref: Reference, ops: Operations): AppData {
     suggested: r.kind === "fuel" ? r.suggested : baseMajor(r.suggested),
     reason: r.reason,
     // A request past its first approval level shows as the mock's second ("owner") step.
+    custom: r.custom,
     status: r.status === "pending" && (r.approval?.current ?? 0) > 0 ? "owner" : r.status,
     waitingOn: r.status === "pending" ? waitingLabel(r.approval) : undefined,
     mayDecide: r.status === "pending" ? mayDecide(ref.me, r.approval) : undefined,
@@ -229,6 +230,7 @@ export function toAppData(ref: Reference, ops: Operations): AppData {
 
   const consignments: Consignment[] = ops.consignments.map((c) => ({
     id: c.id, no: c.number, tripId: c.tripId, productId: c.productId, invoiceNo: c.invoiceNo, consignor: c.consignor ?? "—", consignee: c.consignee ?? "",
+    custom: c.custom,
     loadedAt: c.loadedAt, loadDocId: c.loadDocId, load: c.load,
     delivered: c.delivered ? { ...c.delivered, at: c.delivered.at, podNo: c.delivered.podNo, docId: c.delivered.docId } : undefined,
     shortage: c.shortage ? {
@@ -246,6 +248,7 @@ export function toAppData(ref: Reference, ops: Operations): AppData {
   })).sort((a, b) => a.loadedAt.localeCompare(b.loadedAt));
 
   const expenses: Expense[] = ops.expenses.map((e) => ({
+    custom: e.custom,
     id: e.id, no: e.number, tripId: e.tripId, driverId: e.driverId, categoryId: e.categoryId,
     amount: toMajor(e.amount?.amountMinor, e.amount?.currencyId), currency: codeOf(e.amount?.currencyId), amountZmw: baseMajor(e.baseAmountMinor),
     receiptNo: e.receiptNo, docId: e.docId, note: e.note, status: e.status,
@@ -258,11 +261,12 @@ export function toAppData(ref: Reference, ops: Operations): AppData {
   const settlements: Settlement[] = ops.settlements.map((s) => ({
     id: s.id, no: s.number, driverId: s.driverId, tripIds: s.tripIds, from: s.from, to: s.to,
     openingZmw: baseMajor(s.openingMinor), advancesZmw: baseMajor(s.advancesMinor), expensesZmw: baseMajor(s.expensesMinor),
-    shortagesZmw: baseMajor(s.shortagesMinor), writeOffsZmw: baseMajor(s.writeOffsMinor ?? 0), cashZmw: baseMajor(s.cashMinor), closingZmw: baseMajor(s.closingMinor), note: s.note, postedAt: s.postedAt,
+    custom: s.custom, shortagesZmw: baseMajor(s.shortagesMinor), writeOffsZmw: baseMajor(s.writeOffsMinor ?? 0), cashZmw: baseMajor(s.cashMinor), closingZmw: baseMajor(s.closingMinor), note: s.note, postedAt: s.postedAt,
   })).sort((a, b) => a.postedAt.localeCompare(b.postedAt));
 
   const sources = index(ref.orderSources);
   const nominations: Nomination[] = ops.nominations.map((n) => ({
+    custom: n.custom,
     id: n.id, version: n.version, no: n.number, customerId: n.customerId, source: sources.get(String(n.orderSourceId))?.name ?? "Direct", orderSourceId: n.orderSourceId,
     reference: n.reference, loadingPlaceId: n.loadingPlaceId, productId: n.productId, qtyPerTruck: n.qtyPerTruck,
     requiredDate: String(n.requiredDate).slice(0, 10), trucks: (n.trucks ?? []).map((t: Rec) => ({ truckId: t.vehicleId, driverId: t.driverId })),

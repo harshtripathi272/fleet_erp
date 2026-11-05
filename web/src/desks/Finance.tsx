@@ -1,3 +1,4 @@
+import { usePlacement } from "./usePlacement";
 import { useMemo, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { ArrowRight, Check, CircleDollarSign, Droplets } from "lucide-react";
@@ -8,7 +9,7 @@ import { routeLabel, toSettle } from "../domain/helpers";
 import type { FundRequest } from "../domain/types";
 import { Avatar, Button, Status } from "../ui/kit";
 import { ago, cash, L, zmw } from "../ui/format";
-import { Card, ReceiptReview, ShortageCard } from "./stages";
+import { Card, ExpenseDecision, ReceiptReview, ShortageCard } from "./stages";
 
 export function FinanceToday() {
   const { data, role, run, nav } = useApp();
@@ -106,14 +107,7 @@ export function FinanceToday() {
                     {e.movedUpFrom ? ` · ${e.movedUpFrom} did not decide in time` : ""}
                   </span>
                 </div>
-                <span className="row-buttons">
-                  <Button size="sm" tone="primary" onClick={() => run({ type: "expense.decide", id: e.id, approve: true }, "Approved.")}>
-                    Approve
-                  </Button>
-                  <Button size="sm" tone="danger" onClick={() => run({ type: "expense.decide", id: e.id, approve: false, reason: "No valid receipt" }, "Rejected.")}>
-                    Reject
-                  </Button>
-                </span>
+                <ExpenseDecision expense={e} />
               </div>
             );
           })}
@@ -169,6 +163,7 @@ function Kpi({ label, value, tone }: { label: string; value: number | string; to
 }
 
 export function Approval({ request, picked, onPick }: { request: FundRequest; picked: boolean; onPick?: () => void }) {
+  const company = usePlacement("fund-requests", "approve", request.custom);
   const { data, role, run, nav } = useApp();
   const trip = byId(data.trips, request.tripId)!;
   const truck = byId(data.trucks, trip.truckId);
@@ -240,7 +235,8 @@ export function Approval({ request, picked, onPick }: { request: FundRequest; pi
       </div>
       {!rejecting && (
         <div className="approval-actions">
-          <Button tone="primary" onClick={() => run({ type: "request.decide", id: request.id, approve: true }, request.level && request.level.current < request.level.of ? "Approved. Sent to the next approver." : "Approved.")}>
+          {company.block}
+          <Button tone="primary" disabled={!company.ready} onClick={() => run({ type: "request.decide", custom: company.custom, id: request.id, approve: true }, request.level && request.level.current < request.level.of ? "Approved. Sent to the next approver." : "Approved.")}>
             <Check /> Approve
           </Button>
           <Button tone="quiet" onClick={() => setRejecting(true)}>
@@ -253,6 +249,7 @@ export function Approval({ request, picked, onPick }: { request: FundRequest; pi
 }
 
 function PayRow({ request }: { request: FundRequest }) {
+  const paying = usePlacement("fund-requests", "pay", request.custom);
   const { data, run } = useApp();
   const trip = byId(data.trips, request.tripId)!;
   const truck = byId(data.trucks, trip.truckId);
@@ -289,11 +286,13 @@ function PayRow({ request }: { request: FundRequest }) {
         </div>
       </div>
       <div className="approval-actions">
+        {paying.block}
         <Button
           tone="primary"
+          disabled={!paying.ready}
           onClick={() =>
             run(
-              { type: "request.issue", id: request.id, medium, reference: reference.trim() || suggestion, station: undefined },
+              { type: "request.issue", custom: paying.custom, id: request.id, medium, reference: reference.trim() || suggestion, station: undefined },
               request.kind === "fuel" ? "Fuel issued. The driver is told." : "Paid. The driver is told.",
             )
           }

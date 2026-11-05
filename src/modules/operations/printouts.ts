@@ -1,3 +1,4 @@
+import { printedFields } from './placements.js';
 import { documentBrand } from '../company/brand.service.js';
 import { createHash, randomUUID } from 'node:crypto';
 import type { Plain } from '../../core/masters/types.js';
@@ -85,6 +86,7 @@ export async function tripSheetPdf(tripId: string): Promise<{ name: string; body
   const tripType = trip.tripTypeId ? await TripType.findById(trip.tripTypeId).select('printLayoutId').lean() as Plain | null : null;
   const layout = await layoutFor('trip_sheet', tripType?.printLayoutId);
   const blocks: PdfBlock[] = await companyBlocks(`Trip sheet ${trip.number}`);
+  const companyRows = await printedFields('trip_sheet', [['trips', trip], ...sheet.consignments.map((c): [string, Plain] => ['consignments', c as Plain])]);
   const stops = (trip.stops ?? []) as Array<{ kind: string; placeId: unknown; arrivedAt?: Date; leftAt?: Date; legKm?: number }>;
   const products = new Map((await Product.find({ _id: { $in: sheet.consignments.map((c) => c.productId) } }).select('name').lean()).map((p) => [String(p._id), String(p.name)]));
   const categories = new Map((await ExpenseCategory.find({ _id: { $in: sheet.expenses.map((e) => e.categoryId) } }).select('name').lean()).map((c) => [String(c._id), String(c.name)]));
@@ -101,6 +103,7 @@ export async function tripSheetPdf(tripId: string): Promise<{ name: string; body
           ['Truck', await plateOf(trip.vehicleId)],
           ['Trailer', await trailerPlate(trip.trailerId)],
           ['Driver', await driverName(trip.driverId)],
+          ...companyRows,
           ['Dispatched', when(trip.dispatchedAt, zone)],
           ['Ended', when(trip.endedAt, zone)],
           ['Distance', `${Math.round(Number(trip.totalKm ?? 0)).toLocaleString('en-GB')} km`],
@@ -153,6 +156,7 @@ export async function statementPdf(settlementId: string): Promise<{ name: string
     { kind: 'heading', text: 'Summary' },
     {
       kind: 'facts', rows: [
+        ...await printedFields('driver_statement', [['settlements', s.settlement as unknown as Plain]]),
         ['Opening balance', amount(s.settlement.openingMinor)],
         ['Advances', amount(s.settlement.advancesMinor)],
         ['Approved expenses', amount(s.settlement.expensesMinor)],

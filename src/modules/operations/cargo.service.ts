@@ -19,6 +19,7 @@ import {
 import { arriveAt, driverName, partyName, placeName, plateOf, truckFacts } from './trips.service.js';
 import type * as S from './operations.schema.js';
 import { attachable } from '../files/files.service.js';
+import { customValues, stepCustom } from './placements.js';
 import { operationsSettings } from './settings.js';
 
 const LABEL: Record<string, string> = { loading: 'loading invoice', delivery: 'delivery note', expense: 'receipt', fuel: 'fuel slip', other: 'message' };
@@ -270,7 +271,7 @@ export async function recordLoading(input: S.LoadingInput, ctx: OpsContext) {
   const customer = await partyName(trip.get('customerId'));
   const consignment = new Consignment({
     number: await nextNumber('consignments', 'CN', at), tripId: trip._id, productId: product._id, invoiceNo: input.invoiceNo,
-    consignor: input.consignor || '—', consignee: input.consignee || customer, loadedAt: at, loadDocId: input.docId, load,
+    consignor: input.consignor || '—', consignee: input.consignee || customer, loadedAt: at, loadDocId: input.docId, load, custom: await stepCustom('consignments', 'loading', input.custom),
     createdBy: ctx.actorId, updatedBy: ctx.actorId,
   });
   await save(consignment, 'This truck is already loaded.');
@@ -287,7 +288,7 @@ export async function recordLoading(input: S.LoadingInput, ctx: OpsContext) {
   }
   await log(ctx, at, `Loaded ${qty} · ${consignment.get('number')}`, { tripId: trip._id });
   await announce('trip.loaded', trip.toObject() as Plain, ctx, {
-    variables: { 'place.name': await placeName((stops[index] as { placeId?: unknown } | undefined)?.placeId), 'document.number': input.invoiceNo },
+    variables: { 'place.name': await placeName((stops[index] as { placeId?: unknown } | undefined)?.placeId), 'document.number': input.invoiceNo, ...customValues('consignment', consignment.get('custom')) },
     ref: { kind: 'consignments', id: consignment._id },
   });
   return present(consignment.toObject());
@@ -350,7 +351,7 @@ export async function recordDelivery(id: string, input: S.DeliveryInput, ctx: Op
   const stops = trip.get('stops') as Array<{ kind: string; legKm: number }>;
   const index = stops.findIndex((s) => s.kind === 'offload');
   await arriveAt(trip, index, at, ctx, 'office');
-  consignment.set({ delivered: { ...measured, at, podNo: input.podNo, docId: input.docId }, inTransit: false });
+  consignment.set({ custom: await stepCustom('consignments', 'delivery', input.custom, (consignment.toObject() as Plain).custom as Plain | undefined), delivered: { ...measured, at, podNo: input.podNo, docId: input.docId }, inTransit: false });
   const shortage = await shortageFor(consignment.toObject() as Plain, measured, { volumeCorrected, decimals, unit });
   if (shortage) consignment.set('shortage', shortage);
   consignment.set('updatedBy', ctx.actorId);
@@ -396,7 +397,7 @@ export async function recordDelivery(id: string, input: S.DeliveryInput, ctx: Op
   }
   await log(ctx, at, `Delivered · ${input.podNo}${shortage ? ` · ${amountOf(shortage.lossL, shortage.unit)} transit loss` : ''}`, { tripId: trip._id });
   await announce('trip.delivered', trip.toObject() as Plain, ctx, {
-    variables: { 'place.name': await placeName((stops[index] as { placeId?: unknown } | undefined)?.placeId), 'document.number': input.podNo },
+    variables: { 'place.name': await placeName((stops[index] as { placeId?: unknown } | undefined)?.placeId), 'document.number': input.podNo, ...customValues('consignment', consignment.get('custom')) },
     ref: { kind: 'consignments', id: consignment._id },
   });
   return present(consignment.toObject());

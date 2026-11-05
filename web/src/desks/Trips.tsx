@@ -25,6 +25,7 @@ import { Avatar, Button, Empty, Field, Modal, Segmented } from "../ui/kit";
 import { ago, day, hm, km, stamp } from "../ui/format";
 import { CantDeliver, UndeliveredNote } from "./CantDeliver";
 import { NewTrip } from "./NewTrip";
+import { usePlacement } from "./usePlacement";
 import { DriverMessages, StagePanel } from "./stages";
 import { TripAside } from "./TripAside";
 
@@ -336,6 +337,7 @@ function Stepper({
 }
 
 function NextStepBar({ trip, step, onGo, viewing }: { trip: Trip; step: NextStep; onGo: (stage: StageId) => void; viewing: StageId }) {
+  const leaving = usePlacement("trips", "dispatch", trip.custom, ["create"]);
   const tracking = useAreas()("tracking");
   const { data, run, setOverlay } = useApp();
   const may = useMay();
@@ -359,7 +361,7 @@ function NextStepBar({ trip, step, onGo, viewing }: { trip: Trip; step: NextStep
     settle: "Open settlement",
   };
   const go = () => {
-    if (step.move === "dispatch") run({ type: "trip.dispatch", tripId: trip.id }, `${byId(data.trucks, trip.truckId)?.plate} is on its way.`);
+    if (step.move === "dispatch") run({ type: "trip.dispatch", tripId: trip.id, custom: leaving.custom }, `${byId(data.trucks, trip.truckId)?.plate} is on its way.`);
     else onGo(target);
   };
   const canRemind =
@@ -386,10 +388,11 @@ function NextStepBar({ trip, step, onGo, viewing }: { trip: Trip; step: NextStep
           {step.since && actor !== "done" && <span className="muted"> · {ago(data, step.since)}</span>}
         </span>
         {step.detail && <span className="next-detail">{step.detail}</span>}
+        {step.move === "dispatch" && leaving.block}
       </div>
       <div className="next-actions">
         {showGo && verb[step.move] && (
-          <Button tone={inline ? "brass" : "secondary"} size="lg" onClick={go}>
+          <Button tone={inline ? "brass" : "secondary"} size="lg" disabled={step.move === "dispatch" && !leaving.ready} onClick={go}>
             {verb[step.move]}
           </Button>
         )}

@@ -19,6 +19,7 @@ import {
   type StopLeg, type StopPlan,
 } from './calc.js';
 import { waitingOn, type Approval } from './approvals.js';
+import { stepCustom } from './placements.js';
 import { issueButtons, requestAmount, requestButtons } from './funding.service.js';
 import { assertStageAllows, currentStage, recordEvent, stageSnapshot, tripTypeFor } from './stages.js';
 import { carriedIn, driverBalance } from './ledger.js';
@@ -253,6 +254,8 @@ export async function createTrip(input: S.CreateTripInput, ctx: OpsContext, extr
   };
   const trip = new Trip({
     ...draft, ...(await budgets(draft, truck)), number: await nextNumber('trips', 'TRIP', at),
+    // A transfer or a nomination's trip has no one to ask here: anything required is asked before it leaves.
+    custom: extra.transferredFromTripId || extra.nominationId ? input.custom : await stepCustom('trips', 'create', input.custom),
     openingFuelL: truck.fuelL, tripTypeId: tripType?._id, stages: await stageSnapshot(tripType?._id), transferredFromTripId: extra.transferredFromTripId, createdBy: ctx.actorId, updatedBy: ctx.actorId,
   });
   recordEvent(trip, 'created', at, ctx.actorId);
@@ -425,7 +428,7 @@ export async function getFunding(id: string) {
 
 /* ---------- On the road ---------- */
 
-export async function dispatchTrip(id: string, ctx: OpsContext) {
+export async function dispatchTrip(id: string, ctx: OpsContext, input?: S.DispatchInput) {
   need(ctx, 'trips', 'update');
   const at = new Date();
   const trip = await tripDoc(id);
@@ -441,6 +444,7 @@ export async function dispatchTrip(id: string, ctx: OpsContext) {
   const stops = trip.get('stops');
   stops[0].arrivedAt ??= at;
   stops[0].leftAt = at;
+  trip.set('custom', await stepCustom('trips', 'dispatch', input?.custom, (trip.toObject() as Plain).custom as Plain | undefined, ['create']));
   recordEvent(trip, 'dispatched', at, ctx.actorId);
   // A trip that took over a load from another truck leaves already loaded.
   if (await Consignment.exists({ tripId: trip._id })) recordEvent(trip, 'loaded', at, ctx.actorId);
@@ -637,6 +641,7 @@ export async function endTrip(id: string, input: S.EndTripInput, ctx: OpsContext
   for (let i = 0; i < stops.length; i += 1) stampArrival(stops, i, at);
   stops.at(-1)!.leftAt = undefined;
   const endPlace = stops.at(-1)!.placeId;
+  trip.set('custom', await stepCustom('trips', 'close', input.custom, (trip.toObject() as Plain).custom as Plain | undefined));
   recordEvent(trip, 'ended', at, ctx.actorId);
   trip.set({ endedAt: at, closingFuelL: input.closingFuelL, active: false, tracking: { ...(trip.get('tracking')?.toObject?.() ?? { heading: 0 }), km: tripKm(stops), speed: 0, at }, updatedBy: ctx.actorId });
   trip.markModified('stops');

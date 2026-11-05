@@ -3,6 +3,7 @@ import type { Plain } from '../../core/masters/types.js';
 import { PaymentMethod } from '../finance/models/paymentMethod.model.js';
 import { approveAs, highestEligible, notifyLevel, routeApproval, waitingOn, type Approval } from './approvals.js';
 import { FundRequest, OPEN_REQUEST } from './models/funding.model.js';
+import { customValues, stepCustom } from './placements.js';
 import { Trip } from './models/trip.model.js';
 import { announce, moneyValues } from './notices.js';
 import { assertStageAllows, fireEvent } from './stages.js';
@@ -22,7 +23,7 @@ async function requestValues(request: Plain): Promise<Record<string, string>> {
 }
 
 const requestNotice = (request: Plain, money: Record<string, string>, extra: Record<string, string | undefined>) => ({
-  variables: { ...money, ...extra },
+  variables: { ...money, ...extra, ...customValues('request', request.custom) },
   ref: { kind: 'fund-requests', id: request._id },
 });
 
@@ -140,7 +141,7 @@ export async function createRequest(input: S.CreateRequestInput, ctx: OpsContext
   const request = new FundRequest({
     number: await nextNumber('fund-requests', input.kind === 'fuel' ? 'FUEL' : 'ADV', at),
     tripId: trip._id, kind: input.kind, ...(input.kind === 'fuel' ? { litres: input.litres } : { amount: input.amount }),
-    suggested, overBudget: over, reason: input.reason, status: 'pending', approval,
+    suggested, overBudget: over, reason: input.reason, status: 'pending', approval, custom: await stepCustom('fund-requests', 'ask', input.custom),
     trail: [trailEntry(ctx, 'requested', at, 'app', input.reason)], createdBy: ctx.actorId, updatedBy: ctx.actorId,
   });
   await save(request);
@@ -181,6 +182,7 @@ export async function decideRequest(id: string, input: S.DecideInput, ctx: OpsCo
     await announce('fund_request.rejected', trip, ctx, requestNotice(plain, await requestValues(plain), { reason: input.note }));
     return present(request.toObject());
   }
+  request.set('custom', await stepCustom('fund-requests', 'approve', input.custom, plain.custom as Plain | undefined));
   const levels = approval.levels.length;
   const from = approval.current;
   approveAs(ctx, approval, upTo, at);
@@ -236,6 +238,7 @@ export async function issueRequest(id: string, input: S.IssueInput, ctx: OpsCont
     const { baseMinor, rate } = await toBase(amount.amountMinor, amount.currencyId, at);
     request.set({ baseAmountMinor: baseMinor, rate });
   }
+  request.set('custom', await stepCustom('fund-requests', 'pay', input.custom, (request.toObject() as Plain).custom as Plain | undefined));
   request.set({ status: 'issued', paymentMethodId: input.paymentMethodId, medium, reference: input.reference, station: input.station, issuedAt: at, updatedBy: ctx.actorId });
   request.get('trail').push(trailEntry(ctx, 'issued', at, input.via ?? 'app', [medium, input.reference].filter(Boolean).join(' ')));
   await save(request);

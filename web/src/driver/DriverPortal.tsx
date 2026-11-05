@@ -1,3 +1,4 @@
+import { FieldInput } from "../desks/usePlacement";
 import { useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -25,6 +26,7 @@ const STOP_LABEL: Record<string, string> = { start: "Start", load: "Loading", vi
 interface Stop { id: string; kind: string; place: string; legKm?: number; arrivedAt?: string; arrivedVia?: string }
 interface Doc { id: string; kind: Kind; status: string; at: string; note?: string; returnReason?: string; simulated?: boolean; file?: { fileId?: string; name?: string; mime?: string; sampleId?: string } }
 interface Home {
+  questions?: { key: string; label: string; type: string; required: boolean; options?: string[]; min?: number; max?: number; helpText?: string }[];
   driver: { id: string; name: string; code?: string };
   trip: null | {
     id: string; number: string; truck: string; trailer?: string; customer: string; product: string; dispatchedAt?: string;
@@ -199,6 +201,8 @@ export function DriverPortal({ me }: { me: Me }) {
         )}
       </section>
 
+      {(h.questions?.length ?? 0) > 0 && <Questions questions={h.questions!} />}
+
       <Conversation
         messages={messages.data ?? []}
         waiting={outbox.items.filter((i) => i.type === "send" && i.note && !i.file).map((i) => ({ id: i.id, text: i.note!, at: i.at }))}
@@ -268,6 +272,25 @@ function Conversation({ messages, waiting, onPick, onSend }: { messages: Msg[]; 
         <input value={text} onChange={(e) => setText(e.target.value)} placeholder="Write to the office" aria-label="Message to the office" maxLength={1000} />
         <Button tone="primary" type="submit" aria-label="Send"><Send /></Button>
       </form>
+    </section>
+  );
+}
+
+/** What the company asks the driver about this trip and load. Answers wait on the phone like everything else it sends. */
+function Questions({ questions }: { questions: NonNullable<Home["questions"]> }) {
+  const [values, setValues] = useState<Record<string, unknown>>({});
+  const outbox = useOutbox();
+  const sent = new Set(outbox.items.filter((i) => i.type === "fields").flatMap((i) => Object.keys(i.values ?? {})));
+  const open = questions.filter((q) => !sent.has(q.key));
+  if (!open.length) return null;
+  const answered = Object.fromEntries(Object.entries(values).filter(([k, v]) => v !== undefined && v !== "" && open.some((q) => q.key === k)));
+  return (
+    <section className="drv-card">
+      <h3>Questions from the office</h3>
+      <div className="drv-defect">
+        {open.map((q) => <FieldInput key={q.key} field={q} value={values[q.key]} onChange={(v) => setValues((old) => ({ ...old, [q.key]: v }))} />)}
+        <Button disabled={!Object.keys(answered).length} onClick={() => void enqueue({ type: "fields", values: answered, label: "Answers for the office" })}>Send to the office</Button>
+      </div>
     </section>
   );
 }

@@ -139,6 +139,7 @@ const consignmentSchema = new Schema<any>({
   delivered: { type: measureSchema, default: undefined },
   /** True from loading until delivery; one load in transit per trip. */
   inTransit: { type: Boolean, default: true },
+  custom: { type: Schema.Types.Mixed, default: undefined },
   shortage: { type: shortageSchema, default: undefined },
   /** Going back to the consignor instead of on to the consignee (#64). */
   returned: { type: new Schema({ at: Date, by: { type: ObjectId, ref: 'User' }, reason: String, placeId: { type: ObjectId, ref: 'Place' } }, { _id: false }), default: undefined },

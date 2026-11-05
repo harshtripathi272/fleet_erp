@@ -62,6 +62,16 @@ const OPEN = "fleet.masters.open";
 const remembered = () => { try { return sessionStorage.getItem(OPEN); } catch { return null; } };
 const remember = (key: string) => { try { sessionStorage.setItem(OPEN, key); } catch { /* private mode: nothing to keep */ } };
 
+/** Records filled in step by step, and the steps where a company field can be asked (#67). The API holds the same list. */
+const OPERATIONAL_RECORDS = [
+  { key: "trips", label: "Trips", steps: [{ value: "create", label: "Created" }, { value: "dispatch", label: "Dispatched" }, { value: "close", label: "Closed" }] },
+  { key: "consignments", label: "Loads", steps: [{ value: "loading", label: "Loaded" }, { value: "delivery", label: "Delivered" }] },
+  { key: "fund-requests", label: "Fuel and cash requests", steps: [{ value: "ask", label: "Asked for" }, { value: "approve", label: "Approved" }, { value: "pay", label: "Paid" }] },
+  { key: "expenses", label: "Expenses", steps: [{ value: "submit", label: "Recorded" }, { value: "approve", label: "Approved" }] },
+  { key: "settlements", label: "Settlements", steps: [{ value: "post", label: "Posted" }] },
+  { key: "nominations", label: "Nominations", steps: [{ value: "create", label: "Created" }] },
+];
+
 export function MastersScreen({ initialEntity }: { initialEntity?: string }) {
   const { me } = useApp();
   const masters = useMasters();
@@ -672,6 +682,26 @@ function FieldInput({ name, path, schema, required, def, defs, value, onChange, 
         <select disabled={readOnly} value={(value as string) ?? ""} onChange={(e) => onChange(e.target.value || undefined)}>
           <option value="">—</option>
           {choices.map((d) => <option key={d.key} value={d.key}>{d.label}</option>)}
+          {name === "entity" && (
+            <optgroup label="Trips and money">
+              {OPERATIONAL_RECORDS.map((r) => <option key={r.key} value={r.key}>{r.label}</option>)}
+            </optgroup>
+          )}
+        </select>
+      </Field>
+    );
+  }
+  // The step of a trip, load or request where the field is asked.
+  if (def.key === "field-definitions" && name === "placement") {
+    return (
+      <Field label={title} hint={hint}>
+        <select disabled={readOnly} value={(value as string) ?? ""} onChange={(e) => onChange(e.target.value || undefined)}>
+          <option value="">—</option>
+          {OPERATIONAL_RECORDS.map((r) => (
+            <optgroup key={r.key} label={r.label}>
+              {r.steps.map((s) => <option key={`${r.key}-${s.value}`} value={s.value}>{s.label}</option>)}
+            </optgroup>
+          ))}
         </select>
       </Field>
     );

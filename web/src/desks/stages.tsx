@@ -1,3 +1,4 @@
+import { usePlacement } from "./usePlacement";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useAreas } from "../api/areas";
 import type { ReactNode } from "react";
@@ -8,7 +9,7 @@ import { can, useMay } from "../api/session";
 import { byId, carriedIn, round, cumulativeKm, driverBalance, fuelEstimate, fuelNow, funding, leg, legLoaded, measureFuel, shortageFor, toZmw, tripFuelUsed, tripHours, tripKm, validateStops, volume20 } from "../domain/calc";
 import { activeTrip, placeName } from "../domain/helpers";
 import type { NextStep, StageId } from "../domain/turn";
-import type {
+import type { Expense,
   AppData,
   Consignment,
   Currency,
@@ -47,6 +48,23 @@ export function StagePanel({ trip, stage, step }: { trip: Trip; stage: StageId; 
         {stage === "settle" && <SettlePanel trip={trip} />}
       </motion.div>
     </AnimatePresence>
+  );
+}
+
+/** Approve or reject an expense, with the fields the company asks at that step. */
+export function ExpenseDecision({ expense }: { expense: Expense }) {
+  const { run } = useApp();
+  const company = usePlacement("expenses", "approve", expense.custom);
+  return (
+    <span className="row-buttons">
+      {company.block}
+      <Button size="sm" tone="primary" disabled={!company.ready} onClick={() => run({ type: "expense.decide", custom: company.custom, id: expense.id, approve: true }, "Approved.")}>
+        Approve
+      </Button>
+      <Button size="sm" tone="danger" onClick={() => run({ type: "expense.decide", id: expense.id, approve: false, reason: "No valid receipt" }, "Rejected.")}>
+        Reject
+      </Button>
+    </span>
   );
 }
 
@@ -516,6 +534,7 @@ function FundCard({
   max?: number;
 }) {
   const { data, run } = useApp();
+  const company = usePlacement("fund-requests", "ask");
   const [amount, setAmount] = useState(String(suggested || ""));
   const [currency, setCurrency] = useState<Currency>((data.baseCurrency?.code ?? "ZMW") as Currency);
   const [reason, setReason] = useState("");
@@ -529,7 +548,7 @@ function FundCard({
   const noRate = kind === "cash" && value > 0 && !Number.isFinite(inZmw);
   const over = inZmw > suggested + 0.001;
   const submit = async () => {
-    if (await run({ type: "request.create", tripId: trip.id, kind, amount: value, currency: kind === "fuel" ? data.baseCurrency?.code ?? "ZMW" : currency, reason }, "Sent for approval.")) setReason("");
+    if (await run({ type: "request.create", custom: company.custom, tripId: trip.id, kind, amount: value, currency: kind === "fuel" ? data.baseCurrency?.code ?? "ZMW" : currency, reason }, "Sent for approval.")) setReason("");
   };
   return (
     <section className="card fund-card">
@@ -569,7 +588,7 @@ function FundCard({
                   </select>
                 )}
               </span>
-              <Button tone="primary" disabled={!(value > 0) || noRate || (over && !reason.trim())} onClick={submit}>
+              <Button tone="primary" disabled={!(value > 0) || noRate || (over && !reason.trim()) || !company.ready} onClick={submit}>
                 <Send /> Request
               </Button>
             </div>
@@ -603,6 +622,8 @@ function RequestRow({ request }: { request: FundRequest }) {
   // Who may decide comes from the company's approval policy (worked out by the API's rule).
   const canDecide = (request.status === "pending" || request.status === "owner") && Boolean(request.mayDecide);
   const canPay = request.status === "approved" && may("request.issue");
+  const approving = usePlacement("fund-requests", "approve", request.custom);
+  const paying = usePlacement("fund-requests", "pay", request.custom);
   const canCancel = ["pending", "owner", "approved"].includes(request.status) && may("request.cancel");
   const status: Record<FundRequest["status"], [string, "ok" | "wait" | "bad" | "info" | "mute"]> = {
     pending: [`With ${request.waitingOn ?? "the approver"}`, "wait"],
@@ -649,7 +670,8 @@ function RequestRow({ request }: { request: FundRequest }) {
         <div className="req-actions">
           {canDecide && !mode && (
             <>
-              <Button tone="primary" size="sm" onClick={() => run({ type: "request.decide", id: request.id, approve: true }, request.level && request.level.current < request.level.of ? "Approved. Sent for the next approval." : "Approved.")}>
+              {approving.block}
+              <Button tone="primary" size="sm" disabled={!approving.ready} onClick={() => run({ type: "request.decide", custom: approving.custom, id: request.id, approve: true }, request.level && request.level.current < request.level.of ? "Approved. Sent for the next approval." : "Approved.")}>
                 <Check /> Approve
               </Button>
               <Button tone="danger" size="sm" onClick={() => setMode("reject")}>
@@ -686,13 +708,14 @@ function RequestRow({ request }: { request: FundRequest }) {
                 ))}
               </select>
               <input className="input" value={reference} onChange={(e) => setReference(e.target.value)} placeholder={`Reference, e.g. ${request.kind === "fuel" ? "FV-20931" : "AM-7731-2290"}`} />
+              {paying.block}
               <Button
                 tone="primary"
                 size="sm"
-                disabled={!reference.trim()}
+                disabled={!reference.trim() || !paying.ready}
                 onClick={async () =>
                   (await run(
-                    { type: "request.issue", id: request.id, medium, reference, station: request.kind === "fuel" ? placeName(data, byId(data.trips, request.tripId)?.stops[0]?.placeId) : undefined },
+                    { type: "request.issue", custom: paying.custom, id: request.id, medium, reference, station: request.kind === "fuel" ? placeName(data, byId(data.trips, request.tripId)?.stops[0]?.placeId) : undefined },
                     request.kind === "fuel" ? "Fuel issued. The driver is told." : "Advance paid. The driver is told.",
                   )) && setMode(null)
                 }
@@ -863,6 +886,7 @@ function MeasureForm({
   const weighed = product.measure === "weighed";
   const net = gross !== "" && tare !== "" && Number(gross) > Number(tare) ? round(Number(gross) - Number(tare), product.decimals) : undefined;
   const quantity = weighed ? net : qty === "" ? undefined : Number(qty);
+  const company = usePlacement("consignments", mode === "load" ? "loading" : "delivery", consignment?.custom);
   // Only the kinds of cargo the company carries, and always the product already on this trip.
   const offered = data.products.filter((p) => data.settings.cargoKinds.includes(p.measure) || p.id === productId);
   const measure = fuel && qty && temp && density ? measureFuel(product, { ambientL: Number(qty), tempC: Number(temp), density: Number(density) }) : undefined;
@@ -874,6 +898,7 @@ function MeasureForm({
         : undefined;
   const submit = async () => {
     const common = {
+      custom: company.custom,
       qty: quantity ?? 0,
       ...(weighed ? { gross: Number(gross), tare: Number(tare), ticketNo: ticketNo.trim() || undefined } : {}),
       ambientL: fuel ? Number(qty) : undefined,
@@ -977,6 +1002,7 @@ function MeasureForm({
           )}
         </div>
       )}
+      {company.block}
       {!fuel && quantity != null && (weighed || preview) && (
         <div className="calc-strip" aria-live="polite">
           {weighed && <strong>{inUnit(quantity, product.unit)} net</strong>}
@@ -991,7 +1017,7 @@ function MeasureForm({
       )}
       <div className="measure-actions">
         {doc && <ReturnDoc doc={doc} />}
-        <Button tone="primary" size="lg" disabled={!docNo.trim() || !(Number(quantity) > 0) || (fuel && (!temp || !density))} onClick={submit}>
+        <Button tone="primary" size="lg" disabled={!docNo.trim() || !(Number(quantity) > 0) || (fuel && (!temp || !density)) || !company.ready} onClick={submit}>
           <Check /> {mode === "load" ? "Confirm loading" : "Confirm delivery"}
         </Button>
       </div>
@@ -1431,6 +1457,7 @@ function ClosePanel({ trip }: { trip: Trip }) {
   const used = trip.openingFuelL + issued - Number(closing || 0);
   const variance = used - trip.fuelBudgetL;
   const ops = may("trip.end");
+  const closingFields = usePlacement("trips", "close", trip.custom);
   if (trip.endedAt) {
     const actual = tripFuelUsed(data, trip) ?? 0;
     return (
@@ -1474,9 +1501,10 @@ function ClosePanel({ trip }: { trip: Trip }) {
           />
         </div>
       </div>
+      {ops && closingFields.block}
       {ops && (
         <div className="measure-actions">
-          <Button tone="primary" size="lg" onClick={() => run({ type: "trip.end", tripId: trip.id, closingFuelL: Number(closing) }, `${truck.plate} is free at ${placeName(data, trip.stops.at(-1)?.placeId)}.`)}>
+          <Button tone="primary" size="lg" disabled={!closingFields.ready} onClick={() => run({ type: "trip.end", custom: closingFields.custom, tripId: trip.id, closingFuelL: Number(closing) }, `${truck.plate} is free at ${placeName(data, trip.stops.at(-1)?.placeId)}.`)}>
             <Check /> End trip and free the truck
           </Button>
         </div>
@@ -1564,14 +1592,7 @@ function SettlePanel({ trip }: { trip: Trip }) {
                 </span>
               </div>
               {e.status === "pending" && e.mayDecide ? (
-                <span className="row-buttons">
-                  <Button size="sm" tone="primary" onClick={() => run({ type: "expense.decide", id: e.id, approve: true }, "Approved.")}>
-                    Approve
-                  </Button>
-                  <Button size="sm" tone="danger" onClick={() => run({ type: "expense.decide", id: e.id, approve: false, reason: "No valid receipt" }, "Rejected.")}>
-                    Reject
-                  </Button>
-                </span>
+                <ExpenseDecision expense={e} />
               ) : (
                 <Status tone={e.status === "approved" ? "ok" : e.status === "rejected" ? "bad" : "wait"}>{e.status === "approved" ? "Approved" : e.status === "rejected" ? "Rejected" : "With Finance"}</Status>
               )}
@@ -1593,6 +1614,7 @@ export function ReceiptReview({ doc }: { doc: DriverDoc }) {
   const finance = may("expense.record");
   // Recording approves it too for someone who approves expenses; otherwise it waits for whoever does.
   const approves = can(me, "expense-approvals", "create");
+  const company = usePlacement("expenses", approves ? "approve" : "submit", undefined, approves ? ["submit"] : []);
   const driver = byId(data.drivers, doc.driverId);
   return (
     <div className="receipt-review">
@@ -1623,15 +1645,16 @@ export function ReceiptReview({ doc }: { doc: DriverDoc }) {
             </select>
           </Field>
         </div>
+        {finance && company.block}
         {finance ? (
           <div className="row-buttons">
             <ReturnDoc doc={doc} />
             <Button
               tone="primary"
-              disabled={!(Number(amount) > 0)}
+              disabled={!(Number(amount) > 0) || !company.ready}
               onClick={() =>
                 run(
-                  { type: "expense.record", driverId: doc.driverId, tripId: doc.tripId, categoryId, amount: Number(amount), currency, receiptNo: read.docNo, docId: doc.id },
+                  { type: "expense.record", custom: company.custom, driverId: doc.driverId, tripId: doc.tripId, categoryId, amount: Number(amount), currency, receiptNo: read.docNo, docId: doc.id },
                   approves ? "Approved. It's off the driver's balance." : "Recorded. It waits for approval.",
                 )
               }

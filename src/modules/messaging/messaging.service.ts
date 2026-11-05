@@ -11,6 +11,8 @@ import * as S from './messaging.schema.js';
 import { CHANNEL_NAMES, EVENT_NAMES, EVENTS, MESSAGE_CHANNELS, MessageTemplate, NotificationRule, PRINT_DOCUMENTS, PrintLayout, VARIABLES } from './models/messaging.model.js';
 
 const PLACEHOLDER = /\{\{\s*([^{}]*?)\s*\}\}/g;
+/** A company field on an operational record: {{trip.custom.bookingRef}} (#67). */
+const COMPANY_FIELD = /^(trip|consignment|request)\.custom\.[a-z][a-zA-Z0-9]{0,39}$/;
 const push = (errors: Record<string, string[]>, key: string, message: string) => { (errors[key] ??= []).push(message); };
 
 /** Placeholder names used in a text; reports malformed braces. */
@@ -18,7 +20,7 @@ export function placeholders(text: string): { names: string[]; problems: string[
   const names = [...text.matchAll(PLACEHOLDER)].map((m) => m[1]!.trim());
   const problems: string[] = [];
   if (/\{\{|\}\}/.test(text.replace(PLACEHOLDER, ''))) problems.push('Unbalanced {{ or }}');
-  for (const n of names) if (!(VARIABLES as readonly string[]).includes(n)) problems.push(`Unknown placeholder {{${n}}}; use one of ${VARIABLES.join(', ')}`);
+  for (const n of names) if (!(VARIABLES as readonly string[]).includes(n) && !COMPANY_FIELD.test(n)) problems.push(`Unknown placeholder {{${n}}}; use one of ${VARIABLES.join(', ')}`);
   return { names: [...new Set(names)], problems };
 }
 
@@ -121,7 +123,7 @@ export async function previewTemplate(id: string, input: S.PreviewInput) {
   const template = await MessageTemplate.findById(id).lean();
   if (!template) throw new NotFoundError('Message template not found');
   const given = Object.fromEntries((input.variables ?? []).map((v) => [v.name, String(v.value)]));
-  const unknown = Object.keys(given).filter((k) => !(VARIABLES as readonly string[]).includes(k));
+  const unknown = Object.keys(given).filter((k) => !(VARIABLES as readonly string[]).includes(k) && !COMPANY_FIELD.test(k));
   if (unknown.length) throw new ValidationError('Unknown variables', { variables: unknown.map((k) => `Unknown variable ${k}`) });
   // The company's own name, currency and address stand in for those placeholders, never another company's.
   const own: Record<string, string> = { 'company.name': await productName(), currency: (await baseCurrency().catch(() => null))?.code ?? '', link: `${env.APP_URL}/#t/abc` };
