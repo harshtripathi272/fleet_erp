@@ -79,7 +79,7 @@ export const connectionDefinition = defineMaster({
     }
     if (channel === 'email') {
       if (!data.host) add('host', 'The SMTP server, e.g. smtp.gmail.com');
-      if (!data.from) add('from', 'The From address, e.g. Marichi Fleet <fleet@company.com>');
+      if (!data.from) add('from', 'The From address, e.g. Acme Haulage <fleet@company.com>');
       if (data.user && !data.secretEnv) add('secretEnv', 'Name the server setting that holds the SMTP password');
     }
     if (Object.keys(errors).length) throw new ValidationError('Connection is not valid', errors);

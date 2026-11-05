@@ -273,7 +273,7 @@ export function toAppData(ref: Reference, ops: Operations): AppData {
   return {
     version: 4,
     settings: {
-      company: ref.company?.tradingName ?? ref.company?.legalName ?? "Marichi Fleet",
+      company: ref.company?.brand?.productName ?? ref.company?.tradingName ?? ref.company?.legalName ?? "",
       office: hq?.name ?? "",
       officeAddress: hq?.address
         ? [hq.address.line1, hq.address.line2, cities.get(String(hq.address.cityId))?.name].filter(Boolean).join(", ")

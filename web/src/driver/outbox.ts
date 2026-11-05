@@ -37,7 +37,7 @@ export interface OutboxState {
   online: boolean;
 }
 
-const DB = "marichi-driver";
+const DB = "fleet-driver";
 const STORE = "outbox";
 const RETRY_MS = 20_000;
 

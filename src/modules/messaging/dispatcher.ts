@@ -1,4 +1,5 @@
 import { areaOfEvent, isAreaOn } from '../company/areas.js';
+import { productName } from '../company/brand.service.js';
 import type { Readable } from 'node:stream';
 import mongoose, { Types } from 'mongoose';
 import { ConflictError, NotFoundError, ValidationError } from '../../core/errors/index.js';
@@ -75,9 +76,11 @@ async function recipientsFor(rule: Plain, input: DispatchInput): Promise<Recipie
 }
 
 async function valuesFor(input: DispatchInput): Promise<Record<string, string>> {
-  const company = await Company.findOne().select('legalName tradingName').lean() as Plain | null;
+  const company = await Company.findOne().select('legalName tradingName brand').lean() as Plain | null;
   const values: Record<string, string> = { date: new Date().toISOString().slice(0, 10) };
   if (company) values['company.name'] = String(company.tradingName ?? company.legalName);
+  // The company's own sign-off for messages (#71), empty when it has none.
+  if (company) values['company.signature'] = String((company.brand as Plain | undefined)?.signature ?? '');
   if (input.driverId && Types.ObjectId.isValid(input.driverId)) {
     const d = await Driver.findById(input.driverId).select('name phone').lean() as Plain | null;
     if (d) { values['driver.name'] = String(d.name); values['driver.phone'] = String(d.phone ?? ''); }
@@ -276,7 +279,7 @@ export async function resend(id: string, actorId?: string) {
   return present((await OutboundMessage.findById(copy._id).lean())!);
 }
 
-const TEST_TEXT = 'This is a test message from Marichi Fleet. If you received it, this connection works.';
+const testText = (product: string) => `This is a test message from ${product}. If you received it, this connection works.`;
 
 /** "Send a test message" on a connection, switched on or not. The result is kept on the connection and in the outbox. */
 export async function testConnection(id: string, to: string, actorId?: string) {
@@ -284,8 +287,9 @@ export async function testConnection(id: string, to: string, actorId?: string) {
   if (!connection) throw new NotFoundError('Message connection not found');
   const channel = connection.channel as Channel;
   if (!isAddressFor(channel, to)) throw new ValidationError('Check the address', { to: [channel === 'email' ? 'An e-mail address' : 'A phone number with its country code, e.g. +260971234567'] });
+  const product = await productName();
   const message = await OutboundMessage.create({
-    event: 'connection.test', channel, to, subject: channel === 'email' ? 'Marichi Fleet test message' : undefined, body: TEST_TEXT,
+    event: 'connection.test', channel, to, subject: channel === 'email' ? `${product} test message` : undefined, body: testText(product),
     status: 'queued', nextAttemptAt: new Date(), connectionId: connection._id as Types.ObjectId, ref: { kind: 'message-connections', id }, createdBy: actorId, at: new Date(),
   });
   // One attempt, on this connection, whether or not it is switched on.
