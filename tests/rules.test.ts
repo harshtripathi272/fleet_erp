@@ -447,12 +447,12 @@ describe('messages and configuration', () => {
     const preview = await post(`/message-templates/${ids.mtApproval}/preview`, { variables: [{ name: 'driver.name', value: 'Martha Phiri' }, { name: 'amount', value: '1,200.00' }] }).expect(200);
     assert.match(preview.body.data.body, /^Martha Phiri needs ZMW 1,200.00 for TRIP\/26\/0137/);
     assert.ok(preview.body.data.sampleValuesUsedFor.includes('route.name'));
-    assert.equal(preview.body.data.delivery, 'Marichi Talks');
+    assert.equal(preview.body.data.delivery, 'WhatsApp connection');
     const sms = await post(`/message-templates/${ids.mtSms}/preview`, {}).expect(200);
     assert.equal(sms.body.data.sms.encoding, 'GSM-7');
     assert.equal(sms.body.data.sms.segments, 1);
     const email = await post(`/message-templates/${ids.mtEmail}/preview`, {}).expect(200);
-    assert.equal(email.body.data.delivery, 'SMTP');
+    assert.equal(email.body.data.delivery, 'E-mail connection');
     assert.ok(email.body.data.subject.includes('ALC 4821'));
     await post(`/message-templates/${ids.mtSms}/preview`, { variables: [{ name: 'nope', value: 'x' }] }).expect(422);
   });

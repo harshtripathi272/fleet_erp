@@ -47,7 +47,7 @@ export const envSchema = z.object({
   SMTP_PASS: optionalText,
   /** API key of the exchange-rate provider chosen under Exchange rates → Rate feed (a secret; never stored or returned). */
   RATE_FEED_API_KEY: optionalText,
-  SMTP_FROM: z.string().trim().min(3).default('Marichi Fleet <no-reply@marichi.local>'),
+  SMTP_FROM: z.string().trim().min(3).default('no-reply@fleet.local'),
 
   /** Folder of the built web app; defaults to web/dist next to the API. The app is served only when it has been built. */
   WEB_DIR: z.string().trim().min(1).optional(),

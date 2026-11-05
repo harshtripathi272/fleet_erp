@@ -28,6 +28,7 @@ import geographyRouter from './modules/geography/geography.router.js';
 import healthRouter from './modules/health/health.router.js';
 import messagingRouter from './modules/messaging/messaging.router.js';
 import metaRouter, { publicMetaRouter } from './modules/meta/meta.router.js';
+import brandRouter from './modules/company/brand.router.js';
 import operationsRouter, { webhookRouter } from './modules/operations/operations.router.js';
 import organisationRouter from './modules/organisation/organisation.router.js';
 import partiesRouter from './modules/parties/parties.router.js';
@@ -49,6 +50,7 @@ app.use(rejectOperators);
 if (env.CONSOLE_ENABLED) {
   app.use('/console', express.static(fileURLToPath(new URL('../public/console', import.meta.url)), { index: 'index.html', maxAge: 0 }));
   app.use('/api/v1/meta', publicMetaRouter);
+  app.use('/api/v1/brand', brandRouter);
 }
 
 app.use('/api/v1/health', healthRouter);

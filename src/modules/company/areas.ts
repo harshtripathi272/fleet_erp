@@ -24,11 +24,19 @@ const EVENT_AREAS: [RegExp, AreaKey][] = [
 export const areaOfEvent = (event: string) => EVENT_AREAS.find(([re]) => re.test(event))?.[1];
 
 /** The areas this company has on. Areas that are always on, or not built, are settled here, not stored. */
+// Read on every request to an area's master, so kept for a few seconds; a company save clears it at once.
+const TTL_MS = 5_000;
+let cached: { at: number; on: Set<string> } | null = null;
+export const clearAreasCache = () => { cached = null; };
+
 export async function areasOn(): Promise<Set<string>> {
+  if (cached && Date.now() - cached.at < TTL_MS) return cached.on;
   const company = await Company.findOne().select('modules').lean<{ modules?: string[] }>();
   const chosen = company?.modules ?? DEFAULT_AREAS;
-  const on = (a: (typeof AREAS)[number]) => ('always' in a && a.always) || (a.state !== 'not-built' && chosen.includes(a.key));
-  return new Set(AREAS.filter((a) => on(a) && (!('within' in a) || chosen.includes(a.within))).map((a) => a.key));
+  const isOn = (a: (typeof AREAS)[number]) => ('always' in a && a.always) || (a.state !== 'not-built' && chosen.includes(a.key));
+  const on = new Set<string>(AREAS.filter((a) => isOn(a) && (!('within' in a) || chosen.includes(a.within))).map((a) => a.key));
+  cached = { at: Date.now(), on };
+  return on;
 }
 export const isAreaOn = async (key: string) => (await areasOn()).has(key);
 

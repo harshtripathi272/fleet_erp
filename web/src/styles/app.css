@@ -14,6 +14,43 @@
 .wordmark.light {
   color: #e8f1ec;
 }
+/* The company's own logo in place of the mark and name (#71): fits the bar, keeps its proportions. */
+.wordmark-logo {
+  display: block;
+  max-width: 180px;
+  max-height: 34px;
+  object-fit: contain;
+}
+.brand-mark-img {
+  border-radius: 8px;
+  object-fit: cover;
+}
+/* The company's watermark over a document preview, and TEST COPY on a test installation. Never takes a click. */
+.watermark {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  pointer-events: none;
+}
+.watermark > * {
+  grid-area: 1 / 1;
+}
+.watermark span {
+  color: var(--ink);
+  font: 700 clamp(28px, 7vw, 64px)/1 var(--ui);
+  white-space: nowrap;
+}
+.watermark img {
+  max-width: 60%;
+  max-height: 40%;
+}
+.watermark-test {
+  opacity: 0.1;
+  transform: rotate(-30deg);
+}
 .brand-mark {
   flex: none;
   filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.25));

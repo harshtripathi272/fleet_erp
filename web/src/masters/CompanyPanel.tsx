@@ -6,6 +6,8 @@ import { can } from "../api/session";
 import { useApp } from "../store";
 import { useAreaList } from "../api/areas";
 import { Empty, Field, SaveBar, Segmented, SettingRow, SettingsSection, Switch, UnitInput } from "../ui/kit";
+import { contrastWithWhite, useReloadBrand } from "../ui/brand";
+import { BrandUpload } from "./BrandUpload";
 
 /**
  * The company's own settings (GET/PUT /company): details, base currency and time zone, which areas are
@@ -34,7 +36,8 @@ const DUE_SOON = [
 const DENSITY = { min: { key: "densityMinKgM3", fallback: 600 }, max: { key: "densityMaxKgM3", fallback: 1000 } };
 const ALL_NUMBERS = [...NUMBERS.map((n) => ({ key: n.key, fallback: n.fallback })), DENSITY.min, DENSITY.max];
 
-type Form = Record<string, unknown> & { operations: Record<string, unknown>; maintenance: Record<string, unknown>; modules: string[] };
+type Form = Record<string, unknown> & { operations: Record<string, unknown>; maintenance: Record<string, unknown>; modules: string[]; brand: Record<string, string>; watermark: Record<string, unknown> };
+const BRAND_KEYS = ["productName", "shortName", "accent", "emailSenderName", "signature", "logoFileId", "logoDarkFileId", "iconFileId", "logoPdfFileId"] as const;
 
 function formFrom(company: Rec | null): Form {
   const ops = company?.operations ?? {};
@@ -54,6 +57,8 @@ function formFrom(company: Rec | null): Form {
     website: company?.website ?? "",
     allowSelfRegistration: Boolean(company?.allowSelfRegistration),
     modules: company?.modules ?? ["masters", "trips", "finance", "tracking", "driver-app"],
+    brand: Object.fromEntries(BRAND_KEYS.map((k) => [k, String(company?.brand?.[k] ?? "")])),
+    watermark: { mode: "off", text: "", opacity: 0.08, angle: 35, tripSheet: true, statement: true, invoice: true, screens: false, ...(company?.watermark ?? {}) },
     operations: {
       tripStartsFromTruck: ops.tripStartsFromTruck ?? true,
       stopBeforeLoading: ops.stopBeforeLoading ?? true,
@@ -88,10 +93,18 @@ export function CompanyPanel() {
   const set = (key: string, value: unknown) => setForm((f) => ({ ...f, [key]: value }));
   const setUpkeep = (key: string, value: unknown) => setForm((f) => ({ ...f, maintenance: { ...f.maintenance, [key]: value } }));
   const setOp = (key: string, value: unknown) => setForm((f) => ({ ...f, operations: { ...f.operations, [key]: value } }));
+  const setBrand = (change: Record<string, string>) => setForm((f) => ({ ...f, brand: { ...f.brand, ...change } }));
+  const setMark = (key: string, value: unknown) => setForm((f) => ({ ...f, watermark: { ...f.watermark, [key]: value } }));
+  const reloadBrand = useReloadBrand();
 
   if (company.isLoading) return <p className="muted">Loading the company…</p>;
 
   const save = async () => {
+    const accent = form.brand.accent;
+    if (accent && contrastWithWhite(accent) < 4.5) {
+      toast(`White text on ${accent} is hard to read (${contrastWithWhite(accent).toFixed(1)}:1). Pick a darker accent colour.`, "error");
+      return;
+    }
     setBusy(true);
     try {
       const body: Rec = {
@@ -104,12 +117,15 @@ export function CompanyPanel() {
         allowSelfRegistration: form.allowSelfRegistration, modules: form.modules,
         operations: { ...form.operations, ...Object.fromEntries(ALL_NUMBERS.map((n) => [n.key, Number(form.operations[n.key])])) },
         maintenance: { ...form.maintenance, ...Object.fromEntries(DUE_SOON.map((n) => [n.key, Number(form.maintenance[n.key])])) },
+        brand: Object.fromEntries(BRAND_KEYS.map((k) => [k, textOrNull(form.brand[k])])),
+        watermark: { ...form.watermark, text: textOrNull(form.watermark.text), opacity: Number(form.watermark.opacity), angle: Number(form.watermark.angle) },
       };
       await api("/company", { method: "PUT", body });
       toast("Company saved.");
       await client.invalidateQueries({ queryKey: ["company"] });
       await client.invalidateQueries({ queryKey: ["areas"] });
       await client.invalidateQueries({ queryKey: ["meta-masters"] });
+      reloadBrand();
       refreshReference();
     } catch (error) {
       toast((error as Error).message, "error");
@@ -146,6 +162,64 @@ export function CompanyPanel() {
               </select>
             </Field>
           </div>
+        </SettingsSection>
+
+        <SettingsSection title="Brand" description="How the product looks to everyone who uses it: staff, drivers and customers. It appears on the sign-in page, every screen, the driver app, documents, e-mails and messages.">
+          <SettingRow title="Product name" description="What people call the app: the browser tab, the sign-in page and e-mail subjects. Empty: the trading name." htmlFor="br-name">
+            <input id="br-name" className="input" placeholder={String(form.tradingName || form.legalName || "")} value={form.brand.productName} onChange={(e) => setBrand({ productName: e.target.value })} />
+          </SettingRow>
+          <SettingRow title="Short name" description="Where space is tight: the driver app on a phone's home screen, and text messages." htmlFor="br-short">
+            <input id="br-short" className="input" maxLength={24} placeholder={form.brand.productName || "Short name"} value={form.brand.shortName} onChange={(e) => setBrand({ shortName: e.target.value })} />
+          </SettingRow>
+          <SettingRow title="Logo" description="On the sign-in page, the top of every printed document, and in place of the name where there is room. PNG with a transparent background works best.">
+            <BrandUpload label="Logo" fileId={form.brand.logoFileId} onChange={(id) => setBrand({ logoFileId: id })} onPdfCopy={(id) => setBrand({ logoPdfFileId: id })} disabled={!writable} />
+          </SettingRow>
+          <SettingRow title="Logo on dark backgrounds" description="For the dark sidebar. Empty: the logo above.">
+            <BrandUpload label="Logo on dark backgrounds" dark fileId={form.brand.logoDarkFileId} onChange={(id) => setBrand({ logoDarkFileId: id })} disabled={!writable} />
+          </SettingRow>
+          <SettingRow title="Icon" description="A square image for the browser tab and the phone's home screen.">
+            <BrandUpload label="Icon" square fileId={form.brand.iconFileId} onChange={(id) => setBrand({ iconFileId: id })} disabled={!writable} />
+          </SettingRow>
+          <SettingRow title="Accent colour" description="Buttons, links and the sidebar take this colour. It must be dark enough for white text on it to read easily." htmlFor="br-accent">
+            <span className="accent-input">
+              <input type="color" aria-label="Pick the accent colour" value={form.brand.accent || "#1d4d3f"} onChange={(e) => setBrand({ accent: e.target.value })} />
+              <input id="br-accent" className="input" placeholder="#1d4d3f (the default)" value={form.brand.accent} onChange={(e) => setBrand({ accent: e.target.value.trim() })} />
+              {form.brand.accent && <button type="button" className="link-btn" onClick={() => setBrand({ accent: "" })}>Default</button>}
+            </span>
+          </SettingRow>
+          <SettingRow title="E-mails come from" description="The sender name people see. The address stays the one set in Sending messages. Empty: the product name." htmlFor="br-sender">
+            <input id="br-sender" className="input" placeholder={form.brand.productName || String(form.tradingName || "")} value={form.brand.emailSenderName} onChange={(e) => setBrand({ emailSenderName: e.target.value })} />
+          </SettingRow>
+          <SettingRow title="Message signature" description="Available to every message template as {{company.signature}}, e.g. a phone number to call." htmlFor="br-sign">
+            <input id="br-sign" className="input" maxLength={160} value={form.brand.signature} onChange={(e) => setBrand({ signature: e.target.value })} />
+          </SettingRow>
+        </SettingsSection>
+
+        <SettingsSection title="Watermark" description="A faint mark under the content of printed documents, and on their previews. An installation used for testing always shows TEST COPY as well.">
+          <SettingRow title="Watermark" description="The company's text, its logo, or none.">
+            <Segmented choice label="Watermark" value={String(form.watermark.mode)} disabled={!writable}
+              options={[{ value: "off", label: "None" }, { value: "text", label: "Text" }, { value: "logo", label: "Logo" }]} onChange={(v) => setMark("mode", v)} />
+          </SettingRow>
+          {form.watermark.mode === "text" && (
+            <SettingRow title="Text" description="Short and in capitals reads best, e.g. CONFIDENTIAL or the company's name." htmlFor="wm-text">
+              <input id="wm-text" className="input" maxLength={40} value={String(form.watermark.text ?? "")} onChange={(e) => setMark("text", e.target.value)} />
+            </SettingRow>
+          )}
+          {form.watermark.mode !== "off" && (
+            <>
+              <SettingRow title="Strength" description="How visible it is: 3% is barely there, 15% is clearly seen behind the text.">
+                <UnitInput label="Watermark strength" unit="%" step={1} value={Math.round(Number(form.watermark.opacity) * 100)} onChange={(v) => setMark("opacity", Math.min(0.5, Math.max(0.03, Number(v) / 100)))} />
+              </SettingRow>
+              <SettingRow title="Angle" description="Degrees from level. 35 runs corner to corner on a page.">
+                <UnitInput label="Watermark angle" unit="°" step={5} value={Number(form.watermark.angle)} onChange={(v) => setMark("angle", Math.max(-90, Math.min(90, Number(v))))} />
+              </SettingRow>
+              {([["tripSheet", "Trip sheets"], ["statement", "Driver statements"], ["invoice", "Invoices"], ["screens", "Previews on screen"]] as const).map(([key, title]) => (
+                <SettingRow key={key} title={title}>
+                  <Switch label={`Watermark on ${title.toLowerCase()}`} checked={Boolean(form.watermark[key])} onChange={(on) => setMark(key, on)} />
+                </SettingRow>
+              ))}
+            </>
+          )}
         </SettingsSection>
 
         <SettingsSection title="Money and time">

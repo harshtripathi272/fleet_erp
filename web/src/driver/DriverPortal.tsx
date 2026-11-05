@@ -40,7 +40,7 @@ interface Msg { id: string; at: string; from: string; title?: string; text?: str
  * never a blank page. A failed fetch with no answer at all means the connection is down.
  */
 function useKept<T>(userId: string, name: string, path: string) {
-  const key = `marichi.driver.${userId}.${name}`;
+  const key = `fleet.driver.${userId}.${name}`;
   return useQuery({
     queryKey: [`driver-${name}`],
     queryFn: async () => {
