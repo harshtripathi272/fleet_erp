@@ -27,8 +27,31 @@ const fieldSpec = {
   order: { type: Number, default: 100 },
 };
 
-/** An extra field a company adds to a built-in master, stored under `custom.<key>`. */
-const fieldDefinitionSchema = masterSchema({ entity: { type: String, required: true }, ...fieldSpec });
+/**
+ * The operational records a company can add fields to (#67), and the steps of each where a field is asked.
+ * A trip is filled in step by step on the desks, so its fields say which step they belong to.
+ */
+export const PLACEMENTS: Record<string, string[]> = {
+  trips: ['create', 'dispatch', 'close'],
+  consignments: ['loading', 'delivery'],
+  'fund-requests': ['ask', 'approve', 'pay'],
+  expenses: ['submit', 'approve'],
+  settlements: ['post'],
+  nominations: ['create'],
+};
+export const FIELD_ANSWERERS = ['office', 'driver'] as const;
+/** The documents a company field can print on. */
+export const FIELD_DOCUMENTS = ['trip_sheet', 'driver_statement'] as const;
+
+/** An extra field a company adds to a built-in master or an operational record, stored under `custom.<key>`. */
+const fieldDefinitionSchema = masterSchema({
+  entity: { type: String, required: true },
+  ...fieldSpec,
+  /** Operational records only: the step where it is asked, who answers it, and the documents it prints on. */
+  placement: String,
+  askedOf: { type: String, enum: FIELD_ANSWERERS },
+  printOn: { type: [{ type: String, enum: FIELD_DOCUMENTS }], default: undefined },
+});
 fieldDefinitionSchema.index({ entity: 1, key: 1 }, { unique: true });
 export const FieldDefinition = masterModel('FieldDefinition', fieldDefinitionSchema);
 

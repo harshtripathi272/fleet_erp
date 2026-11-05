@@ -10,7 +10,7 @@ import * as MasterService from '../../core/masters/service.js';
 import { setCustomFieldLoader, type ListQuery, type ServiceContext } from '../../core/masters/service.js';
 import type { MasterDefinition, Plain } from '../../core/masters/types.js';
 import * as S from './configuration.schema.js';
-import { CustomMaster, CustomRecord, FieldDefinition, List } from './models/configuration.model.js';
+import { CustomMaster, CustomRecord, FieldDefinition, List, PLACEMENTS } from './models/configuration.model.js';
 
 const push = (errors: Record<string, string[]>, key: string, message: string) => { (errors[key] ??= []).push(message); };
 
@@ -53,7 +53,7 @@ async function checkFieldSpec(field: Plain, errors: Record<string, string[]>, wh
   if (type !== 'text' && field.pattern) push(errors, where, `${field.key}: pattern applies to text fields`);
 }
 
-async function resolveOptions(fields: Plain[]): Promise<DynamicField[]> {
+export async function resolveOptions(fields: Plain[]): Promise<DynamicField[]> {
   const listIds = fields.map((f) => f.listId).filter(Boolean);
   const lists = listIds.length ? await List.find({ _id: { $in: listIds } }).lean() : [];
   return fields.map((f) => {
@@ -83,6 +83,12 @@ export async function withChoices(fields: Plain[]) {
 
 export const fieldDefinitionDefinition = defineMaster({
   key: 'field-definitions', label: 'Custom fields', singular: 'Custom field', group: GROUPS.configuration, lockedChoices: ['type'],
+  labels: { placement: 'Asked at', askedOf: 'Answered by', printOn: 'Prints on' },
+  choiceLabels: { askedOf: { office: 'The office', driver: 'The driver' }, printOn: { trip_sheet: 'Trip sheet', driver_statement: 'Driver statement' } },
+  hints: {
+    placement: 'For a trip, load, request, expense, settlement or nomination: the step where the field is asked. That step cannot finish until a required field is filled.',
+    askedOf: 'A driver answers on the phone, about their trip and load. A required one holds the office step until it is answered.',
+  },
   description: 'Extra fields a company adds to any built-in master (e.g. "Union membership no." on Drivers). They show under "Company fields" on that master and are checked on every save.',
   model: FieldDefinition, createSchema: S.createFieldDefinitionSchema, updateSchema: S.updateFieldDefinitionSchema,
   searchFields: ['key', 'label', 'entity'], sortFields: ['entity', 'order', 'key', 'createdAt'], defaultSort: 'entity', titleField: 'label',
@@ -92,6 +98,16 @@ export const fieldDefinitionDefinition = defineMaster({
   filters: { entity: { schema: z.string().regex(/^[a-z][a-z0-9-]{1,39}$/), apply: (v: string) => ({ entity: v }), description: 'Custom fields of this master' } },
   async prepare(data: Plain, ctx) {
     const errors: Record<string, string[]> = {};
+    // An operational record: the field names the step where it's asked (#67).
+    const steps = PLACEMENTS[String(data.entity)];
+    if (steps) {
+      if (!steps.includes(String(data.placement))) push(errors, 'placement', `Choose the step where it's asked: ${steps.join(', ')}`);
+      if (data.askedOf === 'driver' && !['trips', 'consignments'].includes(String(data.entity))) push(errors, 'askedOf', 'Drivers answer only about their trip and their load');
+      await checkFieldSpec(data, errors, 'field');
+      if (Object.keys(errors).length) throw new ValidationError('Custom field is not valid', errors);
+      return data;
+    }
+    if (data.placement || data.askedOf || data.printOn) push(errors, 'placement', 'Only trips, loads, requests, expenses, settlements and nominations have steps');
     const target = getMaster(String(data.entity));
     if (!target || target.customFields === false) push(errors, 'entity', `Custom fields are not supported on "${data.entity}"`);
     else if (Object.keys(target.model.schema.paths).some((p) => p === data.key || p.startsWith(`${data.key}.`))) push(errors, 'key', `"${data.key}" is already a built-in field of ${target.label}`);

@@ -6,6 +6,7 @@ import { ObjectId, schemaOptions } from '../../core/masters/schema.js';
  * How this company runs trips. The first client's way of working ships as the defaults; every value
  * can be changed per company (see the founding principle in the README).
  */
+export const CARGO_KINDS = ['volume', 'weighed', 'counted'] as const;
 export const LOADED_TRIP_OUTCOMES = ['return', 'transfer', 'write_off'] as const;
 export const WRITE_OFF_CARRIERS = ['driver', 'company', 'insurance'] as const;
 /** The company's Maintenance rules (#63). */
@@ -21,6 +22,8 @@ export const MAINTENANCE_DEFAULTS = {
 };
 
 export const OPERATIONS_DEFAULTS = {
+  /** The kinds of cargo the company carries: its screens show only those measures (#75). */
+  cargoKinds: [...CARGO_KINDS] as string[],
   /** What may happen to a load that can't be delivered (#64). */
   loadedTripOutcomes: [...LOADED_TRIP_OUTCOMES] as string[],
   /** Who may carry a write-off, and who does unless the person deciding says otherwise. */
@@ -53,6 +56,7 @@ export const OPERATIONS_DEFAULTS = {
 export const SETTLEMENT_PERIODS = ['any', 'weekly', 'fortnightly', 'monthly'] as const;
 
 const operationsSchema = new Schema({
+  cargoKinds: { type: [{ type: String, enum: CARGO_KINDS }], default: () => [...OPERATIONS_DEFAULTS.cargoKinds] },
   loadedTripOutcomes: { type: [{ type: String, enum: LOADED_TRIP_OUTCOMES }], default: () => [...OPERATIONS_DEFAULTS.loadedTripOutcomes] },
   writeOffCarriers: { type: [{ type: String, enum: WRITE_OFF_CARRIERS }], default: () => [...OPERATIONS_DEFAULTS.writeOffCarriers] },
   writeOffDefaultCarrier: { type: String, enum: WRITE_OFF_CARRIERS, default: OPERATIONS_DEFAULTS.writeOffDefaultCarrier },

@@ -1,3 +1,4 @@
+import { stepCustom } from './placements.js';
 import { NotFoundError } from '../../core/errors/index.js';
 import type { Plain } from '../../core/masters/types.js';
 import { Product } from '../cargo/models/product.model.js';
@@ -57,7 +58,7 @@ export async function createNomination(input: S.NominationInput, ctx: OpsContext
   need(ctx, 'nominations', 'create');
   const at = new Date();
   const customer = await checkNomination(input);
-  const nomination = new Nomination({ ...input, number: await nextNumber('nominations', 'NOM', at), status: 'draft', createdBy: ctx.actorId, updatedBy: ctx.actorId });
+  const nomination = new Nomination({ ...input, custom: await stepCustom('nominations', 'create', input.custom), number: await nextNumber('nominations', 'NOM', at), status: 'draft', createdBy: ctx.actorId, updatedBy: ctx.actorId });
   await save(nomination);
   await log(ctx, at, `${nomination.get('number')} for ${customer.name}: ${count(input.trucks.length, 'truck')}`, { entity: 'nominations', entityId: nomination._id });
   return present(nomination.toObject());
@@ -70,6 +71,7 @@ export async function updateNomination(id: string, input: S.NominationUpdateInpu
   if (nomination.get('version') !== input.version) throw conflict('This nomination was changed by someone else. Reload it and try again.');
   if (!['draft', 'sent'].includes(nomination.get('status'))) throw conflict(nomination.get('status') === 'converted' ? 'This nomination already has trips.' : 'This nomination can no longer be edited.');
   const { version: _version, ...changes } = input;
+  if (changes.custom) changes.custom = await stepCustom('nominations', 'create', changes.custom, (nomination.toObject() as Plain).custom as Plain | undefined);
   const customer = await checkNomination({ ...(nomination.toObject() as S.NominationInput), ...changes } as S.NominationInput);
   nomination.set({ ...changes, updatedBy: ctx.actorId });
   await save(nomination);

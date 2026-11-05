@@ -22,7 +22,7 @@ Owners: LD = lakshya-desktop, LT = lakshya-t3, HD = harsh-desktop, HT = harsh-t3
 | Custom masters with their own records | Built | — | Moves into the master of masters in #68 |
 | Simple lists (blood groups, colours…) | Built | — | Choice lists for any field |
 | Master of masters: rename, hide, require, default, order and section every field; rename, reorder and retire choices; rename masters | Built | #65 | Phase 1 of `docs/entities.md` |
-| Company fields on trips, requests, expenses, loadings and settlements, asked at the right step | Planned | #67 | Phase 2 |
+| Company fields on trips, requests, expenses, loadings and settlements, asked at the right step | Building | #67 | LT, PR #85 |
 | Custom masters in the same editor; references to any record type; field permissions by role; saved list views | Coming soon | #68 | Phase 3 |
 | Safe field type changes, definition history, copy a company's configuration | Coming soon | #69 | Phase 4 |
 | Areas switch whole features on and off (masters, desks, menus, messages follow) | Built | #56 | |
@@ -76,11 +76,11 @@ Owners: LD = lakshya-desktop, LT = lakshya-t3, HD = harsh-desktop, HT = harsh-t3
 | Nominations from customers, accepted into trips | Built | — | |
 | Trip from the truck: paired trailer and usual driver fill in | Built | — | A company setting |
 | Trip stages: plan, funding, loading, transit, offloading, close, settlement | Built | — | Names and the optional stages are the company's (#73) |
-| Loading and delivery measured and corrected to 20 °C, with density checks | Built | — | Liquids only until #75 |
+| Loading and delivery measured and corrected to 20 °C, with density checks | Built | — | |
 | Shortages with allowances by policy or product, and decisions | Built | — | |
 | Stop a trip that left but never loaded | Built | — | A company setting |
 | A loaded trip that can't deliver: return, transfer or write off, as the company allows | Planned | #64 | LT |
-| Cargo in any unit: weighed (weighbridge), counted, volume-corrected | Planned | #75 | LT |
+| Cargo in any unit: weighed (weighbridge), counted, volume-corrected | Building | #75 | LT, PR #85 |
 | Every trip edge case tested in the browser | Planned | #16 | |
 | Multi-drop and multi-pickup trips | Proposed | — | Stops support it; desks show one load and one delivery |
 | Hired (subcontracted) transporters: their trucks, rates and settlement | Proposed | — | The "hired transporter" party role exists |

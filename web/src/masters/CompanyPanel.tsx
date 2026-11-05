@@ -15,6 +15,7 @@ import { ComingSoonRows, ComingSoonTag } from "../ui/comingSoon";
  * switched on, self sign-up, and the trip settings that replace values once fixed in code.
  */
 
+const CARGO_KINDS = [{ value: "volume", label: "Liquids corrected to 20 °C" }, { value: "weighed", label: "Weighed goods" }, { value: "counted", label: "Counted goods" }];
 const OUTCOMES = [{ value: "return", label: "Return it to the consignor" }, { value: "transfer", label: "Move it to another truck" }, { value: "write_off", label: "Write it off" }];
 const CARRIERS = [{ value: "driver", label: "The driver" }, { value: "company", label: "The company" }, { value: "insurance", label: "An insurance claim" }];
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
@@ -65,6 +66,7 @@ function formFrom(company: Rec | null): Form {
     operations: {
       tripStartsFromTruck: ops.tripStartsFromTruck ?? true,
       stopBeforeLoading: ops.stopBeforeLoading ?? true,
+      cargoKinds: ops.cargoKinds ?? ["volume", "weighed", "counted"],
       loadedTripOutcomes: ops.loadedTripOutcomes ?? ["return", "transfer", "write_off"],
       writeOffCarriers: ops.writeOffCarriers ?? ["driver", "company", "insurance"],
       writeOffDefaultCarrier: ops.writeOffDefaultCarrier ?? "company",
@@ -278,6 +280,9 @@ export function CompanyPanel() {
           </SettingRow>
           <SettingRow title="Allow stopping a trip before loading" description="Operations can stop a trip that left but never loaded, and free the truck for other work.">
             <Switch label="Allow stopping a trip before loading" checked={Boolean(form.operations.stopBeforeLoading)} onChange={(on) => setOp("stopBeforeLoading", on)} />
+          </SettingRow>
+          <SettingRow title="Kinds of cargo the company carries" description="Loading offers only products of these kinds. Liquids are corrected to 20 °C, weighed goods take a weighbridge ticket, and counted goods take a count in the product's unit.">
+            <ChoiceChips label="Kinds of cargo the company carries" options={CARGO_KINDS} value={form.operations.cargoKinds as string[]} onChange={(v) => v.length && setOp("cargoKinds", v)} />
           </SettingRow>
           <SettingRow title="A loaded trip that can't deliver may" description="What the office can do with the load after an accident or a refusal. Switch off what the company never does.">
             <ChoiceChips label="A loaded trip that can't deliver may" options={OUTCOMES} value={form.operations.loadedTripOutcomes as string[]} onChange={(v) => setOp("loadedTripOutcomes", v)} />

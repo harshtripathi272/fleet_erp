@@ -48,7 +48,8 @@ router.get('/trips/:id/funding', finance, authorize('trips', 'read'), validate(i
 router.get('/trips/:id/sheet', authorize('trips', 'read'), validate(id), C.tripSheet);
 router.get('/trips/:id/sheet.pdf', authorize('trips', 'read'), validate(id), C.tripSheetPdf);
 router.post('/trips/:id/cancel', authorize('trips', 'update'), validate({ ...id, body: S.reasonSchema }), C.cancelTrip);
-router.post('/trips/:id/dispatch', authorize('trips', 'update'), validate(id), C.dispatchTrip);
+router.get('/operations/company-fields', C.companyFields);
+router.post('/trips/:id/dispatch', authorize('trips', 'update'), validate({ ...id, body: S.dispatchSchema }), C.dispatchTrip);
 router.post('/trips/:id/position', tracking, authorize('trips', 'update'), validate({ ...id, body: S.positionSchema }), C.reportPosition);
 router.post('/trips/:id/stops/:stopId/arrive', authorize('trips', 'update'), validate({ params: S.tripStopParams }), C.arriveAtStop);
 router.post('/trips/:id/remind', authorize('messages', 'create'), validate(id), C.remind);
@@ -113,6 +114,7 @@ router.get('/driver-app/home', C.driverHome);
 router.get('/driver-app/settlements/:id/statement.pdf', validate(id), C.driverStatementPdf);
 router.get('/driver-app/messages', validate({ query: S.driverMessagesQuery }), C.driverMessages);
 // The driver app queues these on a weak signal and may send one twice; the Idempotency-Key keeps it to one.
+router.post('/driver-app/fields', idempotent, validate({ body: S.driverFieldsSchema }), C.driverFields);
 router.post('/driver-app/send', idempotent, validate({ body: S.driverSendSchema }), C.driverSend);
 router.post('/driver-app/defects', requireArea('maintenance'), idempotent, validate({ body: defectSchema }), C.driverDefect);
 router.post('/driver-app/stops/:stopId/arrive', idempotent, validate({ params: S.driverStopParams }), C.driverArrive);

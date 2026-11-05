@@ -250,16 +250,21 @@ export const volume20 = (measure?: Measure) => measure?.certStd20L ?? measure?.s
 
 export function shortageFor(data: AppData, consignment: Consignment) {
   const product = byId(data.products, consignment.productId);
-  const loaded = volume20(consignment.load);
-  const delivered = volume20(consignment.delivered);
-  if (!product || product.kind !== "fuel" || loaded == null || delivered == null) return undefined;
-  const lossL = Math.max(0, round(loaded - delivered, 0));
+  if (!product) return undefined;
+  const fuel = product.kind === "fuel";
+  const loaded = fuel ? volume20(consignment.load) : consignment.load.qty;
+  const delivered = fuel ? volume20(consignment.delivered) : consignment.delivered?.qty;
+  if (loaded == null || delivered == null) return undefined;
+  // The same rule as the API: fuel in whole litres at 20 °C, other cargo in its own unit.
+  const places = fuel ? 0 : product.decimals;
+  const lossL = Math.max(0, round(loaded - delivered, places));
   const pct = product.shortagePct ?? 0.3;
-  const allowanceL = round((loaded * pct) / 100, 0);
-  const netShortL = Math.max(0, round(lossL - allowanceL, 0));
+  const allowanceL = round((loaded * pct) / 100, places);
+  const netShortL = Math.max(0, round(lossL - allowanceL, places));
   // The product's shortage price; with none set, nothing is charged rather than a made-up rate.
   const pricePerL = product.shortagePricePerL ?? 0;
   return {
+    unit: fuel ? "L" : product.unit,
     loaded20L: loaded,
     delivered20L: delivered,
     lossL,
@@ -343,7 +348,7 @@ export function driverLedger(data: AppData, driverId: string): LedgerEntry[] {
       tripId: trip.id,
       settlementId: trip.settlementId,
       kind: "shortage",
-      label: `Fuel shortage ${item.no} · ${item.shortage.netShortL.toLocaleString("en-GB")} L`,
+      label: `${item.shortage.unit === "L" ? "Fuel shortage" : "Shortage"} ${item.no} · ${item.shortage.netShortL.toLocaleString("en-GB")} ${item.shortage.unit}`,
       amountZmw: item.shortage.amountZmw,
     });
   }

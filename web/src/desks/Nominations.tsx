@@ -1,3 +1,4 @@
+import { usePlacement } from "./usePlacement";
 import { useMemo, useState } from "react";
 import { Check, MessageCircle, Pencil, Plus, Send, Truck as TruckIcon, X } from "lucide-react";
 import { useApp } from "../store";
@@ -179,6 +180,7 @@ function NominationCard({ n, onEdit, onConvert }: { n: Nomination; onEdit: () =>
 }
 
 function NominationForm({ open, editing, onClose }: { open: boolean; editing?: Nomination; onClose: () => void }) {
+  const company = usePlacement("nominations", "create", editing?.custom);
   const { data, run } = useApp();
   const now = new Date(Date.now() + data.settings.clockOffsetMs).toISOString();
   const [customerId, setCustomerId] = useState(editing?.customerId ?? data.customers[0].id);
@@ -223,6 +225,7 @@ function NominationForm({ open, editing, onClose }: { open: boolean; editing?: N
       await run(
         {
           type: "nomination.save",
+          custom: company.custom,
           id: editing?.id,
           version,
           customerId,
@@ -251,13 +254,14 @@ function NominationForm({ open, editing, onClose }: { open: boolean; editing?: N
           <Button tone="quiet" onClick={onClose}>
             Cancel
           </Button>
-          <Button tone="primary" disabled={!picked.length} onClick={save}>
+          <Button tone="primary" disabled={!picked.length || !company.ready} onClick={save}>
             <Check /> Save {picked.length ? `with ${picked.length} truck${picked.length === 1 ? "" : "s"}` : ""}
           </Button>
         </>
       }
     >
       <div className="stack">
+        {company.block}
         <div className="grid-2">
           <Field label="Customer">
             <select value={customerId} onChange={(e) => setCustomerId(e.target.value)}>

@@ -6,6 +6,7 @@ import { useApp } from "../store";
 import { byId, fuelEstimate, leg, stopsFromTruck, validateStops } from "../domain/calc";
 import { activeTrip, placeName } from "../domain/helpers";
 import type { RouteStop, Truck } from "../domain/types";
+import { usePlacement } from "./usePlacement";
 import { Button, Drawer, Field, Status } from "../ui/kit";
 import { fromLocalInput, km, L, localInput, zmw } from "../ui/format";
 import { StopEditor } from "./stages";
@@ -17,6 +18,7 @@ export function NewTrip({ open, onClose, onCreated }: { open: boolean; onClose: 
   const { data, run } = useApp();
   const busy = useMemo(() => new Set(data.trips.filter(activeTrip).flatMap((t) => [t.truckId, t.driverId, t.trailerId])), [data.trips]);
   const free = data.trucks.filter((t) => !busy.has(t.id));
+  const company = usePlacement("trips", "create");
   const held = useHeldTrucks();
   const [truckId, setTruckId] = useState("");
   const truck = byId(data.trucks, truckId) as Truck | undefined;
@@ -62,6 +64,7 @@ export function NewTrip({ open, onClose, onCreated }: { open: boolean; onClose: 
       await run(
         {
           type: "trip.create",
+          custom: company.custom,
           customerId,
           truckId: truck.id,
           driverId: driverId || undefined,
@@ -91,7 +94,7 @@ export function NewTrip({ open, onClose, onCreated }: { open: boolean; onClose: 
           <Button tone="quiet" onClick={onClose}>
             Cancel
           </Button>
-          <Button tone="primary" disabled={!truck || !driverId || Boolean(problem)} onClick={create}>
+          <Button tone="primary" disabled={!truck || !driverId || Boolean(problem) || !company.ready} onClick={create}>
             <Check /> Create trip
           </Button>
         </>
@@ -113,6 +116,7 @@ export function NewTrip({ open, onClose, onCreated }: { open: boolean; onClose: 
             </button>
           ))}
         </div>
+        {truck && company.block}
         {truck && (
           <>
             <div className="grid-2">

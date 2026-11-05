@@ -19,16 +19,36 @@ import {
 import { arriveAt, driverName, partyName, placeName, plateOf, truckFacts } from './trips.service.js';
 import type * as S from './operations.schema.js';
 import { attachable } from '../files/files.service.js';
+import { customValues, stepCustom } from './placements.js';
 import { operationsSettings } from './settings.js';
 
 const LABEL: Record<string, string> = { loading: 'loading invoice', delivery: 'delivery note', expense: 'receipt', fuel: 'fuel slip', other: 'message' };
 
-/** Product facts for measuring: whether it is corrected to 20 °C and its unit symbol. */
+export type CargoKind = 'volume' | 'weighed' | 'counted';
+const CARGO_KIND_NAME: Record<CargoKind, string> = { volume: 'volume-corrected liquids', weighed: 'weighed goods', counted: 'counted goods' };
+
+/** Product facts for measuring: the unit drives it. Corrected to 20 °C, weighed if its unit is a mass, otherwise counted in its unit. */
 async function productFacts(id: unknown) {
   const product = await activeRecord(Product, id, 'product');
-  const unit = await Unit.findById(product.unitId).select('symbol code').lean();
-  return { product, unit: String(unit?.symbol ?? unit?.code ?? ''), volumeCorrected: Boolean(product.volumeCorrected) };
+  const unit = await Unit.findById(product.unitId).select('symbol code dimension decimals').lean<{ symbol?: string; code?: string; dimension?: string; decimals?: number }>();
+  const volumeCorrected = Boolean(product.volumeCorrected);
+  const kind: CargoKind = volumeCorrected ? 'volume' : unit?.dimension === 'mass' ? 'weighed' : 'counted';
+  return { product, unit: String(unit?.symbol ?? unit?.code ?? ''), volumeCorrected, kind, decimals: Number(unit?.decimals ?? 2) };
 }
+
+/** The quantity recorded: a weighbridge ticket's net, or the figure given. */
+function quantityOf(kind: CargoKind, input: { qty?: number; gross?: number; tare?: number }, decimals: number) {
+  if (kind === 'weighed' && (input.gross != null || input.tare != null)) {
+    if (input.gross == null || input.tare == null) throw refuse('Enter both the gross and the tare from the weighbridge ticket.');
+    if (input.tare >= input.gross) throw refuse('The tare must be less than the gross.');
+    return round(input.gross - input.tare, decimals);
+  }
+  if (input.qty == null) throw refuse(kind === 'weighed' ? 'Enter the gross and the tare from the weighbridge ticket.' : 'Enter the quantity.');
+  return input.qty;
+}
+
+/** "1,200 kg", or litres as everywhere else. */
+const amountOf = (value: number, unit: string) => (unit === 'L' ? litres(value) : `${value.toLocaleString('en-GB')} ${unit}`);
 
 /* ---------- Driver documents ---------- */
 
@@ -234,21 +254,24 @@ export async function recordLoading(input: S.LoadingInput, ctx: OpsContext) {
   if (!trip.get('active')) throw conflict('This trip is closed.');
   if (await Consignment.exists({ tripId: trip._id, delivered: { $exists: false } })) throw conflict('This truck is already loaded.');
   assertStageAllows(trip.toObject(), 'loaded');
-  const { product, unit, volumeCorrected } = await productFacts(input.productId);
+  const { product, unit, volumeCorrected, kind, decimals } = await productFacts(input.productId);
+  const cargoKinds: string[] = (await operationsSettings()).cargoKinds;
+  if (!cargoKinds.includes(kind)) throw refuse(`This company doesn't carry ${CARGO_KIND_NAME[kind]}. An owner can change that in Company → Trips.`);
+  const quantity = quantityOf(kind, input, decimals);
   const truck = await truckFacts(trip.get('vehicleId'), false);
   const trailer = trip.get('trailerId') ? await Trailer.findById(trip.get('trailerId')).select('registrationNumber capacityL').lean() : null;
   if (volumeCorrected) {
     await fuelChecks(input, '');
-    if (trailer?.capacityL && (input.ambientL ?? input.qty) > Number(trailer.capacityL)) throw refuse(`${trailer.registrationNumber} holds ${litres(Number(trailer.capacityL))}.`);
-  } else if (unit === 't' && truck.capacityT && input.qty > truck.capacityT) throw refuse(`${truck.plate} carries ${truck.capacityT} t.`);
+    if (trailer?.capacityL && (input.ambientL ?? quantity) > Number(trailer.capacityL)) throw refuse(`${trailer.registrationNumber} holds ${litres(Number(trailer.capacityL))}.`);
+  } else if (truck.capacityT && (unit === 't' || unit === 'kg') && (unit === 'kg' ? quantity / 1000 : quantity) > truck.capacityT) throw refuse(`${truck.plate} carries ${truck.capacityT} t.`);
   const stops = trip.get('stops') as Array<{ kind: string; legKm: number }>;
   const index = stops.findIndex((s) => s.kind === 'load');
   await arriveAt(trip, index, at, ctx, 'office');
-  const load = measure({ volumeCorrected, unit }, { qty: input.qty, ambientL: input.ambientL ?? (volumeCorrected ? input.qty : undefined), tempC: input.tempC, density: input.density, certStd20L: input.certStd20L });
+  const load = measure({ volumeCorrected, unit }, { qty: quantity, ambientL: input.ambientL ?? (volumeCorrected ? quantity : undefined), tempC: input.tempC, density: input.density, certStd20L: input.certStd20L, gross: input.gross, tare: input.tare, ticketNo: input.ticketNo });
   const customer = await partyName(trip.get('customerId'));
   const consignment = new Consignment({
     number: await nextNumber('consignments', 'CN', at), tripId: trip._id, productId: product._id, invoiceNo: input.invoiceNo,
-    consignor: input.consignor || '—', consignee: input.consignee || customer, loadedAt: at, loadDocId: input.docId, load,
+    consignor: input.consignor || '—', consignee: input.consignee || customer, loadedAt: at, loadDocId: input.docId, load, custom: await stepCustom('consignments', 'loading', input.custom),
     createdBy: ctx.actorId, updatedBy: ctx.actorId,
   });
   await save(consignment, 'This truck is already loaded.');
@@ -258,14 +281,14 @@ export async function recordLoading(input: S.LoadingInput, ctx: OpsContext) {
   recordEvent(trip, 'loaded', at, ctx.actorId);
   await save(trip);
   await markRecorded(input.docId, trip._id, consignment.get('number'), `Loading confirmed · ${consignment.get('number')}`);
-  const qty = volumeCorrected ? `${litres(load.qty)} ${String(product.name).toLowerCase()} · ${litres(volume20(load) ?? load.qty)} at 20 °C` : `${load.qty} ${unit} ${String(product.name).toLowerCase()}`;
+  const qty = volumeCorrected ? `${litres(load.qty)} ${String(product.name).toLowerCase()} · ${litres(volume20(load) ?? load.qty)} at 20 °C` : `${amountOf(load.qty, unit)} ${String(product.name).toLowerCase()}`;
   if (trip.get('driverId')) {
     const offload = stops.find((s) => s.kind === 'offload') as { placeId?: unknown } | undefined;
     await post(driverThread(trip.get('driverId')), at, { title: 'Loading confirmed', text: `${qty}. Drive safe to ${await placeName(offload?.placeId)}.`, rows: [['Consignment', consignment.get('number')], ['Invoice', input.invoiceNo]] }, ctx);
   }
   await log(ctx, at, `Loaded ${qty} · ${consignment.get('number')}`, { tripId: trip._id });
   await announce('trip.loaded', trip.toObject() as Plain, ctx, {
-    variables: { 'place.name': await placeName((stops[index] as { placeId?: unknown } | undefined)?.placeId), 'document.number': input.invoiceNo },
+    variables: { 'place.name': await placeName((stops[index] as { placeId?: unknown } | undefined)?.placeId), 'document.number': input.invoiceNo, ...customValues('consignment', consignment.get('custom')) },
     ref: { kind: 'consignments', id: consignment._id },
   });
   return present(consignment.toObject());
@@ -273,23 +296,24 @@ export async function recordLoading(input: S.LoadingInput, ctx: OpsContext) {
 
 /* ---------- Delivery and shortage ---------- */
 
-/** Shortage beyond the allowance, priced per litre: the product's shortage policy first, then the product, then the company default. */
-async function shortageFor(consignment: Plain, delivered: Measure) {
-  const loaded20 = volume20(consignment.load as Measure);
-  const delivered20 = volume20(delivered);
+/** Shortage beyond the allowance, priced per unit: the product's shortage policy first, then the product, then the company default. Fuel at 20 °C, other cargo in its own unit. */
+async function shortageFor(consignment: Plain, delivered: Measure, facts: { volumeCorrected: boolean; decimals: number; unit: string }) {
+  const loaded20 = facts.volumeCorrected ? volume20(consignment.load as Measure) : (consignment.load as Measure).qty;
+  const delivered20 = facts.volumeCorrected ? volume20(delivered) : delivered.qty;
   if (loaded20 == null || delivered20 == null) return undefined;
   const product = (await Product.findById(consignment.productId).lean()) as Plain;
   const policy = (await ShortagePolicy.findOne({ status: 'active', $or: [{ productId: product._id }, { productGroupId: product.groupId }] }).sort({ productId: -1 }).lean()) as Plain | null;
   const percent = policy
     ? policy.allowanceKind === 'absolute' ? round((Number(policy.allowanceValue) / loaded20) * 100, 4) : Number(policy.allowanceValue)
     : Number(product.shortageAllowancePercent ?? (await operationsSettings()).defaultShortageAllowancePercent);
-  const figures = shortageLitres(loaded20, delivered20, percent);
+  const figures = shortageLitres(loaded20, delivered20, percent, facts.volumeCorrected ? 0 : facts.decimals);
   const price = (policy?.pricePerUnit ?? product.shortagePricePerUnit) as { amountMinor: number; currencyId: unknown } | undefined;
   const share = policy?.bearer === 'company' ? 0 : policy?.bearer === 'shared' ? Number(policy.driverSharePercent ?? 50) / 100 : 1;
   const amountMinor = price ? Math.round(figures.netShortL * price.amountMinor * share) : 0;
   const baseAmountMinor = price && amountMinor ? (await toBase(amountMinor, price.currencyId)).baseMinor : 0;
   const pending = figures.netShortL > 0 && baseAmountMinor > 0;
   return {
+    unit: facts.volumeCorrected ? 'L' : facts.unit,
     ...figures,
     ...(price ? { pricePerL: price, amount: { amountMinor, currencyId: price.currencyId } } : {}),
     baseAmountMinor,
@@ -308,17 +332,18 @@ export async function recordDelivery(id: string, input: S.DeliveryInput, ctx: Op
   if (!trip) throw new NotFoundError('Trip not found');
   if (!trip.get('active')) throw conflict('This trip is closed.');
   assertStageAllows(trip.toObject(), 'delivered');
-  const { product, unit, volumeCorrected } = await productFacts(consignment.get('productId'));
+  const { unit, volumeCorrected, kind, decimals } = await productFacts(consignment.get('productId'));
   if (volumeCorrected) await fuelChecks(input, ' at offloading');
+  const quantity = quantityOf(kind, input, decimals);
   const load = consignment.get('load');
-  const measured = measure({ volumeCorrected, unit }, { qty: input.qty, ambientL: input.ambientL ?? (volumeCorrected ? input.qty : undefined), tempC: input.tempC, density: input.density, certStd20L: input.certStd20L });
+  const measured = measure({ volumeCorrected, unit }, { qty: quantity, ambientL: input.ambientL ?? (volumeCorrected ? quantity : undefined), tempC: input.tempC, density: input.density, certStd20L: input.certStd20L, gross: input.gross, tare: input.tare, ticketNo: input.ticketNo });
   // Fuel is compared at 20 °C, where it is comparable: ambient litres grow and shrink with the temperature,
   // so a delivery can look fine warm and still be more than was loaded. Other cargo compares its quantity.
   const { deliveredOverLoadedPercent } = await operationsSettings();
   const loaded20 = volume20(load as Measure);
   const delivered20 = volume20(measured);
   const [loadedQty, deliveredQty, at20] = loaded20 != null && delivered20 != null
-    ? [loaded20, delivered20, true] : [Number(load.ambientL ?? load.qty), input.qty, false];
+    ? [loaded20, delivered20, true] : [Number(load.ambientL ?? load.qty), quantity, false];
   const limit = loadedQty * (1 + deliveredOverLoadedPercent / 100);
   if (deliveredQty > limit) {
     throw refuse(`Delivered ${Math.round(deliveredQty).toLocaleString('en-GB')}${at20 ? ' L at 20 °C' : ''} is more than loaded (${Math.round(loadedQty).toLocaleString('en-GB')}) by over ${deliveredOverLoadedPercent}%. Check the figures.`);
@@ -326,8 +351,8 @@ export async function recordDelivery(id: string, input: S.DeliveryInput, ctx: Op
   const stops = trip.get('stops') as Array<{ kind: string; legKm: number }>;
   const index = stops.findIndex((s) => s.kind === 'offload');
   await arriveAt(trip, index, at, ctx, 'office');
-  consignment.set({ delivered: { ...measured, at, podNo: input.podNo, docId: input.docId }, inTransit: false });
-  const shortage = volumeCorrected ? await shortageFor(consignment.toObject() as Plain, measured) : undefined;
+  consignment.set({ custom: await stepCustom('consignments', 'delivery', input.custom, (consignment.toObject() as Plain).custom as Plain | undefined), delivered: { ...measured, at, podNo: input.podNo, docId: input.docId }, inTransit: false });
+  const shortage = await shortageFor(consignment.toObject() as Plain, measured, { volumeCorrected, decimals, unit });
   if (shortage) consignment.set('shortage', shortage);
   consignment.set('updatedBy', ctx.actorId);
   await save(consignment, 'Already delivered.');
@@ -344,22 +369,23 @@ export async function recordDelivery(id: string, input: S.DeliveryInput, ctx: Op
   const number = String(trip.get('number'));
   const driverId = trip.get('driverId');
   if (driverId) {
+    const delivered = shortage ? `${amountOf(shortage.delivered20L, shortage.unit)}${volumeCorrected ? ' at 20 °C' : ''}` : `${amountOf(measured.qty, unit)} delivered`;
     const text = shortage
       ? shortage.netShortL > 0
-        ? `${litres(shortage.delivered20L)} at 20 °C. ${litres(shortage.lossL)} less than loaded; finance will review the ${litres(shortage.netShortL)} above the allowance.`
-        : `${litres(shortage.delivered20L)} at 20 °C, within the allowance. Well done.`
-      : `${measured.qty} ${unit} delivered.`;
+        ? `${delivered}. ${amountOf(shortage.lossL, shortage.unit)} less than loaded; finance will review the ${amountOf(shortage.netShortL, shortage.unit)} above the allowance.`
+        : `${delivered}, within the allowance. Well done.`
+      : `${delivered}.`;
     await post(driverThread(driverId), at, { title: 'Delivery confirmed', text, rows: [['Delivery note', input.podNo]] }, ctx);
   }
   if (shortage?.status === 'pending') {
     const charge = formatMoney(shortage.baseAmountMinor, await baseCurrency());
     const price = shortage.pricePerL ? formatMoney(shortage.pricePerL.amountMinor, await currencyInfo(shortage.pricePerL.currencyId)) : '—';
     await post(queue('shortage-decisions'), at, {
-      title: `Fuel shortage on ${number}`,
-      text: `${litres(shortage.netShortL)} beyond the ${shortage.allowancePercent}% allowance.`,
+      title: `${volumeCorrected ? 'Fuel shortage' : 'Shortage'} on ${number}`,
+      text: `${amountOf(shortage.netShortL, shortage.unit)} beyond the ${shortage.allowancePercent}% allowance.`,
       rows: [
-        ['Loaded at 20 °C', litres(shortage.loaded20L)], ['Delivered at 20 °C', litres(shortage.delivered20L)],
-        ['Allowance', litres(shortage.allowanceL)], ['Charge', `${charge} (${price}/L)`], ['Driver', (await driverName(driverId)) || '—'],
+        [volumeCorrected ? 'Loaded at 20 °C' : 'Loaded', amountOf(shortage.loaded20L, shortage.unit)], [volumeCorrected ? 'Delivered at 20 °C' : 'Delivered', amountOf(shortage.delivered20L, shortage.unit)],
+        ['Allowance', amountOf(shortage.allowanceL, shortage.unit)], ['Charge', `${charge} (${price}/${shortage.unit})`], ['Driver', (await driverName(driverId)) || '—'],
       ],
       buttons: [
         { label: `Charge ${charge}`, tone: 'primary', action: { type: 'shortage.decide', consignmentId: id, charge: true, via: 'whatsapp' } },
@@ -369,9 +395,9 @@ export async function recordDelivery(id: string, input: S.DeliveryInput, ctx: Op
       refId: `${id}-shortage`,
     }, ctx);
   }
-  await log(ctx, at, `Delivered · ${input.podNo}${shortage ? ` · ${litres(shortage.lossL)} transit loss` : ''}`, { tripId: trip._id });
+  await log(ctx, at, `Delivered · ${input.podNo}${shortage ? ` · ${amountOf(shortage.lossL, shortage.unit)} transit loss` : ''}`, { tripId: trip._id });
   await announce('trip.delivered', trip.toObject() as Plain, ctx, {
-    variables: { 'place.name': await placeName((stops[index] as { placeId?: unknown } | undefined)?.placeId), 'document.number': input.podNo },
+    variables: { 'place.name': await placeName((stops[index] as { placeId?: unknown } | undefined)?.placeId), 'document.number': input.podNo, ...customValues('consignment', consignment.get('custom')) },
     ref: { kind: 'consignments', id: consignment._id },
   });
   return present(consignment.toObject());
@@ -402,8 +428,8 @@ export async function decideShortage(id: string, input: S.ShortageDecisionInput,
   await resolve(`${id}-shortage`, input.charge ? `Charged ${charge}` : 'Waived');
   if (trip.driverId) {
     await post(driverThread(trip.driverId), at, {
-      title: input.charge ? 'Fuel shortage charged' : 'Fuel shortage waived',
-      text: input.charge ? `${litres(Number(shortage.netShortL))} beyond the allowance on ${trip.number}: ${charge} added to your account.` : `No charge for the shortage on ${trip.number}.`,
+      title: `${shortage.unit && shortage.unit !== 'L' ? 'Shortage' : 'Fuel shortage'} ${input.charge ? 'charged' : 'waived'}`,
+      text: input.charge ? `${amountOf(Number(shortage.netShortL), shortage.unit ?? 'L')} beyond the allowance on ${trip.number}: ${charge} added to your account.` : `No charge for the shortage on ${trip.number}.`,
     }, ctx);
   }
   await log(ctx, at, input.charge ? `Shortage charged: ${charge}` : `Shortage waived: ${input.note}`, { tripId: trip._id });

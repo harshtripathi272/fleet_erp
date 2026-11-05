@@ -112,7 +112,7 @@ async function transferLoad(trip: Doc, consignment: Doc, input: S.UndeliveredInp
   try {
     created = await createTrip({
       customerId: String(old.customerId), vehicleId: input.vehicleId, driverId, trailerId: input.trailerId, productId: old.productId ? String(old.productId) : undefined,
-      plannedQty: old.plannedQty as number | undefined, plannedStart: at, stops: plan,
+      plannedQty: old.plannedQty as number | undefined, plannedStart: at, stops: plan, custom: old.custom as Plain | undefined,
     } as S.CreateTripInput, ctx, { nominationId: old.nominationId, transferredFromTripId: trip._id });
   } catch (err) {
     // The checks above passed, so something changed in between: the load stays on the old trip.

@@ -261,9 +261,9 @@ function workedStep(data: AppData, trip: Trip): NextStep {
       actor: "finance",
       stage: "settle",
       move: "shortage",
-      title: "Decide the fuel shortage",
-      waiting: "Finance is reviewing the fuel shortage",
-      detail: `${litres(shortage.shortage!.netShortL)} beyond the allowance · ${zmw(shortage.shortage!.amountZmw)}`,
+      title: shortage.shortage!.unit === "L" ? "Decide the fuel shortage" : "Decide the shortage",
+      waiting: shortage.shortage!.unit === "L" ? "Finance is reviewing the fuel shortage" : "Finance is reviewing the shortage",
+      detail: `${shortage.shortage!.unit === "L" ? litres(shortage.shortage!.netShortL) : `${shortage.shortage!.netShortL.toLocaleString("en-GB")} ${shortage.shortage!.unit}`} beyond the allowance · ${zmw(shortage.shortage!.amountZmw)}`,
       since: shortage.delivered?.at,
       refId: shortage.id,
     };
