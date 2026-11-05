@@ -204,7 +204,7 @@ jobs:
           check "vehicles" 'String(db.vehicles.countDocuments())' '2'
           check "role" 'String(db.roles.countDocuments({ key: "dispatcher" }))' '1'
           check "connection" 'db.connections.findOne({ code: "SMS" }).provider' 'africastalking'
-          check "people" 'db.users.find().map((u) => u.email).sort().join(",")' 'grace@acme-haulage.example,peter@acme-haulage.example'
+          check "people" 'db.users.find().toArray().map((u) => u.email).sort().join(",")' 'grace@acme-haulage.example,peter@acme-haulage.example'
           curl -fsS http://127.0.0.1:3000/api/v1/brand | grep -q '"productName":"Acme Fleet"' || { echo "The brand is not served"; exit 1; }
           docker compose logs app | grep -q 'Company file applied' || { echo "No 'Company file applied' in the log"; exit 1; }
       - name: Started again, nothing is applied twice
