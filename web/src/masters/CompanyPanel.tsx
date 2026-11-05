@@ -1,3 +1,4 @@
+import { phonePlaceholder } from "../ui/format";
 import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api/client";
@@ -12,6 +13,19 @@ import { Empty, Field, SaveBar, Segmented, SettingRow, SettingsSection, Switch, 
  * switched on, self sign-up, and the trip settings that replace values once fixed in code.
  */
 
+const REGIONAL_KEYS = ["timeFormat", "decimalSeparator", "thousandsSeparator", "firstDayOfWeek", "phoneCountryCode", "unitSystem", "numberFormat"];
+const NUMBER_FORMATS = [
+  { value: "dot-comma", label: "12,500.50", decimal: ".", thousands: "," },
+  { value: "comma-dot", label: "12.500,50", decimal: ",", thousands: "." },
+  { value: "comma-space", label: "12 500,50", decimal: ",", thousands: " " },
+  { value: "dot-space", label: "12 500.50", decimal: ".", thousands: " " },
+  { value: "dot-apostrophe", label: "12'500.50", decimal: ".", thousands: "'" },
+];
+/** The stored choices as the form shows them; the two separators are one choice of number format. */
+const regionalForm = (stored: Rec): Record<string, string> => ({
+  ...Object.fromEntries(REGIONAL_KEYS.map((k) => [k, String(stored[k] ?? "")])),
+  numberFormat: NUMBER_FORMATS.find((n) => n.decimal === stored.decimalSeparator && n.thousands === stored.thousandsSeparator)?.value ?? "",
+});
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 const DATE_FORMATS = ["DD/MM/YYYY", "MM/DD/YYYY", "YYYY-MM-DD"];
 const PERIODS: { value: string; label: string }[] = [{ value: "any", label: "Any time" }, { value: "weekly", label: "Weekly" }, { value: "fortnightly", label: "Fortnightly" }, { value: "monthly", label: "Monthly" }];
@@ -28,7 +42,7 @@ const NUMBERS: { key: string; title: string; description: string; unit: string; 
 const DENSITY = { min: { key: "densityMinKgM3", fallback: 600 }, max: { key: "densityMaxKgM3", fallback: 1000 } };
 const ALL_NUMBERS = [...NUMBERS.map((n) => ({ key: n.key, fallback: n.fallback })), DENSITY.min, DENSITY.max];
 
-type Form = Record<string, unknown> & { operations: Record<string, unknown>; modules: string[] };
+type Form = Record<string, unknown> & { operations: Record<string, unknown>; modules: string[]; regional: Record<string, string> };
 
 function formFrom(company: Rec | null): Form {
   const ops = company?.operations ?? {};
@@ -39,7 +53,8 @@ function formFrom(company: Rec | null): Form {
     taxId: company?.taxId ?? "",
     countryId: company?.countryId ?? "",
     baseCurrencyId: company?.baseCurrencyId ?? "",
-    timezone: company?.timezone ?? "Africa/Lusaka",
+    // Empty: the country's time zone (Regional settings).
+    timezone: company?.timezone ?? "",
     fiscalYearStartMonth: company?.fiscalYearStartMonth ?? 1,
     dateFormat: company?.dateFormat ?? "DD/MM/YYYY",
     phone: company?.phone ?? "",
@@ -47,6 +62,7 @@ function formFrom(company: Rec | null): Form {
     website: company?.website ?? "",
     allowSelfRegistration: Boolean(company?.allowSelfRegistration),
     modules: company?.modules ?? ["masters", "trips", "finance", "tracking", "driver-app"],
+    regional: regionalForm((company?.regional ?? {}) as Rec),
     operations: {
       tripStartsFromTruck: ops.tripStartsFromTruck ?? true,
       stopBeforeLoading: ops.stopBeforeLoading ?? true,
@@ -75,6 +91,9 @@ export function CompanyPanel() {
   const writable = can(me, "company", "update");
   const set = (key: string, value: unknown) => setForm((f) => ({ ...f, [key]: value }));
   const setOp = (key: string, value: unknown) => setForm((f) => ({ ...f, operations: { ...f.operations, [key]: value } }));
+  const setReg = (key: string, value: string) => setForm((f) => ({ ...f, regional: { ...f.regional, [key]: value } }));
+  // What applies now: the company's choice, else its country's, else the defaults (from the server).
+  const effective = (company.data?.effectiveRegional ?? {}) as Rec;
 
   if (company.isLoading) return <p className="muted">Loading the company…</p>;
 
@@ -86,7 +105,9 @@ export function CompanyPanel() {
         legalName: String(form.legalName).trim() || undefined,
         tradingName: textOrNull(form.tradingName), registrationNumber: textOrNull(form.registrationNumber), taxId: textOrNull(form.taxId),
         countryId: textOrNull(form.countryId), baseCurrencyId: textOrNull(form.baseCurrencyId),
-        timezone: form.timezone, fiscalYearStartMonth: Number(form.fiscalYearStartMonth), dateFormat: form.dateFormat,
+        timezone: textOrNull(form.timezone), fiscalYearStartMonth: Number(form.fiscalYearStartMonth), dateFormat: form.dateFormat,
+        // An empty choice goes back to the country's or the default.
+        regional: Object.fromEntries(REGIONAL_KEYS.map((k) => [k, k === "thousandsSeparator" ? (form.regional.numberFormat ? NUMBER_FORMATS.find((n) => n.value === form.regional.numberFormat)?.thousands ?? null : null) : k === "decimalSeparator" ? (form.regional.numberFormat ? NUMBER_FORMATS.find((n) => n.value === form.regional.numberFormat)?.decimal ?? null : null) : form.regional[k] || null]).filter(([k]) => k !== "numberFormat")),
         phone: textOrNull(form.phone), email: textOrNull(form.email), website: textOrNull(form.website),
         allowSelfRegistration: form.allowSelfRegistration, modules: form.modules,
         operations: { ...form.operations, ...Object.fromEntries(ALL_NUMBERS.map((n) => [n.key, Number(form.operations[n.key])])) },
@@ -122,7 +143,7 @@ export function CompanyPanel() {
             <Field label="Trading name"><input className="input" value={String(form.tradingName)} onChange={(e) => set("tradingName", e.target.value)} /></Field>
             <Field label="Registration number"><input className="input" value={String(form.registrationNumber)} onChange={(e) => set("registrationNumber", e.target.value)} /></Field>
             <Field label="Tax ID"><input className="input" value={String(form.taxId)} onChange={(e) => set("taxId", e.target.value)} /></Field>
-            <Field label="Phone"><input className="input" value={String(form.phone)} onChange={(e) => set("phone", e.target.value)} placeholder="+260…" /></Field>
+            <Field label="Phone"><input className="input" value={String(form.phone)} onChange={(e) => set("phone", e.target.value)} placeholder={phonePlaceholder()} /></Field>
             <Field label="E-mail"><input className="input" type="email" value={String(form.email)} onChange={(e) => set("email", e.target.value)} /></Field>
             <Field label="Website"><input className="input" value={String(form.website)} onChange={(e) => set("website", e.target.value)} placeholder="https://" /></Field>
             <Field label="Country">
@@ -141,20 +162,42 @@ export function CompanyPanel() {
               {(currencies.data ?? []).map((c) => <option key={c.id} value={c.id}>{c.code} · {c.name}</option>)}
             </select>
           </SettingRow>
-          <SettingRow title="Time zone" description="The company's clock: the day a trip, a rate or a report belongs to." htmlFor="co-tz">
+        </SettingsSection>
+
+        <SettingsSection title="Regional settings" description="How dates, times, numbers and phone numbers are written on every screen, document and message. Left on the country's choice, they follow the company's country.">
+          <SettingRow title="Time zone" description="The company's clock: the day a trip, a rate or a report belongs to, and the times on messages and documents." htmlFor="co-tz">
             <select id="co-tz" className="input" value={String(form.timezone)} onChange={(e) => set("timezone", e.target.value)}>
+              <option value="">The country's{form.timezone ? "" : ` (${String(effective.timeZone ?? "UTC").replace(/_/g, " ")})`}</option>
               {TIME_ZONES.map((tz) => <option key={tz} value={tz}>{tz.replace(/_/g, " ")}</option>)}
             </select>
+          </SettingRow>
+          <SettingRow title="Date format" description="How dates are written: on screens, documents and messages." htmlFor="co-date">
+            <select id="co-date" className="input" value={String(form.dateFormat)} onChange={(e) => set("dateFormat", e.target.value)}>
+              {DATE_FORMATS.map((f) => <option key={f} value={f}>{f}</option>)}
+            </select>
+          </SettingRow>
+          <SettingRow title="Time format" description="A 24-hour clock (15:30) or a 12-hour one (3:30 pm).">
+            <Segmented choice label="Time format" value={form.regional.timeFormat || String(effective.timeFormat ?? "24h")} options={[{ value: "24h", label: "15:30" }, { value: "12h", label: "3:30 pm" }]} onChange={(v) => setReg("timeFormat", v)} disabled={!writable} />
+          </SettingRow>
+          <SettingRow title="Numbers" description="The decimal and thousands separators in every figure and amount." htmlFor="co-numbers">
+            <select id="co-numbers" className="input" value={form.regional.numberFormat ?? ""} onChange={(e) => setReg("numberFormat", e.target.value)}>
+              <option value="">{`As now (${NUMBER_FORMATS.find((n) => n.decimal === effective.decimalSeparator && n.thousands === effective.thousandsSeparator)?.label ?? "12,500.50"})`}</option>
+              {NUMBER_FORMATS.map((n) => <option key={n.value} value={n.value}>{n.label}</option>)}
+            </select>
+          </SettingRow>
+          <SettingRow title="First day of the week" description="Where weeks start in calendars and weekly figures.">
+            <Segmented choice label="First day of the week" value={form.regional.firstDayOfWeek || String(effective.firstDayOfWeek ?? "monday")} options={[{ value: "monday", label: "Monday" }, { value: "sunday", label: "Sunday" }, { value: "saturday", label: "Saturday" }]} onChange={(v) => setReg("firstDayOfWeek", v)} disabled={!writable} />
           </SettingRow>
           <SettingRow title="Financial year starts in" description="Yearly figures run from the first of this month." htmlFor="co-fy">
             <select id="co-fy" className="input" value={String(form.fiscalYearStartMonth)} onChange={(e) => set("fiscalYearStartMonth", Number(e.target.value))}>
               {MONTHS.map((m, i) => <option key={m} value={i + 1}>{m}</option>)}
             </select>
           </SettingRow>
-          <SettingRow title="Date format" description="How dates are written on documents the company sends." htmlFor="co-date">
-            <select id="co-date" className="input" value={String(form.dateFormat)} onChange={(e) => set("dateFormat", e.target.value)}>
-              {DATE_FORMATS.map((f) => <option key={f} value={f}>{f}</option>)}
-            </select>
+          <SettingRow title="Phone country code" description="Shown in phone inputs and assumed for numbers typed without one. Empty: the country's dialling code." htmlFor="co-dial">
+            <input id="co-dial" className="input" value={form.regional.phoneCountryCode ?? ""} placeholder={String(effective.phoneCountryCode || "+…")} onChange={(e) => setReg("phoneCountryCode", e.target.value.trim())} />
+          </SettingRow>
+          <SettingRow title="Units" description="Metric: litres, kilograms and kilometres.">
+            <Segmented choice label="Units" value={form.regional.unitSystem || String(effective.unitSystem ?? "metric")} options={[{ value: "metric", label: "Metric" }, { value: "imperial", label: "Imperial", disabled: true }]} onChange={(v) => setReg("unitSystem", v)} disabled={!writable} />
           </SettingRow>
         </SettingsSection>
 

@@ -4,7 +4,7 @@ import { RATE_SOURCES } from './models/exchangeRate.model.js';
 import { PAYMENT_KINDS } from './models/paymentMethod.model.js';
 
 export const currencyShape = {
-  code: z.string().trim().toUpperCase().regex(/^[A-Z]{3}$/, 'ISO 4217 code, e.g. ZMW'),
+  code: z.string().trim().toUpperCase().regex(/^[A-Z]{3}$/, 'ISO 4217 code, e.g. USD'),
   name, description: text(500).optional(),
   symbol: text(8).optional(),
   minorUnits: integer(0, 4).optional(),

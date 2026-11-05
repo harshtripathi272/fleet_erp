@@ -29,8 +29,9 @@ const CHECKS: Check[] = [
 ];
 
 export async function readiness() {
-  const company = await Company.findOne().select('legalName baseCurrencyId timezone').lean<{ legalName?: string; baseCurrencyId?: unknown; timezone?: string }>();
-  const companyDone = Boolean(company?.legalName && company.baseCurrencyId && company.timezone);
+  const company = await Company.findOne().select('legalName baseCurrencyId timezone countryId').lean<{ legalName?: string; baseCurrencyId?: unknown; timezone?: string; countryId?: unknown }>();
+  // The time zone is the company's own or its country's (Company → Regional settings).
+  const companyDone = Boolean(company?.legalName && company.baseCurrencyId && (company.timezone || company.countryId));
   const count = async (c: Check) => {
     const def = c.master ? getMaster(c.master) : undefined;
     return def ? def.model.countDocuments({ status: 'active', ...(c.filter ?? {}) }) : 0;

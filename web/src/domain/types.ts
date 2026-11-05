@@ -1,6 +1,6 @@
 export type Role = "owner" | "operations" | "finance" | "driver";
 export type Desk = Exclude<Role, "driver">;
-/** An ISO currency code. The base currency comes from the company settings (ZMW in the sample). */
+/** An ISO currency code. The base currency comes from the company settings. */
 export type Currency = string;
 export type StopKind = "start" | "load" | "via" | "border" | "offload" | "end";
 export type Unit = "L" | "t" | "bags" | "pallets";
@@ -26,7 +26,7 @@ export interface Driver {
   phone: string;
   licence: string;
   /** Balance carried in from before the system went live. Positive: driver holds company cash. */
-  openingBalanceZmw: number;
+  openingBalanceBase: number;
   settleRequestedAt?: string;
   settleRequestedBy?: Role;
 }
@@ -68,7 +68,7 @@ export interface RouteTemplate {
   stops: RouteStop[];
   /** Road kilometres from the stop before to each stop, as the routes master has them (0 for the first). */
   legKm: number[];
-  cashBudgetZmw: number;
+  cashBudgetBase: number;
   /** Fixed fuel for the route. When empty the budget comes from distance and truck consumption. */
   fuelBudgetL?: number;
 }
@@ -140,7 +140,7 @@ export interface Trip {
   plannedQty?: number;
   plannedStart: string;
   fuelBudgetL: number;
-  cashBudgetZmw: number;
+  cashBudgetBase: number;
   openingFuelL: number;
   createdAt: string;
   dispatchedAt?: string;
@@ -249,7 +249,7 @@ export interface Shortage {
   netShortL: number;
   /** Charge per litre, in the base currency. */
   pricePerL: number;
-  amountZmw: number;
+  amountBase: number;
   status: "pending" | "charged" | "waived" | "none";
   decidedAt?: string;
   note?: string;
@@ -279,7 +279,7 @@ export interface Expense {
   categoryId: string;
   amount: number;
   currency: Currency;
-  amountZmw: number;
+  amountBase: number;
   receiptNo?: string;
   docId?: string;
   note?: string;
@@ -299,13 +299,13 @@ export interface Settlement {
   tripIds: string[];
   from: string;
   to: string;
-  openingZmw: number;
-  advancesZmw: number;
-  expensesZmw: number;
-  shortagesZmw: number;
+  openingBase: number;
+  advancesBase: number;
+  expensesBase: number;
+  shortagesBase: number;
   /** Positive: driver handed cash back. Negative: company paid the driver. */
-  cashZmw: number;
-  closingZmw: number;
+  cashBase: number;
+  closingBase: number;
   note?: string;
   postedAt: string;
 }
@@ -448,7 +448,7 @@ export type Action =
       productId?: string;
       plannedQty?: number;
       fuelBudgetL?: number;
-      cashBudgetZmw?: number;
+      cashBudgetBase?: number;
     }
   | { type: "trip.cancel"; tripId: string; reason: string }
   | { type: "trip.stop"; tripId: string; reason: string; closingFuelL: number; placeId?: string }
@@ -513,7 +513,7 @@ export type Action =
   | { type: "expense.decide"; id: string; approve: boolean; reason?: string; via?: "app" | "WhatsApp" }
   | { type: "trip.end"; tripId: string; closingFuelL: number }
   | { type: "settlement.request"; driverId: string }
-  | { type: "settlement.post"; driverId: string; tripIds: string[]; cashZmw: number; note?: string }
+  | { type: "settlement.post"; driverId: string; tripIds: string[]; cashBase: number; note?: string }
   | { type: "thread.read"; thread: string }
   | { type: "chat.send"; thread: string; text: string }
   | { type: "customer.reply"; nominationId: string };

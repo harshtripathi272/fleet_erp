@@ -4,6 +4,8 @@ import { logger } from '../../core/logger/index.js';
 import { audit } from '../../core/masters/audit.js';
 import { listRateProviders, rateProvider } from '../../core/rates/providers.js';
 import { Company } from '../company/company.model.js';
+import { effectiveRegional } from '../company/regional.js';
+import * as Fmt from '../../core/format/regional.js';
 import { Currency } from './models/currency.model.js';
 import { ExchangeRate } from './models/exchangeRate.model.js';
 import { RateFeedRun } from './models/rateFeedRun.model.js';
@@ -19,10 +21,7 @@ export interface RateFeedSettings { provider: string; currencyIds: string[]; fet
 const FETCH_TIMEOUT_MS = 20_000;
 
 /** The calendar day of `at` in the company's time zone, as midnight UTC of that day (how rate dates are stored). */
-export function companyDay(at: Date, timeZone: string): Date {
-  const [y, m, d] = new Intl.DateTimeFormat('en-CA', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit' }).format(at).split('-').map(Number);
-  return new Date(Date.UTC(y!, m! - 1, d!));
-}
+export const companyDay = (at: Date, timeZone: string): Date => Fmt.companyDay(at, { ...Fmt.regional(), timeZone });
 
 async function company() {
   return Company.findOne().select('baseCurrencyId timezone rateFeed').lean<{ baseCurrencyId?: unknown; timezone?: string; rateFeed?: { provider?: string; currencyIds?: unknown[]; fetchAt?: string } }>();
@@ -59,9 +58,10 @@ export async function saveFeedSettings(input: Partial<RateFeedSettings>, actorId
 }
 
 /** The time of day of `at` in the company's time zone, as "HH:MM". */
-function companyTime(at: Date, timeZone: string) {
-  return new Intl.DateTimeFormat('en-GB', { timeZone, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(at);
-}
+const companyTime = (at: Date, timeZone: string) => Fmt.clockTime(at, { ...Fmt.regional(), timeZone });
+
+/** The company's time zone: its own, else its country's (Company → Regional settings). */
+const zoneOf = async () => (await effectiveRegional()).timeZone;
 
 /**
  * Whether the scheduled fetch should run now. The scheduler starts the job every hour; the job fetches once a
@@ -71,8 +71,7 @@ function companyTime(at: Date, timeZone: string) {
 export async function fetchIsDue(now = new Date()) {
   const settings = await feedSettings();
   if (settings.provider === 'manual') return { due: false, reason: 'The feed is off (manual rates)' };
-  const c = await company();
-  const zone = c?.timezone ?? 'UTC';
+  const zone = await zoneOf();
   if (companyTime(now, zone) < settings.fetchAt) return { due: false, reason: `Before today's fetch time (${settings.fetchAt})` };
   const today = companyDay(now, zone);
   if (await RateFeedRun.exists({ outcome: 'stored', effectiveDate: today })) return { due: false, reason: "Today's rates are already stored" };
@@ -97,7 +96,7 @@ export async function fetchRates(options: { now?: Date; trigger?: 'schedule' | '
   if (!base) return record({ outcome: 'failed', error: 'The company has no base currency' });
   const wanted = await Currency.find(settings.currencyIds.length ? { _id: { $in: settings.currencyIds } } : { status: 'active' }).select('code').lean();
   const others = wanted.filter((x) => String(x._id) !== String(base._id));
-  const effectiveDate = companyDay(now, c?.timezone ?? 'UTC');
+  const effectiveDate = companyDay(now, await zoneOf());
 
   let answer;
   try {

@@ -1,11 +1,11 @@
 import type { ReactNode } from "react";
 import { useApp } from "../store";
-import { clock } from "../ui/format";
+import { clock, clockTime } from "../ui/format";
 
 /** A realistic phone: brushed frame, side buttons, island, live status bar. */
 export function Device({ children, dark = false, onHome }: { children: ReactNode; dark?: boolean; onHome?: () => void }) {
   const { data } = useApp();
-  const time = new Date(clock(data)).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
+  const time = clockTime(clock(data));
   return (
     <div className="device">
       <span className="device-btn action" aria-hidden />

@@ -1,4 +1,5 @@
 import { env } from '../../config/env.js';
+import * as Fmt from '../../core/format/regional.js';
 import { logger } from '../../core/logger/index.js';
 import type { Plain } from '../../core/masters/types.js';
 import { type DispatchInput, notify } from '../messaging/dispatcher.js';
@@ -23,13 +24,12 @@ export interface Notice {
   attachments?: DispatchInput['attachments'];
 }
 
-/** {{amount}} and {{currency}} for a money amount, written as the templates expect: "ZMW" and "1,250.50". */
+/** {{amount}} and {{currency}} for a money amount, written as the templates expect: "TZS" and "1,250.50" (in the company's number format). */
 export async function moneyValues(amount: { amountMinor: number; currencyId: unknown } | undefined): Promise<Record<string, string>> {
   if (!amount?.currencyId) return {};
   const currency = await currencyInfo(amount.currencyId).catch(() => null);
   if (!currency) return {};
-  const value = amount.amountMinor / 10 ** currency.minorUnits || 0;
-  return { amount: value.toLocaleString('en-GB', { minimumFractionDigits: currency.minorUnits, maximumFractionDigits: currency.minorUnits }), currency: currency.code };
+  return { amount: Fmt.amount(amount.amountMinor, currency.minorUnits), currency: currency.code };
 }
 
 /** The values every trip message may use. */

@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { email, objectId, phone, text } from '../../core/masters/zod.js';
 import { SETTLEMENT_PERIODS } from './company.model.js';
+import { DATE_FORMATS, DECIMAL_SEPARATORS, THOUSANDS_SEPARATORS, TIME_FORMATS, UNIT_SYSTEMS, WEEK_STARTS } from '../../core/format/regional.js';
 
 import { AREA_KEYS } from './areaList.js';
 
@@ -14,9 +15,18 @@ const companyShape = {
   taxId: text(60).nullable().optional(),
   countryId: objectId.nullable().optional(),
   baseCurrencyId: objectId.nullable().optional(),
-  timezone: timezone.optional(),
+  timezone: timezone.nullable().optional(),
   fiscalYearStartMonth: z.number().int().min(1).max(12).optional(),
-  dateFormat: z.enum(['DD/MM/YYYY', 'MM/DD/YYYY', 'YYYY-MM-DD']).optional(),
+  dateFormat: z.enum(DATE_FORMATS).optional(),
+  /** Only the settings sent change; null puts one back to the country's or the default. */
+  regional: z.strictObject({
+    timeFormat: z.enum(TIME_FORMATS).nullable().optional(),
+    decimalSeparator: z.enum(DECIMAL_SEPARATORS).nullable().optional(),
+    thousandsSeparator: z.enum(THOUSANDS_SEPARATORS).nullable().optional(),
+    firstDayOfWeek: z.enum(WEEK_STARTS).nullable().optional(),
+    phoneCountryCode: z.string().trim().regex(/^\+\d{1,4}$/, 'A country code such as +255').nullable().optional(),
+    unitSystem: z.enum(UNIT_SYSTEMS).nullable().optional(),
+  }).refine((r) => !r.decimalSeparator || r.decimalSeparator !== r.thousandsSeparator, 'The decimal and thousands separators must differ').optional(),
   allowSelfRegistration: z.boolean().optional(),
   modules: z.array(z.enum(MODULES)).max(MODULES.length).refine((m) => new Set(m).size === m.length, 'Modules must be unique').optional(),
   address: z.strictObject({ line1: text(200), line2: text(200).optional(), city: text(100).optional(), postalCode: text(20).optional() }).nullable().optional(),

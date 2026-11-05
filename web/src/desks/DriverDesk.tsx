@@ -11,7 +11,7 @@ import { BotAvatar, WhatsApp } from "../phone/WhatsApp";
 import { AttachSheet } from "../phone/Attach";
 import { DocThumb } from "../docs/DocThumb";
 import { Segmented } from "../ui/kit";
-import { day, hm, L, stamp, zmw } from "../ui/format";
+import { day, hm, L, stamp, inBase } from "../ui/format";
 
 const DOC_LABEL: Record<DocKind, string> = {
   loading: "Loading invoice",
@@ -121,7 +121,7 @@ function TripSlip({ trip }: { trip?: Trip }) {
         </div>
         <div>
           <dt>{balance >= 0 ? "Company cash with you" : "Company owes you"}</dt>
-          <dd>{zmw(Math.abs(balance))}</dd>
+          <dd>{inBase(Math.abs(balance))}</dd>
         </div>
       </dl>
       <div className="slip-tear" aria-hidden />
@@ -190,7 +190,7 @@ function DriverApp({ trip }: { trip?: Trip }) {
               <Wallet size={17} />
               <span>
                 <small>{balance >= 0 ? "Company cash with you" : "Company owes you"}</small>
-                <strong>{zmw(Math.abs(balance))}</strong>
+                <strong>{inBase(Math.abs(balance))}</strong>
               </span>
             </div>
           </section>

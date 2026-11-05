@@ -2,7 +2,7 @@ import { useApp } from "../store";
 import { byId, driverLedger, tripKm } from "../domain/calc";
 import { routeLabel } from "../domain/helpers";
 import { BrandMark } from "../ui/brand";
-import { dayYear, num, stamp } from "../ui/format";
+import { dayYear, num, stamp, baseLabel } from "../ui/format";
 
 export function Statement({ id }: { id: string }) {
   const { data } = useApp();
@@ -11,7 +11,7 @@ export function Statement({ id }: { id: string }) {
   const driver = byId(data.drivers, s.driverId)!;
   const trips = s.tripIds.map((t) => byId(data.trips, t)!).filter(Boolean);
   const lines = driverLedger(data, driver.id).filter((e) => e.tripId && s.tripIds.includes(e.tripId));
-  const before = s.openingZmw + s.advancesZmw - s.expensesZmw + s.shortagesZmw;
+  const before = s.openingBase + s.advancesBase - s.expensesBase + s.shortagesBase;
   return (
     <article className="paper statement">
       <header className="sheet-head">
@@ -81,14 +81,14 @@ export function Statement({ id }: { id: string }) {
             <tr className="strong">
               <td>Brought forward</td>
               <td />
-              <td className="r">{num(s.openingZmw, 2)}</td>
+              <td className="r">{num(s.openingBase, 2)}</td>
             </tr>
             {lines.map((e) => (
               <tr key={e.id}>
                 <td>{e.label}</td>
                 <td className="mono">{byId(data.trips, e.tripId)?.no}</td>
                 <td className="r">
-                  {e.amountZmw >= 0 ? "+" : "−"} {num(Math.abs(e.amountZmw), 2)}
+                  {e.amountBase >= 0 ? "+" : "−"} {num(Math.abs(e.amountBase), 2)}
                 </td>
               </tr>
             ))}
@@ -98,16 +98,16 @@ export function Statement({ id }: { id: string }) {
               <td className="r">{num(Math.abs(before), 2)}</td>
             </tr>
             <tr>
-              <td>{s.cashZmw >= 0 ? "Cash handed back" : "Paid to the driver"}</td>
+              <td>{s.cashBase >= 0 ? "Cash handed back" : "Paid to the driver"}</td>
               <td />
-              <td className="r">{num(Math.abs(s.cashZmw), 2)}</td>
+              <td className="r">{num(Math.abs(s.cashBase), 2)}</td>
             </tr>
           </tbody>
           <tfoot>
             <tr>
-              <td>Carried forward, ZMW</td>
+              <td>Carried forward, {baseLabel()}</td>
               <td />
-              <td className="r">{num(s.closingZmw, 2)}</td>
+              <td className="r">{num(s.closingBase, 2)}</td>
             </tr>
           </tfoot>
         </table>
@@ -115,19 +115,19 @@ export function Statement({ id }: { id: string }) {
       <section className="statement-totals">
         <div>
           <span>Advances</span>
-          <strong>{num(s.advancesZmw)}</strong>
+          <strong>{num(s.advancesBase)}</strong>
         </div>
         <div>
           <span>Expenses</span>
-          <strong>{num(s.expensesZmw)}</strong>
+          <strong>{num(s.expensesBase)}</strong>
         </div>
         <div>
           <span>Shortage charged</span>
-          <strong>{num(s.shortagesZmw)}</strong>
+          <strong>{num(s.shortagesBase)}</strong>
         </div>
         <div className="final">
           <span>Carried forward</span>
-          <strong>{num(s.closingZmw)}</strong>
+          <strong>{num(s.closingBase)}</strong>
         </div>
       </section>
       <footer className="sheet-sign">

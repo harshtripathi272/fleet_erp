@@ -1,4 +1,5 @@
 import { areaOfEvent, isAreaOn } from '../company/areas.js';
+import * as Fmt from '../../core/format/regional.js';
 import type { Readable } from 'node:stream';
 import mongoose, { Types } from 'mongoose';
 import { ConflictError, NotFoundError, ValidationError } from '../../core/errors/index.js';
@@ -76,7 +77,7 @@ async function recipientsFor(rule: Plain, input: DispatchInput): Promise<Recipie
 
 async function valuesFor(input: DispatchInput): Promise<Record<string, string>> {
   const company = await Company.findOne().select('legalName tradingName').lean() as Plain | null;
-  const values: Record<string, string> = { date: new Date().toISOString().slice(0, 10) };
+  const values: Record<string, string> = { date: Fmt.date(new Date()) };
   if (company) values['company.name'] = String(company.tradingName ?? company.legalName);
   if (input.driverId && Types.ObjectId.isValid(input.driverId)) {
     const d = await Driver.findById(input.driverId).select('name phone').lean() as Plain | null;
@@ -283,7 +284,7 @@ export async function testConnection(id: string, to: string, actorId?: string) {
   const connection = await MessageConnection.findById(id).lean() as Plain | null;
   if (!connection) throw new NotFoundError('Message connection not found');
   const channel = connection.channel as Channel;
-  if (!isAddressFor(channel, to)) throw new ValidationError('Check the address', { to: [channel === 'email' ? 'An e-mail address' : 'A phone number with its country code, e.g. +260971234567'] });
+  if (!isAddressFor(channel, to)) throw new ValidationError('Check the address', { to: [channel === 'email' ? 'An e-mail address' : 'A phone number in international format: + and the country code first'] });
   const message = await OutboundMessage.create({
     event: 'connection.test', channel, to, subject: channel === 'email' ? 'Marichi Fleet test message' : undefined, body: TEST_TEXT,
     status: 'queued', nextAttemptAt: new Date(), connectionId: connection._id as Types.ObjectId, ref: { kind: 'message-connections', id }, createdBy: actorId, at: new Date(),

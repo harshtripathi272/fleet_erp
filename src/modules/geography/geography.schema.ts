@@ -13,7 +13,7 @@ export const countryShape = {
   name,
   description: text(500).optional(),
   iso3: z.string().trim().toUpperCase().regex(/^[A-Z]{3}$/, 'ISO 3166-1 alpha-3, e.g. ZMB').optional(),
-  dialCode: z.string().trim().regex(/^\+\d{1,4}$/, 'e.g. +260').optional(),
+  dialCode: z.string().trim().regex(/^\+\d{1,4}$/, '+ and the country code, e.g. +1').optional(),
   currencyId: objectId.optional(),
   drivingSide: z.enum(['left', 'right']).optional(),
   timezones: z.array(timezone).max(20).optional(),

@@ -7,10 +7,12 @@ import { ensureFirstOwner } from './modules/auth/auth.service.js';
 import { ensureDefaultMessages } from './modules/messaging/defaults.js';
 import { settleSends, startOutboxWorker, stopOutboxWorker } from './modules/messaging/dispatcher.js';
 import { ensureSystemRoles } from './modules/roles/roles.service.js';
+import { refreshRegional } from './modules/company/regional.js';
 
 await connectMongo();
 await syncIndexes();
 await ensureSystemRoles();
+await refreshRegional();
 await ensureFirstOwner();
 // A new installation starts with the default message templates and rules, once (#43).
 await ensureDefaultMessages();

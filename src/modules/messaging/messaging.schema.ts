@@ -7,7 +7,7 @@ export const messageTemplateShape = {
   channel: z.enum(MESSAGE_CHANNELS),
   event: z.enum(EVENTS),
   audience: z.enum(AUDIENCES).optional(),
-  language: z.string().trim().regex(/^[a-z]{2}(-[A-Z]{2})?$/, 'Language code, e.g. en, fr, sw or en-GB').optional(),
+  language: z.string().trim().regex(/^[a-z]{2}(-[A-Z]{2})?$/, 'Language code, e.g. en, fr, sw or pt-BR').optional(),
   subject: text(200).optional(),
   body: z.string().min(1).max(4096),
   buttons: z.array(z.strictObject({ label: text(20), action: z.enum(BUTTON_ACTIONS) })).max(3).optional(),

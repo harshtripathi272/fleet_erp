@@ -12,7 +12,7 @@ import { PAYMENT_KINDS, PaymentMethod } from './models/paymentMethod.model.js';
 
 export const currencyDefinition = defineMaster({
   key: 'currencies', label: 'Currencies', singular: 'Currency', group: GROUPS.money,
-  description: 'ZMW, USD, TZS, CDF… Money is stored in minor units (ngwee, cents); minorUnits says how many decimals the currency has.',
+  description: 'USD, EUR, TZS, CDF… Money is stored in minor units (cents, pence); minorUnits says how many decimals the currency has.',
   model: Currency, createSchema: S.createCurrencySchema, updateSchema: S.updateCurrencySchema,
   immutable: ['code', 'minorUnits'],
 });

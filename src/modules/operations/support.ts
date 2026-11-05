@@ -1,4 +1,5 @@
 import type { Request } from 'express';
+import * as Fmt from '../../core/format/regional.js';
 import type { Model } from 'mongoose';
 import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from '../../core/errors/index.js';
 import { audit, comparable } from '../../core/masters/audit.js';
@@ -160,15 +161,12 @@ export async function convertTo(amountMinor: number, fromCurrencyId: unknown, to
   }
 }
 
-/** "1,250.50 ZMW" for messages. */
-export function formatMoney(amountMinor: number, currency: { code: string; minorUnits: number }) {
-  // `|| 0` turns -0 (e.g. no expenses, negated) into 0, so it never shows as "-0".
-  const value = amountMinor / 10 ** currency.minorUnits || 0;
-  return `${value.toLocaleString('en-GB', { maximumFractionDigits: currency.minorUnits })} ${currency.code}`;
-}
-export const litres = (value: number) => `${Math.round(value).toLocaleString('en-GB')} L`;
+/** "1,250.5 TZS" for messages, in the company's number format. */
+export const formatMoney = (amountMinor: number, currency: { code: string; minorUnits: number }) => Fmt.money(amountMinor, currency);
+export const litres = (value: number) => `${Fmt.number(Math.round(value))} L`;
 export const firstName = (name?: unknown) => String(name ?? '').split(' ')[0] ?? '';
-export const shortDate = (date: Date) => date.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: 'UTC' });
+/** A day in the company's date format and time zone, without its year. */
+export const shortDate = (date: Date) => Fmt.shortDate(date);
 
 /* ---------- Messages and activity ---------- */
 

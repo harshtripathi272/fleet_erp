@@ -6,7 +6,7 @@ import { byId, driverBalance, driverLedger, round } from "../domain/calc";
 import { routeLabel, toSettle } from "../domain/helpers";
 import type { Driver } from "../domain/types";
 import { Avatar, Button, Empty, Field, Segmented, Status } from "../ui/kit";
-import { ago, day, dayYear, zmw } from "../ui/format";
+import { ago, day, dayYear, inBase, baseLabel } from "../ui/format";
 import { Card } from "./stages";
 
 export function Accounts({ driverId, onDriver }: { driverId?: string; onDriver: (id: string | undefined) => void }) {
@@ -44,7 +44,7 @@ export function Accounts({ driverId, onDriver }: { driverId?: string; onDriver: 
                   {driver.settleRequestedAt ? " · requested" : ""}
                 </span>
               </span>
-              <span className={`balance ${balance > 0 ? "holds" : balance < 0 ? "owed" : ""}`}>{balance ? zmw(Math.abs(balance)) : "Clear"}</span>
+              <span className={`balance ${balance > 0 ? "holds" : balance < 0 ? "owed" : ""}`}>{balance ? inBase(Math.abs(balance)) : "Clear"}</span>
             </button>
           ))}
         </div>
@@ -77,7 +77,7 @@ function DriverAccount({ driver, onBack }: { driver: Driver; onBack: () => void 
         </div>
         <div className={`account-balance ${balance > 0 ? "holds" : balance < 0 ? "owed" : ""}`}>
           <span>{balance > 0 ? "Holds company cash" : balance < 0 ? "Company owes" : "Account"}</span>
-          <strong className="num">{balance ? zmw(Math.abs(balance)) : "Clear"}</strong>
+          <strong className="num">{balance ? inBase(Math.abs(balance)) : "Clear"}</strong>
         </div>
       </header>
       <Segmented
@@ -108,9 +108,9 @@ function StatementBuilder({ driver }: { driver: Driver }) {
   const ledger = driverLedger(data, driver.id);
   const set = new Set(picked);
   const lines = ledger.filter((e) => e.tripId && set.has(e.tripId) && !e.settlementId);
-  const balance = ledger.reduce((s, e) => s + e.amountZmw, 0);
-  const opening = round(balance - lines.reduce((s, e) => s + e.amountZmw, 0));
-  const due = round(opening + lines.reduce((s, e) => s + e.amountZmw, 0));
+  const balance = ledger.reduce((s, e) => s + e.amountBase, 0);
+  const opening = round(balance - lines.reduce((s, e) => s + e.amountBase, 0));
+  const due = round(opening + lines.reduce((s, e) => s + e.amountBase, 0));
   const [cashText, setCashText] = useState("");
   const cashValue = cashText === "" ? due : Number(cashText);
   const closing = round(due - cashValue);
@@ -139,13 +139,13 @@ function StatementBuilder({ driver }: { driver: Driver }) {
   }, [awaiting, data.settlements, driver.id, setOverlay]);
   const post = async () => {
     const before = data.settlements.filter((s) => s.driverId === driver.id).length;
-    if (await run({ type: "settlement.post", driverId: driver.id, tripIds: picked, cashZmw: cashValue }, "Statement posted. The driver has it on WhatsApp.")) setAwaiting(before);
+    if (await run({ type: "settlement.post", driverId: driver.id, tripIds: picked, cashBase: cashValue }, "Statement posted. The driver has it on WhatsApp.")) setAwaiting(before);
   };
   if (!closed.length)
     return (
       <Card>
         <Empty title="No closed trips to settle">
-          <span>{balance ? `${zmw(Math.abs(balance))} carries into the next statement.` : "The account is clear."}</span>
+          <span>{balance ? `${inBase(Math.abs(balance))} carries into the next statement.` : "The account is clear."}</span>
         </Empty>
       </Card>
     );
@@ -155,7 +155,7 @@ function StatementBuilder({ driver }: { driver: Driver }) {
         <div className="trip-picks">
           {closed.map((t) => {
             const tripLines = ledger.filter((e) => e.tripId === t.id && !e.settlementId);
-            const net = tripLines.reduce((s, e) => s + e.amountZmw, 0);
+            const net = tripLines.reduce((s, e) => s + e.amountBase, 0);
             return (
               <label key={t.id} className={`trip-pick ${set.has(t.id) ? "on" : ""}`}>
                 <span className="check">
@@ -175,7 +175,7 @@ function StatementBuilder({ driver }: { driver: Driver }) {
                     {t.endedAt ? `${day(t.dispatchedAt)} to ${day(t.endedAt)}` : `Cancelled ${day(t.cancelledAt)}`} · {byId(data.trucks, t.truckId)?.plate}
                   </span>
                 </span>
-                <span className="num">{zmw(net)}</span>
+                <span className="num">{inBase(net)}</span>
               </label>
             );
           })}
@@ -193,7 +193,7 @@ function StatementBuilder({ driver }: { driver: Driver }) {
           <tbody>
             <tr>
               <td>Brought forward</td>
-              <td className="num">{zmw(opening)}</td>
+              <td className="num">{inBase(opening)}</td>
             </tr>
             {lines.map((e) => (
               <tr key={e.id} className="line">
@@ -202,13 +202,13 @@ function StatementBuilder({ driver }: { driver: Driver }) {
                   <span className="muted mono"> {byId(data.trips, e.tripId)?.no}</span>
                 </td>
                 <td className="num">
-                  {e.amountZmw >= 0 ? "+" : "−"} {zmw(Math.abs(e.amountZmw))}
+                  {e.amountBase >= 0 ? "+" : "−"} {inBase(Math.abs(e.amountBase))}
                 </td>
               </tr>
             ))}
             <tr className="sub">
               <td>{due >= 0 ? `${driver.name.split(" ")[0]} holds` : "Company owes"}</td>
-              <td className="num">{zmw(Math.abs(due))}</td>
+              <td className="num">{inBase(Math.abs(due))}</td>
             </tr>
           </tbody>
         </table>
@@ -221,12 +221,12 @@ function StatementBuilder({ driver }: { driver: Driver }) {
                   value={cashText === "" ? String(Math.abs(due)) : String(Math.abs(Number(cashText)))}
                   onChange={(e) => setCashText(String((due >= 0 ? 1 : -1) * Number(e.target.value)))}
                 />
-                <span>ZMW</span>
+                <span>{baseLabel()}</span>
               </span>
             </Field>
             <div className="carry">
               <span>Carries forward</span>
-              <strong className="num">{closing ? `${zmw(Math.abs(closing))}${closing < 0 ? " owed to driver" : ""}` : "Nothing"}</strong>
+              <strong className="num">{closing ? `${inBase(Math.abs(closing))}${closing < 0 ? " owed to driver" : ""}` : "Nothing"}</strong>
             </div>
           </div>
         ) : (
@@ -267,7 +267,7 @@ function Ledger({ driver }: { driver: Driver }) {
   const { data } = useApp();
   const entries = driverLedger(data, driver.id);
   let running = 0;
-  const rows = entries.map((e) => ({ ...e, running: (running += e.amountZmw) })).reverse();
+  const rows = entries.map((e) => ({ ...e, running: (running += e.amountBase) })).reverse();
   return (
     <Card>
       <table className="table">
@@ -289,11 +289,11 @@ function Ledger({ driver }: { driver: Driver }) {
                 {e.settlementId && e.settlementId !== "opening" && e.kind !== "cash" && <span className="settled-tag">settled</span>}
               </td>
               <td className="mono">{byId(data.trips, e.tripId)?.no ?? ""}</td>
-              <td className={`right num ${e.amountZmw < 0 ? "neg" : ""}`}>
-                {e.amountZmw >= 0 ? "+" : "−"}
-                {zmw(Math.abs(e.amountZmw))}
+              <td className={`right num ${e.amountBase < 0 ? "neg" : ""}`}>
+                {e.amountBase >= 0 ? "+" : "−"}
+                {inBase(Math.abs(e.amountBase))}
               </td>
-              <td className="right num">{zmw(e.running)}</td>
+              <td className="right num">{inBase(e.running)}</td>
             </tr>
           ))}
         </tbody>
@@ -323,7 +323,7 @@ function History({ driver }: { driver: Driver }) {
                 {s.tripIds.length} trip{s.tripIds.length === 1 ? "" : "s"} · posted {dayYear(s.postedAt)}
               </span>
             </span>
-            <Status tone={s.closingZmw ? "info" : "ok"}>{s.closingZmw ? `${zmw(Math.abs(s.closingZmw))} carried` : "Cleared"}</Status>
+            <Status tone={s.closingBase ? "info" : "ok"}>{s.closingBase ? `${inBase(Math.abs(s.closingBase))} carried` : "Cleared"}</Status>
           </button>
         ))}
       </div>

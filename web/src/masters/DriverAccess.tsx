@@ -5,7 +5,7 @@ import { api, ApiError } from "../api/client";
 import { can } from "../api/session";
 import { useApp } from "../store";
 import { Button, Field, Status } from "../ui/kit";
-import { stamp } from "../ui/format";
+import { stamp, phonePlaceholder } from "../ui/format";
 
 interface Access { userId: string; phone: string | null; email: string | null; status: string; lastLoginAt: string | null }
 
@@ -56,7 +56,7 @@ export function DriverAccess({ driverId, phone: driverPhone }: { driverId: strin
         <>
           <div className="grid-2">
             <Field label="Phone number to sign in with">
-              <input className="input" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder={current?.phone ?? driverPhone ?? "+260…"} inputMode="tel" />
+              <input className="input" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder={current?.phone ?? driverPhone ?? phonePlaceholder()} inputMode="tel" />
             </Field>
             <Field label={active ? "New password" : "Password"}>
               <input className="input" type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="new-password" minLength={8} />

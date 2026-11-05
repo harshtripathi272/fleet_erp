@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
+import * as Fmt from '../../core/format/regional.js';
 import type { Plain } from '../../core/masters/types.js';
 import { fileStore } from '../../core/storage/index.js';
 import { Product } from '../cargo/models/product.model.js';
@@ -46,19 +47,8 @@ async function companyBlocks(title: string): Promise<PdfBlock[]> {
   ];
 }
 
-async function timeZone() {
-  return String((await Company.findOne().select('timezone').lean() as Plain | null)?.timezone ?? 'UTC');
-}
-
-function when(value: unknown, zone: string): string {
-  if (!value) return '—';
-  const date = new Date(value as string);
-  try {
-    return date.toLocaleString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: zone });
-  } catch {
-    return date.toISOString().slice(0, 16).replace('T', ' ');
-  }
-}
+/** A moment in the company's date and time format and time zone. */
+const when = (value: unknown): string => (value ? Fmt.dateTime(value as string) : '—');
 
 async function money(amount: unknown) {
   const a = amount as { amountMinor?: number; currencyId?: unknown } | undefined;
@@ -80,14 +70,13 @@ const fileName = (prefix: string, number: unknown) => `${prefix} ${String(number
 export async function tripSheetPdf(tripId: string): Promise<{ name: string; body: Buffer }> {
   const sheet = await tripSheet(tripId);
   const trip = sheet.trip;
-  const zone = await timeZone();
   const tripType = trip.tripTypeId ? await TripType.findById(trip.tripTypeId).select('printLayoutId').lean() as Plain | null : null;
   const layout = await layoutFor('trip_sheet', tripType?.printLayoutId);
   const blocks: PdfBlock[] = await companyBlocks(`Trip sheet ${trip.number}`);
   const stops = (trip.stops ?? []) as Array<{ kind: string; placeId: unknown; arrivedAt?: Date; leftAt?: Date; legKm?: number }>;
   const products = new Map((await Product.find({ _id: { $in: sheet.consignments.map((c) => c.productId) } }).select('name').lean()).map((p) => [String(p._id), String(p.name)]));
   const categories = new Map((await ExpenseCategory.find({ _id: { $in: sheet.expenses.map((e) => e.categoryId) } }).select('name').lean()).map((c) => [String(c._id), String(c.name)]));
-  const measure = (m?: Plain) => (m ? (m.unit === 'L' || m.unit === 'l' ? litres(Number(m.qty)) : `${Number(m.qty).toLocaleString('en-GB')} ${m.unit}`) : '—');
+  const measure = (m?: Plain) => (m ? (m.unit === 'L' || m.unit === 'l' ? litres(Number(m.qty)) : `${Fmt.number(Number(m.qty), { max: 3 })} ${m.unit}`) : '—');
 
   for (const section of sectionsOf(layout, ['trip', 'load', 'movement', 'money'])) {
     const label = ((layout?.sections ?? []) as Array<{ key: string; label?: string }>).find((s) => s.key === section)?.label;
@@ -100,9 +89,9 @@ export async function tripSheetPdf(tripId: string): Promise<{ name: string; body
           ['Truck', await plateOf(trip.vehicleId)],
           ['Trailer', await trailerPlate(trip.trailerId)],
           ['Driver', await driverName(trip.driverId)],
-          ['Dispatched', when(trip.dispatchedAt, zone)],
-          ['Ended', when(trip.endedAt, zone)],
-          ['Distance', `${Math.round(Number(trip.totalKm ?? 0)).toLocaleString('en-GB')} km`],
+          ['Dispatched', when(trip.dispatchedAt)],
+          ['Ended', when(trip.endedAt)],
+          ['Distance', `${Fmt.number(Math.round(Number(trip.totalKm ?? 0)))} km`],
         ],
       });
     } else if (section === 'load') {
@@ -116,7 +105,7 @@ export async function tripSheetPdf(tripId: string): Promise<{ name: string; body
       });
     } else if (section === 'movement') {
       const rows: string[][] = [];
-      for (const s of stops) rows.push([STOP_LABEL[s.kind] ?? s.kind, await placeName(s.placeId), when(s.arrivedAt, zone), when(s.leftAt, zone), `${Math.round(Number(s.legKm ?? 0)).toLocaleString('en-GB')} km`]);
+      for (const s of stops) rows.push([STOP_LABEL[s.kind] ?? s.kind, await placeName(s.placeId), when(s.arrivedAt), when(s.leftAt), `${Fmt.number(Math.round(Number(s.legKm ?? 0)))} km`]);
       blocks.push({ kind: 'heading', text: label ?? 'Vehicle movement' }, {
         kind: 'table', columns: [{ label: 'Stop', width: 1.4 }, { label: 'Place', width: 3 }, { label: 'Arrived', width: 2.4 }, { label: 'Left', width: 2.4 }, { label: 'Leg', width: 1.2, align: 'right' }], rows,
       }, { kind: 'facts', rows: [['Fuel at start', trip.openingFuelL != null ? litres(Number(trip.openingFuelL)) : '—'], ['Fuel at end', trip.closingFuelL != null ? litres(Number(trip.closingFuelL)) : '—']] });
@@ -139,16 +128,15 @@ export async function tripSheetPdf(tripId: string): Promise<{ name: string; body
 /** The driver statement for a settlement as a PDF. */
 export async function statementPdf(settlementId: string): Promise<{ name: string; body: Buffer }> {
   const s = await statement(settlementId);
-  const zone = await timeZone();
   const layout = await layoutFor('driver_statement');
   const base = s.currency;
   const amount = (minor: unknown) => formatMoney(Number(minor ?? 0), base);
   const blocks: PdfBlock[] = await companyBlocks(`Driver statement ${s.settlement.number}`);
   blocks.push(
     { kind: 'heading', text: 'Driver' },
-    { kind: 'facts', rows: [['Driver', String(s.driver?.name ?? '')], ['Code', String(s.driver?.code ?? '')], ['Phone', String(s.driver?.phone ?? '')], ['Trips', s.trips.map((t) => t.number).join(', ')], ['Period', `${when(s.settlement.from, zone)} to ${when(s.settlement.to, zone)}`], ['Posted', when(s.settlement.postedAt, zone)]] },
+    { kind: 'facts', rows: [['Driver', String(s.driver?.name ?? '')], ['Code', String(s.driver?.code ?? '')], ['Phone', String(s.driver?.phone ?? '')], ['Trips', s.trips.map((t) => t.number).join(', ')], ['Period', `${when(s.settlement.from)} to ${when(s.settlement.to)}`], ['Posted', when(s.settlement.postedAt)]] },
     { kind: 'heading', text: 'Entries' },
-    { kind: 'table', columns: [{ label: 'Date', width: 2.4 }, { label: 'Entry', width: 4 }, { label: 'Amount', width: 2, align: 'right' }], rows: s.lines.map((l) => [when(l.at, zone), l.label, amount(l.amountMinor)]) },
+    { kind: 'table', columns: [{ label: 'Date', width: 2.4 }, { label: 'Entry', width: 4 }, { label: 'Amount', width: 2, align: 'right' }], rows: s.lines.map((l) => [when(l.at), l.label, amount(l.amountMinor)]) },
     { kind: 'heading', text: 'Summary' },
     {
       kind: 'facts', rows: [

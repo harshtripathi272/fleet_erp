@@ -11,7 +11,7 @@ export const name = z.string().trim().min(1).max(120);
 export const text = (max: number, min = 1) => z.string().trim().min(min).max(max);
 export const email = z.string().trim().toLowerCase().max(254).pipe(z.email('Must be a valid e-mail address'));
 export const phone = z.string().trim().transform((v) => v.replace(/[\s()-]/g, ''))
-  .pipe(z.string().regex(/^\+[1-9]\d{6,14}$/, 'Use international format, e.g. +260971234567'));
+  .pipe(z.string().regex(/^\+[1-9]\d{6,14}$/, 'Use international format: + and the country code, then the number, with no spaces'));
 export const percent = z.number().min(0).max(100);
 export const positive = z.number().positive().max(1e9);
 export const nonNegative = z.number().min(0).max(1e9);

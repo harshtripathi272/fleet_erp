@@ -7,7 +7,7 @@ import { activeTrip, placeName } from "../domain/helpers";
 import { nextStep } from "../domain/turn";
 import type { AppData, Nomination } from "../domain/types";
 import { Avatar, Button, Drawer, Empty, Field, Modal, Segmented, Status } from "../ui/kit";
-import { ago, day, hoursText, km, localDate } from "../ui/format";
+import { ago, day, hoursText, km, localDate, num } from "../ui/format";
 import { Turn } from "./Trips";
 
 const STEPS = ["draft", "sent", "accepted", "converted"] as const;
@@ -101,7 +101,7 @@ function NominationCard({ n, onEdit, onConvert }: { n: Nomination; onEdit: () =>
           <span>Cargo</span>
           <strong>
             {product?.name ?? "To confirm"}
-            {n.qtyPerTruck ? ` · ${n.qtyPerTruck.toLocaleString("en-GB")} ${product?.unit ?? ""} each` : ""}
+            {n.qtyPerTruck ? ` · ${num(n.qtyPerTruck, 0, 3)} ${product?.unit ?? ""} each` : ""}
           </strong>
         </div>
         <div>

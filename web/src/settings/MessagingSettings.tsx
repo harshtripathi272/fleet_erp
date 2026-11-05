@@ -4,7 +4,7 @@ import { api, request } from "../api/client";
 import { can } from "../api/session";
 import { useApp } from "../store";
 import { Button, Drawer, Empty, Field, Status, SwitchField } from "../ui/kit";
-import { stamp } from "../ui/format";
+import { stamp, phonePlaceholder } from "../ui/format";
 import "./settings.css";
 
 /**
@@ -207,7 +207,7 @@ function ConnectionCard({ connection: c, writable, onEdit }: { connection: Conne
             className="input"
             value={to}
             onChange={(e) => setTo(e.target.value)}
-            placeholder={c.channel === "email" ? "you@company.com" : "+260…"}
+            placeholder={c.channel === "email" ? "you@company.com" : phonePlaceholder()}
             aria-label="Send a test message to"
           />
           <Button busy={test.isPending} disabled={!to.trim()} onClick={() => test.mutate()}>Send a test message</Button>

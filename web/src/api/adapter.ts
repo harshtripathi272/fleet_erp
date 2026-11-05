@@ -2,7 +2,7 @@ import type {
   ActivityEvent, AppData, Consignment, Customer, Decision, Driver, DriverDoc, Expense, ExpenseCategory, FundRequest, Message, MsgButton,
   Nomination, Pairing, Place, Product, RouteTemplate, Settlement, Trailer, Trip, Truck, Unit,
 } from "../domain/types";
-import { setBaseCurrencyCode } from "../ui/format";
+import { setBaseCurrencyCode, setRegional, type Regional } from "../ui/format";
 
 /**
  * Maps API records onto the shape the desks were built against (`AppData` from the trip-flow mock), so
@@ -81,8 +81,10 @@ const DEPOT_TYPES = new Set(["depot", "terminal", "refinery", "port", "fuel_stat
 
 export function toAppData(ref: Reference, ops: Operations): AppData {
   const currencies = index(ref.currencies);
-  const base = currencies.get(String(ref.company?.baseCurrencyId)) ?? ref.currencies.find((c) => c.code === "ZMW") ?? { id: "", code: "ZMW", minorUnits: 2 };
+  // No base currency yet: amounts say so ("set a base currency") rather than assume one.
+  const base = currencies.get(String(ref.company?.baseCurrencyId)) ?? { id: "", code: "", minorUnits: 2 };
   setBaseCurrencyCode(base.code);
+  setRegional(ref.company?.effectiveRegional as Partial<Regional> | undefined);
   const baseUnits = 10 ** Number(base.minorUnits ?? 2);
   const toMajor = (minor: number | undefined, currencyId?: string) => (minor ?? 0) / 10 ** Number(currencies.get(String(currencyId ?? base.id))?.minorUnits ?? 2);
   const baseMajor = (minor: number | undefined) => (minor ?? 0) / baseUnits;
@@ -128,7 +130,7 @@ export function toAppData(ref: Reference, ops: Operations): AppData {
     const account = accounts.get(d.id);
     return {
       id: d.id, name: d.name, phone: d.whatsapp ?? d.phone ?? "", licence: d.licence?.number ?? "",
-      openingBalanceZmw: inBase(d.openingBalance),
+      openingBalanceBase: inBase(d.openingBalance),
       settleRequestedAt: account?.settleRequestedAt, settleRequestedBy: account?.settleRequestedByDesk,
     };
   });
@@ -166,7 +168,7 @@ export function toAppData(ref: Reference, ops: Operations): AppData {
       id: r.id, name: r.name,
       stops: (r.stops ?? []).map((s: Rec) => ({ placeId: s.placeId, kind: s.kind })),
       legKm: (r.stops ?? []).map((s: Rec) => Number(s.legKm ?? 0)),
-      cashBudgetZmw: r.cashBudget ? inBase(r.cashBudget) : budget?.totalCashMinor ? inBase({ amountMinor: budget.totalCashMinor, currencyId: budget.currencyId }) : 0,
+      cashBudgetBase: r.cashBudget ? inBase(r.cashBudget) : budget?.totalCashMinor ? inBase({ amountMinor: budget.totalCashMinor, currencyId: budget.currencyId }) : 0,
       fuelBudgetL: r.fuelBudgetL ?? budget?.fuelL,
     };
   });
@@ -191,7 +193,7 @@ export function toAppData(ref: Reference, ops: Operations): AppData {
     driverId: t.driverId, trailerId: t.trailerId, routeId: t.routeId,
     stops: (t.stops ?? []).map((s: Rec) => ({ id: String(s.id ?? s._id), placeId: s.placeId, kind: s.kind, legKm: s.legKm, legHours: s.legHours, arrivedAt: s.arrivedAt, arrivedVia: s.arrivedVia, leftAt: s.leftAt })),
     productId: t.productId, plannedQty: t.plannedQty, plannedStart: t.plannedStart,
-    fuelBudgetL: t.fuelBudgetL ?? 0, cashBudgetZmw: baseMajor(t.cashBudget?.amountMinor), openingFuelL: t.openingFuelL ?? 0,
+    fuelBudgetL: t.fuelBudgetL ?? 0, cashBudgetBase: baseMajor(t.cashBudget?.amountMinor), openingFuelL: t.openingFuelL ?? 0,
     createdAt: t.createdAt, dispatchedAt: t.dispatchedAt, endedAt: t.endedAt, closingFuelL: t.closingFuelL, stopReason: t.stopReason, cancelledAt: t.cancelledAt, settleAfterCancel: t.settleAfterCancel,
     tracking: t.tracking ? { km: t.tracking.km ?? 0, speed: t.tracking.speed ?? 0, heading: t.tracking.heading ?? 0, at: t.tracking.at, source: t.tracking.source } : undefined,
     settlementId: t.settlementId,
@@ -231,14 +233,14 @@ export function toAppData(ref: Reference, ops: Operations): AppData {
       loaded20L: c.shortage.loaded20L, delivered20L: c.shortage.delivered20L, lossL: c.shortage.lossL, allowancePct: c.shortage.allowancePercent,
       allowanceL: c.shortage.allowanceL, netShortL: c.shortage.netShortL,
       pricePerL: c.shortage.pricePerL ? Math.round(inBase(c.shortage.pricePerL) * 100) / 100 : 0,
-      amountZmw: baseMajor(c.shortage.baseAmountMinor), status: c.shortage.status, decidedAt: c.shortage.decidedAt, note: c.shortage.note,
+      amountBase: baseMajor(c.shortage.baseAmountMinor), status: c.shortage.status, decidedAt: c.shortage.decidedAt, note: c.shortage.note,
       mayWaive: c.shortage.status === "pending" ? mayDecideFinal(ref.me, c.shortage.approval) : undefined,
     } : undefined,
   })).sort((a, b) => a.loadedAt.localeCompare(b.loadedAt));
 
   const expenses: Expense[] = ops.expenses.map((e) => ({
     id: e.id, no: e.number, tripId: e.tripId, driverId: e.driverId, categoryId: e.categoryId,
-    amount: toMajor(e.amount?.amountMinor, e.amount?.currencyId), currency: codeOf(e.amount?.currencyId), amountZmw: baseMajor(e.baseAmountMinor),
+    amount: toMajor(e.amount?.amountMinor, e.amount?.currencyId), currency: codeOf(e.amount?.currencyId), amountBase: baseMajor(e.baseAmountMinor),
     receiptNo: e.receiptNo, docId: e.docId, note: e.note, status: e.status,
     waitingOn: e.status === "pending" ? waitingLabel(e.approval) : undefined, mayDecide: e.status === "pending" ? mayDecide(ref.me, e.approval) : undefined,
     recordedBy: e.recordedByDesk === "viewer" ? "operations" : e.recordedByDesk,
@@ -247,8 +249,8 @@ export function toAppData(ref: Reference, ops: Operations): AppData {
 
   const settlements: Settlement[] = ops.settlements.map((s) => ({
     id: s.id, no: s.number, driverId: s.driverId, tripIds: s.tripIds, from: s.from, to: s.to,
-    openingZmw: baseMajor(s.openingMinor), advancesZmw: baseMajor(s.advancesMinor), expensesZmw: baseMajor(s.expensesMinor),
-    shortagesZmw: baseMajor(s.shortagesMinor), cashZmw: baseMajor(s.cashMinor), closingZmw: baseMajor(s.closingMinor), note: s.note, postedAt: s.postedAt,
+    openingBase: baseMajor(s.openingMinor), advancesBase: baseMajor(s.advancesMinor), expensesBase: baseMajor(s.expensesMinor),
+    shortagesBase: baseMajor(s.shortagesMinor), cashBase: baseMajor(s.cashMinor), closingBase: baseMajor(s.closingMinor), note: s.note, postedAt: s.postedAt,
   })).sort((a, b) => a.postedAt.localeCompare(b.postedAt));
 
   const sources = index(ref.orderSources);

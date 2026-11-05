@@ -1,6 +1,7 @@
 import { DEFAULT_AREAS } from './areaList.js';
 import { Schema, model } from 'mongoose';
 import { ObjectId, schemaOptions } from '../../core/masters/schema.js';
+import { DECIMAL_SEPARATORS, THOUSANDS_SEPARATORS, TIME_FORMATS, UNIT_SYSTEMS, WEEK_STARTS } from '../../core/format/regional.js';
 
 /**
  * How this company runs trips. The first client's way of working ships as the defaults; every value
@@ -54,6 +55,16 @@ const rateFeedSchema = new Schema({
   fetchAt: { type: String, default: '06:00' },
 }, { _id: false, strict: 'throw' });
 
+/** How dates, times and numbers are written (#72). Unset values follow the country, then neutral defaults (core/format/regional.ts). */
+const regionalSchema = new Schema({
+  timeFormat: { type: String, enum: TIME_FORMATS },
+  decimalSeparator: { type: String, enum: DECIMAL_SEPARATORS },
+  thousandsSeparator: { type: String, enum: THOUSANDS_SEPARATORS },
+  firstDayOfWeek: { type: String, enum: WEEK_STARTS },
+  phoneCountryCode: String,
+  unitSystem: { type: String, enum: UNIT_SYSTEMS },
+}, { _id: false, strict: 'throw' });
+
 /** The transporter using this deployment. Exactly one document. */
 const companySchema = new Schema<any>({
   /** Fixed value with a unique index, so only one company document can exist. */
@@ -64,13 +75,15 @@ const companySchema = new Schema<any>({
   taxId: String,
   countryId: { type: ObjectId, ref: 'Country' },
   baseCurrencyId: { type: ObjectId, ref: 'Currency' },
-  timezone: { type: String, default: 'Africa/Lusaka' },
+  /** Unset: the country's first time zone (Company → Regional settings). */
+  timezone: String,
   fiscalYearStartMonth: { type: Number, min: 1, max: 12, default: 1 },
   dateFormat: { type: String, enum: ['DD/MM/YYYY', 'MM/DD/YYYY', 'YYYY-MM-DD'], default: 'DD/MM/YYYY' },
   allowSelfRegistration: { type: Boolean, default: false },
   modules: { type: [String], default: () => [...DEFAULT_AREAS] },
   operations: { type: operationsSchema, default: () => ({}) },
   rateFeed: { type: rateFeedSchema, default: () => ({}) },
+  regional: { type: regionalSchema, default: () => ({}) },
   address: { line1: String, line2: String, city: String, postalCode: String },
   phone: String,
   email: String,

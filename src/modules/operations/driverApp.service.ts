@@ -1,4 +1,5 @@
 import { ForbiddenError, NotFoundError } from '../../core/errors/index.js';
+import * as Fmt from '../../core/format/regional.js';
 import type { Plain } from '../../core/masters/types.js';
 import { Product } from '../cargo/models/product.model.js';
 import { Driver } from '../drivers/models/driver.model.js';
@@ -73,7 +74,7 @@ export async function home(actor: DriverActor) {
     ]);
     const issued = await Promise.all(requests.map(async (r) => ({
       id: String(r._id), number: r.number, kind: r.kind,
-      text: r.kind === 'fuel' ? `${Number(r.litres ?? 0).toLocaleString('en-GB')} L` : r.amount ? formatMoney(r.amount.amountMinor, await currencyInfo(r.amount.currencyId)) : '',
+      text: r.kind === 'fuel' ? `${Fmt.number(Number(r.litres ?? 0), { max: 2 })} L` : r.amount ? formatMoney(r.amount.amountMinor, await currencyInfo(r.amount.currencyId)) : '',
       at: iso(r.issuedAt),
     })));
     current = {

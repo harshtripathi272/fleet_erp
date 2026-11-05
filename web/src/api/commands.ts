@@ -79,7 +79,7 @@ export async function runCommand(action: Action, ctx: { data: AppData; role: Rol
           version: action.version ?? trip?.version ?? 0, customerId: blank(action.customerId), driverId: nullable(action.driverId), trailerId: nullable(action.trailerId),
           routeId: nullable(action.routeId), stops: action.stops, plannedStart: action.plannedStart ? new Date(action.plannedStart).toISOString() : undefined,
           productId: nullable(action.productId), plannedQty: action.plannedQty === undefined ? undefined : action.plannedQty || null,
-          fuelBudgetL: action.fuelBudgetL, cashBudgetMinor: action.cashBudgetZmw === undefined ? undefined : Math.round(action.cashBudgetZmw * 10 ** (data.baseCurrency?.minorUnits ?? 2)),
+          fuelBudgetL: action.fuelBudgetL, cashBudgetMinor: action.cashBudgetBase === undefined ? undefined : Math.round(action.cashBudgetBase * 10 ** (data.baseCurrency?.minorUnits ?? 2)),
         }),
       });
       return;
@@ -151,7 +151,7 @@ export async function runCommand(action: Action, ctx: { data: AppData; role: Rol
     case "expense.decide": await api(`/expenses/${action.id}/decide`, { method: "POST", body: clean({ approve: action.approve, reason: blank(action.reason?.trim()), via: viaOf(action.via) }) }); return;
     case "settlement.request": await api(`/driver-accounts/${action.driverId}/settlement-request`, { method: "POST" }); return;
     case "settlement.post":
-      await api("/settlements", { method: "POST", body: clean({ driverId: action.driverId, tripIds: action.tripIds, cashMinor: Math.round(action.cashZmw * 10 ** (data.baseCurrency?.minorUnits ?? 2)), note: blank(action.note?.trim()) }) });
+      await api("/settlements", { method: "POST", body: clean({ driverId: action.driverId, tripIds: action.tripIds, cashMinor: Math.round(action.cashBase * 10 ** (data.baseCurrency?.minorUnits ?? 2)), note: blank(action.note?.trim()) }) });
       return;
 
     /* Messages */

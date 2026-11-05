@@ -1,5 +1,5 @@
 import { byId } from "./calc";
-import { cash, L, zmw as base } from "../ui/format";
+import { cash, L, inBase } from "../ui/format";
 import type { AppData, Trip } from "./types";
 
 /** Read-side helpers the desks share. The rules themselves run on the API. */
@@ -7,7 +7,7 @@ import type { AppData, Trip } from "./types";
 export const nowIso = (data: AppData) => new Date(Date.now() + data.settings.clockOffsetMs).toISOString();
 
 // The same formatting as the screens: the company's base currency, and figures that never break across lines.
-export const zmw = (value: number) => base(value);
+export { inBase };
 export const litres = (value: number) => L(value);
 export const money = cash;
 

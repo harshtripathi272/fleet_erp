@@ -14,11 +14,11 @@ export function seeded(key: string) {
 }
 
 export const EXPENSE_SAMPLES = [
-  { variant: "toll", title: "Toll receipt", amount: 250, currency: "ZMW" as const, issuer: "Road Development Agency" },
+  { variant: "toll", title: "Toll receipt", amount: 250, currency: "base" as const, issuer: "Road Development Agency" },
   { variant: "border", title: "Border fee", amount: 60, currency: "USD" as const, issuer: "ZIMRA Customs" },
-  { variant: "meals", title: "Meals receipt", amount: 185, currency: "ZMW" as const, issuer: "Mama Tasty Kitchen" },
-  { variant: "parking", title: "Parking ticket", amount: 100, currency: "ZMW" as const, issuer: "Truck Stop Parking" },
-  { variant: "repair", title: "Tyre repair", amount: 1450, currency: "ZMW" as const, issuer: "Highway Tyre Centre" },
+  { variant: "meals", title: "Meals receipt", amount: 185, currency: "base" as const, issuer: "Mama Tasty Kitchen" },
+  { variant: "parking", title: "Parking ticket", amount: 100, currency: "base" as const, issuer: "Truck Stop Parking" },
+  { variant: "repair", title: "Tyre repair", amount: 1450, currency: "base" as const, issuer: "Highway Tyre Centre" },
 ];
 
 export function readDocument(
@@ -41,7 +41,8 @@ export function readDocument(
     return {
       docNo: `R${n(10000, 99999)}`,
       amount: sample.amount,
-      currency: sample.currency,
+      // A simulated receipt is in the company's own currency, except the border fee.
+      currency: sample.currency === "base" ? data.baseCurrency?.code ?? "" : sample.currency,
       categoryId: category?.id,
     };
   }

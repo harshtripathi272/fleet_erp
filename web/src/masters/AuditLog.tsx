@@ -1,3 +1,4 @@
+import { moment, num } from "../ui/format";
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Download } from "lucide-react";
@@ -34,7 +35,7 @@ function writeFilters(filters: Filters) {
 }
 
 const query = (f: Filters) => ({ entity: f.entity, actorId: f.actorId, action: f.action, from: f.from, to: f.to });
-const when = (at: string) => new Date(at).toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
+const when = (at: string) => moment(at);
 
 export function AuditLog({ onOpen }: { onOpen: (entity: string, id: string) => void }) {
   const { toast } = useApp();
@@ -139,7 +140,7 @@ export function AuditLog({ onOpen }: { onOpen: (entity: string, id: string) => v
       )}
       {total > PAGE && (
         <div className="pager">
-          <span className="muted">{total.toLocaleString("en-GB")} changes · page {page} of {pages}</span>
+          <span className="muted">{num(total)} changes · page {page} of {pages}</span>
           <Button size="sm" disabled={page <= 1} onClick={() => setFilters({ page: String(page - 1) })}>Newer</Button>
           <Button size="sm" disabled={page >= pages} onClick={() => setFilters({ page: String(page + 1) })}>Older</Button>
         </div>
