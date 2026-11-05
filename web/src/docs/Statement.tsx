@@ -1,4 +1,5 @@
 import { useApp } from "../store";
+import { Watermark } from "../ui/brand";
 import { byId, driverLedger, tripKm } from "../domain/calc";
 import { routeLabel } from "../domain/helpers";
 import { BrandMark } from "../ui/brand";
@@ -14,6 +15,7 @@ export function Statement({ id }: { id: string }) {
   const before = s.openingZmw + s.advancesZmw - s.expensesZmw + s.shortagesZmw + s.writeOffsZmw;
   return (
     <article className="paper statement">
+      <Watermark forDocument />
       <header className="sheet-head">
         <div className="sheet-brand">
           <BrandMark size={34} />

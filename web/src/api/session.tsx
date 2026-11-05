@@ -1,14 +1,14 @@
 import { useState } from "react";
 import type { FormEvent } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Wordmark } from "../ui/brand";
+import { useBrand, Wordmark } from "../ui/brand";
 import { Button, Field, Modal } from "../ui/kit";
 import type { Action, Role } from "../domain/types";
 import { useApp } from "../store";
 import { api, ApiError, hasSession, onSignedOut, setTokens, type Tokens } from "./client";
 
 /** The desk, view and trip this browser tab has open (the office desks keep it; signing out forgets it). */
-export const DESK_SESSION = "marichi.tripdesk.session";
+export const DESK_SESSION = "fleet.tripdesk.session";
 
 export interface Permission { resource: string; actions: string[] }
 export interface Me {
@@ -83,7 +83,7 @@ const toMe = (r: MeResponse): Me => ({
  * A driver's account is kept on the phone, so the driver app opens with no signal (the trip and the outbox
  * are kept too). Staff desks always load the account fresh.
  */
-const KEPT_ME = "marichi.driver.me";
+const KEPT_ME = "fleet.driver.me";
 const keptMe = () => {
   try {
     const raw = localStorage.getItem(KEPT_ME);
@@ -194,12 +194,13 @@ export function SignIn({ company, onSignedIn }: { company?: string; onSignedIn: 
     }
   };
   const signUp = options.data?.signUp ?? false;
+  const brand = useBrand();
   const heading = { in: "Sign in", up: options.data?.firstOwner ? "Set up the first account" : "Create account", forgot: "Forgot your password", reset: "Choose your password" }[mode];
   return (
     <div className="picker">
       <aside className="picker-side">
         <Wordmark />
-        <p className="picker-company">{company ?? options.data?.company ?? "Marichi Fleet"}</p>
+        <p className="picker-company">{company ?? options.data?.company ?? brand.companyName ?? ""}</p>
       </aside>
       <main className="picker-main">
         <h1>{heading}</h1>

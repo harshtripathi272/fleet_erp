@@ -177,6 +177,8 @@ export async function loadSampleData(actorId?: string, size: SampleSize = 'full'
   await make('payment-methods', 'pmAirtel', { code: 'AIRTEL', name: 'Airtel Money', kind: 'mobile_money', provider: 'Airtel', currencyIds: [ids.ZMW] });
   await make('payment-methods', 'pmDepot', { code: 'DEPOT', name: 'Own depot fuel', kind: 'own_depot', forFuel: true, forCash: false, referenceRequired: true });
   await make('advance-policies', 'apRoute', { code: 'ROUTE-BUDGET', name: 'Advance from route budget', basis: 'route_budget', maxAmount: money(10_000_00), capOnCashHeld: money(2_000_00), approvalPolicyId: ids.advanceApproval, paymentMethodIds: [ids.pmCash, ids.pmAirtel] });
+  // What a customer pays (#61): Copperbelt Minerals pays per tonne of cathodes, with a minimum per trip.
+  await make('customer-rates', 'rateCopper', { code: 'CBM-CATH', name: 'Copperbelt cathodes per tonne', customerId: ids.copper, productId: ids.cuCathodes, basis: 'per_tonne', price: money(42_00, 'USD'), minimumCharge: money(1_200_00, 'USD'), validFrom: days(-365).toISOString().slice(0, 10) });
   await make('cancellation-reasons', 'crCustomer', { code: 'CUST-CANCEL', name: 'Customer cancelled', appliesTo: ['trip', 'order'], chargeableToCustomer: true });
   await make('cancellation-reasons', 'crAccident', { code: 'ACCIDENT', name: 'Accident on the road', appliesTo: ['trip'] });
 

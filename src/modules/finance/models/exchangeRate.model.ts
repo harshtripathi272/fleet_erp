@@ -6,7 +6,11 @@ export const RATE_SOURCES = ['manual', 'bank', 'feed'] as const;
 const exchangeRateSchema = masterSchema({
   baseCurrencyId: { type: ObjectId, ref: 'Currency', required: true },
   quoteCurrencyId: { type: ObjectId, ref: 'Currency', required: true },
+  /** The mid rate. */
   rate: { type: Number, required: true },
+  /** The bank's buying and selling rates, when known; conversions use them when Money settings say so. */
+  buyingRate: Number,
+  sellingRate: Number,
   effectiveDate: { type: Date, required: true },
   source: { type: String, enum: RATE_SOURCES, default: 'manual' },
 });
