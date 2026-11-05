@@ -157,6 +157,7 @@ export async function statementPdf(settlementId: string): Promise<{ name: string
         ['Advances', amount(s.settlement.advancesMinor)],
         ['Approved expenses', amount(s.settlement.expensesMinor)],
         ...(Number(s.settlement.shortagesMinor) ? [['Fuel shortage', amount(s.settlement.shortagesMinor)] as [string, string]] : []),
+        ...(Number(s.settlement.writeOffsMinor) ? [['Load written off', amount(s.settlement.writeOffsMinor)] as [string, string]] : []),
         [Number(s.settlement.cashMinor) < 0 ? 'Paid to the driver' : 'Returned by the driver', amount(Math.abs(Number(s.settlement.cashMinor)))],
         ['Carried forward', amount(s.settlement.closingMinor)],
       ],

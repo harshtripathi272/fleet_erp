@@ -183,6 +183,7 @@ export async function loadSampleData(actorId?: string, size: SampleSize = 'full'
   // What a customer pays (#61): Copperbelt Minerals pays per tonne of cathodes, with a minimum per trip.
   await make('customer-rates', 'rateCopper', { code: 'CBM-CATH', name: 'Copperbelt cathodes per tonne', customerId: ids.copper, productId: ids.cuCathodes, basis: 'per_tonne', price: money(42_00, 'USD'), minimumCharge: money(1_200_00, 'USD'), validFrom: days(-365).toISOString().slice(0, 10) });
   await make('cancellation-reasons', 'crCustomer', { code: 'CUST-CANCEL', name: 'Customer cancelled', appliesTo: ['trip', 'order'], chargeableToCustomer: true });
+  await make('cancellation-reasons', 'crAccident', { code: 'ACCIDENT', name: 'Accident on the road', appliesTo: ['trip'] });
 
   // Configuration
   await make('lists', 'listUnions', { code: 'UNIONS', name: 'Driver unions', values: [{ value: 'ztu', label: 'Zambia Transport Union' }, { value: 'none', label: 'Not a member' }] });

@@ -244,6 +244,31 @@ describe('work orders', () => {
     ok(await as(ops).post(`/trips/${trip.id}/dispatch`));
   });
 
+  test('a load cannot move to a truck held by a work order, and the km of a trip closed that way count', async () => {
+    ids.v2 = (await find(owner, 'vehicles', 'BCA 9034')).id;
+    ids.d2 = (await find(owner, 'drivers', 'Martha')).id;
+    ids.accident = (await find(owner, 'cancellation-reasons', 'ACCIDENT')).id;
+    ids.nakonde = (await find(owner, 'places', 'NAKONDE')).id;
+    ok(await as(ops).put(`/vehicle-states/${ids.v2}`, { placeId: ids.nakonde, fuelL: 300 }));
+    const trip = ok(await newTrip(), 201);
+    ok(await as(ops).post(`/trips/${trip.id}/dispatch`));
+    ok(await as(ops).post(`/trips/${trip.id}/position`, { km: 1961, speed: 0, source: 'simulator' }));
+    ok(await as(ops).post('/consignments', { tripId: trip.id, productId: ids.diesel, invoiceNo: 'INV-1', qty: 38000, ambientL: 38000, tempC: 20, density: 835 }), 201);
+    const driven = ok(await as(ops).get(`/trips/${trip.id}`)).tracking.km;
+    const order = ok(await as(ops).post('/work-orders', { vehicleId: ids.v2 }), 201);
+    const body = { outcome: 'transfer', reasonId: ids.accident, vehicleId: ids.v2, driverId: ids.d2, placeId: ids.nakonde, closingFuelL: 80 };
+    const refused = await as(ops).post(`/trips/${trip.id}/undelivered`, body);
+    assert.equal(refused.status, 409);
+    assert.match(refused.body.error.message, new RegExp(order.number));
+    const still = ok(await as(ops).get(`/trips/${trip.id}`));
+    assert.equal(still.active, true, 'the old trip stays open');
+    assert.equal(ok(await as(owner).get(`/vehicles/${ids.v1}`)).odometerKm, 100_000);
+
+    ok(await as(ops).patch(`/work-orders/${order.id}`, { version: order.version, stage: 'done' }));
+    ok(await as(ops).post(`/trips/${trip.id}/undelivered`, body));
+    assert.equal(ok(await as(owner).get(`/vehicles/${ids.v1}`)).odometerKm, 100_000 + driven);
+  });
+
   test('stopping the truck is a choice on each order, with a company default', async () => {
     ok(await as(ops).post('/work-orders', { vehicleId: ids.v1, stopsTruck: false }), 201);
     ok(await newTrip(), 201);

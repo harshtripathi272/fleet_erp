@@ -1463,3 +1463,7 @@
   font-size: 12.5px;
   font-weight: 600;
 }
+
+/* A write-off waiting for the owner, on the trip. */
+.undelivered-wait { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; justify-content: space-between; }
+.undelivered-wait > span:first-child { flex: 1 1 280px; min-width: 0; }
