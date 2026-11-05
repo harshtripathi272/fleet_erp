@@ -32,6 +32,8 @@ export const envSchema = z.object({
    */
   OWNER_EMAIL: z.string().trim().toLowerCase().pipe(z.email()).optional(),
   CONSOLE_ENABLED: flag('true'),
+  /** Timers inside the server for what a scheduled job does where one runs. Cloud Run turns this off: it scales to zero. */
+  IN_PROCESS_JOBS: flag('true'),
   /** Comma-separated browser origins allowed to call the API, e.g. the React app. */
   CORS_ORIGINS: z.string().default('').transform((v) => v.split(',').map((o) => o.trim().replace(/\/$/, '')).filter(Boolean))
     .refine((list) => list.every((o) => ORIGIN.test(o)), 'Each origin is a scheme and host, e.g. https://app.example.com, with no path and no *'),

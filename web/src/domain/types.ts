@@ -160,7 +160,7 @@ export interface Trip {
 
 export interface Decision {
   role: Role;
-  what: "requested" | "approved" | "sent to owner" | "rejected" | "issued" | "cancelled";
+  what: "requested" | "approved" | "sent to owner" | "escalated" | "rejected" | "issued" | "cancelled";
   at: string;
   note?: string;
   via: "app" | "WhatsApp";
@@ -185,6 +185,8 @@ export interface FundRequest {
   /** Who must decide next, and whether the signed-in person may (from the company's approval policy). */
   waitingOn?: string;
   mayDecide?: boolean;
+  /** The level that lost it by not deciding in time, while it waits on the next one. */
+  movedUpFrom?: string;
   level?: { current: number; of: number };
 }
 
@@ -287,6 +289,7 @@ export interface Expense {
   recordedBy: Role;
   waitingOn?: string;
   mayDecide?: boolean;
+  movedUpFrom?: string;
   decidedAt?: string;
   reason?: string;
   at: string;
