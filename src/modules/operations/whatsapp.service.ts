@@ -17,12 +17,12 @@ import { decideRequest, issueRequest } from './funding.service.js';
 import { Trip } from './models/trip.model.js';
 import * as Schemas from './operations.schema.js';
 import { deskOf, refuse, type OpsContext } from './support.js';
-import { dispatchTrip } from './trips.service.js';
+import { dispatchTrip, driverTripNow } from './trips.service.js';
 import type * as S from './operations.schema.js';
 
 /** The driver's open trip, which a WhatsApp message without a trip is filed against. */
 async function openTripOf(driverId: unknown) {
-  const trip = await Trip.findOne({ driverId, active: true }).sort({ createdAt: -1 }).select('_id').lean();
+  const trip = await driverTripNow(driverId);
   return trip ? String(trip._id) : undefined;
 }
 

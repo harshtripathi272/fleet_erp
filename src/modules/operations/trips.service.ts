@@ -416,6 +416,20 @@ export async function stopTrip(id: string, input: S.StopTripInput, ctx: OpsConte
 
 /* ---------- Funding suggestion ---------- */
 
+/** Fuel in the tank now: on a trip under way, the level less what the km driven used, as the desks show it (#92). */
+export function fuelInTank(trip: Plain, truck: Truck) {
+  if (!trip.dispatchedAt || trip.endedAt) return truck.fuelL;
+  const km = Number((trip.tracking as Plain | undefined)?.km ?? 0);
+  const kmPerL = truck.kmPerLLoaded ?? truck.kmPerLEmpty;
+  return kmPerL ? Math.max(0, Math.round(truck.fuelL - km / kmPerL)) : truck.fuelL;
+}
+
+/** A driver's trip for a message or document: the one under way, or else the latest ended one not yet settled (#92). */
+export async function driverTripNow(driverId: unknown) {
+  return ((await Trip.findOne({ driverId, active: true }).sort({ createdAt: -1 }).lean())
+    ?? (await Trip.findOne({ driverId, ...TO_SETTLE }).sort({ endedAt: -1, createdAt: -1 }).lean())) as Plain | null;
+}
+
 export async function fundingFor(trip: Plain) {
   const truck = await truckFacts(trip.vehicleId, false);
   const base = await baseCurrency();
@@ -426,7 +440,7 @@ export async function fundingFor(trip: Plain) {
   const cashIssued = requests.filter((r) => r.kind === 'cash' && r.status === 'issued').reduce((s, r) => s + Number(r.baseAmountMinor ?? 0), 0);
   const fuelIssued = litresOf(['issued']);
   const fuelOpen = litresOf(OPEN_REQUEST);
-  const room = truck.tankL ? Math.max(0, truck.tankL - truck.fuelL - fuelOpen) : Number.MAX_SAFE_INTEGER;
+  const room = truck.tankL ? Math.max(0, truck.tankL - fuelInTank(trip, truck) - fuelOpen) : Number.MAX_SAFE_INTEGER;
   const fuelSuggested = Math.min(room, Math.max(0, Math.ceil(Number(trip.fuelBudgetL) - Number(trip.openingFuelL) - fuelIssued - fuelOpen)));
   const holds = trip.driverId ? await carriedIn(trip.driverId, trip._id ?? trip.id) : 0;
   const cashBudget = Number((trip.cashBudget as { amountMinor: number }).amountMinor);
