@@ -24,6 +24,8 @@ export const TARGET_LABEL: Record<Target, string> = {
 };
 /** Tested end to end in CI; the others have a script and a guide, not yet run there. */
 export const TESTED_TARGETS: Target[] = ['compose', 'gcp'];
+/** What's been run for real, in words for the screen. Google Cloud's script has only had a dry run so far. */
+export const TARGET_STATE: Record<Target, 'tested' | 'dry-run' | 'script'> = { compose: 'tested', gcp: 'dry-run', aws: 'script', azure: 'script', render: 'script', fly: 'script', railway: 'script' };
 /** Where uploaded files live on each target. Containers on the rest lose their disk on restart. */
 const DISK: Partial<Record<Target, string>> = { compose: '/data/files', azure: '/data/files', render: '/data/files', fly: '/data/files', railway: '/data/files' };
 
@@ -47,7 +49,7 @@ export function checkKit(file: CompanyFile, attachments: Map<string, Buffer>): s
   if (file.deploy.target !== 'gcp' && !file.deploy.image) problems.push('deploy.image: name the shared image to run, without its version (where deploy/build-image.sh pushed it)');
   if (NEEDS_DOMAIN.includes(file.deploy.target) && !file.deploy.domain) problems.push(`deploy.domain: on ${TARGET_LABEL[file.deploy.target]} the company's address is needed before the first start, for password links`);
   if (file.deploy.target === 'gcp' && file.deploy.domainMode !== 'none' && !file.deploy.domain) problems.push(`deploy.domain: domainMode ${file.deploy.domainMode} needs a domain`);
-  if (!file.deploy.smtp && !file.connections.some((c) => c.kind === 'email' && c.enabled && c.provider === 'smtp')) {
+  if (file.purpose !== 'demo' && !file.deploy.smtp && !file.connections.some((c) => c.kind === 'email' && c.enabled && c.provider === 'smtp')) {
     problems.push('deploy.smtp: production needs an e-mail server for invitations and password resets (or an SMTP connection switched on)');
   }
   return problems;
@@ -106,6 +108,8 @@ export function envTemplate(file: CompanyFile): string {
     disk ? set('FILE_STORAGE_DIR', disk) : '# FILE_STORAGE_DIR=data/files',
     target === 'gcp' ? '# GCS_BUCKET is set by the deploy script.' : '# GCS_BUCKET=',
     set('CONSOLE_ENABLED', false),
+    // A real company's copy makes no packages for other companies; a demonstration copy can.
+    set('SETUP_PACKAGES', file.purpose === 'demo'),
     set('DRIVER_PHONE_SIMULATOR', false),
     // Cloud Run and Container Apps scale to nothing and run the timed work as scheduled jobs instead.
     set('IN_PROCESS_JOBS', target === 'gcp' || target === 'azure' ? false : true),

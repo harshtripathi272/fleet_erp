@@ -45,8 +45,8 @@ export function CompanySetup({ defs, onOpen }: { defs: Rec[]; onOpen: (key: stri
     <div className="desk">
       <header className="masters-head">
         <div className="masters-title">
-          <h2>Set up the company</h2>
-          <p>Everything a first trip needs, in the order to add it. Any step can be done later.</p>
+          <h2>Ready for a first trip</h2>
+          <p>Everything a first trip needs, in the order to add it. Any step can be done later. To set up the company itself, its brand, people and services, use Set up a company.</p>
         </div>
       </header>
       <p className={ready ? "setup-banner ok" : "setup-banner"}>

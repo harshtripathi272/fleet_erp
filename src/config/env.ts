@@ -51,6 +51,8 @@ export const envSchema = z.object({
 
   /** A company kit's company.json (#76), applied on every start: the first time in full, then only what it changed. */
   COMPANY_CONFIG: optionalText,
+  /** Whether "Set up a company" may download packages for other companies. Off on a real company's own copy. */
+  SETUP_PACKAGES: z.enum(['true', 'false']).default('true').transform((v) => v === 'true'),
 
   /** Folder of the built web app; defaults to web/dist next to the API. The app is served only when it has been built. */
   WEB_DIR: z.string().trim().min(1).optional(),

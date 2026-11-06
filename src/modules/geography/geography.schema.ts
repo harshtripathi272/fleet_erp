@@ -5,8 +5,9 @@ import {
 import { DIMENSIONS } from './models/unit.model.js';
 import { PLACE_TYPES } from './models/place.model.js';
 import { STOP_KINDS } from './models/route.model.js';
+import { isTimeZone } from '../../core/format/regional.js';
 
-const timezone = z.string().refine((tz) => tz === 'UTC' || Intl.supportedValuesOf('timeZone').includes(tz), 'Unknown IANA time zone');
+const timezone = z.string().refine(isTimeZone, 'Unknown IANA time zone');
 
 export const countryShape = {
   code: z.string().trim().toUpperCase().regex(/^[A-Z]{2}$/, 'ISO 3166-1 alpha-2, e.g. ZM'),

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useBrand, Wordmark } from "../ui/brand";
@@ -162,6 +162,9 @@ export function SignIn({ company, onSignedIn }: { company?: string; onSignedIn: 
   const queryClient = useQueryClient();
   const options = useQuery({ queryKey: ["sign-in-options"], queryFn: () => api<SignInOptions>("/auth/options", { anonymous: true }), retry: false });
   const go = (next: typeof mode) => { setMode(next); setError(""); setNotice(""); };
+  // A new copy has nobody to sign in yet: it opens on making the first account, once the server has said so.
+  const firstAccount = options.data?.firstOwner;
+  useEffect(() => { if (firstAccount && !token) setMode("up"); }, [firstAccount, token]);
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     setBusy(true);
@@ -230,7 +233,7 @@ export function SignIn({ company, onSignedIn }: { company?: string; onSignedIn: 
             {mode === "in" && signUp && <Button tone="quiet" type="button" onClick={() => go("up")}>Create an account</Button>}
             {mode !== "in" && <Button tone="quiet" type="button" onClick={() => go("in")}>Back to sign in</Button>}
           </div>
-          {mode === "up" && options.data?.firstOwner && <p className="muted">This first account becomes the Owner.</p>}
+          {mode === "up" && options.data?.firstOwner && <p className="muted">This first account becomes the Owner. The set-up opens next.</p>}
           {mode === "forgot" && <p className="muted">Drivers who sign in with a phone number: ask the office to set a new password.</p>}
         </form>
       </main>

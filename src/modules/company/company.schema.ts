@@ -6,9 +6,10 @@ import { DATE_FORMATS, DECIMAL_SEPARATORS, THOUSANDS_SEPARATORS, TIME_FORMATS, U
 
 import { AREA_KEYS } from './areaList.js';
 import { CARGO_KINDS, LOADED_TRIP_OUTCOMES, WRITE_OFF_CARRIERS } from './company.model.js';
+import { isTimeZone } from '../../core/format/regional.js';
 
 export const MODULES = AREA_KEYS;
-const timezone = z.string().refine((tz) => Intl.supportedValuesOf('timeZone').includes(tz) || tz === 'UTC', 'Unknown time zone');
+const timezone = z.string().refine(isTimeZone, 'Unknown time zone');
 
 const companyShape = {
   ...workspaceInput,

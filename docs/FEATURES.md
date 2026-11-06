@@ -191,7 +191,10 @@ Owners: LD = lakshya-desktop, LT = lakshya-t3, HD = harsh-desktop, HT = harsh-t3
 | Google Cloud: Cloud Run, Atlas, Secret Manager, Cloud Storage, Cloud Scheduler; runbook and scripts | Built | #14, #26 | Needs a Google Cloud account to go live |
 | Docker image built, started and checked in CI | Built | — | |
 | Production hardening: headers, rate limits, compression, simulators off in production | Built | #18 | |
-| Company setup kit: wizard, configuration file, deployable zip | Building | #76 | Masters → Company kit, or `npm run kit` |
+| Set up a company: guided steps, a draft that saves itself, finish on this copy or download a package; demo sign-ins per role | Built | #96 | The sidebar, or `npm run kit` |
+| File, image and document fields on any master | Planned | #97 | Customise, on any record |
+| Real WhatsApp and e-mail methods; keys typed on screen | Planned | #98 | Set up a company → Connections |
+| Run on this computer; every platform described on screen | Planned | #99 | Set up a company → Where it runs |
 | Guides and scripts for AWS, Azure, any VM with Docker Compose, Render, Fly.io, Railway | Building | #76 | docs/deploy/; Compose tested in CI |
 | Upgrades and rollbacks between versions | Building | #76 | docs/deploy/README.md |
 | Backups and restore drills | Proposed | — | Atlas does backups on Google Cloud; Compose needs its own |

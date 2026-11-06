@@ -29,16 +29,16 @@ const regionalForm = (stored: Rec): Record<string, string> => ({
   ...Object.fromEntries(REGIONAL_KEYS.map((k) => [k, String(stored[k] ?? "")])),
   numberFormat: NUMBER_FORMATS.find((n) => n.decimal === stored.decimalSeparator && n.thousands === stored.thousandsSeparator)?.value ?? "",
 });
-const CARGO_KINDS = [{ value: "volume", label: "Liquids corrected to 20 °C" }, { value: "weighed", label: "Weighed goods" }, { value: "counted", label: "Counted goods" }];
-const OUTCOMES = [{ value: "return", label: "Return it to the consignor" }, { value: "transfer", label: "Move it to another truck" }, { value: "write_off", label: "Write it off" }];
-const CARRIERS = [{ value: "driver", label: "The driver" }, { value: "company", label: "The company" }, { value: "insurance", label: "An insurance claim" }];
+export const CARGO_KINDS = [{ value: "volume", label: "Liquids corrected to 20 °C" }, { value: "weighed", label: "Weighed goods" }, { value: "counted", label: "Counted goods" }];
+export const OUTCOMES = [{ value: "return", label: "Return it to the consignor" }, { value: "transfer", label: "Move it to another truck" }, { value: "write_off", label: "Write it off" }];
+export const CARRIERS = [{ value: "driver", label: "The driver" }, { value: "company", label: "The company" }, { value: "insurance", label: "An insurance claim" }];
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 const DATE_FORMATS = ["DD/MM/YYYY", "MM/DD/YYYY", "YYYY-MM-DD"];
-const PERIODS: { value: string; label: string }[] = [{ value: "any", label: "Any time" }, { value: "weekly", label: "Weekly" }, { value: "fortnightly", label: "Fortnightly" }, { value: "monthly", label: "Monthly" }];
+export const PERIODS: { value: string; label: string }[] = [{ value: "any", label: "Any time" }, { value: "weekly", label: "Weekly" }, { value: "fortnightly", label: "Fortnightly" }, { value: "monthly", label: "Monthly" }];
 const TIME_ZONES: string[] = (Intl as unknown as { supportedValuesOf?: (k: string) => string[] }).supportedValuesOf?.("timeZone") ?? ["UTC"];
 
 /** Number settings under "operations", with their defaults (today's values for the first client) and when each is used. */
-const NUMBERS: { key: string; title: string; description: string; unit: string; step: number; fallback: number }[] = [
+export const NUMBERS: { key: string; title: string; description: string; unit: string; step: number; fallback: number }[] = [
   { key: "roadDistanceFactor", title: "Road distance from a straight line", description: "When no route gives the distance, the straight-line distance is multiplied by this.", unit: "×", step: 0.01, fallback: 1.28 },
   { key: "averageSpeedKmh", title: "Average speed", description: "Used to estimate how long a leg takes and when a truck arrives.", unit: "km/h", step: 1, fallback: 62 },
   { key: "defaultFuelReservePercent", title: "Fuel reserve", description: "Extra fuel added to a trip's budget when no fuel norm sets a reserve.", unit: "%", step: 0.5, fallback: 6 },
@@ -46,7 +46,7 @@ const NUMBERS: { key: string; title: string; description: string; unit: string; 
   { key: "deliveredOverLoadedPercent", title: "Delivered above loaded", description: "A delivery may show up to this much more than was loaded (both at 20 °C) before it is questioned.", unit: "%", step: 0.1, fallback: 2 },
 ];
 /** How close a service is before the Maintenance desk shows it as due. */
-const DUE_SOON = [
+export const DUE_SOON = [
   { key: "dueSoonKm", title: "Due soon, by distance", description: "A service shows as due when the truck is this close to its km, and a reminder goes out.", unit: "km", step: 100, fallback: 1000 },
   { key: "dueSoonDays", title: "Due soon, by date", description: "The same for a service counted in days.", unit: "days", step: 1, fallback: 14 },
   { key: "dueSoonHours", title: "Due soon, by engine hours", description: "The same for a service counted in engine hours.", unit: "hours", step: 5, fallback: 50 },

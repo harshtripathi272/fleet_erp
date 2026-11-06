@@ -336,7 +336,7 @@ function ConnectionForm({ kind, connection, onClose }: { kind: KindState; connec
 }
 
 /** One of a provider's settings, drawn from what the server says about it. */
-function SettingField({ field: f, value, error, onChange }: { field: FieldSpec; value: string | boolean | undefined; error?: string; onChange: (v: string | boolean) => void }) {
+export function SettingField({ field: f, value, error, onChange }: { field: FieldSpec; value: string | boolean | undefined; error?: string; onChange: (v: string | boolean) => void }) {
   const label = f.required ? f.label : `${f.label} (optional)`;
   if (f.type === "boolean") return <SwitchField label={f.label} hint={error ?? f.hint} checked={Boolean(value)} onChange={onChange} />;
   if (f.type === "choice" && f.choices) {

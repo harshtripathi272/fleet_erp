@@ -6,7 +6,7 @@ Each company runs its own copy: its own database, files and address. A developer
 
 Either:
 
-- **On screen:** Masters → **Company kit**, on an installation where the company was set up (its details, brand, areas, connections and roles). Add the owner, the staff, the data files and where it runs, then **Download kit**.
+- **On screen:** **Set up a company**, in the sidebar, for anyone who may change the company. It goes through the company, region, brand, areas, how it works, people, connections, data and where it runs, then sets up the copy you're in or downloads the package. A real company's own copy doesn't make packages (`SETUP_PACKAGES=false`, set by its kit).
 - **By hand:** write `company.json` next to its `files/` and `data/` folders, then:
 
   ```bash

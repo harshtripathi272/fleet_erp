@@ -48,6 +48,9 @@ export async function loadSampleData(actorId?: string, size: SampleSize = 'full'
 
   // Geography
   await make('countries', 'ZM', { code: 'ZM', iso3: 'ZMB', name: 'Zambia', dialCode: '+260', currencyId: ids.ZMW, drivingSide: 'left', timezones: ['Africa/Lusaka'], idTypes: [{ key: 'nrc', label: 'NRC', pattern: '^\\d{6}/\\d{2}/\\d$' }] });
+  // A company made first, by a set-up, has no base currency yet, and the sample's money needs one. The set-up's own choice follows.
+  const already = await Company.findOne().select('baseCurrencyId version').lean<{ baseCurrencyId?: unknown; version?: number }>();
+  if (already && !already.baseCurrencyId) await saveCompany(saveCompanySchema.parse({ baseCurrencyId: ids.ZMW, version: already.version }));
   await make('countries', 'TZ', { code: 'TZ', iso3: 'TZA', name: 'Tanzania', dialCode: '+255', currencyId: ids.TZS, drivingSide: 'left', timezones: ['Africa/Dar_es_Salaam'] });
   await make('countries', 'CD', { code: 'CD', iso3: 'COD', name: 'DR Congo', dialCode: '+243', drivingSide: 'right', timezones: ['Africa/Lubumbashi'] });
   await make('provinces', 'pLusaka', { code: 'LSK', name: 'Lusaka', countryId: ids.ZM });

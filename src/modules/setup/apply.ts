@@ -54,16 +54,28 @@ export async function readCompanyFile(path: string): Promise<{ file: CompanyFile
   return { file: parsed.data, raw };
 }
 
-/** What the last start applied, for the Company kit screen. */
+/** What was last applied, for the set-up screen. */
 export async function lastApplied() {
   const state = await SystemState.findOne({ key: STATE_KEY }).lean<{ value?: Applied }>();
-  return state?.value ? { at: state.value.at, hash: state.value.hash, company: state.value.file.company.key, results: state.value.results } : null;
+  return state?.value ? { at: state.value.at, hash: state.value.hash, company: state.value.file.company.key, purpose: state.value.file.purpose ?? 'real', results: state.value.results } : null;
 }
 
 export async function applyCompanyFile(path: string): Promise<{ applied: boolean; results: Result[] }> {
   const { file, raw } = await readCompanyFile(path);
   const dir = dirname(path);
-  const read = (name: string) => readFile(join(dir, name));
+  return applyFile(file, raw, (name) => readFile(join(dir, name)));
+}
+
+/** How a person's set-up differs from a start-up: who is watching, and who is already signed in. */
+export interface ApplyOptions {
+  /** Told of each step as it finishes, so the screen can show it happening. */
+  onResult?: (result: Result) => void;
+  /** More owners can be added once the copy has its first: the set-up invites one named there. */
+  inviteOwner?: boolean;
+}
+
+/** Applies a checked company file. `read` finds the files it names, on disk at start-up or in the set-up's draft. */
+export async function applyFile(file: CompanyFile, raw: string, read: (name: string) => Promise<Buffer>, options: ApplyOptions = {}): Promise<{ applied: boolean; results: Result[] }> {
   // Data and brand files count towards "changed", so a new spreadsheet next to the same company file is applied.
   const hashes: Record<string, string> = {};
   for (const f of file.data.files) hashes[f.file] = sha(await read(f.file));
@@ -78,6 +90,7 @@ export async function applyCompanyFile(path: string): Promise<{ applied: boolean
   const results: Result[] = [];
   const note = (step: string, outcome: Result['outcome'], detail?: string) => {
     results.push({ step, outcome, detail });
+    options.onResult?.({ step, outcome, detail });
     (outcome === 'failed' ? logger.warn.bind(logger) : logger.info.bind(logger))({ step, outcome, detail }, 'Company file');
   };
   /** True the first time, or when the file's value differs from what was applied last. */
@@ -86,11 +99,12 @@ export async function applyCompanyFile(path: string): Promise<{ applied: boolean
     await details(file, changed, note);
     await sample(file, last, note);
     await data(file, last, hashes, read, note);
+    await regionRecords(file, note);
     await settings(file, changed, note);
     await roles(file, last, note);
     await connections(file, last, note);
     // E-mail is set up by now, so the invitations carry the company's brand and go out over its server.
-    await people(file, last, note);
+    await people(file, last, note, options);
     await brandFiles(file, last, hashes, read, note);
     await SystemState.updateOne({ key: STATE_KEY }, { $set: { value: { file, hash, hashes, at: new Date().toISOString(), results } satisfies Applied } }, { upsert: true });
   } finally {
@@ -163,11 +177,47 @@ const idByCode = async (master: string, code: string | undefined) => {
   return doc ? String(doc._id) : null;
 };
 
+/** The company's country and currency as records, when neither the data files nor the sample data brought them. */
+async function regionRecords(file: CompanyFile, note: Note) {
+  const { country, baseCurrency, timezone, style } = file.regional;
+  if (baseCurrency && !(await idByCode('currencies', baseCurrency))) {
+    try {
+      const def = getMaster('currencies')!;
+      await MasterService.create(def, def.createSchema.parse(currencyFromCode(baseCurrency)) as Plain, system);
+      note(`currency ${baseCurrency}`, 'created');
+    } catch (err) { note(`currency ${baseCurrency}`, 'failed', (err as Error).message); }
+  }
+  if (country && !(await idByCode('countries', country))) {
+    try {
+      const def = getMaster('countries')!;
+      const currencyId = baseCurrency ? await idByCode('currencies', baseCurrency) : undefined;
+      await MasterService.create(def, def.createSchema.parse({
+        code: country, name: new Intl.DisplayNames(['en'], { type: 'region' }).of(country) ?? country,
+        ...(style?.phoneCountryCode ? { dialCode: style.phoneCountryCode } : {}),
+        ...(timezone ? { timezones: [timezone] } : {}),
+        ...(currencyId ? { currencyId } : {}),
+      }) as Plain, system);
+      note(`country ${country}`, 'created');
+    } catch (err) { note(`country ${country}`, 'failed', (err as Error).message); }
+  }
+}
+
+/** A currency's name, symbol and decimal places, from the runtime's own list. */
+function currencyFromCode(code: string) {
+  const format = new Intl.NumberFormat('en', { style: 'currency', currency: code, currencyDisplay: 'narrowSymbol' });
+  return {
+    code, name: new Intl.DisplayNames(['en'], { type: 'currency' }).of(code) ?? code,
+    symbol: format.formatToParts(0).find((p) => p.type === 'currency')?.value.slice(0, 8) ?? code,
+    minorUnits: Math.min(4, format.resolvedOptions().maximumFractionDigits ?? 2),
+  };
+}
+
 /** Regional settings, brand, areas and the company's options: each one only when the file changed it. */
 async function settings(file: CompanyFile, changed: Changed, note: Note) {
   const patch: Plain = {};
-  const { country, baseCurrency, ...regional } = file.regional;
+  const { country, baseCurrency, style, ...regional } = file.regional;
   for (const [k, v] of Object.entries(regional)) if (v !== undefined && changed((f) => (f.regional as Plain)[k])) patch[k] = v;
+  if (style && changed((f) => f.regional.style)) patch.regional = style;
   for (const [field, master, code] of [['countryId', 'countries', country], ['baseCurrencyId', 'currencies', baseCurrency]] as const) {
     if (!code || !changed((f) => (field === 'countryId' ? f.regional.country : f.regional.baseCurrency))) continue;
     const id = await idByCode(master, code);
@@ -180,6 +230,11 @@ async function settings(file: CompanyFile, changed: Changed, note: Note) {
   if (Object.keys(brand).length) patch.brand = brand;
   if (file.watermark && changed((f) => f.watermark)) patch.watermark = file.watermark;
   if (file.operations && changed((f) => f.operations)) patch.operations = file.operations;
+  if (file.maintenance && changed((f) => f.maintenance)) patch.maintenance = file.maintenance;
+  for (const key of ['vocabulary', 'stages', 'desks'] as const) {
+    const value = file.workspace?.[key];
+    if (value !== undefined && changed((f) => f.workspace?.[key])) patch[key] = value;
+  }
   if (file.areas && changed((f) => f.areas)) patch.modules = file.areas;
   if (changed((f) => f.selfSignUp)) patch.allowSelfRegistration = file.selfSignUp;
   if (!Object.keys(patch).length) return note('settings', 'unchanged');
@@ -261,10 +316,17 @@ async function connections(file: CompanyFile, last: Applied | undefined, note: N
 }
 
 /** The first owner, then the staff, each invited by e-mail once. */
-async function people(file: CompanyFile, last: Applied | undefined, note: Note) {
+async function people(file: CompanyFile, last: Applied | undefined, note: Note, options: ApplyOptions = {}) {
   const { created, sent } = await ensureFirstOwner(file.owner.email);
   note('owner', created ? 'created' : 'unchanged', created ? `${file.owner.email}${sent ? ', invited' : ', invitation not sent: use "Forgot password"'}` : undefined);
   if (created && file.owner.name) await User.updateOne({ email: file.owner.email }, { $set: { name: file.owner.name } });
+  if (options.inviteOwner && !created && !(await User.exists({ email: file.owner.email }))) {
+    try {
+      const role = await Role.findOne({ key: 'owner' }).select('_id').lean<{ _id: unknown }>();
+      await createUser(createUserSchema.parse({ name: file.owner.name ?? file.owner.email.split('@')[0], email: file.owner.email, roleIds: [String(role!._id)] }) as Plain, system);
+      note('owner', 'created', `${file.owner.email}, invited`);
+    } catch (err) { note('owner', 'failed', (err as Error).message); }
+  }
   const roleIds = async (keys: string[]) => {
     const found = await Role.find({ key: { $in: keys }, status: 'active' }).select('_id key').lean<{ _id: unknown; key: string }[]>();
     const missing = keys.filter((k) => !found.some((r) => r.key === k));

@@ -3,6 +3,7 @@ import { KINDS, SECRET_ENV, SECRET_ENV_HINT, providerFor } from '../../core/conn
 import { email, name, phone, text } from '../../core/masters/zod.js';
 import { AREA_KEYS } from '../company/areaList.js';
 import { saveCompanySchema } from '../company/company.schema.js';
+import { workspaceInput } from '../company/workspace.js';
 import { PERMISSION_ACTIONS } from '../roles/roles.schema.js';
 
 /**
@@ -110,6 +111,8 @@ const deploy = z.discriminatedUnion('target', [
 
 export const companyFileSchema = z.strictObject({
   format: z.literal(COMPANY_FILE_FORMAT),
+  /** A demonstration copy may be cleared and started again, and needs no e-mail server. A real company's may not. */
+  purpose: z.enum(['demo', 'real']).default('real'),
   company: z.strictObject({
     key: companyKey,
     legalName: text(200),
@@ -128,11 +131,16 @@ export const companyFileSchema = z.strictObject({
     timezone: company.timezone,
     dateFormat: company.dateFormat,
     fiscalYearStartMonth: company.fiscalYearStartMonth,
+    /** Clock, number style, week, phone code and units. Left out, each follows the country or the default. */
+    style: company.regional,
   }).default({}),
   brand: brandText.extend({ files: z.strictObject({ logo: kitPath('files').optional(), logoDark: kitPath('files').optional(), icon: kitPath('files').optional(), logoPdf: kitPath('files').optional() }).default({}) }).default({ files: {} }),
   watermark: company.watermark,
   areas: z.array(z.enum(AREA_KEYS)).max(AREA_KEYS.length).optional(),
   operations: company.operations,
+  maintenance: company.maintenance,
+  /** The company's own words, trip stages and desks. Only what differs from the defaults. */
+  workspace: z.strictObject(workspaceInput).optional(),
   /** Anyone may make an account, waiting for a role; off unless the company asks for it. */
   selfSignUp: z.boolean().default(false),
   connections: z.array(connection).max(50).default([]).superRefine(unique((c) => c.code, 'Connection')),
