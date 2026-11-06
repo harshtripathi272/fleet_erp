@@ -24,6 +24,15 @@ export const isKind = (value: string): value is Kind => (KINDS as readonly strin
 export const SECRET_ENV = /^(SMTP_PASS|RATE_FEED_API_KEY|MESSAGING_[A-Z0-9_]{1,50}|CONNECTION_[A-Z0-9_]{1,50})$/;
 export const SECRET_ENV_HINT = 'SMTP_PASS, RATE_FEED_API_KEY, or a name starting with CONNECTION_, e.g. CONNECTION_TWILIO_TOKEN';
 
+/**
+ * The server setting that holds a connection's secret, made from its code and the secret's key (#98), so
+ * nobody types it: connection WA, secret accessToken → CONNECTION_WA_ACCESS_TOKEN.
+ */
+export function secretEnvName(code: string, key: string): string {
+  const part = (s: string) => s.replace(/([a-z0-9])([A-Z])/g, '$1_$2').toUpperCase().replace(/[^A-Z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+  return `CONNECTION_${`${part(code) || 'X'}_${part(key)}`.slice(0, 50).replace(/_+$/, '')}`;
+}
+
 export interface ConnectionLike { _id?: unknown; settings?: Record<string, unknown>; secrets?: Record<string, string> }
 
 /** What a provider is handed for one connection. Secret values are read from the environment when used. */

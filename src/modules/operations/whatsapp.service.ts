@@ -9,6 +9,7 @@ import { permissionChecker } from '../../middleware/authorize.js';
 import { Driver } from '../drivers/models/driver.model.js';
 import { Currency } from '../finance/models/currency.model.js';
 import { Role } from '../roles/role.model.js';
+import { onInbound } from '../connections/connections.service.js';
 import { User } from '../users/user.model.js';
 import { redeem } from './actionTokens.js';
 import { decideShortage, markDone, recordDelivery, recordLoading, returnDocument, sendDocument } from './cargo.service.js';
@@ -32,6 +33,27 @@ export async function simulate(input: S.SimulateInput, ctx: OpsContext) {
   const tripId = input.tripId ?? (await openTripOf(input.driverId));
   return sendDocument({ driverId: input.driverId, tripId, kind: input.kind ?? 'other', note: input.text, file: input.file, reading: input.reading, channel: 'whatsapp' }, { ...ctx, asDriver: true, simulated: true });
 }
+
+/** A driver's WhatsApp message, filed on the trip they are on (or the one waiting to be settled). */
+async function fileDriverMessage(driver: { _id: unknown; name?: unknown }, message: { kind: S.InboundInput['kind'] | 'other'; text?: string; file?: S.InboundInput['media'] }) {
+  const tripId = await openTripOf(driver._id);
+  return sendDocument({ driverId: String(driver._id), tripId, kind: message.kind ?? 'other', note: message.text, file: message.file, channel: 'whatsapp' }, driverContext(String(driver.name)));
+}
+
+/**
+ * Replies through a WhatsApp connection (#98: Meta's Cloud API, Twilio) reach the app the same way: a
+ * driver's message is filed on their trip. Messages from numbers that are not a driver are only logged.
+ */
+onInbound(async (kind, _connection, result) => {
+  if (kind !== 'whatsapp') return;
+  for (const m of result.messages ?? []) {
+    const phones = phoneVariants(m.from);
+    const driver = await Driver.findOne({ status: 'active', $or: [{ whatsapp: { $in: phones } }, { phone: { $in: phones } }] }).select('_id name').lean();
+    if (!driver) { logger.info({ from: m.from }, 'WhatsApp reply from a number that is not a driver'); continue; }
+    const text = m.text ?? (m.kind === 'photo' ? 'Sent a photo on WhatsApp (open WhatsApp to see it)' : 'Sent a message on WhatsApp');
+    await fileDriverMessage(driver, { kind: 'other', text });
+  }
+});
 
 /** A system context for a driver's own WhatsApp message: it may only file the driver's documents. */
 const driverContext = (name: string): OpsContext => ({ name, desk: 'driver', asDriver: true, roles: [], can: (resource, action) => resource === 'driver-documents' && action === 'create' });
@@ -61,8 +83,7 @@ export async function inbound(secret: string | undefined, body: S.InboundInput) 
   const driver = await Driver.findOne({ status: 'active', $or: [{ whatsapp: { $in: phones } }, { phone: { $in: phones } }] }).select('_id name').lean();
   if (driver) {
     if (body.buttonToken) throw refuse('Drivers answer with a photo or a message.');
-    const tripId = await openTripOf(driver._id);
-    const doc = await sendDocument({ driverId: String(driver._id), tripId, kind: body.kind ?? 'other', note: body.text, file: body.media, channel: 'whatsapp' }, driverContext(String(driver.name)));
+    const doc = await fileDriverMessage(driver, { kind: body.kind ?? 'other', text: body.text, file: body.media });
     return { handled: 'driver-document', id: doc.id };
   }
   if (body.buttonToken) {

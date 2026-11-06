@@ -155,9 +155,9 @@ Owners: LD = lakshya-desktop, LT = lakshya-t3, HD = harsh-desktop, HT = harsh-t3
 | --- | --- | --- | --- |
 | E-mail, SMS or WhatsApp per action, with templates, rules and an outbox | Built | #19, #29, #43 | |
 | Every new company starts with templates and rules | Built | #43 | |
-| E-mail through the server's or the company's own SMTP | Built | — | |
-| Real WhatsApp (Marichi Talks) | Planned | #10, #59 | Needs credentials |
-| SMS providers (Africa's Talking, Twilio) | Planned | #59 | |
+| E-mail through the server's or the company's own SMTP, with presets (Google, Microsoft 365, SES, Zoho), or SendGrid, Resend, Mailgun | Building | #98 | HD; each with a guide; tested on recorded answers |
+| Real WhatsApp: Meta Cloud API or Twilio, replies reach the app; Marichi Talks coming soon | Building | #98 | HD; no live Meta account tested yet; one approved template for after 24 hours |
+| SMS providers (Africa's Talking, Twilio), with guides | Building | #59, #98 | HD |
 | Trip sheet and driver statement as PDF, by print layout | Built | #44 | |
 | Logo and watermark on PDFs | Building | #71 | LD |
 | Invoices and customer statements as PDF | Planned | #61, #62 | HT |
