@@ -204,3 +204,63 @@ details.form-group summary { cursor: pointer; }
 .desk-setup-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .desk-setup-add { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
 .term-note { display: block; margin-top: 2px; color: var(--ink-3); font-size: 12.5px; }
+
+/* ---------- File, image and document fields (#97) ---------- */
+.file-field { display: grid; gap: 8px; min-width: 0; }
+.file-row { display: grid; grid-template-columns: 48px minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
+.file-row-text { display: grid; gap: 2px; min-width: 0; }
+.file-row-text strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 560; }
+.file-row-actions { display: flex; gap: 4px; align-items: center; }
+.file-preview { width: 48px; height: 48px; border-radius: 8px; object-fit: cover; background: var(--surface-2); }
+.file-preview-icon { display: grid; place-items: center; color: var(--ink-2); }
+.file-expiry { display: flex; gap: 8px; align-items: center; margin-top: 4px; color: var(--ink-2); font-size: 13px; white-space: nowrap; }
+.file-expiry input { min-height: 30px; padding: 3px 8px; }
+.file-drop { display: grid; justify-items: center; gap: 2px; width: 100%; padding: 14px 12px; border: 1px dashed var(--line-2); border-radius: 10px; background: var(--surface); color: var(--ink-2); font: inherit; text-align: center; cursor: pointer; }
+.file-drop:hover, .file-drop.over { background: var(--surface-2); border-color: var(--pine-500); }
+.file-drop b { color: var(--ink); font-weight: 560; }
+.file-progress { display: block; height: 6px; margin-top: 6px; border-radius: 6px; background: var(--surface-2); overflow: hidden; }
+.file-progress span { display: block; height: 100%; background: var(--pine-600); }
+.file-problem { margin: 0; color: var(--rust); font-size: 13px; }
+.file-chip { display: inline-flex; gap: 8px; align-items: center; max-width: 260px; vertical-align: middle; }
+.file-chip img, .file-thumb-wait { width: 28px; height: 28px; border-radius: 6px; object-fit: cover; background: var(--surface-2); flex: none; }
+.file-chip-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media (max-width: 560px) {
+  .file-row { grid-template-columns: 40px minmax(0, 1fr); }
+  .file-row-actions { grid-column: 1 / -1; justify-content: flex-end; }
+  .file-preview { width: 40px; height: 40px; }
+}
+
+/* The field editor (#97): what the field holds as a picture of each kind, then that kind's settings. */
+.field-editor { display: grid; gap: 16px; }
+.type-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+.type-card { display: grid; gap: 4px; align-content: start; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); color: var(--ink-2); font: inherit; font-size: 12.5px; line-height: 1.35; text-align: left; cursor: pointer; }
+.type-card svg { color: var(--ink-2); }
+.type-card strong { color: var(--ink); font-size: 14px; font-weight: 560; }
+.type-card:hover:not(:disabled) { background: var(--surface-2); }
+.type-card.on { border-color: var(--pine-500); background: var(--pine-50); }
+.type-card.on svg { color: var(--pine-700); }
+.type-card:disabled { cursor: default; }
+.field-editor-body { display: grid; gap: 14px; }
+.field-editor-preview { padding: 12px 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface-2); }
+.field-editor-preview h4 { margin: 0 0 8px; color: var(--ink-3); font-size: 12.5px; font-weight: 600; }
+.field-editor-more { justify-self: start; display: inline-flex; gap: 4px; align-items: center; }
+.field-editor-more[aria-expanded="true"] svg { transform: rotate(180deg); }
+.field-editor-foot { display: flex; gap: 8px; align-items: center; padding-top: 4px; border-top: 1px solid var(--line); }
+.field-editor-foot .spacer { flex: 1; }
+/* Adding a field from a record: the editor sits beside the form, which keeps what was typed. */
+.record-split { display: grid; grid-template-columns: minmax(0, 1fr) minmax(360px, 460px); gap: 24px; align-items: start; }
+.record-split > aside { position: sticky; top: 0; padding-left: 24px; border-left: 1px solid var(--line); }
+.record-split > aside h3 { margin: 0 0 12px; font-size: 15px; }
+@media (max-width: 1100px) {
+  .record-split { grid-template-columns: minmax(0, 1fr); }
+  .record-split > aside { position: static; padding: 16px 0 0; border-left: 0; border-top: 1px solid var(--line); }
+}
+.add-field-row { display: flex; justify-content: flex-start; margin-top: 4px; }
+/* A custom master's fields, one line each (#97). */
+.cm-fields { display: grid; gap: 8px; }
+.cm-field { display: flex; gap: 12px; align-items: center; justify-content: space-between; padding: 8px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
+.cm-field > div { display: grid; gap: 2px; min-width: 0; }
+.cust-own-name { display: flex; gap: 8px; align-items: center; justify-content: space-between; }
+.cust-spec { display: block; margin-top: 2px; color: var(--ink-3); font-size: 12.5px; }
+.record-split > aside { max-height: calc(100vh - 170px); overflow-y: auto; }
+.type-change { justify-self: start; margin-top: 6px; }

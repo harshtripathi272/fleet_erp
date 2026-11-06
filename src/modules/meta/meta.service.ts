@@ -5,6 +5,7 @@ import { env } from '../../config/env.js';
 import { getRedis } from '../../core/cache/redis.js';
 import { mongoState } from '../../core/db/mongo.js';
 import { recentMail } from '../../core/mail/mailer.js';
+import { fileOptions } from '../../core/masters/fileFields.js';
 import { GROUPS } from '../../core/masters/groups.js';
 import { fieldPaths, getLayout, systemRequired, type Layout } from '../../core/masters/layout.js';
 import { AREAS, areasOn } from '../company/areas.js';
@@ -191,7 +192,10 @@ export async function describeMasters(auth?: AuthContext) {
     fields: withLayout(describeSchema(def.model.schema, def, keys).filter((f) => { const area = def.fieldModules?.[f.path.split('.')[0]!]; return !area || on.has(area); }), layout, fixed, fieldPaths(def)),
     customFields: customFields.filter((f) => f.entity === def.key).map((f) => ({
       id: String(f._id), key: f.key, label: f.label, type: f.type, required: f.required,
+      // Where the company placed it among the built-in fields, and whether it is a list column (#97).
+      ...placed(layout, `custom.${f.key}`),
       ...(f.choices ? { choices: f.choices } : {}), ...(f.referenceMaster ? { referenceMaster: f.referenceMaster } : {}), ...(f.helpText ? { helpText: f.helpText } : {}),
+      ...fileOptions(f), ...(f.printOn ? { printOn: f.printOn } : {}), order: f.order,
     })),
     indexes: def.model.schema.indexes().map(([fields, options]) => ({ fields, unique: Boolean(options.unique), partial: options.partialFilterExpression ?? null })),
     createSchema: withoutFieldsOff(def, toJson(def.createSchema), on),
@@ -201,6 +205,12 @@ export async function describeMasters(auth?: AuthContext) {
   });
   });
 }
+
+/** A company field's place in the layout: its section and order, and whether the list shows it. */
+const placed = (layout: Layout, path: string) => {
+  const l = layout.fields.find((f) => f.path === path);
+  return { ...(l?.section ? { section: l.section } : {}), ...(l?.order !== undefined ? { layoutOrder: l.order } : {}), ...(l?.column ? { column: true } : {}) };
+};
 
 /** The company's list columns, when it chose any, in its order. */
 const layoutColumns = (layout: Layout) => {

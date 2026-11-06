@@ -1,4 +1,6 @@
-import { printedFields } from './placements.js';
+import { printedFields, printedPictures } from './placements.js';
+import { Driver } from '../drivers/models/driver.model.js';
+import { Vehicle } from '../fleet/models/vehicle.model.js';
 import { word } from '../company/workspace.js';
 import { documentBrand } from '../company/brand.service.js';
 import { createHash, randomUUID } from 'node:crypto';
@@ -78,7 +80,14 @@ export async function tripSheetPdf(tripId: string): Promise<{ name: string; body
   const layout = await layoutFor('trip_sheet', tripType?.printLayoutId);
   const sheetWord = await word('tripSheet');
   const blocks: PdfBlock[] = await companyBlocks(`${sheetWord} ${trip.number}`);
-  const companyRows = await printedFields('trip_sheet', [['trips', trip], ...sheet.consignments.map((c): [string, Plain] => ['consignments', c as Plain])]);
+  // The company's fields marked for the trip sheet: on the trip, its loads, and its driver and truck (#97).
+  const [driver, vehicle] = await Promise.all([
+    trip.driverId ? Driver.findById(trip.driverId).select('custom').lean() : null,
+    trip.vehicleId ? Vehicle.findById(trip.vehicleId).select('custom').lean() : null,
+  ]) as [Plain | null, Plain | null];
+  const printed: Array<[string, Plain]> = [['trips', trip], ...sheet.consignments.map((c): [string, Plain] => ['consignments', c as Plain]), ...(driver ? [['drivers', driver] as [string, Plain]] : []), ...(vehicle ? [['vehicles', vehicle] as [string, Plain]] : [])];
+  const companyRows = await printedFields('trip_sheet', printed);
+  const pictures = await printedPictures('trip_sheet', printed);
   const stops = (trip.stops ?? []) as Array<{ kind: string; placeId: unknown; arrivedAt?: Date; leftAt?: Date; legKm?: number }>;
   const products = new Map((await Product.find({ _id: { $in: sheet.consignments.map((c) => c.productId) } }).select('name').lean()).map((p) => [String(p._id), String(p.name)]));
   const categories = new Map((await ExpenseCategory.find({ _id: { $in: sheet.expenses.map((e) => e.categoryId) } }).select('name').lean()).map((c) => [String(c._id), String(c.name)]));
@@ -100,7 +109,7 @@ export async function tripSheetPdf(tripId: string): Promise<{ name: string; body
           ['Ended', when(trip.endedAt)],
           ['Distance', `${Fmt.number(Math.round(Number(trip.totalKm ?? 0)))} km`],
         ],
-      });
+      }, ...pictures);
     } else if (section === 'load') {
       blocks.push({ kind: 'heading', text: label ?? 'Load' }, {
         kind: 'table',
@@ -140,15 +149,18 @@ export async function statementPdf(settlementId: string): Promise<{ name: string
   const amount = (minor: unknown) => formatMoney(Number(minor ?? 0), base);
   const statementWord = `${await word('driver')} ${(await word('statement')).toLowerCase()}`;
   const blocks: PdfBlock[] = await companyBlocks(`${statementWord} ${s.settlement.number}`);
+  const driver = await Driver.findById((s.settlement as unknown as Plain).driverId).select('custom').lean() as Plain | null;
+  const printed: Array<[string, Plain]> = [['settlements', s.settlement as unknown as Plain], ...(driver ? [['drivers', driver] as [string, Plain]] : [])];
   blocks.push(
     { kind: 'heading', text: 'Driver' },
     { kind: 'facts', rows: [['Driver', String(s.driver?.name ?? '')], ['Code', String(s.driver?.code ?? '')], ['Phone', String(s.driver?.phone ?? '')], ['Trips', s.trips.map((t) => t.number).join(', ')], ['Period', `${when(s.settlement.from)} to ${when(s.settlement.to)}`], ['Posted', when(s.settlement.postedAt)]] },
+    ...await printedPictures('driver_statement', printed),
     { kind: 'heading', text: 'Entries' },
     { kind: 'table', columns: [{ label: 'Date', width: 2.4 }, { label: 'Entry', width: 4 }, { label: 'Amount', width: 2, align: 'right' }], rows: s.lines.map((l) => [when(l.at), l.label, amount(l.amountMinor)]) },
     { kind: 'heading', text: 'Summary' },
     {
       kind: 'facts', rows: [
-        ...await printedFields('driver_statement', [['settlements', s.settlement as unknown as Plain]]),
+        ...await printedFields('driver_statement', printed),
         ['Opening balance', amount(s.settlement.openingMinor)],
         ['Advances', amount(s.settlement.advancesMinor)],
         ['Approved expenses', amount(s.settlement.expensesMinor)],

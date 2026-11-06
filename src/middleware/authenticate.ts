@@ -1,5 +1,6 @@
 import type { RequestHandler } from 'express';
 import { UnauthorizedError } from '../core/errors/index.js';
+import { requestActor } from '../core/masters/fileFields.js';
 import { verifyAccessToken } from '../core/security/jwt.js';
 import { Session } from '../modules/auth/session.model.js';
 import { Role } from '../modules/roles/role.model.js';
@@ -32,5 +33,6 @@ export const authenticate: RequestHandler = Object.assign<RequestHandler, { meta
     permissions,
     can: permissionChecker(permissions),
   };
-  next();
+  // The rest of the request knows who is asking, so a company file field can check the files it is given (#97).
+  requestActor.run({ userId: claims.sub, driverId: req.auth.driverId, can: req.auth.can }, next);
 }, { meta: { authenticated: true } });

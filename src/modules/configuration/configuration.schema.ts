@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { FIELD_TYPES } from '../../core/masters/dynamicFields.js';
+import { FILE_KINDS } from '../../core/masters/fileFields.js';
 import { FIELD_ANSWERERS, FIELD_DOCUMENTS } from './models/configuration.model.js';
 import { baseShape, code, customKey, integer, name, objectId, regexText, text, toUpdateSchema } from '../../core/masters/zod.js';
 
@@ -28,6 +29,11 @@ const fieldSpec = {
   pattern: regexText.optional(),
   helpText: text(300).optional(),
   order: integer(0, 1000).optional(),
+  // File fields (#97): the largest file in MB, how many files, the kinds taken, and an expiry date with a document.
+  maxSizeMb: integer(1, 100).optional(),
+  maxFiles: integer(1, 20).optional(),
+  accept: z.array(z.enum(FILE_KINDS)).min(1).max(FILE_KINDS.length).optional(),
+  withExpiry: z.boolean().optional(),
 };
 
 export const fieldDefinitionShape = {

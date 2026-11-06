@@ -1,9 +1,10 @@
 import { z } from 'zod';
 import { ValidationError } from '../errors/index.js';
+import { fileValueSchema, resolveFileValues, type FileKind } from './fileFields.js';
 import { getRefTarget } from './registry.js';
 import type { Plain } from './types.js';
 
-export const FIELD_TYPES = ['text', 'long_text', 'number', 'boolean', 'date', 'select', 'multi_select', 'email', 'phone', 'reference'] as const;
+export const FIELD_TYPES = ['text', 'long_text', 'number', 'boolean', 'date', 'select', 'multi_select', 'email', 'phone', 'reference', 'image', 'document', 'files'] as const;
 export type FieldType = (typeof FIELD_TYPES)[number];
 
 /** Values of fields that were later archived are kept untouched; only new input is checked. */
@@ -20,6 +21,11 @@ export interface DynamicField {
   pattern?: string;
   helpText?: string;
   order?: number;
+  /** File fields (#97): the largest file, how many (`files`), the kinds taken, and an expiry date with a document. */
+  maxSizeMb?: number;
+  maxFiles?: number;
+  accept?: FileKind[];
+  withExpiry?: boolean;
 }
 
 function validatorFor(field: DynamicField): z.ZodType {
@@ -44,6 +50,7 @@ function validatorFor(field: DynamicField): z.ZodType {
     case 'email': return z.string().trim().toLowerCase().pipe(z.email());
     case 'phone': return z.string().trim().regex(/^\+[1-9]\d{6,14}$/, 'Use international format');
     case 'reference': return z.string().regex(/^[0-9a-fA-F]{24}$/, 'Must be a record id').transform((v) => v.toLowerCase());
+    case 'image': case 'document': case 'files': return fileValueSchema(field);
   }
 }
 
@@ -69,6 +76,7 @@ export async function validateDynamicValues(fields: DynamicField[], input: Plain
       (errors[field.key] ??= []).push('Required');
     }
   }
+  await resolveFileValues(fields, result, base, errors);
   for (const field of fields.filter((f) => f.type === 'reference' && result[f.key] !== undefined && !errors[f.key])) {
     const target = getRefTarget(field.referenceMaster ?? '');
     if (!target) { errors[field.key] = ['Reference target no longer exists']; continue; }
