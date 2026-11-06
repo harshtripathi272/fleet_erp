@@ -2,7 +2,7 @@ import { lazy, Suspense, useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { queryClient, resetSync } from "./store";
 import { api, hasSession, onSignedOut } from "./api/client";
-import { DESK_SESSION, SignIn, can, useMe } from "./api/session";
+import { ChooseNewPassword, DESK_SESSION, SignIn, can, useMe } from "./api/session";
 import { DriverPortal } from "./driver/DriverPortal";
 import { Waiting } from "./ui/brand";
 
@@ -58,7 +58,7 @@ export default function App() {
     return () => window.removeEventListener("hashchange", onHash);
   }, []);
   // A copy with no company yet opens on the set-up, once, for whoever may do it. "Save and leave" is honoured until the next visit.
-  const mayChange = Boolean(me.data && !me.data.driverId && can(me.data, "company", "update"));
+  const mayChange = Boolean(me.data && !me.data.driverId && !me.data.mustChangePassword && can(me.data, "company", "update"));
   const status = useQuery({
     queryKey: ["setup-status"], enabled: signedIn && mayChange && !settingUp, staleTime: 60_000, retry: false,
     queryFn: () => api<{ hasCompany: boolean; finished: boolean }>("/setup-kit/status"),
@@ -76,6 +76,7 @@ export default function App() {
   }, [app]);
   if (!signedIn) return <SignIn onSignedIn={() => setSignedIn(true)} />;
   if (!me.data) return <Waiting text={me.error ? `Could not load your account: ${(me.error as Error).message}` : "Signing in…"} />;
+  if (me.data.mustChangePassword) return <ChooseNewPassword me={me.data} onDone={() => void queryClient.invalidateQueries()} />;
   if (me.data.driverId) return <DriverPortal me={me.data} />;
   if (settingUp && mayChange) {
     const leave = () => {

@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { ChevronDown, ChevronUp, Download, Plus } from "lucide-react";
 import { api, authorizedFetch } from "../api/client";
@@ -182,7 +182,7 @@ export function DataStep() {
         {files.length > 0 && (
           <div className="cust-table-wrap su-table">
             <table className="cust-table su-files">
-              <thead><tr><th>Goes into</th><th>Spreadsheet</th><th>Rows</th><th>Needs first</th><th aria-label="Actions" /></tr></thead>
+              <thead><tr><th>Goes into</th><th>Spreadsheet</th><th>Checked</th><th>Needs first</th><th aria-label="Actions" /></tr></thead>
               <tbody>
                 {files.map((f, i) => {
                   const body = attachments.find((a) => a.path === f.file);
@@ -198,7 +198,7 @@ export function DataStep() {
                       <td>
                         <FileDrop accept=".csv,text/csv" label="Drop a CSV or choose one" onFile={(chosen) => void putFile(String(f.file), chosen)} chosen={body ? <span className="su-file-name">{String(f.file).split("/").pop()}</span> : undefined} />
                       </td>
-                      <td className="num">{body ? rowsIn(body.data).toLocaleString() : "—"}</td>
+                      <td className="su-sheet-state">{body ? <SheetCheck master={String(f.master)} path={String(f.file)} body={body.data} others={files.filter((x) => x !== f).map((x) => String(x.master))} /> : "—"}</td>
                       <td>{needs.length ? <span className="muted">{needs.slice(0, 3).map(nameOf).join(", ")}{needs.length > 3 ? "…" : ""}</span> : <span className="muted">Nothing else</span>}</td>
                       <td className="su-row-actions">
                         <Button size="sm" tone="quiet" onClick={() => void template(String(f.master))}><Download size={14} /> Template</Button>
@@ -214,6 +214,44 @@ export function DataStep() {
         <div className="su-pad"><Button onClick={() => add()}><Plus size={15} /> Add a spreadsheet</Button></div>
       </SettingsSection>
     </div>
+  );
+}
+
+interface SheetResult { rows: number; ready: number; exists: number; problems: { row: number; column: string; message: string }[]; problemCount?: number }
+
+/** Checks a spreadsheet as soon as it's added, so a bad row is found here and not at the finish. */
+function SheetCheck({ master, path, body, others }: { master: string; path: string; body: string; others: string[] }) {
+  const [result, setResult] = useState<SheetResult | null>(null);
+  const [failed, setFailed] = useState("");
+  const [open, setOpen] = useState(false);
+  const othersKey = others.join(",");
+  useEffect(() => {
+    let stale = false;
+    setResult(null);
+    setFailed("");
+    // The file is on its way to the draft as this runs, so it waits a moment for it to land.
+    const t = setTimeout(() => {
+      api<SheetResult>("/setup-kit/check-sheet", { method: "POST", body: { master, path, others } })
+        .then((r) => { if (!stale) setResult(r); })
+        .catch((e: Error) => { if (!stale) setFailed(e.message); });
+    }, 500);
+    return () => { stale = true; clearTimeout(t); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- othersKey is `others` as a value
+  }, [master, path, body, othersKey]);
+  if (failed) return <span className="su-bad-text">{failed}</span>;
+  if (!result) return <span className="muted">Checking…</span>;
+  const count = result.problemCount ?? result.problems.length;
+  if (!count) return <Status tone="ok">{result.rows.toLocaleString()} {result.rows === 1 ? "row" : "rows"} fine</Status>;
+  return (
+    <span className="su-sheet-bad">
+      <button type="button" className="su-more" aria-expanded={open} onClick={() => setOpen(!open)}><Status tone="bad">{count} to fix, of {result.rows} {result.rows === 1 ? "row" : "rows"}</Status>{open ? <ChevronUp size={14} aria-hidden /> : <ChevronDown size={14} aria-hidden />}</button>
+      {open && (
+        <ul>
+          {result.problems.slice(0, 30).map((p, i) => <li key={i}>Row {p.row}, {p.column}: {p.message}</li>)}
+          {count > 30 && <li>And {count - 30} more.</li>}
+        </ul>
+      )}
+    </span>
   );
 }
 

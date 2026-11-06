@@ -295,12 +295,20 @@ describe('Set up a company', () => {
     try {
       const made = await ensureFirstOwner('first@acme.example');
       assert.deepEqual(made, { created: true, sent: false, passwordSet: true });
-      await api().post('/api/v1/auth/login').send({ email: 'first@acme.example', password: 'First-Owner-2026' }).expect(200);
+      const signedIn = await api().post('/api/v1/auth/login').send({ email: 'first@acme.example', password: 'First-Owner-2026' }).expect(200);
+      const session = { token: signedIn.body.data.accessToken as string };
+      // Nothing opens with a password from a settings file, until it's replaced.
+      assert.equal((await api().get('/api/v1/auth/me').set(bearer(session)).expect(200)).body.data.user.mustChangePassword, true);
+      await api().get('/api/v1/company').set(bearer(session)).expect(403);
+      await api().get('/api/v1/vehicles').set(bearer(session)).expect(403);
       // Someone changing the variable later can't take the account over.
       env.OWNER_PASSWORD = 'Another-Pass-2026';
       assert.equal((await ensureFirstOwner('first@acme.example')).created, false);
       await api().post('/api/v1/auth/login').send({ email: 'first@acme.example', password: 'Another-Pass-2026' }).expect(401);
-      await api().post('/api/v1/auth/login').send({ email: 'first@acme.example', password: 'First-Owner-2026' }).expect(200);
+      const changed = await api().post('/api/v1/auth/change-password').set(bearer(session)).send({ currentPassword: 'First-Owner-2026', newPassword: 'My-Own-Pass-2026' }).expect(200);
+      const fresh = { token: changed.body.data.accessToken as string };
+      await api().get('/api/v1/vehicles').set(bearer(fresh)).expect(200);
+      await api().post('/api/v1/auth/login').send({ email: 'first@acme.example', password: 'First-Owner-2026' }).expect(401);
     } finally { env.OWNER_PASSWORD = undefined; }
   });
 
@@ -308,5 +316,20 @@ describe('Set up a company', () => {
     const long = file({ company: { key: 'copperbelt-haulage-limited', legalName: 'Copperbelt Haulage Limited' }, deploy: { target: 'gcp', projectId: 'acme-fleet-prod', domainMode: 'none' } });
     const problems = (await api().post('/api/v1/setup-kit/check').set(bearer(owner)).send({ file: long, finish: 'package' }).expect(200)).body.data.problems as { path: string; message: string }[];
     assert.ok(problems.some((p) => p.path === 'company.key' && /at most 24/.test(p.message)), JSON.stringify(problems));
+  });
+
+  test('a spreadsheet is checked on its own step: bad rows are named, and links to its other spreadsheets wait', async () => {
+    const put = (path: string, csv: string) => api().put('/api/v1/setup-kit/draft/file').set(bearer(owner)).send({ path, data: Buffer.from(csv).toString('base64') }).expect(200);
+    await put('data/currencies.csv', 'Code *,Name *\nUSD,US dollar\n,Nameless\n');
+    const bad = (await api().post('/api/v1/setup-kit/check-sheet').set(bearer(owner)).send({ master: 'currencies', path: 'data/currencies.csv' }).expect(200)).body.data;
+    assert.equal(bad.rows, 2);
+    assert.equal(bad.ready, 1);
+    assert.equal(bad.problems[0].row, 3);
+    assert.equal(await count('currencies'), 0, 'nothing is saved by checking');
+    await put('data/countries.csv', 'Code *,Name *,Currency\nZM,Zambia,ZMW\n');
+    const refused = (await api().post('/api/v1/setup-kit/check-sheet').set(bearer(owner)).send({ master: 'countries', path: 'data/countries.csv' }).expect(200)).body.data;
+    assert.equal(refused.problemCount, 1, 'with nothing to link to, it says so');
+    const waiting = (await api().post('/api/v1/setup-kit/check-sheet').set(bearer(owner)).send({ master: 'countries', path: 'data/countries.csv', others: ['currencies'] }).expect(200)).body.data;
+    assert.equal(waiting.problemCount, 0, 'the currency comes from its own spreadsheet');
   });
 });

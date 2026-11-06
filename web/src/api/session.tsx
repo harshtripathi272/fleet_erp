@@ -12,6 +12,8 @@ export const DESK_SESSION = "fleet.tripdesk.session";
 
 export interface Permission { resource: string; actions: string[] }
 export interface Me {
+  /** The password came from someone else: nothing opens until it's replaced. */
+  mustChangePassword?: boolean;
   id: string;
   name: string;
   email: string;
@@ -73,9 +75,10 @@ export function useMay() {
   return (type: Action["type"]) => can(me, ...ACTION_PERMISSION[type]);
 }
 
-interface MeResponse { simulators?: boolean; user: { id: string; name: string; email: string; driverId?: string }; roles: { key: string; permissions: Permission[] }[] }
+interface MeResponse { simulators?: boolean; user: { id: string; name: string; email: string; driverId?: string; mustChangePassword?: boolean }; roles: { key: string; permissions: Permission[] }[] }
 const toMe = (r: MeResponse): Me => ({
   id: r.user.id, name: r.user.name, email: r.user.email, driverId: r.user.driverId ?? undefined, simulators: r.simulators !== false,
+  mustChangePassword: Boolean(r.user.mustChangePassword),
   roles: r.roles.map((x) => x.key), permissions: r.roles.flatMap((x) => x.permissions ?? []),
 });
 
@@ -290,5 +293,51 @@ export function AccountDialog({ me, onClose }: { me: Me; onClose: () => void }) 
         </form>
       </div>
     </Modal>
+  );
+}
+
+/** The first thing someone sees when their password came from a settings file or an administrator. */
+export function ChooseNewPassword({ me, onDone }: { me: Me; onDone: () => void }) {
+  const [current, setCurrent] = useState("");
+  const [next, setNext] = useState("");
+  const [again, setAgain] = useState("");
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const mismatch = Boolean(again) && next !== again;
+  const submit = async (event: FormEvent) => {
+    event.preventDefault();
+    if (next !== again) return;
+    setBusy(true);
+    setError("");
+    try {
+      const tokens = await api<Partial<Tokens>>("/auth/change-password", { method: "POST", body: { currentPassword: current, newPassword: next } });
+      if (tokens?.accessToken && tokens.refreshToken) setTokens(tokens as Tokens);
+      onDone();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "That didn't go through.");
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="picker">
+      <aside className="picker-side">
+        <Wordmark />
+      </aside>
+      <main className="picker-main">
+        <h1>Choose your own password</h1>
+        <p className="muted">{me.email}. The password you just used was set by someone else, so it needs replacing before you carry on.</p>
+        <form className="signin" onSubmit={(e) => void submit(e)}>
+          <Field label="The password you just used"><input type="password" value={current} onChange={(e) => setCurrent(e.target.value)} autoComplete="current-password" required autoFocus /></Field>
+          <Field label="New password" hint="At least 8 characters, with a letter and a digit."><input type="password" value={next} onChange={(e) => setNext(e.target.value)} autoComplete="new-password" required minLength={8} /></Field>
+          <Field label="New password again" hint={mismatch ? "These don't match yet." : undefined}><input type="password" value={again} onChange={(e) => setAgain(e.target.value)} autoComplete="new-password" required /></Field>
+          {error && <p className="signin-error" role="alert">{error}</p>}
+          <div className="signin-actions">
+            <Button tone="primary" type="submit" busy={busy} disabled={mismatch || !next}>Save and carry on</Button>
+            <Button tone="quiet" onClick={() => void signOut()}>Sign out</Button>
+          </div>
+        </form>
+      </main>
+    </div>
   );
 }

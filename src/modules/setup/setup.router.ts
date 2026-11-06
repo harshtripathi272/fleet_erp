@@ -89,6 +89,9 @@ router.post('/package', authorize('company', 'update'), validate({ body: z.stric
   res.setHeader('Cache-Control', 'no-store');
   res.send(result.zip);
 }));
+router.post('/check-sheet', authorize('company', 'update'), validate({ body: z.strictObject({ master: z.string().regex(/^[a-z][a-z0-9-]{1,39}$/), path: attachmentPath, others: z.array(z.string().regex(/^[a-z][a-z0-9-]{1,39}$/)).max(60).optional() }) }), asyncHandler(async (req, res) => {
+  ApiResponse.success(res, await Setup.checkSheet(req.body as { master: string; path: string; others?: string[] }));
+}));
 router.post('/rates-preview', authorize('company', 'update'), validate({ body: z.strictObject({
   provider: z.string().regex(/^[a-z][a-z0-9-]{1,39}$/), base: z.string().regex(/^[A-Z]{3}$/), codes: z.array(z.string().regex(/^[A-Z]{3}$/)).max(60),
 }) }), asyncHandler(async (req, res) => {

@@ -4,6 +4,7 @@ import { Plus } from "lucide-react";
 import { api } from "../api/client";
 import type { Rec } from "../api/adapter";
 import { CARGO_KINDS, DUE_SOON, NUMBERS, OUTCOMES, PERIODS } from "../masters/CompanyPanel";
+import { DesksEditor, type DeskSetup } from "../masters/DesksEditor";
 import { PermissionMatrix } from "../masters/PermissionMatrix";
 import { Button, ChoiceChips, Drawer, Field, FieldGroup, Segmented, SettingRow, SettingsSection, Switch, UnitInput } from "../ui/kit";
 import { useSetUp, withValue } from "./context";
@@ -25,11 +26,18 @@ const TERM_NOTE: Record<string, string> = {
   tripSheet: "The paper that travels with the truck.",
 };
 
-interface Workspace { terms: Record<string, { singular: string; plural: string }>; stages: { key: string; defaultName: string; optional: boolean }[] }
+interface Workspace {
+  terms: Record<string, { singular: string; plural: string }>;
+  stages: { key: string; defaultName: string; optional: boolean }[];
+  views: { key: string; name: string; on: boolean; area?: string }[];
+  icons: string[];
+  defaultDesks: DeskSetup[];
+}
 
 export function WorkStep() {
   const { file, set, replace } = useSetUp();
   const ws = useQuery({ queryKey: ["workspace"], queryFn: () => api<Workspace>("/meta/workspace") });
+  const roles = useQuery({ queryKey: ["workspace-roles"], queryFn: () => api<Rec[]>("/roles", { query: { limit: 100 } }) });
   const words = (file.workspace?.vocabulary ?? {}) as Record<string, { singular?: string; plural?: string }>;
   const stages = (file.workspace?.stages ?? {}) as Record<string, { name?: string; off?: boolean }>;
   const ops = (file.operations ?? {}) as Rec;
@@ -137,7 +145,16 @@ export function WorkStep() {
         </SettingsSection>
       )}
 
-      <p className="su-note">Desks can be shaped once the company exists, under Masters, Words, stages and desks. The usual three work for most companies: Overview and approvals, Operations, and Finance.</p>
+      <DesksEditor
+        desks={(file.workspace?.desks as DeskSetup[] | undefined) ?? ws.data.defaultDesks}
+        onChange={(desks) => replace(withValue(file, "workspace.desks", desks))}
+        views={ws.data.views}
+        icons={ws.data.icons}
+        defaultDesks={ws.data.defaultDesks}
+        savedKeys={ws.data.defaultDesks.map((d) => d.key)}
+        viewName={(key) => (key === "trips" ? words.trip?.plural || ws.data!.terms.trip?.plural || "Trips" : key === "nominations" ? words.nomination?.plural || ws.data!.terms.nomination?.plural || "Nominations" : ws.data!.views.find((v) => v.key === key)?.name ?? key)}
+        roleOptions={[...(roles.data ?? []).map((r) => ({ value: String(r.key), label: String(r.name ?? r.key) })), ...((file.roles ?? []) as Rec[]).map((r) => ({ value: String(r.key), label: String(r.name) }))]}
+      />
     </div>
   );
 }

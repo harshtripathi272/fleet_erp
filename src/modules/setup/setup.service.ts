@@ -1,5 +1,7 @@
 import { randomInt } from 'node:crypto';
 import mongoose from 'mongoose';
+import { MAX_ROWS, companyColumns, importRows, importableMaster } from '../../core/masters/import.js';
+import { readCsv } from './csv.js';
 import { env } from '../../config/env.js';
 import { ForbiddenError, ValidationError } from '../../core/errors/index.js';
 import { listMasters } from '../../core/masters/registry.js';
@@ -338,4 +340,32 @@ export async function ratesPreview(input: { provider: string; base: string; code
   const source = provider.open(contextFor(provider as unknown as Provider)) as { fetch(i: { base: string; codes: string[] }): Promise<{ perBase: Record<string, number>; asOf: Date }> };
   const { perBase, asOf } = await source.fetch({ base: input.base, codes: input.codes });
   return { needsKey: false, rates: perBase, asOf: asOf.toISOString(), missing: input.codes.filter((c) => !perBase[c]) };
+}
+
+/**
+ * A spreadsheet checked against what the company will have, before anything is saved: each row that would be refused
+ * and why. A link to a record in another of its spreadsheets can't be checked yet, so it isn't counted against the row.
+ */
+export async function checkSheet(input: { master: string; path: string; others?: string[] }) {
+  const def = importableMaster(input.master);
+  const stored = (await draftFiles()).find((a) => a.path === input.path);
+  if (!stored) return { rows: 0, ready: 0, exists: 0, problems: [] };
+  const rows = readCsv(Buffer.from(stored.data, 'base64').toString('utf8'));
+  const columns = await companyColumns(def);
+  const others = new Set(input.others ?? []);
+  const waits = new Set(columns.filter((c) => c.target && others.has(c.target)).map((c) => c.label));
+  const company = await Company.findOne().select('baseCurrencyId').lean<{ baseCurrencyId?: unknown }>();
+  const problems: { row: number; column: string; message: string }[] = [];
+  let ready = 0;
+  let exists = 0;
+  for (let start = 0; start < rows.length; start += MAX_ROWS) {
+    const results = await importRows(def, rows.slice(start, start + MAX_ROWS), { dryRun: true, firstRow: start + 2, baseCurrencyId: company?.baseCurrencyId ? String(company.baseCurrencyId) : undefined }, { canSeeSensitive: true });
+    for (const r of results) {
+      const real = r.problems.filter((p) => !waits.has(p.column));
+      if (r.status === 'exists') exists += 1;
+      else if (!real.length) ready += 1;
+      else for (const p of real) problems.push({ row: r.row, column: p.column, message: p.message });
+    }
+  }
+  return { rows: rows.length, ready, exists, problems: problems.slice(0, 200), problemCount: problems.length };
 }

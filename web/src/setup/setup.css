@@ -1390,3 +1390,41 @@
     padding-inline: 16px;
   }
 }
+
+.su-sheet-state {
+  min-width: 170px;
+  white-space: normal !important;
+}
+.su-sheet-bad ul {
+  margin: 6px 0 0;
+  padding-left: 16px;
+  color: var(--ink-2);
+  font-size: 13px;
+}
+
+/* The fields table fits its column: the move controls stay narrow, and the name takes what's left. */
+.su-field-table {
+  width: 100%;
+  min-width: 0;
+}
+.su-field-table th:first-child,
+.su-field-table td:first-child {
+  position: static;
+  width: 1%;
+  min-width: 0;
+  padding-right: 4px;
+  background: inherit;
+}
+.su-field-table .su-field-name .input {
+  width: 100%;
+  min-width: 120px;
+}
+.su-field-table tr.cust-child .su-field-name {
+  padding-left: 20px;
+}
+.su-field-more .grid-2 {
+  max-width: 460px;
+}
+.su-field-more td:first-child {
+  padding: 0;
+}

@@ -111,7 +111,7 @@ export async function ensureFirstOwner(emailAddress = env.OWNER_EMAIL): Promise<
     const user = await User.create({
       name: emailAddress.split('@')[0]!.slice(0, 100) || 'Owner', email: emailAddress,
       passwordHash: await hashPassword(env.OWNER_PASSWORD ?? randomToken(24)), roleIds: [role._id],
-      ...(env.OWNER_PASSWORD ? { passwordChangedAt: new Date() } : {}),
+      ...(env.OWNER_PASSWORD ? { passwordChangedAt: new Date(), mustChangePassword: true } : {}),
     });
     if (env.OWNER_PASSWORD) {
       await audit({ entity: 'users', entityId: user._id, action: 'create', summary: 'First Owner created with the password from OWNER_PASSWORD' });
@@ -222,7 +222,7 @@ export async function changePassword(userId: string, current: string, next: stri
   const user = await User.findById(userId).select('+passwordHash').lean();
   if (!user || !(await verifyPassword(current, user.passwordHash))) throw new ValidationError('Current password is incorrect', { currentPassword: ['Incorrect'] });
   if (current === next) throw new ValidationError('Choose a password different from the current one', { newPassword: ['Same as current'] });
-  await User.updateOne({ _id: userId }, { $set: { passwordHash: await hashPassword(next), passwordChangedAt: new Date() }, $inc: { tokenVersion: 1 } });
+  await User.updateOne({ _id: userId }, { $set: { passwordHash: await hashPassword(next), passwordChangedAt: new Date(), mustChangePassword: false }, $inc: { tokenVersion: 1 } });
   await Session.updateMany({ userId, revokedAt: null }, { $set: { revokedAt: new Date(), revokedReason: 'password-changed' } });
   await audit({ entity: 'users', entityId: userId, action: 'custom', summary: 'Password changed; other sessions signed out', actorId: userId });
   return sessionResponse(userId, client);
@@ -273,7 +273,7 @@ export async function resetPassword(token: string, password: string) {
   ).lean();
   if (!reset) throw new ValidationError('This reset link is invalid, expired or already used', { token: ['Invalid or expired'] });
   await User.updateOne({ _id: reset.userId }, {
-    $set: { passwordHash: await hashPassword(password), passwordChangedAt: new Date(), failedLoginCount: 0 },
+    $set: { passwordHash: await hashPassword(password), passwordChangedAt: new Date(), failedLoginCount: 0, mustChangePassword: false },
     $unset: { lockedUntil: 1 }, $inc: { tokenVersion: 1 },
   });
   await Session.updateMany({ userId: reset.userId, revokedAt: null }, { $set: { revokedAt: new Date(), revokedReason: 'password-reset' } });

@@ -91,7 +91,8 @@ export async function setPassword(id: string, password: string, ctx: ServiceCont
   const target = await User.findById(id).select('roleIds').lean();
   await assertCanAssignRoles(ctx.actorId, [], (target?.roleIds ?? []) as unknown[]);
   await User.updateOne({ _id: id }, {
-    $set: { passwordHash: await hashPassword(password), passwordChangedAt: new Date(), failedLoginCount: 0 },
+    // Someone else knows it now, so it's replaced at the next sign-in.
+    $set: { passwordHash: await hashPassword(password), passwordChangedAt: new Date(), failedLoginCount: 0, mustChangePassword: true },
     $unset: { lockedUntil: 1 },
   });
   await revokeSessions(id);
