@@ -13,7 +13,8 @@ const loadOffice = () => import("./Office");
 const Office = lazy(loadOffice);
 // "Set up a company" (#96) has its own address and its own page, outside the desks.
 const SetUp = lazy(() => import("./setup/SetUp"));
-const onSetUpAddress = () => location.hash.startsWith("#set-up");
+const PackagePage = lazy(() => import("./setup/PackagePage"));
+const onSetUpAddress = (hash: string) => hash.startsWith("#set-up") || hash.startsWith("#package");
 
 // Which app this browser last opened. A returning office user's desks download while their account loads.
 const LAST_APP = "fleet.app";
@@ -49,9 +50,10 @@ export default function App() {
     [],
   );
   const me = useMe(signedIn);
-  const [settingUp, setSettingUp] = useState(onSetUpAddress);
+  const [hash, setHash] = useState(location.hash);
+  const settingUp = onSetUpAddress(hash);
   useEffect(() => {
-    const onHash = () => setSettingUp(onSetUpAddress());
+    const onHash = () => setHash(location.hash);
     window.addEventListener("hashchange", onHash);
     return () => window.removeEventListener("hashchange", onHash);
   }, []);
@@ -79,11 +81,11 @@ export default function App() {
     const leave = () => {
       sessionStorage.setItem(SETUP_LATER, "1");
       history.replaceState(null, "", location.pathname);
-      setSettingUp(false);
+      setHash("");
     };
     return (
       <Suspense fallback={<Waiting text="Opening the set-up…" />}>
-        <SetUp me={me.data} onLeave={leave} />
+        {hash.startsWith("#package") ? <PackagePage me={me.data} onLeave={leave} /> : <SetUp me={me.data} onLeave={leave} />}
       </Suspense>
     );
   }

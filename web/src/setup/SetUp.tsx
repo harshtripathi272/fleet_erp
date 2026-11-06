@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertCircle, Check, ChevronLeft, ChevronRight, Copy, Download, ExternalLink, FileJson } from "lucide-react";
+import { AlertCircle, Check, ChevronLeft, ChevronRight, Copy, Download, ExternalLink, FileJson, Package } from "lucide-react";
 import { api, authorizedFetch } from "../api/client";
 import type { Rec } from "../api/adapter";
 import type { Me } from "../api/session";
 import { Button, Empty, Field, SettingRow, SettingsSection, Status } from "../ui/kit";
 import { SetUpProvider, saveBlob, toBase64, useSetUp, withValue, type Attachment, type Finish, type KitInfo, type Problem, type SetUpContext } from "./context";
 import { AreasStep, BrandStep, CompanyStep, RegionStep, StartStep, blankFile } from "./StepsCompany";
+import { DeployGuide } from "./StepGuide";
+import { MastersStep } from "./StepMasters";
 import { PeopleStep, WorkStep } from "./StepsWork";
 import { ConnectionsStep, DataStep, ResultList, WhereStep, useSummaries, type Result } from "./StepsLive";
 import "./setup.css";
@@ -23,19 +25,23 @@ const STEPS = [
   { key: "region", title: "Region", heading: "Where it works", text: "Its currency, clock, and how it writes dates and numbers, on every screen, document and message." },
   { key: "brand", title: "Brand", heading: "How it looks", text: "The name, colour and logo people see, from the sign-in page to the driver's phone." },
   { key: "areas", title: "Areas", heading: "What it uses", text: "The parts of the app this company needs. Everything else stays out of the way." },
+  { key: "masters", title: "Masters", heading: "Its masters", text: "The records this company keeps, and the fields on each. Shape them to fit, or leave them as they are." },
   { key: "work", title: "How it works", heading: "How it works", text: "The company's own words and rules. Every default is shown, and only what you change is kept." },
   { key: "people", title: "People", heading: "Who works here", text: "The owner, the staff at the desks, and what each may do." },
   { key: "connections", title: "Connections", heading: "Outside services", text: "E-mail, WhatsApp, SMS, file storage and the rest. Choose a method for each, or leave it simulated for now." },
   { key: "data", title: "Data", heading: "What it starts with", text: "Made-up records to look around in, the company's own spreadsheets, or nothing yet." },
   { key: "where", title: "Where it runs", heading: "Where it runs", text: "Right here, or a package to deploy somewhere else." },
+  { key: "guide", title: "Deploy guide", heading: "How to deploy it", text: "What you'll need, and every step, with this company's own values already in the commands.", packageOnly: true },
   { key: "review", title: "Review", heading: "Review", text: "Everything you've chosen. Go back to anything that isn't right." },
-] as const;
+] as const satisfies readonly { key: string; title: string; heading: string; text: string; packageOnly?: boolean }[];
 type StepKey = (typeof STEPS)[number]["key"];
+/** The steps for how it will finish: the deploy guide is only for a package. */
+const stepsFor = (finish: Finish) => STEPS.filter((s) => finish === "package" || !("packageOnly" in s));
 
 /** Which step a part of the company file belongs to. */
 const STEP_OF: Record<string, StepKey> = {
   purpose: "start", company: "company", regional: "region", brand: "brand", watermark: "brand", areas: "areas",
-  operations: "work", maintenance: "work", workspace: "work", owner: "people", staff: "people", roles: "people", selfSignUp: "people",
+  masters: "masters", operations: "work", maintenance: "work", workspace: "work", owner: "people", staff: "people", roles: "people", selfSignUp: "people",
   connections: "connections", data: "data", deploy: "where",
 };
 const stepOf = (path: string) => STEP_OF[path.split(".")[0]!] ?? "review";
@@ -141,14 +147,15 @@ function Wizard({ me, info, saved, hasCompany, onLeave }: { me: Me; info: KitInf
     replace: setFile,
   }), [file, info, me, attachments, putFile, removeFile, err, problems, finish, go]);
 
-  const index = STEPS.findIndex((s) => s.key === step);
-  const meta = STEPS[index]!;
+  const steps = stepsFor(finish);
+  const index = Math.max(0, steps.findIndex((s) => s.key === step));
+  const meta = steps[index]!;
   const leave = async () => { await saveNow(); client.removeQueries({ queryKey: ["setup-draft"] }); onLeave(); };
 
   return (
     <SetUpProvider value={ctx}>
       <div className="su">
-        <Rail step={step} visited={visited} problems={problems} onGo={go} onLeave={() => void leave()} />
+        <Rail steps={steps} step={step} visited={visited} problems={problems} onGo={go} onLeave={() => void leave()} />
         <main className="su-main">
           <header className="su-head">
             <h1 ref={heading} tabIndex={-1}>{meta.heading}</h1>
@@ -160,18 +167,20 @@ function Wizard({ me, info, saved, hasCompany, onLeave }: { me: Me; info: KitInf
             {step === "region" && <RegionStep />}
             {step === "brand" && <BrandStep />}
             {step === "areas" && <AreasStep />}
+            {step === "masters" && <MastersStep />}
             {step === "work" && <WorkStep />}
             {step === "people" && <PeopleStep />}
             {step === "connections" && <ConnectionsStep />}
             {step === "data" && <DataStep />}
             {step === "where" && <WhereStep />}
+            {step === "guide" && <DeployGuide />}
             {step === "review" && <ReviewStep hasCompany={hasCompany} saveNow={saveNow} onLeave={onLeave} />}
           </div>
           <footer className="su-foot">
             <div className="su-foot-in">
-              {index > 0 ? <Button onClick={() => go(STEPS[index - 1]!.key)}><ChevronLeft size={16} /> {STEPS[index - 1]!.title}</Button> : <span />}
+              {index > 0 ? <Button onClick={() => go(steps[index - 1]!.key)}><ChevronLeft size={16} /> {steps[index - 1]!.title}</Button> : <span />}
               <span className={`su-saved ${saveState}`} aria-live="polite">{saveState === "saving" ? "Saving…" : saveState === "failed" ? "Couldn't save. It will try again when you change something." : "Saved"}</span>
-              {index < STEPS.length - 1 && <Button tone="primary" onClick={() => go(STEPS[index + 1]!.key)}>{STEPS[index + 1]!.title} <ChevronRight size={16} /></Button>}
+              {index < steps.length - 1 && <Button tone="primary" onClick={() => go(steps[index + 1]!.key)}>{steps[index + 1]!.title} <ChevronRight size={16} /></Button>}
             </div>
           </footer>
         </main>
@@ -180,10 +189,10 @@ function Wizard({ me, info, saved, hasCompany, onLeave }: { me: Me; info: KitInf
   );
 }
 
-function Rail({ step, visited, problems, onGo, onLeave }: { step: StepKey; visited: Set<string>; problems: Problem[]; onGo: (s: string) => void; onLeave: () => void }) {
+function Rail({ steps, step, visited, problems, onGo, onLeave }: { steps: readonly (typeof STEPS)[number][]; step: StepKey; visited: Set<string>; problems: Problem[]; onGo: (s: string) => void; onLeave: () => void }) {
   const summaries = useSummaries();
   const count = (key: string) => problems.filter((p) => stepOf(p.path) === key).length;
-  const index = STEPS.findIndex((s) => s.key === step);
+  const index = steps.findIndex((s) => s.key === step);
   return (
     <aside className="su-rail">
       <div className="su-rail-head">
@@ -192,13 +201,13 @@ function Rail({ step, visited, problems, onGo, onLeave }: { step: StepKey; visit
       </div>
       {/* On a phone the steps are a list to pick from, as the rest of the app does. */}
       <label className="su-rail-pick">
-        <span>Step {index + 1} of {STEPS.length}</span>
+        <span>Step {index + 1} of {steps.length}</span>
         <select value={step} onChange={(e) => onGo(e.target.value)} aria-label="Step">
-          {STEPS.map((s) => <option key={s.key} value={s.key}>{s.title}</option>)}
+          {steps.map((s) => <option key={s.key} value={s.key}>{s.title}</option>)}
         </select>
       </label>
       <ol className="su-steps">
-        {STEPS.map((s, i) => {
+        {steps.map((s, i) => {
           const wrong = (visited.has(s.key) || s.key === "review") && s.key !== "review" ? count(s.key) : 0;
           const done = visited.has(s.key) && !wrong;
           return (
@@ -283,7 +292,7 @@ function ReviewStep({ hasCompany, saveNow, onLeave }: { hasCompany: boolean; sav
     setError("");
     await saveNow();
     try {
-      const res = await authorizedFetch("/setup-kit/kit", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ file, attachments: [] }) });
+      const res = await authorizedFetch("/setup-kit/package", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ file }) });
       const name = /filename="([^"]+)"/.exec(res.headers.get("Content-Disposition") ?? "")?.[1] ?? "company-kit.zip";
       saveBlob(await res.blob(), name);
       setPhase("downloaded");
@@ -294,7 +303,7 @@ function ReviewStep({ hasCompany, saveNow, onLeave }: { hasCompany: boolean; sav
   return (
     <div className="su-stack">
       <SettingsSection title="Your answers">
-        {STEPS.filter((s) => s.key !== "review").map((s) => {
+        {stepsFor(finish).filter((s) => s.key !== "review" && s.key !== "guide").map((s) => {
           const mine = problems.filter((p) => stepOf(p.path) === s.key);
           return (
             <SettingRow key={s.key} title={s.title} description={mine.length ? undefined : summaries[s.key] || "Nothing entered"}>
@@ -336,9 +345,8 @@ function ReviewStep({ hasCompany, saveNow, onLeave }: { hasCompany: boolean; sav
           {phase === "downloaded" && (
             <div className="su-pad su-next">
               <Status tone="ok">Downloaded</Status>
-              <ol>
-                {(target?.steps ?? ["Unzip it. README.md inside is written for this company.", "Copy its settings file to .env and fill in each line marked SECRET.", "Run the deploy script named in the guide."]).map((s) => <li key={s}>{s}</li>)}
-              </ol>
+              <p>Next: the deploy guide has every secret and every step.</p>
+              <Button onClick={() => go("guide")}>Open the deploy guide</Button>
             </div>
           )}
         </SettingsSection>
@@ -352,7 +360,11 @@ function ReviewStep({ hasCompany, saveNow, onLeave }: { hasCompany: boolean; sav
           <h2>{failed ? `Set up, with ${failed} ${failed === 1 ? "step" : "steps"} to look at` : `${String(file.company?.tradingName || file.company?.legalName)} is set up`}</h2>
           <p>{failed ? "Everything else worked. Fix what failed above, then apply again: what already worked is left alone." : file.purpose === "demo" ? "It's ready to show." : "Next, add what a first trip needs. Masters shows what's still missing."}</p>
           {logins.length > 0 && <DemoLogins logins={logins} owner={me.email} />}
-          <Button tone="primary" size="lg" onClick={() => { history.replaceState(null, "", location.pathname); onLeave(); location.reload(); }}><ExternalLink size={16} /> Open the app</Button>
+          <span className="su-actions">
+            <Button tone="primary" size="lg" onClick={() => { history.replaceState(null, "", location.pathname); onLeave(); location.reload(); }}><ExternalLink size={16} /> Open the app and try it</Button>
+            <Button size="lg" onClick={() => { location.hash = "#package"; }}><Package size={16} /> Package it</Button>
+          </span>
+          <p>Try it first, change anything you like in the app, and package it whenever it's right. The package always takes it as it stands.</p>
         </section>
       )}
     </div>

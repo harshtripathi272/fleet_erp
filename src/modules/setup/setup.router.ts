@@ -5,6 +5,7 @@ import { ApiResponse } from '../../core/response/index.js';
 import { authorize } from '../../middleware/authorize.js';
 import { validate } from '../../middleware/validate.js';
 import { asyncHandler } from '../../utils/asyncHandler.js';
+import { describeMasters } from '../meta/meta.service.js';
 import * as Setup from './setup.service.js';
 
 /**
@@ -71,5 +72,27 @@ router.post('/apply', authorize('company', 'update'), authorize('users', 'create
     }
     res.end();
   }));
+
+/** Every master as the company has it, including those of areas not yet on, for shaping them in the set-up. */
+router.get('/masters', authorize('company', 'update'), asyncHandler(async (req, res) => ApiResponse.success(res, await describeMasters(req.auth, { allAreas: true }))));
+router.post('/guide', authorize('company', 'update'), validate({ body: z.strictObject({ file: z.unknown() }) }), asyncHandler(async (req, res) => {
+  ApiResponse.success(res, Setup.guideFor(req.body as { file: unknown }));
+}));
+/** The whole company as it stands on this copy, as one zip; 422 with each problem when it can't be built. */
+router.post('/package', authorize('company', 'update'), validate({ body: z.strictObject({
+  file: z.unknown(), include: z.strictObject({ records: z.enum(['none', 'masters', 'everything']).optional(), files: z.boolean().optional() }).optional(),
+}) }), asyncHandler(async (req, res) => {
+  const result = await Setup.packageCurrent(req.body as { file: unknown; include?: { records?: 'none' | 'masters' | 'everything'; files?: boolean } });
+  if (!result.zip) throw new ValidationError('The company file has problems', { problems: result.problems });
+  res.setHeader('Content-Type', 'application/zip');
+  res.setHeader('Content-Disposition', `attachment; filename="${result.name}"`);
+  res.setHeader('Cache-Control', 'no-store');
+  res.send(result.zip);
+}));
+router.post('/rates-preview', authorize('company', 'update'), validate({ body: z.strictObject({
+  provider: z.string().regex(/^[a-z][a-z0-9-]{1,39}$/), base: z.string().regex(/^[A-Z]{3}$/), codes: z.array(z.string().regex(/^[A-Z]{3}$/)).max(60),
+}) }), asyncHandler(async (req, res) => {
+  ApiResponse.success(res, await Setup.ratesPreview(req.body as { provider: string; base: string; codes: string[] }));
+}));
 
 export default router;

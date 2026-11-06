@@ -6,7 +6,7 @@ import type { Rec } from "../api/adapter";
 import { SettingField } from "../settings/ConnectionsSettings";
 import { COMING_SOON } from "../ui/comingSoon";
 import { Button, Field, FieldGroup, SettingRow, SettingsSection, Status, Switch } from "../ui/kit";
-import { FileDrop, saveBlob, useSetUp, type MasterOption } from "./context";
+import { FileDrop, saveBlob, useSetUp, type MasterOption, type TargetField } from "./context";
 
 /* ---------- Connections ---------- */
 
@@ -219,72 +219,81 @@ export function DataStep() {
 
 /* ---------- Where it runs ---------- */
 
-const NEEDS: Record<string, string[]> = {
-  gcp: ["A Google Cloud project with billing switched on", "The gcloud tool, signed in", "A database: MongoDB Atlas"],
-  compose: ["A server with Docker, reachable from the internet", "A domain pointing at it"],
-  aws: ["An AWS account and the aws tool, signed in", "A database: MongoDB Atlas", "An S3 bucket for files"],
-  azure: ["An Azure subscription and the az tool, signed in", "A database: MongoDB Atlas"],
-  render: ["A Render account", "A database: MongoDB Atlas"],
-  fly: ["A Fly.io account and the fly tool, signed in", "A database: MongoDB Atlas"],
-  railway: ["A Railway account and the railway tool, signed in", "A database: MongoDB Atlas"],
-};
-
-export function WhereStep() {
-  const { file, set, info, finish, setFinish, err } = useSetUp();
+export function WhereStep({ packageOnly }: { packageOnly?: boolean }) {
+  const { file, set, replace, info, finish, setFinish, err } = useSetUp();
   const deploy = (file.deploy ?? { target: "compose" }) as Rec;
   const target = info.targets.find((t) => t.key === deploy.target);
   const pick = (key: string) => {
     setFinish("package");
-    set("deploy", { target: key, domain: deploy.domain, smtp: deploy.smtp, image: deploy.image });
+    const next = info.targets.find((t) => t.key === key);
+    // Each platform starts on its own defaults; what's common carries over.
+    const defaults = Object.fromEntries((next?.fields ?? []).filter((f) => f.default !== undefined).map((f) => [f.key, f.default]));
+    replace({ ...file, deploy: { ...defaults, target: key, ...(deploy.domain ? { domain: deploy.domain } : key === "gcp" ? { domainMode: "none" } : {}), ...(deploy.smtp ? { smtp: deploy.smtp } : {}), ...(deploy.image ? { image: deploy.image } : {}) } });
+  };
+  const setField = (f: TargetField, raw: string) => {
+    const value = f.type === "number" ? (raw === "" ? undefined : Number(raw)) : raw.trim();
+    let next = { ...deploy, [f.key]: value };
+    if (value === undefined || value === "") { next = { ...next }; delete next[f.key]; }
+    // An address needs a way to connect; no address, nothing to connect.
+    if (f.key === "domain" && deploy.target === "gcp") {
+      if (!value) next.domainMode = "none";
+      else if (deploy.domainMode === "none") next.domainMode = "lb";
+    }
+    replace({ ...file, deploy: next });
   };
   const smtp = (deploy.smtp ?? {}) as Rec;
-  const demo = file.purpose === "demo";
   const emailConnected = ((file.connections ?? []) as Rec[]).some((c) => c.kind === "email" && c.enabled && c.provider === "smtp");
   return (
     <div className="su-stack">
       <section className="su-where" role="radiogroup" aria-label="Where it runs">
-        <button type="button" role="radio" aria-checked={finish === "here"} className={`su-where-row ${finish === "here" ? "on" : ""}`} onClick={() => setFinish("here")}>
-          <span><strong>This copy, right here</strong><small>What you're signed in to now becomes this company, straight away. Nothing to install.</small></span>
-          <Status tone="ok">Ready now</Status>
-        </button>
-        {info.packages ? info.targets.map((t) => (
-          <button key={t.key} type="button" role="radio" aria-checked={finish === "package" && deploy.target === t.key} className={`su-where-row ${finish === "package" && deploy.target === t.key ? "on" : ""}`} onClick={() => pick(t.key)}>
-            <span><strong>{t.label}</strong><small>{(t.needs ?? NEEDS[t.key] ?? []).join(" · ")}</small></span>
-            <Status tone={t.state === "tested" ? "ok" : t.state === "dry-run" ? "wait" : "mute"}>{t.state === "tested" ? "Tested" : t.state === "dry-run" ? "Dry run only" : "Script only"}</Status>
+        {!packageOnly && (
+          <button type="button" role="radio" aria-checked={finish === "here"} className={`su-where-row ${finish === "here" ? "on" : ""}`} onClick={() => setFinish("here")}>
+            <span><strong>This copy, right here</strong><small>What you're signed in to becomes this company, straight away, to try it out. You can package it whenever it's right.</small></span>
+            <Status tone="ok">Ready now</Status>
           </button>
-        )) : <p className="su-note">This copy doesn't make packages for other companies. Its server setting SETUP_PACKAGES turns them off.</p>}
+        )}
+        {info.packages ? info.targets.map((t) => {
+          const on = finish === "package" && deploy.target === t.key;
+          return (
+            <button key={t.key} type="button" role="radio" aria-checked={on} className={`su-where-row ${on ? "on" : ""}`} onClick={() => pick(t.key)}>
+              <span><strong>{t.label}</strong><small>{(t.needs ?? []).join(" · ")}</small></span>
+              <Status tone={t.state === "tested" ? "ok" : t.state === "dry-run" ? "wait" : "mute"}>{t.state === "tested" ? "Tested" : t.state === "dry-run" ? "Dry run only" : "Script only"}</Status>
+            </button>
+          );
+        }) : <p className="su-note">This copy doesn't make packages for other companies. Its server setting SETUP_PACKAGES turns them off.</p>}
       </section>
 
       {finish === "package" && target && (
         <>
-          <p className="su-lead">You'll download one package with everything for {target.label}: the company file, its logos and spreadsheets, a settings file with only the secrets left to fill in, the deploy script and a guide written for this company.</p>
-          <SettingsSection title="Its address and image">
+          <SettingsSection title={`Settings for ${target.label}`} description={target.state === "tested" ? undefined : target.state === "dry-run" ? "Its script has been checked as a dry run, but not yet run against a real project." : "Its script has been written, but not yet run for real."}>
             <div className="su-pad grid-2">
-              <Field label="Address" hint={err("deploy.domain") ?? "The company's own, e.g. fleet.acme.example. Point it at the platform once deployed."}>
-                <input className="input" value={String(deploy.domain ?? "")} onChange={(e) => set("deploy.domain", e.target.value.trim().toLowerCase())} placeholder="fleet.acme.example" />
-              </Field>
-              <Field label="Image" hint={err("deploy.image") ?? (deploy.target === "gcp" ? "Leave empty for the project's own registry." : "The shared image, without its version, e.g. ghcr.io/acme/fleet-erp.")}>
-                <input className="input su-mono" value={String(deploy.image ?? "")} onChange={(e) => set("deploy.image", e.target.value.trim())} />
-              </Field>
-              {deploy.target === "gcp" && (
-                <>
-                  <Field label="Google Cloud project *" hint={err("deploy.projectId")}><input className="input su-mono" value={String(deploy.projectId ?? "")} onChange={(e) => set("deploy.projectId", e.target.value.trim())} placeholder="acme-fleet-prod" /></Field>
-                  <Field label="Region" hint={err("deploy.region") ?? "Closest to the company. Johannesburg is africa-south1."}><input className="input su-mono" value={String(deploy.region ?? "")} onChange={(e) => set("deploy.region", e.target.value.trim())} placeholder="africa-south1" /></Field>
-                </>
-              )}
-              {(deploy.target === "aws" || deploy.target === "render" || deploy.target === "fly") && (
-                <Field label="Region" hint={err("deploy.region")}><input className="input su-mono" value={String(deploy.region ?? "")} onChange={(e) => set("deploy.region", e.target.value.trim())} placeholder={{ aws: "af-south-1", render: "frankfurt", fly: "jnb" }[String(deploy.target)]} /></Field>
-              )}
-              {deploy.target === "azure" && <Field label="Location" hint={err("deploy.location")}><input className="input su-mono" value={String(deploy.location ?? "")} onChange={(e) => set("deploy.location", e.target.value.trim())} placeholder="southafricanorth" /></Field>}
-              {deploy.target === "compose" && <Field label="E-mail for the certificate" hint={err("deploy.certificateEmail") ?? "Let's Encrypt writes here if the address's certificate has a problem."}><input className="input" type="email" value={String(deploy.certificateEmail ?? "")} onChange={(e) => set("deploy.certificateEmail", e.target.value.trim())} /></Field>}
+              {(target.fields ?? []).map((f) => {
+                const label = `${f.label}${f.required ? " *" : ""}`;
+                const value = String(deploy[f.key] ?? f.default ?? "");
+                if (f.type === "choice") {
+                  return (
+                    <Field key={f.key} label={label} hint={err(`deploy.${f.key}`) ?? f.hint}>
+                      <select className="input" value={value} disabled={f.key === "domainMode" && !deploy.domain} onChange={(e) => setField(f, e.target.value)}>
+                        {(f.choices ?? []).map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
+                      </select>
+                    </Field>
+                  );
+                }
+                return (
+                  <Field key={f.key} label={label} hint={err(`deploy.${f.key}`) ?? f.hint}>
+                    <input className={`input ${f.type === "text" && f.key !== "domain" ? "su-mono" : ""}`} type={f.type === "number" ? "number" : "text"} min={f.min} max={f.max} placeholder={f.placeholder} value={String(deploy[f.key] ?? (f.type === "number" ? f.default ?? "" : ""))} onChange={(e) => setField(f, e.target.value)} />
+                  </Field>
+                );
+              })}
             </div>
           </SettingsSection>
           {!emailConnected && (
-            <SettingsSection title="E-mail server" description={err("deploy.smtp") ?? (demo ? "Optional for a demonstration: e-mails are simulated without one." : "Needed so people get their invitations and password resets. Or connect e-mail under Connections instead.")}>
+            <SettingsSection title="E-mail server" description={err("deploy.smtp") ?? "Optional. With one, people get invitations and password resets by e-mail. Without one, the owner signs in with a password you set in OWNER_PASSWORD, and sets everyone else's under Users."}>
               <div className="su-pad grid-2">
                 <Field label="Server"><input className="input su-mono" value={String(smtp.host ?? "")} onChange={(e) => set("deploy.smtp", e.target.value ? { port: 587, ...smtp, host: e.target.value.trim() } : undefined)} placeholder="smtp.example.com" /></Field>
-                <Field label="E-mails come from"><input className="input" disabled={!smtp.host} value={String(smtp.from ?? "")} onChange={(e) => set("deploy.smtp.from", e.target.value)} placeholder="Acme Fleet <fleet@acme.example>" /></Field>
-                <Field label="Account" hint="Its password is asked for when deploying."><input className="input" disabled={!smtp.host} value={String(smtp.user ?? "")} onChange={(e) => set("deploy.smtp.user", e.target.value.trim())} /></Field>
+                <Field label="Port"><input className="input" type="number" disabled={!smtp.host} value={String(smtp.port ?? 587)} onChange={(e) => set("deploy.smtp.port", Number(e.target.value))} /></Field>
+                <Field label="E-mails come from" hint={err("deploy.smtp.from")}><input className="input" disabled={!smtp.host} value={String(smtp.from ?? "")} onChange={(e) => set("deploy.smtp.from", e.target.value)} placeholder="Acme Fleet <fleet@acme.example>" /></Field>
+                <Field label="Account" hint="Its password is one of the secrets in the next step."><input className="input" disabled={!smtp.host} value={String(smtp.user ?? "")} onChange={(e) => set("deploy.smtp.user", e.target.value.trim())} /></Field>
               </div>
             </SettingsSection>
           )}
@@ -340,9 +349,11 @@ export function useSummaries(): Record<string, string> {
     const spreadsheets = ((file.data?.files ?? []) as Rec[]).length;
     const words = Object.keys(file.workspace?.vocabulary ?? {}).length;
     const target = info.targets.find((t) => t.key === file.deploy?.target)?.label;
+    const masterChanges = new Set([...((file.masters?.layouts ?? []) as Rec[]).map((l) => String(l.entity)), ...((file.masters?.fields ?? []) as Rec[]).map((f) => String(f.entity))]).size + ((file.masters?.customMasters ?? []) as Rec[]).length;
     return {
       start: file.purpose === "demo" ? "A demonstration" : "A real company",
       company: String(c.tradingName || c.legalName || ""),
+      masters: masterChanges ? `${masterChanges} changed` : "The usual",
       region: [r.country, r.baseCurrency].filter(Boolean).join(" · "),
       brand: [b.files?.logo ? "Logo" : "", b.accent ? String(b.accent) : ""].filter(Boolean).join(" · "),
       areas: areas ? `${areas.length} switched on` : "The usual",
@@ -351,6 +362,7 @@ export function useSummaries(): Record<string, string> {
       connections: connected.length ? connected.join(", ") : "All simulated",
       data: [file.data?.sample && file.data.sample !== "none" ? `${String(file.data.sample) === "full" ? "Full" : "Small"} sample` : "", spreadsheets ? `${spreadsheets} spreadsheet${spreadsheets === 1 ? "" : "s"}` : ""].filter(Boolean).join(" · ") || "Empty",
       where: finish === "here" ? "This copy" : target ?? "",
+      guide: "Secrets and steps",
     };
   }, [file, finish, info.targets]);
 }

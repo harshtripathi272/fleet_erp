@@ -95,7 +95,7 @@ export async function register(input: RegisterInput, client: ClientInfo) {
  * theirs, so a stranger who reaches a new installation first cannot take it over by signing up.
  * Safe to call from every instance at start-up: only one claims the slot.
  */
-export async function ensureFirstOwner(emailAddress = env.OWNER_EMAIL): Promise<{ created: boolean; sent?: boolean }> {
+export async function ensureFirstOwner(emailAddress = env.OWNER_EMAIL): Promise<{ created: boolean; sent?: boolean; passwordSet?: boolean }> {
   if (!emailAddress) return { created: false };
   if (!(await claimFirstOwner())) return { created: false };
   try {
@@ -110,8 +110,14 @@ export async function ensureFirstOwner(emailAddress = env.OWNER_EMAIL): Promise<
     }
     const user = await User.create({
       name: emailAddress.split('@')[0]!.slice(0, 100) || 'Owner', email: emailAddress,
-      passwordHash: await hashPassword(randomToken(24)), roleIds: [role._id],
+      passwordHash: await hashPassword(env.OWNER_PASSWORD ?? randomToken(24)), roleIds: [role._id],
+      ...(env.OWNER_PASSWORD ? { passwordChangedAt: new Date() } : {}),
     });
+    if (env.OWNER_PASSWORD) {
+      await audit({ entity: 'users', entityId: user._id, action: 'create', summary: 'First Owner created with the password from OWNER_PASSWORD' });
+      logger.info({ userId: String(user._id) }, 'First Owner account created with OWNER_PASSWORD');
+      return { created: true, sent: false, passwordSet: true };
+    }
     await audit({ entity: 'users', entityId: user._id, action: 'create', summary: 'First Owner created from OWNER_EMAIL; set-password e-mail sent' });
     const { sent } = await issuePasswordReset(emailAddress, 'invite');
     // If the e-mail did not go, "Forgot password" on the same address sends a new link.

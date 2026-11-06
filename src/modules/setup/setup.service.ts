@@ -9,6 +9,9 @@ import { getMaster, refsOf } from '../../core/masters/registry.js';
 import { SystemState } from '../auth/systemState.model.js';
 import { Company } from '../company/company.model.js';
 import { Connection } from '../connections/connection.model.js';
+import { RecordLayout } from '../../core/masters/layout.js';
+import { contextFor, providerFor, type Provider } from '../../core/connections/index.js';
+import { CustomMaster, FieldDefinition, List } from '../configuration/models/configuration.model.js';
 import { Driver } from '../drivers/models/driver.model.js';
 import { StoredFile } from '../files/file.model.js';
 import { Role } from '../roles/role.model.js';
@@ -16,6 +19,8 @@ import * as DriverAccess from '../users/driverAccess.service.js';
 import { User } from '../users/user.model.js';
 import { createUser } from '../users/users.service.js';
 import { type Result, applyFile, lastApplied } from './apply.js';
+import { TARGET_FIELDS, TARGET_NEEDS, deployGuide } from './guide.js';
+import { type RecordsLevel, buildSnapshot, snapshotSummary } from './snapshot.js';
 import { BRAND_FILES, COMPANY_FILE_FORMAT, type CompanyFile, type CompanyFileInput, TARGETS, companyFileSchema } from './companyFile.js';
 import { TARGET_LABEL, TARGET_STATE, TESTED_TARGETS, buildKit, checkKit, kitName } from './kit.js';
 
@@ -26,8 +31,8 @@ import { TARGET_LABEL, TARGET_STATE, TESTED_TARGETS, buildKit, checkKit, kitName
 
 /** A short name for resource names, from the company's name: "Acme Haulage Ltd" → acme-haulage-ltd. */
 const keyOf = (name: string) => {
-  const key = name.toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 30).replace(/-+$/, '');
-  return /^[a-z]/.test(key) && key.length >= 3 ? key : `co-${key}`.slice(0, 30);
+  const key = name.toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 24).replace(/-+$/, '');
+  return /^[a-z]/.test(key) && key.length >= 3 ? key : `co-${key}`.slice(0, 24);
 };
 const EXT: Record<string, string> = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp' };
 const codeOf = async (master: string, id: unknown) => (id ? (await getMaster(master)?.model.findById(id).select('code').lean<{ code?: string }>())?.code : undefined);
@@ -53,6 +58,20 @@ export async function fromInstallation(): Promise<{ file: CompanyFileInput; atta
   const { logoFileId: _a, logoDarkFileId: _b, iconFileId: _c, logoPdfFileId: _d, ...brandText } = brand;
   const connections = await Connection.find({ status: 'active' }).sort({ kind: 1, code: 1 }).lean<Plain[]>();
   const roles = await Role.find({ isSystem: { $ne: true }, status: 'active' }).sort({ key: 1 }).lean<Plain[]>();
+  const [layouts, listDocs, fieldDocs, customDocs] = await Promise.all([
+    RecordLayout.find().lean<Plain[]>(), List.find({ status: 'active' }).lean<Plain[]>(), FieldDefinition.find({ status: 'active' }).sort({ entity: 1, order: 1 }).lean<Plain[]>(), CustomMaster.find({ status: 'active' }).lean<Plain[]>(),
+  ]);
+  const listCode = new Map(listDocs.map((l) => [String(l._id), String(l.code)]));
+  const spec = (f: Plain) => defined({
+    key: f.key, label: f.label, type: f.type, required: f.required || undefined, options: f.options, referenceMaster: f.referenceMaster, min: f.min, max: f.max,
+    maxLength: f.maxLength, pattern: f.pattern, helpText: f.helpText, order: f.order, listCode: f.listId ? listCode.get(String(f.listId)) : undefined,
+  });
+  const ownerRole = await Role.findOne({ key: 'owner' }).select('_id').lean<{ _id: unknown }>();
+  const people = await User.find({ status: 'active', driverId: null }).sort({ createdAt: 1 }).select('name email phone roleIds').lean<Plain[]>();
+  const roleKey = new Map((await Role.find().select('key').lean<Plain[]>()).map((r) => [String(r._id), String(r.key)]));
+  const firstOwner = people.find((p) => ((p.roleIds ?? []) as unknown[]).some((id) => String(id) === String(ownerRole?._id)));
+  const rateFeed = (c.rateFeed ?? {}) as { currencyIds?: unknown[] };
+  const rateCodes = rateFeed.currencyIds?.length ? await Promise.all(rateFeed.currencyIds.map((id) => codeOf('currencies', id))) : [];
   const file: CompanyFileInput = {
     format: COMPANY_FILE_FORMAT,
     company: defined({
@@ -63,6 +82,7 @@ export async function fromInstallation(): Promise<{ file: CompanyFileInput; atta
     regional: defined({
       country: await codeOf('countries', c.countryId), baseCurrency: await codeOf('currencies', c.baseCurrencyId),
       timezone: c.timezone, dateFormat: c.dateFormat, fiscalYearStartMonth: c.fiscalYearStartMonth,
+      style: c.regional, currencies: rateCodes.filter(Boolean).length ? rateCodes.filter(Boolean) : undefined,
     }) as CompanyFileInput['regional'],
     brand: { ...defined(brandText), files },
     watermark: c.watermark as CompanyFileInput['watermark'],
@@ -74,11 +94,20 @@ export async function fromInstallation(): Promise<{ file: CompanyFileInput; atta
       settings: x.settings ?? {}, secrets: x.secrets ?? {}, webhookSecretEnv: x.webhookSecretEnv,
     })) as CompanyFileInput['connections'],
     roles: roles.map((r) => defined({ key: r.key, name: r.name, description: r.description, permissions: ((r.permissions ?? []) as Plain[]).map((p) => ({ resource: p.resource, actions: p.actions })) })) as CompanyFileInput['roles'],
-    owner: { email: env.OWNER_EMAIL ?? '' },
-    staff: [],
+    owner: { email: env.OWNER_EMAIL ?? String(firstOwner?.email ?? ''), ...(firstOwner?.name ? { name: String(firstOwner.name) } : {}) },
+    // Everyone at a desk, except the demonstration's own sign-ins.
+    staff: people.filter((p) => p !== firstOwner && !String(p.email).endsWith('.test') && p.email).map((p) => defined({
+      name: p.name, email: p.email, phone: p.phone, roles: ((p.roleIds ?? []) as unknown[]).map((id) => roleKey.get(String(id))).filter(Boolean),
+    })) as CompanyFileInput['staff'],
     data: { sample: 'none', files: [] },
     deploy: { target: 'compose' },
-    purpose: 'real',
+    purpose: (await lastApplied())?.purpose ?? 'real',
+    masters: {
+      layouts: layouts.map((l) => ({ entity: l.entity, master: l.master ?? {}, sections: l.sections ?? [], fields: l.fields ?? [], choices: l.choices ?? [] })),
+      lists: listDocs.map((l) => defined({ code: l.code, name: l.name, description: l.description, values: ((l.values ?? []) as Plain[]).map((v) => defined({ value: v.value, label: v.label, order: v.order, active: v.active })) })),
+      fields: fieldDocs.map((f) => defined({ entity: f.entity, ...spec(f), placement: f.placement, askedOf: f.askedOf, printOn: f.printOn })),
+      customMasters: customDocs.map((m) => defined({ code: m.code, name: m.name, description: m.description, titleField: m.titleField, fields: ((m.fields ?? []) as Plain[]).map(spec) })),
+    } as CompanyFileInput['masters'],
     maintenance: c.maintenance as CompanyFileInput['maintenance'],
     workspace: defined({ vocabulary: c.vocabulary, stages: c.stages, desks: c.desks }) as CompanyFileInput['workspace'],
   };
@@ -88,7 +117,8 @@ export async function fromInstallation(): Promise<{ file: CompanyFileInput; atta
 /** What the screen needs besides the file: the targets, the masters a data file can fill, the last start. */
 export async function kitOptions() {
   return {
-    targets: TARGETS.map((key) => ({ key, label: TARGET_LABEL[key], tested: TESTED_TARGETS.includes(key), state: TARGET_STATE[key] })),
+    targets: TARGETS.map((key) => ({ key, label: TARGET_LABEL[key], tested: TESTED_TARGETS.includes(key), state: TARGET_STATE[key], needs: TARGET_NEEDS[key], fields: TARGET_FIELDS[key] })),
+    capture: await snapshotSummary(),
     masters: listMasters().filter((d) => !d.managed?.create).map((d) => ({
       key: d.key, label: d.label, group: d.group,
       // What must already be there, so spreadsheets can be put in the right order for the person.
@@ -263,4 +293,49 @@ async function demoLogins(file: CompanyFile, actorId: string, onResult: (r: Resu
     } catch (err) { onResult({ step: `demo sign-in ${driver.phone}`, outcome: 'failed', detail: (err as Error).message }); }
   }
   return out;
+}
+
+/* Packaging this company as it stands, and what to do with the package. */
+
+/** The guide for a company file: its environment variables and each step, or the problems that come first. */
+export function guideFor(input: { file: unknown }) {
+  const parsed = companyFileSchema.safeParse(input.file);
+  if (!parsed.success) return { problems: parsed.error.issues.map((i) => ({ path: i.path.join('.'), message: i.message })) };
+  return { problems: [], ...deployGuide(parsed.data) };
+}
+
+/**
+ * The whole company as a package, in one go: the file as given (the screen starts it from this copy), this copy's
+ * logos, and, if asked, its records and uploaded files exactly as they stand. Built here, since records and files
+ * can be far larger than a request could carry.
+ */
+export async function packageCurrent(input: { file: unknown; include?: { records?: RecordsLevel; files?: boolean } }) {
+  if (!env.SETUP_PACKAGES) throw new ForbiddenError("This copy doesn't make packages for other companies.");
+  const level = input.include?.records ?? 'none';
+  const attachments = new Map<string, Buffer>((await draftFiles()).map((a) => [a.path, Buffer.from(a.data, 'base64')]));
+  for (const a of (await fromInstallation()).attachments) if (!attachments.has(a.path)) attachments.set(a.path, Buffer.from(a.data, 'base64'));
+  const file = structuredClone(input.file) as Plain & { data?: Plain };
+  if (level !== 'none') {
+    const snap = await buildSnapshot(level, Boolean(input.include?.files));
+    attachments.set('data/snapshot.json', snap.body);
+    for (const [path, body] of snap.uploads) attachments.set(path, body);
+    file.data = { ...(file.data ?? {}), sample: 'none', snapshot: 'data/snapshot.json' };
+  }
+  const parsed = companyFileSchema.safeParse(file);
+  if (!parsed.success) return { problems: parsed.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`) };
+  const problems = checkKit(parsed.data, attachments);
+  if (problems.length) return { problems };
+  const named = new Set([...Object.values(parsed.data.brand.files), ...parsed.data.data.files.map((f) => f.file), parsed.data.data.snapshot].filter(Boolean));
+  const carried = new Map([...attachments].filter(([path]) => named.has(path) || path.startsWith('data/upload-')));
+  return { problems: [], zip: buildKit(parsed.data, carried), name: kitName(parsed.data) };
+}
+
+/** Today's rates from a service that needs no key, so the set-up can show them working before anything is saved. */
+export async function ratesPreview(input: { provider: string; base: string; codes: string[] }) {
+  const provider = providerFor('rates', input.provider);
+  if (!provider) throw new ValidationError('No such rate service');
+  if (provider.secrets?.some((s) => s.required)) return { needsKey: true, rates: {} };
+  const source = provider.open(contextFor(provider as unknown as Provider)) as { fetch(i: { base: string; codes: string[] }): Promise<{ perBase: Record<string, number>; asOf: Date }> };
+  const { perBase, asOf } = await source.fetch({ base: input.base, codes: input.codes });
+  return { needsKey: false, rates: perBase, asOf: asOf.toISOString(), missing: input.codes.filter((c) => !perBase[c]) };
 }

@@ -1,12 +1,15 @@
 // #96: "Set up a company": its draft, what it checks, setting up this copy, a demonstration's sign-ins, and clearing.
 import assert from 'node:assert/strict';
-import { mkdtempSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { after, before, beforeEach, describe, test } from 'node:test';
 import { env } from '../src/config/env.js';
 import { getMaster } from '../src/core/masters/registry.js';
+import { ensureFirstOwner } from '../src/modules/auth/auth.service.js';
 import { Company } from '../src/modules/company/company.model.js';
+import { applyCompanyFile } from '../src/modules/setup/apply.js';
+import { unzip } from '../src/modules/setup/zip.js';
 import { User } from '../src/modules/users/user.model.js';
 import { api, bearer, resetDatabase, signUp, startDatabase, stopDatabase, userWithRole, type Session } from './helpers.js';
 
@@ -75,8 +78,8 @@ describe('Set up a company', () => {
     assert.deepEqual(missing.sort(), ['regional.baseCurrency', 'regional.country']);
     assert.deepEqual(await check({ file: file(), finish: 'here' }), [], 'no image, domain or e-mail server needed here');
     const packaged = await check({ file: file(), finish: 'package' });
-    assert.ok(packaged.includes('deploy.image') && packaged.includes('deploy.smtp'), packaged.join());
-    assert.ok(!(await check({ file: file({ purpose: 'demo' }), finish: 'package' })).includes('deploy.smtp'), 'a demonstration needs no e-mail server');
+    assert.ok(packaged.includes('deploy.image'), packaged.join());
+    assert.ok(!packaged.includes('deploy.smtp'), 'e-mail is optional: the first owner can have a password instead');
   });
 
   test('sets up this copy: details, country and currency from their codes, brand, words and regional style', async () => {
@@ -160,7 +163,7 @@ describe('Set up a company', () => {
   });
 
   test('a package is built from the draft\'s files, and a copy can be told not to make packages', async () => {
-    const pkg = file({ purpose: 'demo', brand: { files: { logo: 'files/logo.png' } }, deploy: { target: 'compose', image: 'ghcr.io/acme/fleet-erp', domain: 'fleet.acme.example' } });
+    const pkg = file({ purpose: 'demo', brand: { files: { logo: 'files/logo.png' } }, deploy: { target: 'compose', image: 'ghcr.io/acme/fleet-erp', domain: 'fleet.acme.example', smtp: { host: 'smtp.acme.example', from: 'Acme <fleet@acme.example>' } } });
     await api().put('/api/v1/setup-kit/draft/file').set(bearer(owner)).send({ path: 'files/logo.png', data: PNG }).expect(200);
     const checked = (await api().post('/api/v1/setup-kit/check').set(bearer(owner)).send({ file: pkg, finish: 'package' }).expect(200)).body.data;
     assert.deepEqual(checked.problems, []);
@@ -171,5 +174,139 @@ describe('Set up a company', () => {
     env.SETUP_PACKAGES = false;
     await api().post('/api/v1/setup-kit/kit').set(bearer(owner)).send({ file: pkg, attachments: [] }).expect(403);
     assert.equal((await api().get('/api/v1/setup-kit').set(bearer(owner))).body.data.packages, false);
+  });
+
+  const shaped = () => ({
+    layouts: [{ entity: 'drivers', master: { label: 'Operators' }, sections: ['Union'], fields: [{ path: 'phone', label: 'Mobile', section: 'Union' }], choices: [] }],
+    lists: [{ code: 'CLASSES', name: 'Licence classes', values: [{ value: 'a', label: 'Class A' }, { value: 'b', label: 'Class B' }] }],
+    fields: [
+      { entity: 'drivers', key: 'unionCard', label: 'Union card', type: 'text', required: false },
+      { entity: 'drivers', key: 'licenceClass', label: 'Licence class', type: 'select', listCode: 'CLASSES' },
+      { entity: 'trips', key: 'sealNumber', label: 'Seal number', type: 'text', placement: 'dispatch', askedOf: 'driver' },
+    ],
+    customMasters: [{ code: 'road-permits', name: 'Road permits', titleField: 'number', fields: [{ key: 'number', label: 'Number', type: 'text', required: true }, { key: 'expires', label: 'Expires', type: 'date' }] }],
+  });
+  const meta = async (session: Session) => (await api().get('/api/v1/meta/masters').set(bearer(session)).expect(200)).body.data as Record<string, any>[];
+
+  test('the masters in the file become the company\'s system: names, its own fields and its own masters, and applying again changes nothing', async () => {
+    const lines = await apply(owner, { file: file({ masters: shaped() }) });
+    assert.equal(endOf(lines).type, 'done', JSON.stringify(lines));
+    assert.ok(!lines.some((l) => l.outcome === 'failed'), JSON.stringify(lines));
+    const drivers = (await meta(owner)).find((d) => d.key === 'drivers')!;
+    assert.equal(drivers.label, 'Operators');
+    assert.deepEqual(drivers.sections, ['Union']);
+    assert.equal(drivers.fields.find((f: { path: string }) => f.path === 'phone').label, 'Mobile');
+    const own = drivers.customFields as { key: string; choices?: unknown[] }[];
+    assert.deepEqual(own.map((f) => f.key).sort(), ['licenceClass', 'unionCard']);
+    assert.equal(own.find((f) => f.key === 'licenceClass')!.choices!.length, 2, 'the list is joined up by its code');
+    const customs = (await api().get('/api/v1/custom-masters').set(bearer(owner)).expect(200)).body.data as { code: string }[];
+    assert.deepEqual(customs.map((c) => c.code), ['road-permits']);
+    const again = await apply(owner, { file: file({ masters: shaped() }) });
+    assert.equal(endOf(again).applied, false);
+  });
+
+  test('a whole company goes through a package to an empty copy: settings, masters, records and links', async () => {
+    await apply(owner, { file: file({ purpose: 'demo', masters: shaped(), regional: { country: 'ZM', baseCurrency: 'ZMW', currencies: ['USD'] }, data: { sample: 'small', files: [] } }) });
+    const capture = (await api().get('/api/v1/setup-kit').set(bearer(owner)).expect(200)).body.data;
+    assert.ok(capture.capture.masters > 0, 'it counts what would go');
+    assert.equal(capture.file.masters.customMasters.some((m: { code: string }) => m.code === 'road-permits'), true, 'this copy is read as a file');
+    const ids = new Set((await getMaster('vehicles')!.model.find().select('_id').lean()).map((v) => String(v._id)));
+    const pkg = { ...capture.file, deploy: { target: 'gcp', projectId: 'acme-fleet-prod', domainMode: 'none', smtp: { host: 'smtp.acme.example', from: 'Acme <fleet@acme.example>' } } };
+    const zipped = await api().post('/api/v1/setup-kit/package').set(bearer(owner)).send({ file: pkg, include: { records: 'masters', files: false } }).buffer(true)
+      .parse((r, done) => { const chunks: Buffer[] = []; r.on('data', (c: Buffer) => chunks.push(c)); r.on('end', () => done(null, Buffer.concat(chunks))); }).expect(200);
+    const dir = mkdtempSync(join(tmpdir(), 'fleet-pkg-'));
+    const entries = unzip(zipped.body as Buffer);
+    for (const [path, body] of entries) {
+      const at = join(dir, path);
+      mkdirSync(dirname(at), { recursive: true });
+      writeFileSync(at, body);
+    }
+    const root = `${pkg.company.key}-kit`;
+    assert.ok(entries.has(`${root}/deploy.sh`), 'one command to deploy');
+    assert.ok(entries.has(`${root}/app-source.tar.gz`), 'and the app, so nothing else is needed');
+    const carried = JSON.parse(entries.get(`${root}/company.json`)!.toString());
+    assert.equal(carried.data.snapshot, 'data/snapshot.json');
+    assert.ok(!entries.get(`${root}/.env.example`)!.toString().match(/^MONGODB_URI=.+$/m), 'no secret is filled in');
+
+    await resetDatabase();
+    const applied = await applyCompanyFile(join(dir, root, 'company.json'));
+    assert.ok(!applied.results.some((r) => r.outcome === 'failed'), JSON.stringify(applied.results.filter((r) => r.outcome === 'failed')));
+    assert.deepEqual(new Set((await getMaster('vehicles')!.model.find().select('_id').lean()).map((v) => String(v._id))), ids, 'the same records, with the same ids, so every link still holds');
+    assert.equal((await getMaster('drivers')!.model.countDocuments()) > 0, true);
+    assert.equal((await Company.findOne().lean<Record<string, any>>())!.legalName, 'Acme Haulage Limited');
+    const custom = await getMaster('custom-masters')!.model.findOne({ code: 'road-permits' }).lean();
+    assert.ok(custom, 'its own master came along');
+  });
+
+  test('the guide lists each secret with where to get it and the steps with this company\'s values, and never holds a value', async () => {
+    const pkg = file({ connections: [{ code: 'SMS', name: 'Twilio', kind: 'sms', provider: 'twilio', enabled: true, settings: { accountSid: 'AC0123456789abcdef0123456789abcdef', from: '+15551234567' }, secrets: { authToken: 'CONNECTION_SMS_AUTHTOKEN' } }], deploy: { target: 'gcp', projectId: 'acme-fleet-prod', domain: 'fleet.acme.example', domainMode: 'lb', smtp: { host: 'smtp.acme.example', user: 'fleet', from: 'Acme <fleet@acme.example>' } } });
+    const guide = (await api().post('/api/v1/setup-kit/guide').set(bearer(owner)).send({ file: pkg }).expect(200)).body.data;
+    assert.deepEqual(guide.problems, []);
+    const secret = (name: string) => guide.env.find((v: { name: string; secret: boolean }) => v.name === name && v.secret);
+    assert.match(secret('MONGODB_URI').where, /Atlas/);
+    assert.match(secret('MONGODB_URI').command, /gcloud secrets create acme-haulage-mongodb-uri .*--project acme-fleet-prod/);
+    assert.equal(secret('JWT_SECRET').automatic, true, 'made by the script');
+    assert.ok(secret('SMTP_PASS'));
+    assert.ok(secret('CONNECTION_SMS_AUTHTOKEN'));
+    assert.ok(guide.env.filter((v: { secret: boolean }) => v.secret).every((v: { value?: string }) => v.value === undefined), 'no secret has a value');
+    const text = JSON.stringify(guide.steps);
+    assert.match(text, /cloudshell=true&project=acme-fleet-prod/);
+    assert.match(text, /\.\/deploy\.sh/);
+    assert.match(text, /fleet\.acme\.example/);
+  });
+
+  test('rates can be previewed live from a service with no key, and fetched for the company\'s currencies when it\'s set up', async () => {
+    const realFetch = globalThis.fetch;
+    let asked = '';
+    globalThis.fetch = (async (url: string) => {
+      asked = String(url);
+      return new Response(JSON.stringify({ result: 'success', rates: { USD: 0.05, EUR: 0.04 }, time_last_update_unix: 1793923351 }), { status: 200, headers: { 'content-type': 'application/json' } });
+    }) as typeof fetch;
+    try {
+      const preview = (await api().post('/api/v1/setup-kit/rates-preview').set(bearer(owner)).send({ provider: 'open-er-api', base: 'ZMW', codes: ['USD', 'EUR', 'XXX'] }).expect(200)).body.data;
+      assert.match(asked, /open\.er-api\.com\/v6\/latest\/ZMW/);
+      assert.equal(preview.rates.USD, 0.05);
+      assert.deepEqual(preview.missing, ['XXX']);
+      const keyed = (await api().post('/api/v1/setup-kit/rates-preview').set(bearer(owner)).send({ provider: 'openexchangerates', base: 'ZMW', codes: ['USD'] }).expect(200)).body.data;
+      assert.equal(keyed.needsKey, true);
+      const lines = await apply(owner, { file: file({ regional: { country: 'ZM', baseCurrency: 'ZMW', timezone: 'Africa/Lusaka', currencies: ['USD', 'EUR'] }, connections: [{ code: 'RATES', name: 'Live rates', kind: 'rates', provider: 'open-er-api', enabled: true }] }) });
+      assert.ok(lines.some((l) => l.step === 'exchange rates' && l.outcome === 'created'), JSON.stringify(lines));
+      assert.equal(await count('currencies', { code: 'EUR' }), 1);
+      assert.ok((await count('exchange-rates', { source: 'feed' })) >= 2);
+    } finally { globalThis.fetch = realFetch; }
+  });
+
+  test('with no e-mail server the guide asks for OWNER_PASSWORD, which makes the first owner and can never change them afterwards', async () => {
+    const noMail = file({ deploy: { target: 'gcp', projectId: 'acme-fleet-prod', domainMode: 'none' } });
+    const guide = (await api().post('/api/v1/setup-kit/guide').set(bearer(owner)).send({ file: noMail }).expect(200)).body.data;
+    const variable = guide.env.find((v: { name: string }) => v.name === 'OWNER_PASSWORD');
+    assert.equal(variable.secret, true);
+    assert.equal(variable.value, undefined);
+    assert.match(guide.envFile, /# SECRET\. The first password for owner@acme\.example/);
+    assert.doesNotMatch(guide.envFile, /^SMTP_FROM=/m, 'an empty one would stop the server starting');
+    assert.match(JSON.stringify(guide.steps), /Sign in as owner@acme\.example with OWNER_PASSWORD/);
+
+    const withMail = file({ deploy: { target: 'gcp', projectId: 'acme-fleet-prod', domainMode: 'none', smtp: { host: 'smtp.acme.example', from: 'Acme <fleet@acme.example>' } } });
+    const mailed = (await api().post('/api/v1/setup-kit/guide').set(bearer(owner)).send({ file: withMail }).expect(200)).body.data;
+    assert.ok(!mailed.env.some((v: { name: string }) => v.name === 'OWNER_PASSWORD'), 'not asked for when e-mail can do it');
+
+    await resetDatabase();
+    env.OWNER_PASSWORD = 'First-Owner-2026';
+    try {
+      const made = await ensureFirstOwner('first@acme.example');
+      assert.deepEqual(made, { created: true, sent: false, passwordSet: true });
+      await api().post('/api/v1/auth/login').send({ email: 'first@acme.example', password: 'First-Owner-2026' }).expect(200);
+      // Someone changing the variable later can't take the account over.
+      env.OWNER_PASSWORD = 'Another-Pass-2026';
+      assert.equal((await ensureFirstOwner('first@acme.example')).created, false);
+      await api().post('/api/v1/auth/login').send({ email: 'first@acme.example', password: 'Another-Pass-2026' }).expect(401);
+      await api().post('/api/v1/auth/login').send({ email: 'first@acme.example', password: 'First-Owner-2026' }).expect(200);
+    } finally { env.OWNER_PASSWORD = undefined; }
+  });
+
+  test('a short name too long for Google Cloud is caught before anything is deployed', async () => {
+    const long = file({ company: { key: 'copperbelt-haulage-limited', legalName: 'Copperbelt Haulage Limited' }, deploy: { target: 'gcp', projectId: 'acme-fleet-prod', domainMode: 'none' } });
+    const problems = (await api().post('/api/v1/setup-kit/check').set(bearer(owner)).send({ file: long, finish: 'package' }).expect(200)).body.data.problems as { path: string; message: string }[];
+    assert.ok(problems.some((p) => p.path === 'company.key' && /at most 24/.test(p.message)), JSON.stringify(problems));
   });
 });

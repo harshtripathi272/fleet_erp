@@ -4,6 +4,8 @@ import { email, name, phone, text } from '../../core/masters/zod.js';
 import { AREA_KEYS } from '../company/areaList.js';
 import { saveCompanySchema } from '../company/company.schema.js';
 import { workspaceInput } from '../company/workspace.js';
+import { customMasterShape, fieldDefinitionShape, listShape } from '../configuration/configuration.schema.js';
+import { layoutInputSchema } from '../../core/masters/layout.js';
 import { PERMISSION_ACTIONS } from '../roles/roles.schema.js';
 
 /**
@@ -61,6 +63,25 @@ const role = z.strictObject({
   name: text(80),
   description: text(500).optional(),
   permissions: z.array(z.strictObject({ resource: z.string().trim().min(1).max(60), actions: z.array(z.enum(PERMISSION_ACTIONS)).min(1).max(7) })).max(200),
+});
+
+/* The masters, as this company shapes them: nothing here is code, so a company's system travels in its file. */
+const { listId: _fieldList, ...fieldSpecShape } = {
+  key: fieldDefinitionShape.key, label: fieldDefinitionShape.label, type: fieldDefinitionShape.type, required: fieldDefinitionShape.required,
+  options: fieldDefinitionShape.options, listId: fieldDefinitionShape.listId, referenceMaster: fieldDefinitionShape.referenceMaster,
+  min: fieldDefinitionShape.min, max: fieldDefinitionShape.max, maxLength: fieldDefinitionShape.maxLength, pattern: fieldDefinitionShape.pattern,
+  helpText: fieldDefinitionShape.helpText, order: fieldDefinitionShape.order,
+};
+/** A field's list is named by its code: ids mean nothing on another copy. */
+const fieldSpec = { ...fieldSpecShape, listCode: z.string().trim().min(1).max(32).optional() };
+const mastersPart = z.strictObject({
+  /** Names, order, sections, required and hidden fields, list columns and choices, per master. */
+  layouts: z.array(layoutInputSchema.extend({ entity: z.string().regex(/^[a-z][a-z0-9-]{1,39}$/) })).max(200).default([]).superRefine(unique((l) => l.entity, 'Master')),
+  lists: z.array(z.strictObject({ code: listShape.code, name: listShape.name, description: listShape.description, values: listShape.values })).max(200).default([]).superRefine(unique((l) => l.code, 'List')),
+  /** The company's own fields on built-in masters and trip records. */
+  fields: z.array(z.strictObject({ entity: fieldDefinitionShape.entity, ...fieldSpec, placement: fieldDefinitionShape.placement, askedOf: fieldDefinitionShape.askedOf, printOn: fieldDefinitionShape.printOn })).max(1000).default([]).superRefine(unique((f) => `${f.entity}.${f.key}`, 'Field')),
+  /** Masters defined entirely by the company. */
+  customMasters: z.array(z.strictObject({ code: customMasterShape.code, name: customMasterShape.name, description: customMasterShape.description, titleField: customMasterShape.titleField, fields: z.array(z.strictObject(fieldSpec)).min(1).max(60) })).max(100).default([]).superRefine(unique((m) => m.code, 'Master')),
 });
 
 const person = z.strictObject({ name: name.optional(), email, phone: phone.optional(), roles: z.array(z.string().trim().min(1).max(40)).max(20).default([]) });
@@ -133,6 +154,8 @@ export const companyFileSchema = z.strictObject({
     fiscalYearStartMonth: company.fiscalYearStartMonth,
     /** Clock, number style, week, phone code and units. Left out, each follows the country or the default. */
     style: company.regional,
+    /** Other currencies it works in, as codes; each is added if missing, and the rate feed follows them. */
+    currencies: z.array(z.string().trim().toUpperCase().regex(/^[A-Z]{3}$/)).max(60).optional(),
   }).default({}),
   brand: brandText.extend({ files: z.strictObject({ logo: kitPath('files').optional(), logoDark: kitPath('files').optional(), icon: kitPath('files').optional(), logoPdf: kitPath('files').optional() }).default({}) }).default({ files: {} }),
   watermark: company.watermark,
@@ -141,6 +164,7 @@ export const companyFileSchema = z.strictObject({
   maintenance: company.maintenance,
   /** The company's own words, trip stages and desks. Only what differs from the defaults. */
   workspace: z.strictObject(workspaceInput).optional(),
+  masters: mastersPart.optional(),
   /** Anyone may make an account, waiting for a role; off unless the company asks for it. */
   selfSignUp: z.boolean().default(false),
   connections: z.array(connection).max(50).default([]).superRefine(unique((c) => c.code, 'Connection')),
@@ -153,6 +177,8 @@ export const companyFileSchema = z.strictObject({
     sample: z.enum(['none', 'small', 'full']).default('none'),
     /** Imported in this order on first start, like the import screen: a row already there is left alone. */
     files: z.array(z.strictObject({ master: z.string().regex(/^[a-z][a-z0-9-]{1,39}$/), file: kitPath('data') })).max(60).default([]).superRefine(unique((f) => f.file, 'Data file')),
+    /** This company's records exactly as they stood on the copy it was packaged from, restored once on first start. */
+    snapshot: kitPath('data').optional(),
   }).default({ sample: 'none', files: [] }),
   deploy,
 }).superRefine((file, ctx) => {

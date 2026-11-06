@@ -131,7 +131,7 @@ describe('the kit', () => {
     assert.ok(checkKit(aws, attachmentsOf(aws)).some((p) => /storage connection/.test(p)));
     assert.ok(checkKit(aws, attachmentsOf(aws)).some((p) => /deploy\.domain/.test(p)));
     const noMail = parsed({ ...fixture(), deploy: { target: 'compose', domain: 'fleet.acme-haulage.example', image: 'registry.example.com/fleet/fleet-erp' } });
-    assert.ok(checkKit(noMail, attachmentsOf(noMail)).some((p) => /deploy\.smtp/.test(p)));
+    assert.ok(!checkKit(noMail, attachmentsOf(noMail)).some((p) => /deploy\.smtp/.test(p)), 'e-mail is optional: the first owner can have a password instead');
   });
 
   test('npm run kit writes the zip, or lists the problems and fails', () => {
@@ -271,7 +271,7 @@ describe('the Company kit screen\'s API', () => {
     const attachments = [...attachmentsOf(parsed())].map(([path, v]) => ({ path, data: v.toString('base64') }));
     const checked = (await api().post('/api/v1/setup-kit/check').set(bearer(owner)).send({ file: { ...file, deploy: { target: 'compose', image: 'registry.example.com/fleet/fleet-erp' } }, attachments }).expect(200)).body.data;
     assert.equal(checked.ok, false);
-    assert.deepEqual(checked.problems.map((p: { path: string }) => p.path).sort(), ['deploy.domain', 'deploy.smtp']);
+    assert.deepEqual(checked.problems.map((p: { path: string }) => p.path).sort(), ['deploy.domain']);
     const res = await api().post('/api/v1/setup-kit/kit').set(bearer(owner)).send({ file, attachments }).buffer(true).parse((r, done) => {
       const chunks: Buffer[] = [];
       r.on('data', (c: Buffer) => chunks.push(c));

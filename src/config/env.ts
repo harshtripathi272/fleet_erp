@@ -31,6 +31,11 @@ export const envSchema = z.object({
    * link to choose a password, and nobody can become the first Owner by signing up. Required in production.
    */
   OWNER_EMAIL: z.string().trim().toLowerCase().pipe(z.email()).optional(),
+  /**
+   * The first Owner's password, for a copy with no e-mail server. Read only when that first account is made, and
+   * never again: it can't change an existing account. Without it, the Owner gets an e-mail to choose one.
+   */
+  OWNER_PASSWORD: z.string().min(8, 'OWNER_PASSWORD must be at least 8 characters').max(128).regex(/[A-Za-z]/, 'OWNER_PASSWORD needs a letter').regex(/\d/, 'OWNER_PASSWORD needs a digit').optional(),
   CONSOLE_ENABLED: flag('true'),
   /** Timers inside the server for what a scheduled job does where one runs. Cloud Run turns this off: it scales to zero. */
   IN_PROCESS_JOBS: flag('true'),
@@ -96,8 +101,9 @@ export const envSchema = z.object({
   if (!value.OWNER_EMAIL) {
     ctx.addIssue({ code: 'custom', path: ['OWNER_EMAIL'], message: 'Set OWNER_EMAIL in production, so a stranger cannot claim the first Owner account' });
   }
-  if (!value.SMTP_HOST) {
-    ctx.addIssue({ code: 'custom', path: ['SMTP_HOST'], message: 'SMTP is required in production for password resets' });
+  // Someone must be able to get in: by an e-mail to choose a password, or with the one set here.
+  if (!value.SMTP_HOST && !(value.OWNER_EMAIL && value.OWNER_PASSWORD)) {
+    ctx.addIssue({ code: 'custom', path: ['SMTP_HOST'], message: 'Production needs SMTP_HOST for invitations and password resets, or OWNER_EMAIL and OWNER_PASSWORD for the first Owner' });
   }
 }).transform((value) => ({ ...value, DRIVER_PHONE_SIMULATOR: (value.DRIVER_PHONE_SIMULATOR ?? (value.NODE_ENV === 'production' ? 'false' : 'true')) === 'true' }));
 

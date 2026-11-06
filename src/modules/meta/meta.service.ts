@@ -149,12 +149,13 @@ function withoutFieldsOff(def: MasterDefinition, schema: unknown, on: Set<string
   return { ...(schema as Plain), properties: Object.fromEntries(Object.entries(properties).filter(([field]) => !off.includes(field))) };
 }
 
-export async function describeMasters(auth?: AuthContext) {
+export async function describeMasters(auth?: AuthContext, options: { allAreas?: boolean } = {}) {
   const keys = modelKeyMap();
   const customFields = await withChoices(await FieldDefinition.find({ status: 'active' }).sort({ order: 1 }).lean() as Plain[]);
   // Masters of an area the company has switched off are not offered (#56).
   const on = await areasOn();
-  const offered = listMasters().filter((def) => !def.module || on.has(def.module));
+  // The set-up shapes masters before their areas are on, so it asks for all of them.
+  const offered = listMasters().filter((def) => options.allAreas || !def.module || on.has(def.module));
   // Each master as this company has shaped it: the code's definition with the company layer on top (#65).
   const layouts = new Map((await Promise.all(offered.map(async (d) => [d.key, await getLayout(d.key)] as const))));
   return offered.map((def) => {
@@ -162,6 +163,7 @@ export async function describeMasters(auth?: AuthContext) {
     const fixed = systemRequired(def);
     return ({
     key: def.key,
+    module: def.module,
     label: layout.master.label ?? def.label,
     singular: layout.master.singular ?? def.singular,
     group: layout.master.group ?? def.group,

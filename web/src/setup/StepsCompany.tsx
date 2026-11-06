@@ -1,5 +1,7 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Check } from "lucide-react";
+import { api } from "../api/client";
 import type { Rec } from "../api/adapter";
 import { useAreaList } from "../api/areas";
 import { Button, Field, Segmented, SettingRow, SettingsSection, Status, Switch } from "../ui/kit";
@@ -21,17 +23,20 @@ const SWATCHES = ["#1d4d3f", "#14406b", "#3f2f6e", "#6d2436", "#8a3a14", "#27323
 
 /** A short name for servers and the package's file name, from the company's name. */
 export const shortNameOf = (name: string) => {
-  const key = name.toLowerCase().normalize("NFKD").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 30).replace(/-+$/, "");
-  return /^[a-z]/.test(key) ? key : key ? `co-${key}`.slice(0, 30) : "";
+  // 24 at most, so it fits every platform's limits: Google allows 30 for a service account named fleet-<this>.
+  const key = name.toLowerCase().normalize("NFKD").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 24).replace(/-+$/, "");
+  return /^[a-z]/.test(key) ? key : key ? `co-${key}`.slice(0, 24) : "";
 };
 
 /** A new company's file, before anything is entered. */
 export function blankFile(owner: { name?: string; email: string }, purpose = "real"): Rec {
   return {
     format: 1, purpose,
-    company: {}, regional: {}, brand: { files: {} }, connections: [], roles: [], staff: [],
+    company: {}, regional: {}, brand: { files: {} }, roles: [], staff: [],
     owner: { email: owner.email, ...(owner.name ? { name: owner.name } : {}) },
     selfSignUp: false,
+    // Live rates from the start: they need no account, and can be changed or switched off on the Region step.
+    connections: [{ code: "RATES", name: "ExchangeRate-API (free, no key)", kind: "rates", provider: "open-er-api", enabled: true, settings: {}, secrets: {} }],
     data: { sample: purpose === "demo" ? "full" : "none", files: [] },
     deploy: { target: "compose" },
   };
@@ -75,7 +80,7 @@ export function StartStep({ hasCompany }: { hasCompany: boolean }) {
     <div className="su-stack">
       <section className="su-choose" role="radiogroup" aria-label="What are you setting up?">
         <Choice on={purpose === "demo"} onPick={() => pickPurpose("demo")} title="A demonstration" text="To show someone how it works, or to try it yourself. Comes with made-up trucks, drivers and trips, every area switched on, and messages simulated. It can be cleared and started again." />
-        <Choice on={purpose === "real"} onPick={() => pickPurpose("real")} title="A real company" text="A company's own copy for its real work, on its own address. Starts empty, ready for its spreadsheets. It needs an e-mail server, so people can receive their invitations." />
+        <Choice on={purpose === "real"} onPick={() => pickPurpose("real")} title="A real company" text="A company's own copy for its real work, on its own address. Starts empty, ready for its spreadsheets. People are invited by e-mail if it has an e-mail server, or given passwords if it doesn't." />
       </section>
       <SettingsSection title="Start from">
         {(hasCompany || file.company?.legalName) && (
@@ -209,6 +214,8 @@ export function RegionStep() {
         )}
       </SettingsSection>
 
+      <CurrenciesAndRates />
+
       <div className="su-sample" aria-label="How this company's figures will read">
         <span>This company will read</span>
         <dl>
@@ -262,6 +269,78 @@ export function RegionStep() {
         </SettingRow>
       </SettingsSection>
     </div>
+  );
+}
+
+/* ---------- Other currencies, and where their rates come from ---------- */
+
+interface RateProvider { key: string; label: string; description?: string; simulated: boolean; secrets: { key: string; label: string; required: boolean; hint?: string }[] }
+
+function CurrenciesAndRates() {
+  const { file, set } = useSetUp();
+  const kinds = useQuery({ queryKey: ["connection-kinds"], queryFn: () => api<{ kind: string; providers: RateProvider[] }[]>("/connection-kinds"), staleTime: 60_000 });
+  const providers = kinds.data?.find((k) => k.kind === "rates")?.providers ?? [];
+  const r = (file.regional ?? {}) as Rec;
+  const base = String(r.baseCurrency ?? "");
+  const chosen = ((r.currencies ?? []) as string[]).filter((c) => c !== base);
+  const connections = (file.connections ?? []) as Rec[];
+  const at = connections.findIndex((c) => c.kind === "rates");
+  const providerKey = at >= 0 ? String(connections[at]!.provider) : "";
+  const provider = providers.find((p) => p.key === providerKey);
+  const setProvider = (key: string) => {
+    const rest = connections.filter((c) => c.kind !== "rates");
+    const p = providers.find((x) => x.key === key);
+    set("connections", p ? [...rest, { code: "RATES", name: p.label, kind: "rates", provider: p.key, enabled: true, settings: {}, secrets: Object.fromEntries(p.secrets.map((s) => [s.key, `CONNECTION_RATES_${s.key.toUpperCase()}`])) }] : rest);
+  };
+  const [live, setLive] = useState<{ rates: Record<string, number>; asOf?: string; missing?: string[]; needsKey?: boolean; failed?: string } | null>(null);
+  const codes = chosen.join(",");
+  useEffect(() => {
+    if (!providerKey || !base || !chosen.length) { setLive(null); return; }
+    let stale = false;
+    api<{ rates: Record<string, number>; asOf?: string; missing?: string[]; needsKey?: boolean }>("/setup-kit/rates-preview", { method: "POST", body: { provider: providerKey, base, codes: chosen } })
+      .then((x) => { if (!stale) setLive(x); })
+      .catch((e: Error) => { if (!stale) setLive({ rates: {}, failed: e.message }); });
+    return () => { stale = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `codes` is `chosen` as a value
+  }, [providerKey, base, codes]);
+  const name = (code: string) => CURRENCIES.find((c) => c.code === code)?.name ?? code;
+  /** How the company reads a rate: one of the other currency in its own. */
+  const rate = (code: string) => { const perBase = live?.rates[code]; return perBase ? 1 / perBase : undefined; };
+  return (
+    <SettingsSection title="Other currencies, and today's rates" description="The currencies it pays or invoices in besides its own. Each is added for you, and its rate is fetched live every day.">
+      <SettingRow title="Rates come from" description={provider?.description ?? "Without a service, rates are typed in by hand."} htmlFor="su-rates">
+        <select id="su-rates" className="input" value={providerKey} onChange={(e) => setProvider(e.target.value)}>
+          <option value="">Typed in by hand</option>
+          {providers.filter((p) => !p.simulated).map((p) => <option key={p.key} value={p.key}>{p.label}</option>)}
+          {providers.filter((p) => p.simulated).map((p) => <option key={p.key} value={p.key}>{p.label}: not real rates</option>)}
+        </select>
+      </SettingRow>
+      <div className="su-pad su-currencies">
+        <select className="input" aria-label="Add a currency" value="" onChange={(e) => { if (e.target.value) set("regional.currencies", [...chosen, e.target.value]); }}>
+          <option value="">Add a currency…</option>
+          {CURRENCIES.filter((c) => c.code !== base && !chosen.includes(c.code)).map((c) => <option key={c.code} value={c.code}>{c.code} · {c.name}</option>)}
+        </select>
+        {chosen.length > 0 && (
+          <div className="cust-table-wrap">
+            <table className="cust-table">
+              <thead><tr><th>Currency</th><th>Today's rate</th><th aria-label="Remove" /></tr></thead>
+              <tbody>
+                {chosen.map((code) => (
+                  <tr key={code}>
+                    <td><strong>{code}</strong> <span className="muted">{name(code)}</span></td>
+                    <td className="num">{!providerKey ? <span className="muted">Typed in by hand</span> : live?.needsKey ? <span className="muted">Once its key is set</span> : live?.failed ? <span className="su-bad-text">Couldn't reach it</span> : !live ? <span className="muted">Checking…</span> : rate(code) ? `1 ${code} = ${rate(code)!.toLocaleString(undefined, { maximumFractionDigits: 4 })} ${base}` : <span className="su-bad-text">Not offered by this service</span>}</td>
+                    <td><Button size="sm" tone="quiet" onClick={() => set("regional.currencies", chosen.filter((c) => c !== code))}>Remove</Button></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+        {live?.failed && <p className="su-note bad">{live.failed}</p>}
+        {live?.asOf && !live.failed && <p className="muted su-asof">Live, from the service, as of {new Date(live.asOf).toLocaleDateString()}. Rates are stored daily once set up.</p>}
+        {provider?.key === "open-er-api" && <p className="muted su-asof">Rates by <a className="su-link" href="https://www.exchangerate-api.com" target="_blank" rel="noreferrer">Exchange Rate API</a>.</p>}
+      </div>
+    </SettingsSection>
   );
 }
 

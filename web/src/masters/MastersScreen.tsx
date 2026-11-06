@@ -66,7 +66,7 @@ const remembered = () => { try { return sessionStorage.getItem(OPEN); } catch { 
 const remember = (key: string) => { try { sessionStorage.setItem(OPEN, key); } catch { /* private mode: nothing to keep */ } };
 
 /** Records filled in step by step, and the steps where a company field can be asked (#67). The API holds the same list. */
-const OPERATIONAL_RECORDS = [
+export const OPERATIONAL_RECORDS = [
   { key: "trips", label: "Trips", steps: [{ value: "create", label: "Created" }, { value: "dispatch", label: "Dispatched" }, { value: "close", label: "Closed" }] },
   { key: "consignments", label: "Loads", steps: [{ value: "loading", label: "Loaded" }, { value: "delivery", label: "Delivered" }] },
   { key: "fund-requests", label: "Fuel and cash requests", steps: [{ value: "ask", label: "Asked for" }, { value: "approve", label: "Approved" }, { value: "pay", label: "Paid" }] },

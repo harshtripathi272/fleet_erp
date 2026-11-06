@@ -38,7 +38,7 @@ load_company() {
   # shellcheck disable=SC1090
   . "$file"
   set +a
-  for key in PROJECT_ID REGION COMPANY OWNER_EMAIL SMTP_HOST SMTP_FROM; do
+  for key in PROJECT_ID REGION COMPANY OWNER_EMAIL; do
     [ -n "${!key:-}" ] || fail "$key is missing in $file"
   done
   [[ "$COMPANY" =~ ^[a-z][a-z0-9-]{1,28}[a-z0-9]$ ]] || fail "COMPANY must be 3–30 lowercase letters, digits or hyphens, starting with a letter: $COMPANY"
@@ -58,6 +58,9 @@ load_company() {
   MAX_INSTANCES="${MAX_INSTANCES:-1}"
   CPU="${CPU:-1}"
   MEMORY="${MEMORY:-512Mi}"
+  # Optional: without an e-mail server, the first Owner's password comes from OWNER_PASSWORD.
+  SMTP_HOST="${SMTP_HOST:-}"
+  SMTP_FROM="${SMTP_FROM:-}"
   SMTP_PORT="${SMTP_PORT:-587}"
   SMTP_SECURE="${SMTP_SECURE:-false}"
   SMTP_USER="${SMTP_USER:-}"
