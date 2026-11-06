@@ -1,7 +1,11 @@
 import type { Model } from 'mongoose';
 import type { MasterDefinition, RefSpec } from './types.js';
 
-interface RefTarget { key: string; model: Model<any>; label: string; titleField: string; statusField: boolean; }
+/**
+ * Something a reference field can point at (#68): a master, an operational record (a trip, an invoice) or the
+ * records of a custom master. `filter` narrows the model to the target's own records.
+ */
+export interface RefTarget { key: string; model: Model<any>; label: string; titleField: string; statusField: boolean; filter?: Record<string, unknown>; kind?: 'master' | 'record' | 'custom' }
 
 const masters = new Map<string, MasterDefinition>();
 const targets = new Map<string, RefTarget>();
@@ -9,7 +13,7 @@ const targets = new Map<string, RefTarget>();
 export function registerMaster(def: MasterDefinition): MasterDefinition {
   if (masters.has(def.key)) throw new Error(`Master "${def.key}" registered twice`);
   masters.set(def.key, def);
-  targets.set(def.key, { key: def.key, model: def.model, label: def.singular, titleField: def.titleField ?? 'name', statusField: true });
+  targets.set(def.key, { key: def.key, model: def.model, label: def.singular, titleField: def.titleField ?? 'name', statusField: true, kind: 'master' });
   return def;
 }
 
@@ -20,7 +24,11 @@ export function registerRefTarget(target: RefTarget) {
 
 export const getMaster = (key: string) => masters.get(key);
 export const listMasters = () => [...masters.values()];
-export const getRefTarget = (key: string) => targets.get(key);
+/** Targets that aren't known ahead of time (each custom master's records), resolved from their key. */
+let resolver: ((key: string) => RefTarget | undefined) | undefined;
+export const setRefResolver = (fn: (key: string) => RefTarget | undefined) => { resolver = fn; };
+export const getRefTarget = (key: string) => targets.get(key) ?? resolver?.(key);
+export const listRefTargets = () => [...targets.values()];
 
 /** Every reference declared by a master, including the shared branch scope. */
 export function refsOf(def: MasterDefinition): RefSpec[] {

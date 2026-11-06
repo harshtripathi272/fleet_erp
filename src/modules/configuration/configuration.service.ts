@@ -1,10 +1,15 @@
-import { Types } from 'mongoose';
+import { Types, type Model } from 'mongoose';
 import { z } from 'zod';
 import { ConflictError, NotFoundError, ValidationError } from '../../core/errors/index.js';
 import { defineMaster } from '../../core/masters/define.js';
 import { validateDynamicValues, type DynamicField } from '../../core/masters/dynamicFields.js';
 import { GROUPS } from '../../core/masters/groups.js';
-import { getMaster, getRefTarget, listMasters, registerMaster } from '../../core/masters/registry.js';
+import { getMaster, getRefTarget, listMasters, registerMaster, registerRefTarget, setRefResolver } from '../../core/masters/registry.js';
+import { Invoice, CustomerPayment } from '../finance/billing/billing.model.js';
+import { Consignment } from '../operations/models/cargo.model.js';
+import { FundRequest } from '../operations/models/funding.model.js';
+import { Expense, Nomination, Settlement } from '../operations/models/money.model.js';
+import { Trip } from '../operations/models/trip.model.js';
 import { setExtraUsage, type Usage } from '../../core/masters/references.js';
 import * as MasterService from '../../core/masters/service.js';
 import { setCustomFieldLoader, type ListQuery, type ServiceContext } from '../../core/masters/service.js';
@@ -175,6 +180,7 @@ async function recordDefinitionFor(masterId: string, mustBeActive: boolean): Pro
   const fields = await resolveOptions(master.fields as Plain[]);
   return {
     ...customRecordDefinition,
+    layoutKey: customKey(masterId),
     async prepare(data: Plain, ctx) {
       if (ctx.mode === 'update' && String(ctx.existing?.masterId) !== masterId) throw new NotFoundError('Record not found');
       const base = ctx.mode === 'update' ? (ctx.existing?.data ?? {}) as Plain : {};
@@ -192,11 +198,11 @@ async function assertRecordOf(masterId: string, id: string) {
 
 export async function listRecords(masterId: string, query: ListQuery, ctx: ServiceContext) {
   await loadCustomMaster(masterId);
-  return MasterService.list(customRecordDefinition, { ...query, masterId }, ctx);
+  return MasterService.list({ ...customRecordDefinition, layoutKey: customKey(masterId) }, { ...query, masterId }, ctx);
 }
 export async function getRecord(masterId: string, id: string, ctx: ServiceContext) {
   await assertRecordOf(masterId, id);
-  return MasterService.getById(customRecordDefinition, id, ctx);
+  return MasterService.getById({ ...customRecordDefinition, layoutKey: customKey(masterId) }, id, ctx);
 }
 export async function createRecord(masterId: string, input: Plain, ctx: ServiceContext) {
   return MasterService.create(await recordDefinitionFor(masterId, true), input, ctx);
@@ -242,5 +248,48 @@ setExtraUsage(async (targetKey, id, activeOnly) => {
   }
   return usage;
 });
+
+/* ---------- References to any record type (#68) ---------- */
+
+/** Operational records a company field may point at, by their number. */
+const RECORD_TARGETS: Array<{ key: string; model: Model<any>; label: string }> = [
+  { key: 'trips', model: Trip, label: 'Trip' }, { key: 'nominations', model: Nomination, label: 'Nomination' },
+  { key: 'fund-requests', model: FundRequest, label: 'Fuel or cash request' }, { key: 'expenses', model: Expense, label: 'Expense' },
+  { key: 'consignments', model: Consignment, label: 'Loading' }, { key: 'settlements', model: Settlement, label: 'Settlement' },
+  { key: 'invoices', model: Invoice as unknown as Model<any>, label: 'Invoice' }, { key: 'payments-received', model: CustomerPayment as unknown as Model<any>, label: 'Payment received' },
+];
+for (const t of RECORD_TARGETS) registerRefTarget({ ...t, titleField: 'number', statusField: false, kind: 'record' });
+
+/** The key a custom master's records go by, wherever a record type is named: custom-<its id>. */
+export const customKey = (id: unknown) => `custom-${String(id)}`;
+export const CUSTOM_KEY = /^custom-([0-9a-f]{24})$/;
+setRefResolver((key) => {
+  const m = CUSTOM_KEY.exec(key);
+  return m ? { key, model: CustomRecord, label: 'Record', titleField: 'title', statusField: true, filter: { masterId: new Types.ObjectId(m[1]) }, kind: 'custom' } : undefined;
+});
+
+/**
+ * A custom master as a record type, with the same shape as a built-in master's definition (#68): its records'
+ * values are `data.<key>`, so the company layer (field permissions, list views) applies to it like any master.
+ */
+export function customRecordTypeOf(master: Plain): MasterDefinition {
+  const fields = (master.fields ?? []) as Plain[];
+  const shape = Object.fromEntries(fields.map((f) => [String(f.key), f.required ? z.unknown() : z.unknown().optional()]));
+  return {
+    ...customRecordDefinition,
+    key: customKey(master._id), label: String(master.name), singular: String(master.name), description: String(master.description ?? ''),
+    layoutKey: customKey(master._id),
+    createSchema: z.strictObject({ data: z.strictObject(shape) }),
+    filters: {},
+  };
+}
+
+/** The custom master behind a custom-<id> key, as a record type; undefined for any other key. */
+export async function customRecordType(key: string): Promise<MasterDefinition | undefined> {
+  const m = CUSTOM_KEY.exec(key);
+  if (!m) return undefined;
+  const master = await CustomMaster.findById(m[1]).lean() as Plain | null;
+  return master ? customRecordTypeOf(master) : undefined;
+}
 
 export const masters: MasterDefinition[] = [listDefinition, fieldDefinitionDefinition, customMasterDefinition];

@@ -26,6 +26,13 @@ const importBody = z.strictObject({
 // The master of masters (#65): a company's own shape for each master.
 router.get('/layouts/:master', authorize('company', 'read'), validate({ params: importParams }), MetaController.getLayout);
 router.put('/layouts/:master', authorize('company', 'update'), validate({ params: importParams, body: layoutInputSchema }), MetaController.saveLayout);
+router.get('/record-types', MetaController.recordTypes);
+const referenceQuery = z.strictObject({
+  search: z.string().trim().max(100).optional(),
+  ids: z.string().regex(/^[0-9a-f]{24}(,[0-9a-f]{24}){0,99}$/, 'Record ids separated by commas').optional(),
+  limit: z.coerce.number().int().min(1).max(50).optional(),
+});
+router.get('/references/:target', validate({ params: z.strictObject({ target: z.string().regex(/^[a-z][a-z0-9-]{1,39}$/) }), query: referenceQuery }), MetaController.referenceOptions);
 router.get('/import/:master', validate({ params: importParams }), MetaController.importInfo);
 router.get('/import/:master/template', validate({ params: importParams }), MetaController.importTemplate);
 router.post('/import/:master', validate({ params: importParams, body: importBody }), MetaController.importRun);

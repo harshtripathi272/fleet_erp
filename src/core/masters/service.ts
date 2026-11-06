@@ -1,4 +1,4 @@
-import { applyDefaults, assertCompanyRules } from './layout.js';
+import { applyDefaults, assertCompanyRules, assertFieldsWritable, fieldAccess, keepHidden, withoutHidden } from './layout.js';
 import { Types } from 'mongoose';
 import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from '../errors/index.js';
 import { logger } from '../logger/index.js';
@@ -23,6 +23,8 @@ export interface ServiceContext {
   actorId?: string;
   requestId?: string;
   canSeeSensitive?: boolean;
+  /** The caller's role keys, for the company's field permissions (#68); undefined for internal callers. */
+  roles?: string[];
 }
 
 const SYSTEM_KEYS = new Set(['_id', 'id', 'version', 'createdAt', 'updatedAt', 'createdBy', 'updatedBy', 'archivedAt', 'archivedBy', 'archiveReason']);
@@ -148,7 +150,8 @@ export async function list(def: MasterDefinition, query: ListQuery, ctx: Service
     def.model.find(filter).sort(sort).skip((query.page - 1) * query.limit).limit(query.limit).lean(),
     def.model.countDocuments(filter),
   ]);
-  return { data: rows.map((row) => serialize(def, row as Plain, ctx)), total, page: query.page, limit: query.limit };
+  const { hidden } = await fieldAccess(def, ctx.roles);
+  return { data: rows.map((row) => withoutHidden(serialize(def, row as Plain, ctx), hidden)), total, page: query.page, limit: query.limit };
 }
 
 async function loadDoc(def: MasterDefinition, id: string) {
@@ -160,7 +163,7 @@ async function loadDoc(def: MasterDefinition, id: string) {
 export async function getById(def: MasterDefinition, id: string, ctx: ServiceContext = {}) {
   const doc = await def.model.findById(id).lean();
   if (!doc) throw new NotFoundError(`${def.singular} not found`);
-  return serialize(def, doc as Plain, ctx);
+  return withoutHidden(serialize(def, doc as Plain, ctx), (await fieldAccess(def, ctx.roles)).hidden);
 }
 
 /* ---------- Writes ---------- */
@@ -173,6 +176,8 @@ export async function create(def: MasterDefinition, input: Plain, ctx: ServiceCo
     data.code = generated;
   }
   assertSensitiveWritable(def, data, undefined, ctx);
+  const access = await fieldAccess(def, ctx.roles);
+  assertFieldsWritable(data, undefined, access.readOnly);
   assertValidity(data);
   await assertReferences(def, data);
   data.custom = await validateCustom(def, data.custom as Plain | undefined, undefined);
@@ -186,7 +191,7 @@ export async function create(def: MasterDefinition, input: Plain, ctx: ServiceCo
   const saved = doc.toObject() as Plain;
   await audit({ entity: def.key, entityId: doc._id, action: 'create', actorId: ctx.actorId, requestId: ctx.requestId, changes: diff({}, saved, def.sensitive) });
   logger.info({ entity: def.key, id: String(doc._id), requestId: ctx.requestId }, 'Record created');
-  return serialize(def, saved, ctx);
+  return withoutHidden(serialize(def, saved, ctx), access.hidden);
 }
 
 export async function update(def: MasterDefinition, id: string, input: Plain, ctx: ServiceContext = {}) {
@@ -195,6 +200,8 @@ export async function update(def: MasterDefinition, id: string, input: Plain, ct
   if (before.status === 'archived') throw new ConflictError(`Restore this ${def.singular.toLowerCase()} before editing it`);
   const { version, ...changes } = input;
   assertSensitiveWritable(def, changes, before, ctx);
+  const access = await fieldAccess(def, ctx.roles);
+  assertFieldsWritable(changes, before, access.readOnly);
   if (version !== before.version) {
     throw new ConflictError('This record was changed by someone else. Reload it and try again.', { currentVersion: before.version });
   }
@@ -210,6 +217,7 @@ export async function update(def: MasterDefinition, id: string, input: Plain, ct
     else candidate[key] = value;
   }
   if ('custom' in changes) candidate.custom = await validateCustom(def, (changes.custom ?? {}) as Plain, (before.custom ?? {}) as Plain);
+  keepHidden(candidate, before, access.hidden);
   assertValidity(candidate);
   await assertCompanyRules(def, candidate, before);
   await assertReferences(def, candidate, new Set(Object.keys(changes)));
@@ -223,12 +231,12 @@ export async function update(def: MasterDefinition, id: string, input: Plain, ct
     if (JSON.stringify(comparable(next)) === JSON.stringify(comparable(before[key]))) continue;
     doc.set(key, next === undefined ? undefined : next);
   }
-  if (!doc.isModified()) return serialize(def, before, ctx);
+  if (!doc.isModified()) return withoutHidden(serialize(def, before, ctx), access.hidden);
   doc.set('updatedBy', ctx.actorId);
   await saveDoc(doc);
   const after = doc.toObject() as Plain;
   await audit({ entity: def.key, entityId: doc._id, action: 'update', actorId: ctx.actorId, requestId: ctx.requestId, changes: diff(before, after, def.sensitive) });
-  return serialize(def, after, ctx);
+  return withoutHidden(serialize(def, after, ctx), access.hidden);
 }
 
 export async function archive(def: MasterDefinition, id: string, reason: string | undefined, ctx: ServiceContext = {}) {

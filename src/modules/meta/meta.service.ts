@@ -6,14 +6,14 @@ import { getRedis } from '../../core/cache/redis.js';
 import { mongoState } from '../../core/db/mongo.js';
 import { recentMail } from '../../core/mail/mailer.js';
 import { GROUPS } from '../../core/masters/groups.js';
-import { fieldPaths, getLayout, systemRequired, type Layout } from '../../core/masters/layout.js';
+import { fieldAccess, fieldPaths, getLayout, systemRequired, viewsFor, type Layout } from '../../core/masters/layout.js';
 import { AREAS, areasOn } from '../company/areas.js';
 import { pathLabel } from '../../core/masters/labels.js';
-import { listMasters as registered, refsOf } from '../../core/masters/registry.js';
+import { getRefTarget, listMasters as registered, listRefTargets, refsOf } from '../../core/masters/registry.js';
 import { ACTIONS, type MasterDefinition, type Plain } from '../../core/masters/types.js';
 import type { AuthContext } from '../../types/express.js';
-import { withChoices } from '../configuration/configuration.service.js';
-import { FieldDefinition } from '../configuration/models/configuration.model.js';
+import { customKey, withChoices } from '../configuration/configuration.service.js';
+import { CustomMaster, FieldDefinition } from '../configuration/models/configuration.model.js';
 
 const GROUP_ORDER: string[] = Object.values(GROUPS);
 /** Masters in catalogue order (MF-SPEC-01 section 8), not import order. */
@@ -45,6 +45,10 @@ interface FieldInfo {
   codeChoiceLabels?: Record<string, string>;
   /** Typed in on the form, rather than worked out or filled in by the app; only these can be shaped. */
   entered?: boolean;
+  /** By the company's field permissions (#68): who may see and change it, and whether this caller may change it. */
+  seeRoles?: string[];
+  editRoles?: string[];
+  readOnly?: boolean;
   type: string;
   array: boolean;
   required: boolean;
@@ -149,9 +153,12 @@ export async function describeMasters(auth?: AuthContext) {
   const offered = listMasters().filter((def) => !def.module || on.has(def.module));
   // Each master as this company has shaped it: the code's definition with the company layer on top (#65).
   const layouts = new Map((await Promise.all(offered.map(async (d) => [d.key, await getLayout(d.key)] as const))));
-  return offered.map((def) => {
+  const access = new Map(await Promise.all(offered.map(async (d) => [d.key, await fieldAccess(d, auth?.roles)] as const)));
+  const builtIn = offered.map((def) => {
     const layout = layouts.get(def.key)!;
     const fixed = systemRequired(def);
+    const { hidden, readOnly } = access.get(def.key)!;
+    const shown = (path: string) => !hidden.includes(path) && !hidden.some((h) => path.startsWith(`${h}.`));
     return ({
     key: def.key,
     label: layout.master.label ?? def.label,
@@ -179,8 +186,13 @@ export async function describeMasters(auth?: AuthContext) {
     immutable: def.immutable ?? [],
     filters: Object.entries(def.filters ?? {}).map(([key, f]) => ({ key, description: f.description, schema: toJson(f.schema) })),
     references: refsOf(def).map((r) => ({ path: r.path, target: r.target, ...(r.partyRoles ? { partyRoles: r.partyRoles } : {}), ...(r.usageOnly ? { usageOnly: true } : {}) })),
-    fields: withLayout(describeSchema(def.model.schema, def, keys), layout, fixed, fieldPaths(def)),
-    customFields: customFields.filter((f) => f.entity === def.key).map((f) => ({
+    fields: withLayout(describeSchema(def.model.schema, def, keys), layout, fixed, fieldPaths(def))
+      .filter((f) => shown(f.path)).map((f) => (readOnly.includes(f.path) ? { ...f, readOnly: true } : f)),
+    views: viewsFor(layout, auth?.roles),
+    /** Fields this caller's roles may not see (#68): forms and lists leave them out. */
+    hiddenFields: hidden,
+    customFields: customFields.filter((f) => f.entity === def.key && shown(`custom.${f.key}`)).map((f) => ({
+      ...(readOnly.includes(`custom.${f.key}`) ? { readOnly: true } : {}),
       id: String(f._id), key: f.key, label: f.label, type: f.type, required: f.required,
       ...(f.choices ? { choices: f.choices } : {}), ...(f.referenceMaster ? { referenceMaster: f.referenceMaster } : {}), ...(f.helpText ? { helpText: f.helpText } : {}),
     })),
@@ -191,6 +203,73 @@ export async function describeMasters(auth?: AuthContext) {
     permissions: permissionsFor(def, auth),
   });
   });
+  return [...builtIn, ...await describeCustomMasters(auth)];
+}
+
+/**
+ * Each active custom master as a record type of its own (#68), described like the built-in masters: its fields
+ * are `data.<key>`, and the company layer (names, field permissions, list views) applies to it the same way.
+ */
+async function describeCustomMasters(auth?: AuthContext) {
+  const masters = await CustomMaster.find({ status: 'active' }).sort({ name: 1 }).lean() as Plain[];
+  const records = registered().find((d) => d.key === 'custom-records');
+  if (!records) return [];
+  const { customRecordTypeOf } = await import('../configuration/configuration.service.js');
+  return Promise.all(masters.map(async (m) => {
+    const key = customKey(m._id);
+    const def = customRecordTypeOf(m);
+    const layout = await getLayout(key);
+    const { hidden, readOnly } = await fieldAccess(def, auth?.roles);
+    const byPath = new Map(layout.fields.map((f) => [f.path, f]));
+    const fields = (await withChoices((m.fields ?? []) as Plain[])).map((f, i) => {
+      const path = `data.${f.key}`;
+      const l = byPath.get(path);
+      return {
+        path, key: f.key, label: l?.label ?? f.label, codeLabel: f.label, type: f.type, required: Boolean(f.required), order: l?.order ?? f.order ?? i,
+        ...(f.choices ? { choices: f.choices } : {}), ...(f.referenceMaster ? { ref: f.referenceMaster } : {}), ...(f.helpText ? { hint: l?.hint ?? f.helpText } : {}),
+        ...(l?.seeRoles ? { seeRoles: l.seeRoles } : {}), ...(l?.editRoles ? { editRoles: l.editRoles } : {}), ...(readOnly.includes(path) ? { readOnly: true } : {}),
+        entered: true, group: 'master', array: false,
+      };
+    }).filter((f) => !hidden.includes(f.path));
+    return {
+      key, kind: 'custom', customMasterId: String(m._id), code: m.code,
+      label: layout.master.label ?? m.name, singular: layout.master.singular ?? m.name, codeLabel: m.name, codeSingular: m.name,
+      group: layout.master.group ?? GROUPS.configuration, description: layout.master.description ?? m.description ?? '', hidden: Boolean(layout.master.hidden),
+      basePath: `/api/v1/custom-masters/${String(m._id)}/records`, titleField: 'title', sortFields: def.sortFields, searchFields: def.searchFields,
+      sections: layout.sections, layoutRevision: layout.revision, fields, views: viewsFor(layout, auth?.roles), columns: [], filters: [], references: [],
+      customFieldsAllowed: false, lockedChoices: [], fixedFields: [], managed: {}, sensitive: [], immutable: [],
+      permissions: permissionsFor(records, auth),
+    };
+  }));
+}
+
+/** Every kind of record a reference field may point at (#68): masters, operational records and custom masters. */
+export async function recordTypes() {
+  const custom = await CustomMaster.find({ status: 'active' }).select('name').sort({ name: 1 }).lean() as Plain[];
+  return [
+    ...listMasters().filter((d) => d.key !== 'custom-records').map((d) => ({ key: d.key, label: d.label, kind: 'master' })),
+    ...listRefTargets().filter((t) => t.kind === 'record').map((t) => ({ key: t.key, label: t.label, kind: 'record' })),
+    ...custom.map((m) => ({ key: customKey(m._id), label: String(m.name), kind: 'custom' })),
+  ];
+}
+
+const escapeRegex = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/**
+ * Choices for a reference field, for any record type (#68): `{ id, title }` by search or by id, so one picker
+ * works for masters, operational records and custom masters alike. Needs read access to the record type.
+ */
+export async function referenceOptions(targetKey: string, query: { search?: string; ids?: string[]; limit: number }, auth?: AuthContext) {
+  const target = getRefTarget(targetKey);
+  if (!target) return null;
+  const resource = target.kind === 'custom' ? 'custom-records' : target.key;
+  if (auth && !auth.can(resource, 'read')) return 'forbidden' as const;
+  const filter: Plain = { ...(target.filter ?? {}) };
+  if (query.ids?.length) filter._id = { $in: query.ids };
+  else if (target.statusField) filter.status = 'active';
+  if (query.search) filter[target.titleField] = { $regex: escapeRegex(query.search), $options: 'i' };
+  const rows = await target.model.find(filter).select(target.titleField).sort({ [target.titleField]: 1 }).limit(query.limit).lean() as Plain[];
+  return rows.map((r) => ({ id: String(r._id), title: String(r[target.titleField] ?? '') }));
 }
 
 /** The company's list columns, when it chose any, in its order. */

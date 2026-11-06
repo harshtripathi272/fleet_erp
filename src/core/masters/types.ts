@@ -78,4 +78,6 @@ export interface MasterDefinition {
   /** Extra read-time fields, e.g. expiry state. */
   present?: (doc: Plain) => Plain;
   router?: Router;
+  /** The company layer to read (#68): a custom master's records share one model but each has its own layout. */
+  layoutKey?: string;
 }

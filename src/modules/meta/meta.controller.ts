@@ -5,6 +5,8 @@ import { companyColumns, importableMaster, importRows, templateCsv } from '../..
 import { getLayout as readLayout, saveLayout as writeLayout, type LayoutInput } from '../../core/masters/layout.js';
 import { getMaster } from '../../core/masters/registry.js';
 import { Company } from '../company/company.model.js';
+import { customRecordType } from '../configuration/configuration.service.js';
+import { FieldDefinition } from '../configuration/models/configuration.model.js';
 import { ApiResponse } from '../../core/response/index.js';
 import { asyncHandler } from '../../utils/asyncHandler.js';
 import auditRouter from '../audit/audit.router.js';
@@ -88,14 +90,30 @@ export const importRun = asyncHandler(async (req, res) => {
 export const areas = asyncHandler(async (_req, res) => ApiResponse.success(res, await MetaService.areas()));
 
 /** The master of masters (#65): this company's changes to one master's definition, for the Customise screen. */
-const masterOr404 = (key: string) => {
-  const def = getMaster(key);
+const masterOr404 = async (key: string) => {
+  // A custom master (custom-<id>) is shaped the same way as a built-in master (#68).
+  const def = getMaster(key) ?? await customRecordType(key);
   if (!def) throw new NotFoundError(`No master "${key}"`);
   return def;
 };
-export const getLayout = asyncHandler(async (req, res) => ApiResponse.success(res, await readLayout(masterOr404(String(req.params.master)).key)));
+export const getLayout = asyncHandler(async (req, res) => {
+  const def = await masterOr404(String(req.params.master));
+  ApiResponse.success(res, await readLayout(def.layoutKey ?? def.key));
+});
 export const saveLayout = asyncHandler(async (req, res) => {
-  const def = masterOr404(String(req.params.master));
+  const def = await masterOr404(String(req.params.master));
   const ctx = contextOf(req);
-  ApiResponse.success(res, await writeLayout(def, req.body as LayoutInput, { actorId: ctx.actorId, requestId: ctx.requestId }));
+  // The company's own fields on this master can carry permissions and be list columns too.
+  const customKeys = (await FieldDefinition.find({ entity: def.key, status: 'active' }).select('key').lean()).map((f) => String(f.key));
+  ApiResponse.success(res, await writeLayout(def, req.body as LayoutInput, { actorId: ctx.actorId, requestId: ctx.requestId, customKeys }));
+});
+
+/** Every record type a reference may point at, and the choices for one (#68). */
+export const recordTypes = asyncHandler(async (_req, res) => ApiResponse.success(res, await MetaService.recordTypes()));
+export const referenceOptions = asyncHandler(async (req, res) => {
+  const q = req.query as { search?: string; ids?: string; limit?: string };
+  const options = await MetaService.referenceOptions(String(req.params.target), { search: q.search, ids: q.ids ? q.ids.split(',') : undefined, limit: Number(q.limit ?? 20) }, req.auth);
+  if (options === null) throw new NotFoundError(`No record type "${req.params.target}"`);
+  if (options === 'forbidden') throw new ForbiddenError('Your role cannot read these records');
+  ApiResponse.success(res, options);
 });

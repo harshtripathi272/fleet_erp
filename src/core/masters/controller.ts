@@ -11,6 +11,7 @@ export function contextOf(req: Request, resource?: string): ServiceContext {
     actorId: req.auth?.userId,
     requestId: req.requestId,
     canSeeSensitive: resource ? req.auth?.can(resource, 'sensitive') ?? false : false,
+    roles: req.auth ? req.auth.roles : undefined,
   };
 }
 

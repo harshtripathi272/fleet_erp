@@ -72,7 +72,7 @@ export async function validateDynamicValues(fields: DynamicField[], input: Plain
   for (const field of fields.filter((f) => f.type === 'reference' && result[f.key] !== undefined && !errors[f.key])) {
     const target = getRefTarget(field.referenceMaster ?? '');
     if (!target) { errors[field.key] = ['Reference target no longer exists']; continue; }
-    const exists = await target.model.exists({ _id: result[field.key], ...(target.statusField ? { status: 'active' } : {}) });
+    const exists = await target.model.exists({ _id: result[field.key], ...(target.statusField ? { status: 'active' } : {}), ...(target.filter ?? {}) });
     if (!exists) errors[field.key] = [`No active ${target.label.toLowerCase()} with this id`];
   }
   if (Object.keys(errors).length) throw new ValidationError(`Invalid ${label} fields`, { [label]: errors });
