@@ -60,7 +60,8 @@ export const DEFAULT_TEMPLATES: DefaultTemplate[] = [
   // Nominations
   { code: 'EM-NOMINATION', name: 'Nomination (e-mail to customer)', channel: 'email', event: 'nomination.sent', audience: 'customer', subject: 'Nomination {{document.number}}: trucks for loading at {{place.name}}', body: `Hello,\n\nWe nominate {{vehicle.registration}} for loading at {{place.name}} on {{date}} (nomination {{document.number}}). Please confirm.${SIGN}` },
   // Documents
-  { code: 'EMAIL-DOC-EXP', name: 'Document expiring e-mail', channel: 'email', event: 'document.expiring', audience: 'operations', subject: '{{document.name}} for {{vehicle.registration}} expires {{document.expiryDate}}', body: 'Hello,\n\n{{document.name}} {{document.number}} expires on {{document.expiryDate}}. Renew it to avoid blocking dispatch.\n\n{{company.name}}' },
+  { code: 'EMAIL-DOC-EXP', name: 'Document expiring e-mail', channel: 'email', event: 'document.expiring', audience: 'operations', subject: '{{document.name}} for {{document.holder}} expires {{document.expiryDate}}', body: 'Hello,\n\n{{document.name}} {{document.number}} expires on {{document.expiryDate}}. Renew it to avoid blocking dispatch.\n\n{{company.name}}' },
+  { code: 'EMAIL-DOC-EXPIRED', name: 'Document expired e-mail', channel: 'email', event: 'document.expired', audience: 'operations', subject: '{{document.name}} for {{document.holder}} expired {{document.expiryDate}}', body: 'Hello,\n\n{{document.name}} {{document.number}} for {{document.holder}} expired on {{document.expiryDate}}. Renew it and put the new one on the record.\n\n{{company.name}}' },
 ];
 
 const driver: Recipient = { kind: 'driver' };
@@ -93,6 +94,7 @@ export const DEFAULT_RULES: DefaultRule[] = [
   { code: 'SETTLEMENT-DRIVER', name: 'Send the driver their statement', event: 'settlement.posted', recipients: [driver], templates: [{ channel: 'sms', template: 'SMS-SETTLEMENT' }, { channel: 'email', template: 'EM-SETTLEMENT' }] },
   { code: 'NOMINATION-CUSTOMER', name: 'Send the nomination to the customer', event: 'nomination.sent', recipients: [customer], templates: [{ channel: 'email', template: 'EM-NOMINATION' }] },
   { code: 'DOC-EXPIRING-OPS', name: 'Tell Operations a document is expiring', event: 'document.expiring', recipients: [role('operations')], templates: [{ channel: 'email', template: 'EMAIL-DOC-EXP' }] },
+  { code: 'DOC-EXPIRED-OPS', name: 'Tell Operations a document has expired', event: 'document.expired', recipients: [role('operations')], templates: [{ channel: 'email', template: 'EMAIL-DOC-EXPIRED' }] },
 ];
 
 /** One record per installation saying the default set was created, so it is never created again. */

@@ -5,6 +5,7 @@ import { connectMongo, disconnectMongo, syncIndexes } from './core/db/mongo.js';
 import { logger } from './core/logger/index.js';
 import { ensureFirstOwner } from './modules/auth/auth.service.js';
 import { startMaintenanceWorker, stopMaintenanceWorker } from './modules/maintenance/maintenance.service.js';
+import { startExpiryWorker, stopExpiryWorker } from './modules/compliance/expiryReminders.js';
 import { ensureBillingMessages, ensureDefaultMessages } from './modules/messaging/defaults.js';
 import { migrateToConnections } from './modules/connections/migrate.js';
 import { applyCompanyFile } from './modules/setup/apply.js';
@@ -35,6 +36,7 @@ startOutboxWorker();
 if (env.IN_PROCESS_JOBS) {
   startEscalationWorker();
   startMaintenanceWorker();
+  startExpiryWorker();
 }
 
 const server = app.listen(env.PORT, env.HOST, () => {
@@ -60,6 +62,7 @@ function shutdown(reason: string, exitCode: number) {
     stopOutboxWorker();
     stopEscalationWorker();
     stopMaintenanceWorker();
+    stopExpiryWorker();
     await settleSends();
     await Promise.allSettled([disconnectMongo(), disconnectRedis()]);
     logger.info({}, 'Server stopped');

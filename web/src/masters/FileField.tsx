@@ -3,6 +3,8 @@ import { useQuery } from "@tanstack/react-query";
 import { ExternalLink, File as FileIcon, FileText, Image as ImageIcon, RefreshCw, Upload, X } from "lucide-react";
 import { ApiError, authorizedFetch, sendWithProgress } from "../api/client";
 import { FILE_KINDS, kindOfFile, kindsInWords, kindsOf, refusal, sizeText } from "./fieldTypes";
+import { Status } from "../ui/kit";
+import { fullDate } from "../ui/format";
 
 /**
  * The upload control for a company's file field (#97), the same on every form, desk and the phone: drag or choose,
@@ -17,6 +19,23 @@ export interface FileFieldSpec { key: string; label?: string; type: string; acce
 export interface FileTarget { entity?: string; master?: string }
 
 const isImage = (mime?: string) => Boolean(mime?.startsWith("image/"));
+
+/** The API reminds this many days before a document expires (EXPIRY_WARNING_DAYS in expiryReminders.ts). */
+const WARNING_DAYS = 30;
+/** Whether a document with an expiry date is still good, due soon or expired, and how many days are left. */
+export function expiryOf(expiresOn?: string, now = new Date()) {
+  if (!expiresOn) return null;
+  const today = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
+  const days = Math.round((Date.parse(`${expiresOn.slice(0, 10)}T00:00:00Z`) - today) / 86_400_000);
+  return { days, state: days < 0 ? "expired" as const : days <= WARNING_DAYS ? "due" as const : "valid" as const };
+}
+/** "Expired 2 days ago", "Expires today", "Expires in 12 days": shown only once it matters. */
+export function ExpiryBadge({ expiresOn }: { expiresOn?: string }) {
+  const e = expiryOf(expiresOn);
+  if (!e || e.state === "valid") return null;
+  const text = e.state === "expired" ? `Expired ${e.days === -1 ? "yesterday" : `${-e.days} days ago`}` : e.days === 0 ? "Expires today" : `Expires in ${e.days} day${e.days === 1 ? "" : "s"}`;
+  return <span title={`Expiry date ${fullDate(expiresOn!)}`}><Status tone={e.state === "expired" ? "bad" : "wait"}>{text}</Status></span>;
+}
 const shownInline = (mime?: string) => isImage(mime) || mime === "application/pdf";
 
 /** A local address for a stored file, fetched with the session once it is on screen (an <img> can't send the token). */
@@ -67,6 +86,7 @@ export function FileChip({ value, thumbnail }: { value: FileValue | FileValue[];
         ? (url ? <img src={url} alt="" loading="lazy" width={28} height={28} /> : <span className="file-thumb-wait" aria-hidden />)
         : isImage(first.mime) ? <ImageIcon size={15} aria-hidden /> : <FileText size={15} aria-hidden />}
       <span className="file-chip-name">{list.length > 1 ? `${first.name} and ${list.length - 1} more` : first.name}</span>
+      {!Array.isArray(value) && <ExpiryBadge expiresOn={value.expiresOn} />}
     </span>
   );
 }
@@ -156,7 +176,10 @@ export function FileField({ field, target, value, onChange, disabled, id, previe
       {files.map((f, i) => (
         <StoredRow key={f.fileId} file={f} disabled={disabled} onReplace={() => choose(i)} onRemove={() => remove(i)}
           expiry={field.withExpiry && !many ? (
-            <label className="file-expiry">Expires on <input type="date" disabled={disabled} value={f.expiresOn ?? ""} onChange={(e) => setExpiry(i, e.target.value)} /></label>
+            <span className="file-expiry">
+              <label>Expires on <input type="date" disabled={disabled} value={f.expiresOn ?? ""} onChange={(e) => setExpiry(i, e.target.value)} /></label>
+              <ExpiryBadge expiresOn={f.expiresOn} />
+            </span>
           ) : undefined} />
       ))}
       {going && (

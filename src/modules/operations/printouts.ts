@@ -61,12 +61,13 @@ async function money(amount: unknown) {
   return formatMoney(Number(a.amountMinor ?? 0), await currencyInfo(a.currencyId).catch(() => ({ code: '', minorUnits: 2 })));
 }
 
-async function store(name: string, body: Buffer, actorId: string) {
+/** Stored on the record it prints, so it opens for whoever may read that record (#105). */
+async function store(name: string, body: Buffer, actorId: string, use: { entity: string; recordId: string }) {
   const at = new Date();
   const key = `${at.toISOString().slice(0, 7)}/${randomUUID()}.pdf`;
   const { store: files, connectionId } = await storeForNew();
   await files.put(key, body, 'application/pdf');
-  const file = await StoredFile.create({ name, mime: 'application/pdf', size: body.length, sha256: createHash('sha256').update(body).digest('hex'), key, uploadedBy: actorId, connectionId, at });
+  const file = await StoredFile.create({ name, mime: 'application/pdf', size: body.length, sha256: createHash('sha256').update(body).digest('hex'), key, uploadedBy: actorId, connectionId, at, usedBy: [{ ...use, field: 'printout' }] });
   return { fileId: String(file._id) };
 }
 
@@ -180,5 +181,5 @@ export async function statementPdf(settlementId: string): Promise<{ name: string
 export async function printoutFile(kind: 'trip_sheet' | 'driver_statement', id: string, actorId: string | undefined) {
   if (!actorId) return null;
   const { name, body } = kind === 'trip_sheet' ? await tripSheetPdf(id) : await statementPdf(id);
-  return store(name, body, actorId);
+  return store(name, body, actorId, { entity: kind === 'trip_sheet' ? 'trips' : 'settlements', recordId: id });
 }

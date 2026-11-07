@@ -158,7 +158,7 @@ The job fetches only when it's due: after the fetch time set in the app (Masters
 
 For companies with Maintenance on, `new-company.sh` also sets up the "Service due" reminders (#63), for the same reason:
 
-- **A Cloud Run job**, `fleet-<company>-service-reminders`, which runs `node dist/jobs/serviceReminders.js`. While Maintenance is off it does nothing.
+- **A Cloud Run job**, `fleet-<company>-service-reminders`, which runs `node dist/jobs/serviceReminders.js`: services coming due, and documents expiring or expired (compliance documents and document fields with an expiry date). While Maintenance is off it skips the services.
 - **A Cloud Scheduler trigger**, `fleet-<company>-service-reminders-hourly`, at twenty past every hour.
 - **`IN_PROCESS_JOBS=false`** turns off the server's timer for this too. Locally and in Docker Compose a timer checks every 15 minutes.
 
