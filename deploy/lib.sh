@@ -71,7 +71,7 @@ load_company() {
   case "$DOMAIN_MODE" in lb|mapping|none) ;; *) fail "DOMAIN_MODE must be lb, mapping or none" ;; esac
   case "$EGRESS" in static|open) ;; *) fail "EGRESS must be static or open" ;; esac
   if [ "$DOMAIN_MODE" != none ] && [ -z "$DOMAIN" ]; then fail "DOMAIN_MODE=$DOMAIN_MODE needs DOMAIN"; fi
-  if [ "$MAX_INSTANCES" -gt 1 ] && [ -z "$REDIS_URL" ]; then fail "MAX_INSTANCES above 1 needs REDIS_URL, so rate limits are shared"; fi
+  if [ "$MAX_INSTANCES" -gt 1 ] && [ -z "$REDIS_URL" ] && [ "${DRY_RUN:-0}" != 1 ]; then fail "MAX_INSTANCES above 1 needs REDIS_URL, so rate limits are shared"; fi
   # Behind the external load balancer there is one more proxy hop than on Cloud Run alone.
   TRUST_PROXY="${TRUST_PROXY:-$([ "$DOMAIN_MODE" = lb ] && echo 2 || echo 1)}"
   SA_EMAIL="$SERVICE_ACCOUNT@$PROJECT_ID.iam.gserviceaccount.com"

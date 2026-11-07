@@ -1,5 +1,6 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { z } from 'zod';
+import { env } from '../../../config/env.js';
 import { registerProvider } from '../registry.js';
 import type { InboundMessage, OutgoingMessage, ProviderContext, TemplateDefinition, TemplateStanding } from '../types.js';
 import { basicAuth, callJson, CALL_TIMEOUT_MS } from './http.js';
@@ -22,6 +23,28 @@ export const CARRIER_TEMPLATE = {
 
 /** Template variables may not hold line breaks or long runs of spaces (Meta's rule), so the text is joined up. */
 export const asTemplateText = (text: string) => text.replace(/\s*\n+\s*/g, ' · ').replace(/\s{4,}/g, '   ').slice(0, 1024);
+
+/**
+ * Fetches a photo a service told us about. Our key goes only to that service's own hosts, over https, and a file
+ * larger than the app accepts is refused while it downloads, so a bad address can't take the key or the memory.
+ */
+export async function fetchMedia(service: string, url: string, hosts: string[], headers: Record<string, string>) {
+  const at = new URL(url);
+  if (at.protocol !== 'https:' || !hosts.some((h) => at.hostname === h || at.hostname.endsWith(`.${h}`))) throw new Error(`${service} gave a photo address outside its own service`);
+  const res = await fetch(at, { headers, signal: AbortSignal.timeout(CALL_TIMEOUT_MS) });
+  if (!res.ok) throw new Error(`${service} answered ${res.status} for the photo`);
+  const limit = env.UPLOAD_MAX_MB * 1048576;
+  const tooBig = () => new Error(`The photo is larger than this app accepts (${env.UPLOAD_MAX_MB} MB)`);
+  if (Number(res.headers.get('content-length') ?? 0) > limit) throw tooBig();
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  for await (const chunk of res.body as unknown as AsyncIterable<Uint8Array>) {
+    size += chunk.length;
+    if (size > limit) throw tooBig();
+    chunks.push(chunk);
+  }
+  return { body: Buffer.concat(chunks), mime: res.headers.get('content-type') ?? undefined };
+}
 
 const sameText = (a: string, b: string) => {
   const x = Buffer.from(a);
@@ -171,9 +194,8 @@ registerProvider({
     async media(ref: string) {
       const found = await graph(ctx, encodeURIComponent(ref)) as { url?: string; mime_type?: string };
       if (!found.url) throw new Error('WhatsApp (Meta) gave no address for the photo');
-      const res = await fetch(found.url, { headers: { authorization: `Bearer ${ctx.secret('accessToken')}` }, signal: AbortSignal.timeout(CALL_TIMEOUT_MS) });
-      if (!res.ok) throw new Error(`WhatsApp (Meta) answered ${res.status} for the photo`);
-      return { body: Buffer.from(await res.arrayBuffer()), mime: found.mime_type ?? res.headers.get('content-type') ?? 'application/octet-stream' };
+      const res = await fetchMedia('WhatsApp (Meta)', found.url, ['facebook.com', 'fbsbx.com', 'fbcdn.net', 'whatsapp.net'], { authorization: `Bearer ${ctx.secret('accessToken')}` });
+      return { body: res.body, mime: found.mime_type ?? res.mime ?? 'application/octet-stream' };
     },
   }),
   verifyInbound(ctx, call) {
@@ -256,9 +278,8 @@ registerProvider({
     send: (m) => twilioSend(ctx, m),
     async media(ref: string) {
       const s = ctx.settings as unknown as TwilioSettings;
-      const res = await fetch(ref, { headers: { authorization: basicAuth(s.accountSid, ctx.secret('authToken')!) }, signal: AbortSignal.timeout(CALL_TIMEOUT_MS) });
-      if (!res.ok) throw new Error(`Twilio answered ${res.status} for the photo`);
-      return { body: Buffer.from(await res.arrayBuffer()), mime: res.headers.get('content-type') ?? 'application/octet-stream' };
+      const res = await fetchMedia('Twilio', ref, ['twilio.com'], { authorization: basicAuth(s.accountSid, ctx.secret('authToken')!) });
+      return { body: res.body, mime: res.mime ?? 'application/octet-stream' };
     },
   }),
   verifyInbound(ctx, call) {

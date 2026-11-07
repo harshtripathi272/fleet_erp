@@ -82,6 +82,13 @@ if [ -n "$SMTP_USER" ]; then
   put_secret "$COMPANY-smtp-pass" "$SMTP_PASS_VALUE"
   secrets="$secrets,SMTP_PASS=$COMPANY-smtp-pass:latest"
 fi
+# Redis holds a password in its address, so it's a secret like the others, and stays mounted on later runs.
+if [ -n "$REDIS_URL" ]; then
+  put_secret "$COMPANY-redis-url" "$REDIS_URL"
+  secrets="$secrets,REDIS_URL=$COMPANY-redis-url:latest"
+elif exists gcloud secrets describe "$COMPANY-redis-url" --project "$PROJECT_ID"; then
+  secrets="$secrets,REDIS_URL=$COMPANY-redis-url:latest"
+fi
 # The first Owner's password, for a copy with no e-mail server. Only read when that account is made.
 if [ -n "${OWNER_PASSWORD:-}" ]; then
   put_secret "$COMPANY-owner-password" "$OWNER_PASSWORD"
@@ -142,7 +149,6 @@ env_vars="APP_URL=$APP_URL,OWNER_EMAIL=$OWNER_EMAIL,TRUST_PROXY=$TRUST_PROXY,FIL
 [ -z "$SMTP_HOST" ] || env_vars="$env_vars,SMTP_HOST=$SMTP_HOST,SMTP_PORT=$SMTP_PORT,SMTP_SECURE=$SMTP_SECURE"
 env_vars="$env_vars,CONSOLE_ENABLED=$CONSOLE_ENABLED,IN_PROCESS_JOBS=false,UPLOAD_MAX_MB=$UPLOAD_MAX_MB"
 [ -z "$SMTP_USER" ] || env_vars="$env_vars,SMTP_USER=$SMTP_USER"
-[ -z "$REDIS_URL" ] || env_vars="$env_vars,REDIS_URL=$REDIS_URL"
 [ -z "${KIT_DIR:-}" ] || env_vars="$env_vars,COMPANY_CONFIG=/mnt/bucket/kit/company.json"
 # The settings go in a YAML file, since values such as SMTP_FROM hold spaces and angle brackets.
 env_file="$(mktemp)"

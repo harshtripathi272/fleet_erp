@@ -11,6 +11,7 @@ import { splitAddress } from '../src/core/connections/providers/email.js';
 import { Connection } from '../src/modules/connections/connection.model.js';
 import { DriverDocument } from '../src/modules/operations/models/cargo.model.js';
 import { api, bearer, loadSample, resetDatabase, signUp, startDatabase, stopDatabase, type Session } from './helpers.js';
+import { fetchMedia } from '../src/core/connections/providers/whatsapp.js';
 
 let owner: Session;
 const as = (s: Session) => ({
@@ -211,5 +212,22 @@ describe('e-mail', () => {
     assert.equal(calls[0]!.url, 'https://api.eu.mailgun.net/v3/mg.acme.example/messages');
     assert.equal((calls[0]!.init.body as FormData).get('to'), 'ops@acme.example');
     assert.equal((calls[0]!.init.headers as Record<string, string>).authorization, `Basic ${Buffer.from('api:key-123').toString('base64')}`);
+  });
+
+  test('a photo is only fetched from the service itself, over https, and within the upload limit', async () => {
+    await assert.rejects(fetchMedia('Meta', 'https://attacker.example/photo', ['fbsbx.com'], {}), /outside its own service/);
+    await assert.rejects(fetchMedia('Meta', 'https://fbsbx.com.attacker.example/photo', ['fbsbx.com'], {}), /outside its own service/, 'a look-alike host');
+    await assert.rejects(fetchMedia('Meta', 'http://lookaside.fbsbx.com/photo', ['fbsbx.com'], {}), /outside its own service/, 'never over plain http');
+    const realFetch = globalThis.fetch;
+    const limit = env.UPLOAD_MAX_MB;
+    env.UPLOAD_MAX_MB = 1;
+    try {
+      globalThis.fetch = (async () => new Response(new Uint8Array(2 * 1048576))) as typeof fetch;
+      await assert.rejects(fetchMedia('Meta', 'https://lookaside.fbsbx.com/photo', ['fbsbx.com'], {}), /larger than this app accepts/);
+      globalThis.fetch = (async () => new Response(new Uint8Array(3), { headers: { 'content-type': 'image/png' } })) as typeof fetch;
+      const ok = await fetchMedia('Meta', 'https://lookaside.fbsbx.com/photo', ['fbsbx.com'], {});
+      assert.equal(ok.body.length, 3);
+      assert.equal(ok.mime, 'image/png');
+    } finally { globalThis.fetch = realFetch; env.UPLOAD_MAX_MB = limit; }
   });
 });

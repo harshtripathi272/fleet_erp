@@ -61,7 +61,7 @@ export function AddNew({ master, what, initial, onCreated }: { master: string; w
       <button type="button" className="link-btn add-new" onClick={() => setOpen(true)}><Plus size={13} /> Add a new {what}</button>
       {open && (
         <Suspense fallback={null}>
-          <QuickAdd master={master} initial={initial} onClose={() => setOpen(false)} onCreated={(id) => { refreshReference(); void queries.invalidateQueries({ queryKey: ["readiness"] }); onCreated?.(id); }} />
+          <QuickAdd master={master} what={what} initial={initial} onClose={() => setOpen(false)} onCreated={(id) => { refreshReference(); void queries.invalidateQueries({ queryKey: ["readiness"] }); onCreated?.(id); }} />
         </Suspense>
       )}
     </>

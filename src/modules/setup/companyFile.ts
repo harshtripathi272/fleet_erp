@@ -118,6 +118,8 @@ const deploy = z.discriminatedUnion('target', [
     egress: z.enum(['static', 'open']).default('static'),
     minInstances: z.number().int().min(0).max(10).default(0),
     maxInstances: z.number().int().min(1).max(10).default(1),
+    cpu: z.enum(['1', '2', '4']).default('1'),
+    memory: z.enum(['512Mi', '1Gi', '2Gi', '4Gi', '8Gi']).default('512Mi'),
     schedulerRegion: z.string().trim().regex(/^[a-z]+-[a-z]+\d$/).optional(),
     /** Who gets the alerts (#104): when it's down, failing, or near its budget. The owner unless set. */
     alertEmail: email.optional(),
@@ -201,6 +203,11 @@ export const companyFileSchema = z.strictObject({
     for (const key of rule.providers ?? []) if (!providerFor(kind as (typeof KINDS)[number], key)) ctx.addIssue({ code: 'custom', path: ['connectionRules', kind], message: `No ${kind} provider "${key}"` });
     const using = file.connections.find((c) => c.kind === kind && c.enabled);
     if (using && rule.providers?.length && !rule.providers.includes(using.provider)) ctx.addIssue({ code: 'custom', path: ['connectionRules', kind], message: `${using.name} is in use but isn't among those offered` });
+  }
+  // Cloud Run refuses these pairs, so they're caught here rather than halfway through a deploy.
+  if (file.deploy.target === 'gcp') {
+    if (file.deploy.memory === '8Gi' && file.deploy.cpu === '1') ctx.addIssue({ code: 'custom', path: ['deploy', 'memory'], message: '8 GB of memory needs at least 2 CPUs' });
+    if (file.deploy.cpu === '4' && ['512Mi', '1Gi'].includes(file.deploy.memory)) ctx.addIssue({ code: 'custom', path: ['deploy', 'memory'], message: '4 CPUs need at least 2 GB of memory' });
   }
   const enabled = new Map<string, string>();
   file.connections.forEach((c, i) => {

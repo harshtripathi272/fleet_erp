@@ -402,4 +402,19 @@ describe('Set up a company', () => {
     const refused = endOf(await apply(owner, { file: file({ purpose: 'demo' }) }));
     assert.match(refused.message, /can't become a demonstration/);
   });
+
+  test('Google Cloud scales from the screen: CPU and memory reach the package, a bad pair is refused, and more than one instance asks for Redis', async () => {
+    const gcp = (extra: Record<string, unknown>) => file({ deploy: { target: 'gcp', projectId: 'acme-fleet-prod', domainMode: 'none', ...extra } });
+    const problems = async (f: unknown) => ((await api().post('/api/v1/setup-kit/check').set(bearer(owner)).send({ file: f, finish: 'package' }).expect(200)).body.data.problems as { path: string; message: string }[]);
+    assert.ok((await problems(gcp({ cpu: '1', memory: '8Gi' }))).some((p) => /8 GB of memory/.test(p.message)));
+    assert.ok((await problems(gcp({ cpu: '4', memory: '512Mi' }))).some((p) => /4 CPUs/.test(p.message)));
+    const one = (await api().post('/api/v1/setup-kit/guide').set(bearer(owner)).send({ file: gcp({}) }).expect(200)).body.data;
+    assert.ok(!one.env.some((v: { name: string; secret: boolean }) => v.name === 'REDIS_URL' && v.secret), 'not asked for at one instance');
+    const many = (await api().post('/api/v1/setup-kit/guide').set(bearer(owner)).send({ file: gcp({ maxInstances: 3, cpu: '2', memory: '2Gi' }) }).expect(200)).body.data;
+    const redis = many.env.find((v: { name: string; secret: boolean }) => v.name === 'REDIS_URL' && v.secret);
+    assert.ok(redis, 'asked for above one instance');
+    assert.match(redis.command, /acme-haulage-redis-url/);
+    const options = (await api().get('/api/v1/setup-kit').set(bearer(owner)).expect(200)).body.data.targets.find((t: { key: string }) => t.key === 'gcp').fields as { key: string; advanced?: boolean }[];
+    assert.deepEqual(options.filter((f) => f.advanced).map((f) => f.key), ['cpu', 'memory', 'schedulerRegion']);
+  });
 });

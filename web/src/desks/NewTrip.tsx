@@ -186,7 +186,7 @@ export function NewTrip({ open, onClose, onCreated }: { open: boolean; onClose: 
                 </select>
               </Field>
             </div>
-            <StopEditor stops={stops} onChange={setStops} startLocked={truck.placeId} />
+            <StopEditor stops={stops} onChange={setStops} startLocked={truck.placeId || undefined} />
             <AddNew master="places" what="place" />
             {preview ? (
               <div className="route-summary">

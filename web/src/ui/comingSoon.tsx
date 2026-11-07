@@ -15,7 +15,6 @@ export const COMING_SOON: { key: string; place: ComingSoonPlace; name: string; d
   { key: "branch-access", place: "accounts", name: "Branch access", description: "Staff see and change only their own branch's trucks, drivers and trips.", issue: 89 },
   { key: "gps-trackers", place: "connections", name: "Live GPS trackers", description: "Connecting a tracker service works now. Moving trucks on the map and marking arrivals from it is coming soon; until then positions are simulated.", issue: 60, kind: "gps" },
   { key: "road-routing", place: "connections", name: "Road routes from a map service", description: "Connecting a map service works now. Trip distances from its road routes are coming soon; until then the straight-line distance times the company's road factor is used.", issue: 60, kind: "routing" },
-  { key: "custom-masters", place: "masters", name: "New masters of the company's own", description: "Whole new lists with their own fields, linked to any record.", issue: 68 },
   { key: "field-permissions", place: "masters", name: "Field permissions by role", description: "Hide or lock a field for some roles.", issue: 68 },
   { key: "field-history", place: "masters", name: "Field history and copying a setup", description: "Safely change a field's type, see who changed the setup, and copy one company's setup to another.", issue: 69 },
 ];

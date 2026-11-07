@@ -1422,3 +1422,13 @@
   justify-self: start;
   color: var(--ink-3);
 }
+
+.su-more-settings {
+  padding: 0 16px 16px;
+}
+.su-more-settings summary {
+  margin-bottom: 10px;
+  color: var(--ink-2);
+  font-weight: 540;
+  cursor: pointer;
+}

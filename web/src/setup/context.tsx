@@ -8,7 +8,7 @@ import { Button } from "../ui/kit";
 
 export interface Attachment { path: string; data: string }
 export interface Problem { path: string; message: string }
-export interface TargetField { key: string; label: string; hint?: string; type: "text" | "number" | "choice"; required?: boolean; placeholder?: string; choices?: { value: string; label: string }[]; default?: string | number; min?: number; max?: number }
+export interface TargetField { advanced?: boolean; key: string; label: string; hint?: string; type: "text" | "number" | "choice"; required?: boolean; placeholder?: string; choices?: { value: string; label: string }[]; default?: string | number; min?: number; max?: number }
 export interface Target { key: string; label: string; tested: boolean; state?: "tested" | "dry-run" | "script"; needs?: string[]; steps?: string[]; fields?: TargetField[] }
 export interface MasterOption { key: string; label: string; group?: string; needs?: string[] }
 export interface KitInfo {
