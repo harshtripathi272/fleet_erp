@@ -14,7 +14,10 @@ const { EJSON } = mongoose.mongo.BSON;
 export type RecordsLevel = 'none' | 'masters' | 'everything';
 
 /** Set by the company file, or belonging to the copy they were made on. */
-const NEVER = new Set(['User', 'Role', 'Session', 'PasswordReset', 'SystemState', 'Company', 'Connection', 'AuditLog', 'Audit', 'IdempotencyKey', 'RateLimit', 'RecordLayout', 'RateFeedRun', 'StoredFile', 'OutboundMessage']);
+const NEVER = new Set(['User', 'Role', 'Session', 'PasswordReset', 'SystemState', 'Company', 'Connection', 'AuditLog', 'Audit', 'IdempotencyKey', 'RateLimit', 'RecordLayout', 'RateFeedRun', 'StoredFile',
+  // The copy's own sending (#105): messages waiting to go would be sent again by the new copy, WhatsApp buttons would
+  // answer there, and what each person has read belongs to accounts that don't travel.
+  'OutboundMessage', 'ActionToken', 'ThreadRead']);
 
 function modelsFor(level: RecordsLevel) {
   if (level === 'none') return [];

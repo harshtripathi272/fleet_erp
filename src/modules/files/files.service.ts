@@ -7,6 +7,7 @@ import { storeForNew, storeOf } from '../../core/storage/index.js';
 import { CustomMaster, FieldDefinition } from '../configuration/models/configuration.model.js';
 import { Consignment, DriverDocument } from '../operations/models/cargo.model.js';
 import { Trip } from '../operations/models/trip.model.js';
+import { Settlement } from '../operations/models/money.model.js';
 import { StoredFile, type StoredFileRecord } from './file.model.js';
 
 /** Who is asking: staff with their permissions, or a driver from the driver app. */
@@ -85,10 +86,11 @@ export async function upload(body: Buffer, rawName: string | undefined, actor: F
   return present(file);
 }
 
-/** A driver's own records: their driver record, their trips, and the loads on them. */
+/** A driver's own records: their driver record, their trips and the loads on them, and their statements. */
 async function drivers(use: { entity: string; recordId: unknown }, driverId: string) {
   if (use.entity === 'drivers') return String(use.recordId) === driverId;
   if (use.entity === 'trips') return Boolean(await Trip.exists({ _id: use.recordId, driverId }));
+  if (use.entity === 'settlements') return Boolean(await Settlement.exists({ _id: use.recordId, driverId }));
   if (use.entity === 'consignments') {
     const load = await Consignment.findById(use.recordId).select('tripId').lean();
     return Boolean(load && await Trip.exists({ _id: load.tripId, driverId }));

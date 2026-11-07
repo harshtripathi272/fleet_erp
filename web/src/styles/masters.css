@@ -288,3 +288,5 @@ details.form-group summary { cursor: pointer; }
 
 .su-wait h1 { margin: 0; font: 500 24px/1.25 var(--serif); }
 .su-wait p { margin: 0; }
+.file-expiry label { display: inline-flex; gap: 8px; align-items: center; }
+.file-chip .status { flex: none; }

@@ -139,7 +139,8 @@ export async function sendStatement(customerId: string, query: { from?: Date; to
       const at = new Date();
       const key = `${at.toISOString().slice(0, 7)}/${randomUUID()}.pdf`;
       await (await storeForNew()).store.put(key, body, 'application/pdf');
-      const file = await StoredFile.create({ name, mime: 'application/pdf', size: body.length, sha256: createHash('sha256').update(body).digest('hex'), key, uploadedBy: ctx.actorId, at });
+      // A customer's statement is about what they owe: opened by whoever may read invoices (#105).
+      const file = await StoredFile.create({ name, mime: 'application/pdf', size: body.length, sha256: createHash('sha256').update(body).digest('hex'), key, uploadedBy: ctx.actorId, at, usedBy: [{ entity: 'invoices', recordId: customerId, field: 'statement' }] });
       return [{ fileId: String(file._id) }];
     },
   }, { background: true });

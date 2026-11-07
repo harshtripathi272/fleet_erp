@@ -72,7 +72,8 @@ export async function invoiceFile(id: string, actorId?: string): Promise<{ fileI
   const at = new Date();
   const key = `${at.toISOString().slice(0, 7)}/${randomUUID()}.pdf`;
   await (await storeForNew()).store.put(key, body, 'application/pdf');
-  const file = await StoredFile.create({ name, mime: 'application/pdf', size: body.length, sha256: createHash('sha256').update(body).digest('hex'), key, uploadedBy: actorId, at });
+  // Opened by whoever may read invoices, not by anyone who can guess its id (#105).
+  const file = await StoredFile.create({ name, mime: 'application/pdf', size: body.length, sha256: createHash('sha256').update(body).digest('hex'), key, uploadedBy: actorId, at, usedBy: [{ entity: 'invoices', recordId: id, field: 'pdf' }] });
   await Invoice.updateOne({ _id: id }, { $set: { fileId: file._id } });
   return { fileId: String(file._id) };
 }

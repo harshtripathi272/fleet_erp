@@ -278,9 +278,9 @@ export function system() {
 
 export const outbox = () => recentMail();
 
-/** Record counts per master and status, for the console overview. */
-export async function stats() {
-  const rows = await Promise.all(listMasters().map(async (def) => {
+/** Record counts per master and status, for the console overview: only of the masters this person may read (#105). */
+export async function stats(auth?: AuthContext) {
+  const rows = await Promise.all(listMasters().filter((def) => !auth || auth.can(def.key, 'read')).map(async (def) => {
     const groups = await def.model.aggregate<{ _id: string; n: number }>([{ $group: { _id: '$status', n: { $sum: 1 } } }]);
     const by = Object.fromEntries(groups.map((g) => [g._id ?? 'unknown', g.n]));
     return { key: def.key, label: def.label, group: def.group, active: by.active ?? 0, inactive: by.inactive ?? 0, archived: by.archived ?? 0, total: groups.reduce((s, g) => s + g.n, 0) };
