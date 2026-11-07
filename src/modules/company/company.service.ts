@@ -1,3 +1,4 @@
+import mongoose from 'mongoose';
 import { clearAreasCache } from './areas.js';
 import { ConflictError, NotFoundError } from '../../core/errors/index.js';
 import { audit, comparable, diff } from '../../core/masters/audit.js';
@@ -25,6 +26,17 @@ export async function getCompany() {
   return present(doc as Plain);
 }
 
+/**
+ * Amounts are kept in the base currency as well as their own, so with money on record, changing it would turn 50,000
+ * cedis into 50,000 dollars on every balance and report. Before any money moves it's only a setting.
+ */
+async function assertBaseCurrencyFree(current: unknown, next: unknown) {
+  if (next === undefined || !current || String(current) === String(next)) return;
+  const names = ['FundRequest', 'Expense', 'Settlement', 'Invoice', 'CustomerPayment'];
+  const used = await Promise.all(names.map((name) => (mongoose.modelNames().includes(name) ? mongoose.model(name).exists({}) : null)));
+  if (used.some(Boolean)) throw new ConflictError('The base currency can\'t change once money has been recorded: every amount and balance is kept in it.');
+}
+
 export async function saveCompany(input: Plain, actorId?: string, requestId?: string) {
   await assertRef('countryId', 'countries', input.countryId);
   await assertRef('baseCurrencyId', 'currencies', input.baseCurrencyId);
@@ -38,6 +50,7 @@ export async function saveCompany(input: Plain, actorId?: string, requestId?: st
     return present(created.toObject() as Plain);
   }
   if (version === undefined) throw new ValidationError('Send the version you edited', { version: ['Required when updating'] });
+  await assertBaseCurrencyFree(existing.get('baseCurrencyId'), changes.baseCurrencyId);
   if (version !== existing.version) throw new ConflictError('Company details were changed by someone else. Reload and try again.', { currentVersion: existing.version });
   const before = existing.toObject() as Plain;
   for (const [key, value] of Object.entries(changes)) {

@@ -95,6 +95,8 @@ export async function routeApproval(subject: Subject, value: Measure, aboveBudge
 }
 
 function eligible(ctx: OpsContext, level: ApprovalLevel) {
+  // The Owner can always decide: in a small company they're the Finance desk too, and an approver who has left holds nothing up.
+  if (ctx.roles.includes('owner')) return true;
   if (level.fallbackResource) return ctx.can(level.fallbackResource, 'create');
   if (level.approverUserId) return ctx.actorId === level.approverUserId;
   return Boolean(level.approverRoleKey && ctx.roles.includes(level.approverRoleKey));

@@ -10,6 +10,7 @@ import * as S from './operations.schema.js';
 import { requireArea } from '../company/areas.js';
 import { defectSchema } from '../maintenance/maintenance.schema.js';
 import { requireModule } from './settings.js';
+import './usage.js';
 
 /**
  * Trips and money: nominations, trips, money requests, driver documents, loading and delivery,

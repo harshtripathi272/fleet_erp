@@ -1,6 +1,6 @@
-import { Types } from 'mongoose';
+import mongoose, { Types, type SchemaType } from 'mongoose';
 import { ValidationError } from '../errors/index.js';
-import { getRefTarget, referencesTo, refsOf } from './registry.js';
+import { getMaster, getRefTarget, listMasters, referencesTo, refsOf } from './registry.js';
 import type { MasterDefinition, Plain } from './types.js';
 
 /** Collects the values found at a dotted path, walking through arrays. */
@@ -47,9 +47,48 @@ export async function assertReferences(def: MasterDefinition, data: Plain, chang
 export interface Usage { master: string; label: string; path: string; count: number; }
 
 type ExtraUsage = (targetKey: string, id: string, activeOnly: boolean) => Promise<Usage[]>;
-let extraUsage: ExtraUsage = async () => [];
-/** Lets the configuration module count references held in custom fields and custom records. */
-export const setExtraUsage = (fn: ExtraUsage) => { extraUsage = fn; };
+const sources: ExtraUsage[] = [];
+/** Lets a module count references only it knows about: custom fields and records, or a trip that's still open. */
+export const addUsageSource = (fn: ExtraUsage) => { sources.push(fn); };
+
+/**
+ * Records that aren't masters but point at them: trips, requests, loads, invoices and so on. Their schemas say what they
+ * point at, so a new kind of record is covered without being listed. These only keep a record from being deleted; what
+ * keeps one from being archived is open work, which the modules that know their records report through addUsageSource.
+ */
+const NOT_HISTORY = new Set(['VehicleState', 'ServiceState', 'DriverAccount', 'StoredFile', 'OutboundMessage', 'WaTemplateState', 'ActionToken']);
+const RECORD_LABEL: Record<string, string> = {
+  Trip: 'Trips', FundRequest: 'Money requests', Consignment: 'Loads', Expense: 'Expenses', Settlement: 'Settlements', Nomination: 'Nominations',
+  DriverDocument: 'Driver documents', Invoice: 'Invoices', CustomerPayment: 'Customer payments', ExchangeDifference: 'Exchange differences',
+  Company: 'Company settings', FinanceSettings: 'Finance settings',
+};
+interface HasPaths { eachPath: (fn: (path: string, type: SchemaType) => void) => unknown }
+function refPaths(schema: HasPaths, prefix = '', out: { path: string; ref: string }[] = []) {
+  schema.eachPath((path, type) => {
+    const options = type.options as { ref?: string; type?: { ref?: string }[] };
+    const ref = options.ref ?? options.type?.[0]?.ref;
+    if (ref) out.push({ path: `${prefix}${path}`, ref });
+    const inner = (type as { schema?: HasPaths }).schema;
+    if (inner) refPaths(inner, `${prefix}${path}.`, out);
+  });
+  return out;
+}
+async function recordsUsing(targetKey: string, id: string): Promise<Usage[]> {
+  const target = getMaster(targetKey)?.model.modelName;
+  if (!target || target === 'User') return [];
+  const masters = new Set(listMasters().map((m) => m.model.modelName));
+  const usage: Usage[] = [];
+  for (const name of mongoose.modelNames()) {
+    if (masters.has(name) || NOT_HISTORY.has(name)) continue;
+    const model = mongoose.model(name);
+    for (const { path, ref } of refPaths(model.schema)) {
+      if (ref !== target) continue;
+      const count = await model.countDocuments({ [path]: new Types.ObjectId(id) });
+      if (count) usage.push({ master: name, label: RECORD_LABEL[name] ?? name, path, count });
+    }
+  }
+  return usage;
+}
 
 /** Counts records that point at `id`. `activeOnly` ignores archived records. */
 export async function usageOf(targetKey: string, id: string, activeOnly = false): Promise<Usage[]> {
@@ -61,5 +100,7 @@ export async function usageOf(targetKey: string, id: string, activeOnly = false)
     const count = await master.model.countDocuments(filter);
     if (count) usage.push({ master: master.key, label: master.label, path, count });
   }
-  return [...usage, ...(await extraUsage(targetKey, id, activeOnly))];
+  if (!activeOnly) usage.push(...(await recordsUsing(targetKey, id)));
+  for (const source of sources) usage.push(...(await source(targetKey, id, activeOnly)));
+  return usage;
 }
