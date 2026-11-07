@@ -8,7 +8,10 @@ import { appSource, envTemplate, kitName } from './kit.js';
  * never holds a secret; this says what to do with them.
  */
 
-export interface TargetField { key: string; label: string; hint?: string; type: 'text' | 'number' | 'choice'; required?: boolean; placeholder?: string; choices?: { value: string; label: string }[]; default?: string | number; min?: number; max?: number }
+export interface TargetField {
+  /** Shown under "More options": what most companies leave alone. A new setting is one more entry here. */
+  advanced?: boolean;
+  key: string; label: string; hint?: string; type: 'text' | 'number' | 'choice'; required?: boolean; placeholder?: string; choices?: { value: string; label: string }[]; default?: string | number; min?: number; max?: number }
 
 const GCP_REGIONS: [string, string][] = [
   ['africa-south1', 'Johannesburg'], ['asia-south1', 'Mumbai'], ['asia-south2', 'Delhi'], ['asia-southeast1', 'Singapore'], ['asia-east1', 'Taiwan'], ['asia-northeast1', 'Tokyo'],
@@ -31,7 +34,10 @@ export const TARGET_FIELDS: Record<Target, TargetField[]> = {
     { key: 'domainMode', label: 'How the address connects', hint: "A load balancer works in every region but costs about US$20 a month. A domain mapping is free, but isn't offered in every region.", type: 'choice', default: 'lb', choices: [{ value: 'lb', label: 'Load balancer (works everywhere)' }, { value: 'mapping', label: 'Domain mapping (free, some regions)' }, { value: 'none', label: "None: use Google's address" }] },
     { key: 'egress', label: 'Outgoing address', hint: 'A fixed address lets MongoDB Atlas allow only this app, and costs a little. Open needs Atlas to accept connections from anywhere.', type: 'choice', default: 'static', choices: [{ value: 'static', label: 'Fixed (recommended)' }, { value: 'open', label: 'Open' }] },
     { key: 'minInstances', label: 'Always running', hint: '0 sleeps when nobody is using it: cheapest, with a few seconds to wake up. 1 is always ready.', type: 'number', default: 0, min: 0, max: 10 },
-    { key: 'maxInstances', label: 'At most', hint: 'Above 1 also needs Redis, so sign-in limits are shared. 1 is enough for a company of this size to start.', type: 'number', default: 1, min: 1, max: 10 },
+    { key: 'maxInstances', label: 'At most', hint: 'Above 1, the deploy guide also asks for Redis, so sign-in limits are shared. 1 is enough to start.', type: 'number', default: 1, min: 1, max: 10 },
+    { key: 'cpu', label: 'CPUs for each instance', hint: 'Raise it if screens get slow under load, not before.', type: 'choice', default: '1', advanced: true, choices: [{ value: '1', label: '1 CPU' }, { value: '2', label: '2 CPUs' }, { value: '4', label: '4 CPUs' }] },
+    { key: 'memory', label: 'Memory for each instance', hint: '512 MB suits a small company. Raise it if the app restarts under load, or for large files and PDFs.', type: 'choice', default: '512Mi', advanced: true, choices: [{ value: '512Mi', label: '512 MB' }, { value: '1Gi', label: '1 GB' }, { value: '2Gi', label: '2 GB' }, { value: '4Gi', label: '4 GB' }, { value: '8Gi', label: '8 GB' }] },
+    { key: 'schedulerRegion', label: 'Scheduled jobs run from', hint: 'Leave empty: it uses the nearest region that offers scheduling. Only needed if that one is refused.', type: 'text', placeholder: 'europe-west1', advanced: true },
     { key: 'alertEmail', label: 'Alerts go to', hint: "E-mailed when it's down, logging errors, or near its budget. Empty: the owner.", type: 'text', placeholder: 'it@acme.example' },
     { key: 'monthlyBudget', label: 'Monthly budget', hint: "In the billing account's own currency. An e-mail at half, 90% and all of it; nothing is stopped.", type: 'number', default: 50, min: 1, max: 1000000 },
   ],
@@ -78,6 +84,7 @@ export interface GuideStep { title: string; text?: string; commands?: string[]; 
 
 /** Where to get a secret that isn't a connection's. */
 const WHERE: Record<string, { why: string; where?: string; generate?: string }> = {
+  REDIS_URL: { why: 'Lets several running copies of the app share sign-in limits. Needed only above 1 instance.', where: 'Any managed Redis, such as Upstash or Google Memorystore. Copy its address, starting rediss://.' },
   MONGODB_URI: { why: 'The address and password of the company\'s database.', where: 'MongoDB Atlas → your cluster → Connect → Drivers. It starts with mongodb+srv://. Put the database name, such as fleet, before the "?".' },
   JWT_SECRET: { why: 'Signs everyone\'s sign-ins. Changing it later signs everybody out.', generate: 'openssl rand -base64 48' },
   OWNER_PASSWORD: { why: "The owner's first password, since there's no e-mail server to send a link. Used once, when that account is made; it can't change an account afterwards. Change it after signing in.", where: 'Choose one: at least 8 characters, with a letter and a digit. Or make one with the command below.', generate: 'openssl rand -base64 18' },
@@ -124,7 +131,7 @@ export function setCommand(file: CompanyFile, name: string): string | undefined 
   const key = file.company.key;
   switch (d.target) {
     case 'gcp': {
-      const id = name === 'MONGODB_URI' ? `${key}-mongodb-uri` : name === 'SMTP_PASS' ? `${key}-smtp-pass` : `${key}-connection-${name.replace(/^CONNECTION_/, '').toLowerCase().replace(/_/g, '-')}`;
+      const id = name === 'REDIS_URL' ? `${key}-redis-url` : name === 'MONGODB_URI' ? `${key}-mongodb-uri` : name === 'SMTP_PASS' ? `${key}-smtp-pass` : `${key}-connection-${name.replace(/^CONNECTION_/, '').toLowerCase().replace(/_/g, '-')}`;
       return `printf '%s' 'VALUE' | gcloud secrets create ${id} --data-file=- --project ${d.projectId}`;
     }
     case 'aws': return `aws secretsmanager create-secret --region ${d.region} --name fleet/${key}/${name} --secret-string 'VALUE'`;

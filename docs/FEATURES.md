@@ -22,28 +22,29 @@ Owners: LD = lakshya-desktop, LT = lakshya-t3, HD = harsh-desktop, HT = harsh-t3
 | Custom masters with their own records | Built | — | Moves into the master of masters in #68 |
 | Simple lists (blood groups, colours…) | Built | — | Choice lists for any field |
 | Master of masters: rename, hide, require, default, order and section every field; rename, reorder and retire choices; rename masters | Built | #65 | Phase 1 of `docs/entities.md` |
-| Company fields on trips, requests, expenses, loadings and settlements, asked at the right step | Building | #67 | LT, PR #85 |
-| Custom masters in the same editor; references to any record type; field permissions by role; saved list views | Coming soon | #68 | Phase 3 |
+| Company fields on trips, requests, expenses, loadings and settlements, asked at the right step | Built | #67 | PR #85 |
+| Custom masters in the set-up's Masters step | Built | #96 | |
+| References to any record type; field permissions by role; saved list views | Coming soon | #68 | Phase 3 |
 | Safe field type changes, definition history, copy a company's configuration | Coming soon | #69 | Phase 4 |
 | Areas switch whole features on and off (masters, desks, menus, messages follow) | Built | #56 | |
-| Company vocabulary: rename Trip, Nomination, Driver and nine other terms on the desks, the driver app and documents | Building | #73 | LD. Masters keep their own names, set in Customise (#65) |
-| Trip stages: rename any; switch off Funding and Settlement | Building | #73 | LD. The order is the journey's and stays fixed; stages of the company's own are part of #67 |
-| Desks from configuration: name, icon, screens and their order, which roles see them; add a desk | Building | #73 | LD |
+| Company vocabulary: rename Trip, Nomination, Driver and nine other terms on the desks, the driver app and documents | Built | #73 | Masters keep their own names, set in Customise (#65) |
+| Trip stages: rename any; switch off Funding and Settlement | Built | #73 | The order is the journey's and stays fixed; stages of the company's own are part of #67 |
+| Desks from configuration: name, icon, screens and their order, which roles see them; add a desk | Built | #73 |  |
 | Policies instead of hard-coded rules (every business choice is a setting with a default) | Building | #55 | The pattern every issue follows |
 | First-run set-up page: what a first trip needs, with counts, Open and Import | Built | #45 | |
 | Import any master from a spreadsheet, with a dry run | Built | #41 | Follows the company's field names (#65) |
 | Export any master to a spreadsheet | Proposed | — | |
-| Company setup kit: configure once, download a deployable package | Building | #76 | Compose tested in CI, Google Cloud by dry run; AWS, Azure, Render, Fly and Railway scripted, not yet tested |
+| Company setup kit: configure once, download a deployable package | Built | #76 | Compose tested in CI, Google Cloud by dry run; AWS, Azure, Render, Fly and Railway scripted, not yet tested |
 
 ## Brand, region and language
 
 | Feature | State | Issue | Notes |
 | --- | --- | --- | --- |
-| White-label: product name, logo (light and dark), icon, accent colour, e-mail sender, message signature | Building | #71 | LD; server side under way |
-| Watermark on trip sheets, statements, invoices and screens; automatic "TEST" on test installations | Building | #71 | LD |
-| No "Marichi" anywhere outside sample data | Building | #71 | A test enforces it |
-| Regional settings: time zone, date, time and number formats, financial year, phone prefix | Planned | #72 | HT; today date format and financial year change nothing |
-| No currency code, locale or country hard-coded in code | Planned | #72 | HT; ZMW appears in 30+ places, `en-GB` in 9 server files |
+| White-label: product name, logo (light and dark), icon, accent colour, e-mail sender, message signature | Built | #71 | server side under way |
+| Watermark on trip sheets, statements, invoices and screens; automatic "TEST" on test installations | Built | #71 |  |
+| No "Marichi" anywhere outside sample data | Built | #71 | A test enforces it |
+| Regional settings: time zone, date, time and number formats, financial year, phone prefix | Built | #72 | today date format and financial year change nothing |
+| No currency code, locale or country hard-coded in code | Built | #72 | ZMW appears in 30+ places, `en-GB` in 9 server files |
 | Languages: translation layer, English and French first, per user, driver and customer | Coming soon | #74 | HD |
 | Right-to-left languages | Proposed | — | |
 
@@ -61,8 +62,8 @@ Owners: LD = lakshya-desktop, LT = lakshya-t3, HD = harsh-desktop, HT = harsh-t3
 | Branch access: staff limited to their branches; trips carry a branch | Coming soon | #89 | |
 | Sign-in by one-time code (SMS, WhatsApp, e-mail) | Coming soon | #89 | |
 | Password reset by phone, for drivers with no e-mail | Coming soon | #89 | |
-| Invitations by e-mail (SMS and WhatsApp coming soon) | Planned | #57 | LD |
-| Password and session policy (length, expiry, lockout, idle sign-out) | Planned | #57 | LD |
+| Invitations by e-mail (SMS and WhatsApp coming soon) | Built | #57 |  |
+| Password and session policy (length, expiry, lockout, idle sign-out) | Built | #57 |  |
 | Two-step sign-in (authenticator app), required by role | Coming soon | #58 | LD |
 | Customer portal accounts (an area): customers follow their own loads, delivery proof and invoices | Coming soon | #58 | LD |
 | API keys for other systems | Coming soon | #58 | LD |
@@ -79,9 +80,9 @@ Owners: LD = lakshya-desktop, LT = lakshya-t3, HD = harsh-desktop, HT = harsh-t3
 | Loading and delivery measured and corrected to 20 °C, with density checks | Built | — | |
 | Shortages with allowances by policy or product, and decisions | Built | — | |
 | Stop a trip that left but never loaded | Built | — | A company setting |
-| A loaded trip that can't deliver: return, transfer or write off, as the company allows | Planned | #64 | LT |
-| Cargo in any unit: weighed (weighbridge), counted, volume-corrected | Building | #75 | LT, PR #85 |
-| Every trip edge case tested in the browser | Planned | #16 | |
+| A loaded trip that can't deliver: return, transfer or write off, as the company allows | Built | #64 |  |
+| Cargo in any unit: weighed (weighbridge), counted, volume-corrected | Built | #75 | PR #85 |
+| Every trip edge case tested in the browser | Built | #16 |  |
 | Multi-drop and multi-pickup trips | Proposed | — | Stops support it; desks show one load and one delivery |
 | Hired (subcontracted) transporters: their trucks, rates and settlement | Proposed | — | The "hired transporter" party role exists |
 | Containers: numbers, seals, return of empties | Proposed | — | |
@@ -96,20 +97,20 @@ Owners: LD = lakshya-desktop, LT = lakshya-t3, HD = harsh-desktop, HT = harsh-t3
 | --- | --- | --- | --- |
 | Fuel and cash requests with budgets, suggestions and approval policies by level | Built | — | |
 | Approval by app and WhatsApp buttons | Built | — | Simulated WhatsApp until #10 |
-| Escalation after hours, and SMS or e-mail for approvers | Building | #53 | LT, PR #54 |
+| Escalation after hours, and SMS or e-mail for approvers | Built | #53 | PR #54 |
 | Paying out approved requests by payment method | Built | — | |
 | Expenses with receipt photos, read from the photo, approved by Finance | Built | — | |
 | Driver accounts, statements and settlement | Built | — | |
 | Currencies, exchange rates typed in or fetched daily | Built | #22, #26 | |
-| Billing area: customer rate cards, invoices from trips, credit notes | Building | #61 | HT |
-| Payments received; realised exchange gain or loss | Building | #61 | HT |
-| Revaluation of open invoices; customer statements and ageing | Planned | #62 | HT |
-| Accounting export with the company's account codes | Planned | #62 | HT |
-| Tax (VAT) by rate, per customer or product | Planned | #61 | HT |
+| Billing area: customer rate cards, invoices from trips, credit notes | Built | #61 |  |
+| Payments received; realised exchange gain or loss | Built | #61 |  |
+| Revaluation of open invoices; customer statements and ageing | Built | #62 |  |
+| Accounting export with the company's account codes | Built | #62 |  |
+| Tax (VAT) by rate, per customer or product | Built | #61 |  |
 | Driver allowances and per diem by route or day | Proposed | — | |
 | Fuel card statements matched against fuel issued | Proposed | — | |
 | Tolls and road charges per route | Proposed | — | |
-| Mobile-money payouts to drivers | Planned | #59 | Simulated until a provider is connected |
+| Mobile-money payouts to drivers | Built | #59 | Simulated until a provider is connected |
 
 ## Fleet, maintenance and compliance
 
@@ -118,10 +119,10 @@ Owners: LD = lakshya-desktop, LT = lakshya-t3, HD = harsh-desktop, HT = harsh-t3
 | Trucks, trailers, pairings, makes, models, types | Built | — | |
 | Truck position and fuel in the tank | Built | — | |
 | Compliance documents with expiry, and reminders | Built | — | Driver and vehicle documents |
-| Maintenance area: service plans by km, days or hours; due and overdue | Building | #63 | LT |
-| Work orders: workshop, labour, parts, cost; trucks held while in the workshop | Building | #63 | LT |
-| Parts and tyres | Building | #63 | LT; optional switches inside the area |
-| Cost per truck and per km | Building | #63 | LT |
+| Maintenance area: service plans by km, days or hours; due and overdue | Built | #63 |  |
+| Work orders: workshop, labour, parts, cost; trucks held while in the workshop | Built | #63 |  |
+| Parts and tyres | Built | #63 | optional switches inside the area |
+| Cost per truck and per km | Built | #63 |  |
 | Accidents and incidents, with insurance claims | Proposed | — | |
 | Driver licences, medicals and permits blocking a trip when expired | Proposed | — | Expiry is recorded; trips don't check it yet |
 | Driver performance: on time, fuel against norm, shortages | Proposed | — | |
@@ -133,8 +134,8 @@ Owners: LD = lakshya-desktop, LT = lakshya-t3, HD = harsh-desktop, HT = harsh-t3
 | The driver's trip, receipts by photo, arrivals, balance and statements | Built | #5 | |
 | Works on a weak connection; nothing sent is lost | Built | #31 | |
 | Delivery proof with the receiver's signature and photo | Proposed | — | Proof types master exists |
-| Defects reported from the app open a work order | Planned | #63 | LT |
-| Installable on the phone's home screen, with the company's icon | Planned | #71 | LD |
+| Defects reported from the app open a work order | Built | #63 |  |
+| Installable on the phone's home screen, with the company's icon | Built | #71 |  |
 | Push notifications | Proposed | — | |
 | In the driver's language | Coming soon | #74 | HD |
 
@@ -155,22 +156,22 @@ Owners: LD = lakshya-desktop, LT = lakshya-t3, HD = harsh-desktop, HT = harsh-t3
 | --- | --- | --- | --- |
 | E-mail, SMS or WhatsApp per action, with templates, rules and an outbox | Built | #19, #29, #43 | |
 | Every new company starts with templates and rules | Built | #43 | |
-| E-mail through the server's or the company's own SMTP, with presets (Google, Microsoft 365, SES, Zoho), or SendGrid, Resend, Mailgun | Building | #98 | HD; each with a guide; tested on recorded answers |
-| Real WhatsApp: Meta Cloud API or Twilio, replies reach the app; Marichi Talks coming soon | Building | #98 | HD; no live Meta account tested yet; one approved template for after 24 hours |
-| WhatsApp templates for every message, submitted to Meta and tracked; photos from drivers kept | Building | #112 | HD; tested on recorded Meta answers, not a live account |
-| SMS providers (Africa's Talking, Twilio), with guides | Building | #59, #98 | HD |
+| E-mail through the server's or the company's own SMTP, with presets (Google, Microsoft 365, SES, Zoho), or SendGrid, Resend, Mailgun | Built | #98 | each with a guide; tested on recorded answers |
+| Real WhatsApp: Meta Cloud API or Twilio, replies reach the app; Marichi Talks coming soon | Built | #98 | no live Meta account tested yet; one approved template for after 24 hours |
+| WhatsApp templates for every message, submitted to Meta and tracked; photos from drivers kept | Built | #112 | tested on recorded Meta answers, not a live account |
+| SMS providers (Africa's Talking, Twilio), with guides | Built | #59, #98 |  |
 | Trip sheet and driver statement as PDF, by print layout | Built | #44 | |
-| Logo and watermark on PDFs | Building | #71 | LD |
-| Invoices and customer statements as PDF | Planned | #61, #62 | HT |
+| Logo and watermark on PDFs | Built | #71 |  |
+| Invoices and customer statements as PDF | Built | #61, #62 |  |
 | A document designer for print layouts | Proposed | — | Layouts choose sections today |
 
 ## Connections to outside services
 
 | Feature | State | Issue | Notes |
 | --- | --- | --- | --- |
-| One registry for every kind of connection, each with a simulated stand-in | Building | #59 | HD |
-| E-mail, SMS, WhatsApp, GPS trackers, exchange rates, map routing, file storage, accounting export, fuel cards, mobile money | Building | #59 | HD; adding a provider is one file |
-| Inbound webhooks with a signing secret | Building | #59 | HD |
+| One registry for every kind of connection, each with a simulated stand-in | Built | #59 |  |
+| E-mail, SMS, WhatsApp, GPS trackers, exchange rates, map routing, file storage, accounting export, fuel cards, mobile money | Built | #59 | adding a provider is one file |
+| Inbound webhooks with a signing secret | Built | #59 |  |
 | Files on local disk or Google Cloud Storage | Built | #4 | S3 and Azure Blob in #59 |
 | Outbound webhooks: other systems told when a trip or invoice changes | Proposed | — | |
 
@@ -193,11 +194,11 @@ Owners: LD = lakshya-desktop, LT = lakshya-t3, HD = harsh-desktop, HT = harsh-t3
 | Docker image built, started and checked in CI | Built | — | |
 | Production hardening: headers, rate limits, compression, simulators off in production | Built | #18 | |
 | Set up a company: guided steps, a draft that saves itself, finish on this copy or download a package; demo sign-ins per role | Built | #96 | The sidebar, or `npm run kit` |
-| File, image and document fields on any master | Planned | #97 | Customise, on any record |
-| Real WhatsApp and e-mail methods; keys named by the app, never typed on screen | Building | #98 | Set up a company → Connections |
-| Run on this computer; every platform described on screen | Planned | #99 | Set up a company → Where it runs |
-| Guides and scripts for AWS, Azure, any VM with Docker Compose, Render, Fly.io, Railway | Building | #76 | docs/deploy/; Compose tested in CI |
-| Upgrades and rollbacks between versions | Building | #76 | docs/deploy/README.md |
+| File, image and document fields on any master | Built | #97 | Customise, on any record |
+| Real WhatsApp and e-mail methods; keys named by the app, never typed on screen | Built | #98 | Set up a company → Connections |
+| Run on this computer; every platform described on screen | Built | #99 | Set up a company → Where it runs |
+| Guides and scripts for AWS, Azure, any VM with Docker Compose, Render, Fly.io, Railway | Built | #76 | docs/deploy/; Compose tested in CI |
+| Upgrades and rollbacks between versions | Built | #76 | docs/deploy/README.md |
 | Backups and restore drills | Proposed | — | Atlas does backups on Google Cloud; Compose needs its own |
 | Health checks, error alerts and uptime monitoring | Proposed | — | `/health` exists |
 | Many companies on one installation (SaaS) | Proposed | — | Today's design is one company per installation, by decision |

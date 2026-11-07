@@ -371,6 +371,25 @@ export function WhereStep({ packageOnly }: { packageOnly?: boolean }) {
     }
     replace({ ...file, deploy: next });
   };
+  const fieldControl = (f: TargetField) => {
+                const label = `${f.label}${f.required ? " *" : ""}`;
+                const value = String(deploy[f.key] ?? f.default ?? "");
+                if (f.type === "choice") {
+                  return (
+                    <Field key={f.key} label={label} hint={err(`deploy.${f.key}`) ?? f.hint}>
+                      <select className="input" value={value} disabled={f.key === "domainMode" && !deploy.domain} onChange={(e) => setField(f, e.target.value)}>
+                        {(f.choices ?? []).map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
+                      </select>
+                    </Field>
+                  );
+                }
+                return (
+                  <Field key={f.key} label={label} hint={err(`deploy.${f.key}`) ?? f.hint}>
+                    <input className={`input ${f.type === "text" && f.key !== "domain" ? "su-mono" : ""}`} type={f.type === "number" ? "number" : "text"} min={f.min} max={f.max} placeholder={f.placeholder} value={String(deploy[f.key] ?? (f.type === "number" ? f.default ?? "" : ""))} onChange={(e) => setField(f, e.target.value)} />
+                  </Field>
+                );
+              };
+  const advanced = (target?.fields ?? []).filter((f) => f.advanced);
   const smtp = (deploy.smtp ?? {}) as Rec;
   const emailConnected = ((file.connections ?? []) as Rec[]).some((c) => c.kind === "email" && c.enabled && c.provider === "smtp");
   return (
@@ -397,25 +416,14 @@ export function WhereStep({ packageOnly }: { packageOnly?: boolean }) {
         <>
           <SettingsSection title={`Settings for ${target.label}`} description={target.state === "tested" ? undefined : target.state === "dry-run" ? "Its script has been checked as a dry run, but not yet run against a real project." : "Its script has been written, but not yet run for real."}>
             <div className="su-pad grid-2">
-              {(target.fields ?? []).map((f) => {
-                const label = `${f.label}${f.required ? " *" : ""}`;
-                const value = String(deploy[f.key] ?? f.default ?? "");
-                if (f.type === "choice") {
-                  return (
-                    <Field key={f.key} label={label} hint={err(`deploy.${f.key}`) ?? f.hint}>
-                      <select className="input" value={value} disabled={f.key === "domainMode" && !deploy.domain} onChange={(e) => setField(f, e.target.value)}>
-                        {(f.choices ?? []).map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
-                      </select>
-                    </Field>
-                  );
-                }
-                return (
-                  <Field key={f.key} label={label} hint={err(`deploy.${f.key}`) ?? f.hint}>
-                    <input className={`input ${f.type === "text" && f.key !== "domain" ? "su-mono" : ""}`} type={f.type === "number" ? "number" : "text"} min={f.min} max={f.max} placeholder={f.placeholder} value={String(deploy[f.key] ?? (f.type === "number" ? f.default ?? "" : ""))} onChange={(e) => setField(f, e.target.value)} />
-                  </Field>
-                );
-              })}
+              {(target.fields ?? []).filter((f) => !f.advanced).map(fieldControl)}
             </div>
+            {advanced.length > 0 && (
+              <details className="su-more-settings" open={advanced.some((f) => deploy[f.key] !== undefined && String(deploy[f.key]) !== String(f.default ?? ""))}>
+                <summary>More options</summary>
+                <div className="grid-2">{advanced.map(fieldControl)}</div>
+              </details>
+            )}
           </SettingsSection>
           {!emailConnected && (
             <SettingsSection title="E-mail server" description={err("deploy.smtp") ?? "Optional. With one, people get invitations and password resets by e-mail. Without one, the owner signs in with a password you set in OWNER_PASSWORD, and sets everyone else's under Users."}>
