@@ -95,8 +95,11 @@ describe('connections', () => {
     assert.equal((await as(owner).post('/connections', { ...base, provider: 'twilio' })).status, 422, 'an SMS provider on e-mail');
     assert.equal((await as(owner).post('/connections', { ...base, settings: { host: 'smtp.example.com' } })).status, 422, 'no From address');
     assert.equal((await as(owner).post('/connections', { code: 'S1', name: 'SMS', kind: 'sms', provider: 'nonesuch' })).status, 422);
-    assert.equal((await as(owner).post('/connections', { code: 'S1', name: 'SMS', kind: 'sms', provider: 'twilio', settings: { accountSid: `AC${'0'.repeat(32)}`, from: '+15551234567' } })).status, 422, 'Twilio without its auth token');
-    assert.equal((await as(owner).post('/connections', { code: 'S1', name: 'SMS', kind: 'sms', provider: 'simulated', settings: { senderId: 'FLEET' } })).status, 201);
+    // Its auth token's setting is named from the code (#98).
+    const twilio = await as(owner).post('/connections', { code: 'S1', name: 'SMS', kind: 'sms', provider: 'twilio', settings: { accountSid: `AC${'0'.repeat(32)}`, from: '+15551234567' } });
+    assert.equal(twilio.status, 201, JSON.stringify(twilio.body));
+    assert.equal(twilio.body.data.secrets.authToken, 'CONNECTION_S1_AUTH_TOKEN');
+    assert.equal((await as(owner).post('/connections', { code: 'S2', name: 'SMS', kind: 'sms', provider: 'simulated', settings: { senderId: 'FLEET' } })).status, 201);
   });
 
   test('edit, archive, restore and delete like every master', async () => {

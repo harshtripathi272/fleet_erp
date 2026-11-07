@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowDown, ArrowUp, Plus, Trash2 } from "lucide-react";
 import { api } from "../api/client";
 import type { Rec } from "../api/adapter";
 import { can } from "../api/session";
 import { useApp } from "../store";
-import { Button, ChoiceChips, Empty, Field, FieldGroup, SaveBar, Segmented, SettingRow, SettingsSection, Switch } from "../ui/kit";
+import { Empty, Field, SaveBar, SettingsSection, Switch } from "../ui/kit";
+import { DesksEditor, type DeskSetup } from "./DesksEditor";
 
 /**
  * The company's words, trip stages and desks (#73), stored on the company (PUT /company: vocabulary, stages,
@@ -15,8 +15,6 @@ import { Button, ChoiceChips, Empty, Field, FieldGroup, SaveBar, Segmented, Sett
 
 type Words = Record<string, { singular: string; plural: string }>;
 type Stage = { key: string; name: string; defaultName: string; optional: boolean; switchedOff: boolean; areaOff: boolean; area?: string };
-type DeskKind = "owner" | "operations" | "finance" | "roles";
-type DeskSetup = { key: string; name: string; icon: string; views: string[]; kind: DeskKind; roleKeys?: string[]; actsAs?: "owner" | "operations" | "finance" };
 interface Workspace {
   words: Words;
   terms: Words;
@@ -43,19 +41,6 @@ const TERM_NOTE: Record<string, string> = {
   statement: "The driver's printed account of a settlement.",
   tripSheet: "The printed record of one trip.",
 };
-const ICON_NAME: Record<string, string> = { gauge: "Gauge", grid: "Grid", wallet: "Wallet", wrench: "Spanner", truck: "Truck", clipboard: "Clipboard", users: "People", map: "Map" };
-const KIND: { value: DeskKind; label: string }[] = [
-  { value: "owner", label: "Owner" },
-  { value: "operations", label: "Operations" },
-  { value: "finance", label: "Finance" },
-  { value: "roles", label: "Named roles" },
-];
-const KIND_NOTE: Record<DeskKind, string> = {
-  owner: "Everyone who may change everything, or who approves at the second level.",
-  operations: "Everyone who may create trips, nominations, consignments or requests.",
-  finance: "Everyone who may approve, pay or settle, or who approves at the first level.",
-  roles: "Only people with one of the roles below. Administrators see it too, to set it up.",
-};
 
 function draftFrom(ws: Workspace | undefined): Draft {
   return {
@@ -69,7 +54,6 @@ function draftFrom(ws: Workspace | undefined): Draft {
 }
 
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
-const slug = (name: string) => name.toLowerCase().normalize("NFKD").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 30) || "desk";
 
 export function WorkspacePanel() {
   const { me, toast, refreshReference } = useApp();
@@ -98,28 +82,6 @@ export function WorkspacePanel() {
     setDraft((d) => ({ ...d, words: { ...d.words, [term]: { ...d.words[term], ...change } } }));
   const setStage = (key: string, change: Partial<{ name: string; off: boolean }>) =>
     setDraft((d) => ({ ...d, stages: { ...d.stages, [key]: { ...d.stages[key], ...change } } }));
-  const setDesk = (i: number, change: Partial<DeskSetup>) =>
-    setDraft((d) => ({ ...d, desks: d.desks.map((x, j) => (j === i ? { ...x, ...change } : x)) }));
-  const moveDesk = (i: number, by: number) =>
-    setDraft((d) => {
-      const desks = [...d.desks];
-      const j = i + by;
-      if (j < 0 || j >= desks.length) return d;
-      [desks[i], desks[j]] = [desks[j], desks[i]];
-      return { ...d, desks };
-    });
-  /** The picked screens in the app's order, with the one the desk opens on first. */
-  const inOrder = (picked: string[], first?: string) => {
-    const rest = data.views.map((v) => v.key).filter((k) => picked.includes(k) && k !== first);
-    return first && picked.includes(first) ? [first, ...rest] : rest;
-  };
-  const addDesk = () =>
-    setDraft((d) => {
-      let key = "new-desk";
-      for (let n = 2; d.desks.some((x) => x.key === key); n += 1) key = `new-desk-${n}`;
-      return { ...d, desks: [...d.desks, { key, name: "New desk", icon: "clipboard", views: ["trips"], kind: "roles", roleKeys: [], actsAs: "operations" }] };
-    });
-
   const problems: string[] = [];
   draft.desks.forEach((d) => {
     if (!d.name.trim()) problems.push("Every desk needs a name.");
@@ -218,73 +180,9 @@ export function WorkspacePanel() {
           </div>
         </SettingsSection>
 
-        <SettingsSection title="Desks" description="The desks people choose from after signing in, and the screens each lists, in order. A desk for named roles follows one of the built-in desks for what it needs to act on. Screens for an area that is switched off are left out until it is on again.">
-          {draft.desks.map((desk, i) => (
-            <div key={i} className="form-section desk-setup">
-              <h4>{desk.name || "Unnamed desk"}</h4>
-              <div className="grid-2">
-                <Field label="Name"><input className="input" maxLength={50} value={desk.name} onChange={(e) => setDesk(i, { name: e.target.value, ...(data.defaultDesks.some((d) => d.key === desk.key) || saved.desks.some((d) => d.key === desk.key) ? {} : { key: uniqueKey(slug(e.target.value), draft.desks, i) }) })} /></Field>
-                <Field label="Icon">
-                  <select className="input" value={desk.icon} onChange={(e) => setDesk(i, { icon: e.target.value })}>
-                    {data.icons.map((icon) => <option key={icon} value={icon}>{ICON_NAME[icon] ?? icon}</option>)}
-                  </select>
-                </Field>
-                <FieldGroup label="Screens" hint="Listed in this order, after the one it opens on." wide>
-                  <ChoiceChips
-                    label={`Screens on ${desk.name}`}
-                    options={data.views.map((v) => ({ value: v.key, label: v.on ? viewName(v.key) : `${viewName(v.key)} (area off)` }))}
-                    value={desk.views}
-                    onChange={(views) => setDesk(i, { views: inOrder(views, desk.views[0]) })}
-                  />
-                </FieldGroup>
-                <Field label="Opens on" hint="The screen shown first, and at the top of the list.">
-                  <select className="input" value={desk.views[0] ?? ""} disabled={!desk.views.length} onChange={(e) => setDesk(i, { views: inOrder(desk.views, e.target.value) })}>
-                    {desk.views.map((v) => <option key={v} value={v}>{viewName(v)}</option>)}
-                  </select>
-                </Field>
-                <FieldGroup label="Who sees it" hint={KIND_NOTE[desk.kind]} wide>
-                  <Segmented choice label={`Who sees ${desk.name}`} value={desk.kind} options={KIND} disabled={!writable}
-                    onChange={(kind) => setDesk(i, { kind: kind as DeskKind, ...(kind === "roles" ? { actsAs: desk.actsAs ?? "operations" } : {}) })} />
-                </FieldGroup>
-                {desk.kind === "roles" && (
-                  <>
-                    <FieldGroup label="Roles" wide>
-                      {roleOptions.length ? <ChoiceChips label={`Roles that see ${desk.name}`} options={roleOptions} value={desk.roleKeys ?? []} onChange={(roleKeys) => setDesk(i, { roleKeys })} />
-                        : <span className="muted">No roles yet. Add them under Roles.</span>}
-                    </FieldGroup>
-                    <Field label="Works like" hint="Whose waiting work it lists under Needs me, and whose messages it reads.">
-                      <select className="input" value={desk.actsAs ?? "operations"} onChange={(e) => setDesk(i, { actsAs: e.target.value as DeskSetup["actsAs"] })}>
-                        <option value="owner">Owner</option>
-                        <option value="operations">Operations</option>
-                        <option value="finance">Finance</option>
-                      </select>
-                    </Field>
-                  </>
-                )}
-              </div>
-              <div className="desk-setup-actions">
-                <Button size="sm" tone="quiet" disabled={i === 0} onClick={() => moveDesk(i, -1)}><ArrowUp size={14} /> Earlier</Button>
-                <Button size="sm" tone="quiet" disabled={i === draft.desks.length - 1} onClick={() => moveDesk(i, 1)}><ArrowDown size={14} /> Later</Button>
-                <Button size="sm" tone="quiet" disabled={draft.desks.length === 1} onClick={() => setDraft((d) => ({ ...d, desks: d.desks.filter((_, j) => j !== i) }))}><Trash2 size={14} /> Remove</Button>
-              </div>
-            </div>
-          ))}
-          <SettingRow title="Add a desk" description="For example a Workshop desk with Maintenance and Masters, for the roles that run the yard.">
-            <span className="desk-setup-add">
-              <Button disabled={draft.desks.length >= 12} onClick={addDesk}><Plus size={15} /> Add a desk</Button>
-              <Button tone="quiet" onClick={() => setDraft((d) => ({ ...d, desks: data.defaultDesks.map((x) => ({ ...x, roleKeys: [] })) }))}>Back to the default desks</Button>
-            </span>
-          </SettingRow>
-        </SettingsSection>
+        <DesksEditor desks={draft.desks} onChange={(desks) => setDraft((d) => ({ ...d, desks }))} views={data.views} icons={data.icons} defaultDesks={data.defaultDesks} savedKeys={saved.desks.map((d) => d.key)} viewName={viewName} roleOptions={roleOptions} writable={writable} />
       </fieldset>
       {writable && <SaveBar dirty={dirty} busy={busy} onSave={() => void save()} onDiscard={() => setDraft(saved)} />}
     </div>
   );
-}
-
-function uniqueKey(base: string, desks: DeskSetup[], self: number) {
-  const start = /^[a-z]/.test(base) && base.length >= 2 ? base : `desk-${base}`.slice(0, 30);
-  let key = start;
-  for (let n = 2; desks.some((d, j) => j !== self && d.key === key); n += 1) key = `${start.slice(0, 27)}-${n}`;
-  return key;
 }

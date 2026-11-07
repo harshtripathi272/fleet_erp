@@ -31,7 +31,7 @@ curl -fsS https://fleet.acme-haulage.example/api/v1/health/ready
 
 ## Change something
 
-1. Edit `company.json` (or rebuild the kit from the Company kit screen and copy the new files over).
+1. Edit `company.json` (or rebuild the package from Set up a company and copy the new files over).
 2. Run `docker compose up -d --build`.
 
 Only what the file changed is applied.

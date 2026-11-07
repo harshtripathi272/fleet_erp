@@ -71,8 +71,20 @@ export interface Capabilities {
 /** A secret a provider needs: stored as the name of a server environment variable, never its value. */
 export interface SecretSpec { key: string; label: string; required: boolean; hint?: string }
 
+/** A message someone sent us through a service (a WhatsApp reply): from whom, and what. */
+export interface InboundMessage { from: string; text?: string; at: Date; providerRef?: string; kind?: 'text' | 'button' | 'photo' | 'other' }
+
 /** What a call to a connection's webhook brought in, for whoever listens to that kind (#60 for trackers). */
-export interface InboundResult { accepted: number; positions?: Position[]; note?: string }
+export interface InboundResult { accepted: number; positions?: Position[]; messages?: InboundMessage[]; note?: string }
+
+/**
+ * One step of a provider's guide (#98): how to get a value, with a link to the page that has it. `{webhookUrl}`
+ * in the text stands for the connection's own address, filled in on screen.
+ */
+export interface GuideStep { text: string; link?: string }
+
+/** A call to the webhook, for providers that check it their own way (Meta's or Twilio's signature, not ours). */
+export interface InboundCall { headers: Record<string, string | undefined>; raw: Buffer; url: string }
 
 /**
  * One provider: one file in core/connections/providers. Adding a service is a new file plus a test; the
@@ -99,4 +111,15 @@ export interface Provider<K extends Kind = Kind> {
   open(ctx: ProviderContext): Capabilities[K];
   /** For services that push to us (trackers, message replies): reads one signed call's body. */
   inbound?(ctx: ProviderContext, body: unknown): Promise<InboundResult>;
+  /**
+   * For services that sign their calls themselves: says why a call is refused, or nothing when it's genuine.
+   * Such a provider needs no signing secret of ours. `inbound` then gets the body as the service sent it.
+   */
+  verifyInbound?(ctx: ProviderContext, call: InboundCall): string | undefined;
+  /** For services that check the address before using it (Meta's GET with hub.challenge): the answer to send back. */
+  handshake?(ctx: ProviderContext, query: Record<string, string | undefined>): string;
+  /** Numbered steps to get each value, with links: shown beside the form and in the guided set-up. */
+  guide?: GuideStep[];
+  /** Listed so people know it is coming, but it can't be set up yet: says why. */
+  comingSoon?: string;
 }

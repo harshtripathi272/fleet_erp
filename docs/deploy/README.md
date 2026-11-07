@@ -6,7 +6,9 @@ Each company runs its own copy: its own database, files and address. A developer
 
 Either:
 
-- **On screen:** Masters → **Company kit**, on an installation where the company was set up (its details, brand, areas, connections and roles). Add the owner, the staff, the data files and where it runs, then **Download kit**.
+- **On screen:** **Set up a company**, in the sidebar, for anyone who may change the company. It goes through the company, region, brand, areas, how it works, people, connections, data and where it runs, then sets up the copy you're in or downloads the package. A real company's own copy doesn't make packages (`SETUP_PACKAGES=false`, set by its kit).
+- **From a copy you've been trying:** **Package this company**, in the sidebar, takes it as it stands: settings, masters and fields, people, and if you like its records and files.
+- **Secrets:** the app never holds one. The screen lists each environment variable, what it's for and where to get it. With no e-mail server, set `OWNER_EMAIL` and `OWNER_PASSWORD`: the password is read only when that first account is made, and must be replaced at first sign-in.
 - **By hand:** write `company.json` next to its `files/` and `data/` folders, then:
 
   ```bash

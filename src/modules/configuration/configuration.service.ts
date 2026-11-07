@@ -3,6 +3,8 @@ import { z } from 'zod';
 import { ConflictError, NotFoundError, ValidationError } from '../../core/errors/index.js';
 import { defineMaster } from '../../core/masters/define.js';
 import { validateDynamicValues, type DynamicField } from '../../core/masters/dynamicFields.js';
+import { isFileType } from '../../core/masters/fileFields.js';
+import { env } from '../../config/env.js';
 import { GROUPS } from '../../core/masters/groups.js';
 import { getMaster, getRefTarget, listMasters, registerMaster } from '../../core/masters/registry.js';
 import { setExtraUsage, type Usage } from '../../core/masters/references.js';
@@ -51,6 +53,12 @@ async function checkFieldSpec(field: Plain, errors: Record<string, string[]>, wh
   if (field.min !== undefined && field.max !== undefined && Number(field.min) > Number(field.max)) push(errors, where, `${field.key}: min is greater than max`);
   if (!['text', 'long_text'].includes(type) && field.maxLength !== undefined) push(errors, where, `${field.key}: maxLength applies to text fields`);
   if (type !== 'text' && field.pattern) push(errors, where, `${field.key}: pattern applies to text fields`);
+  // File fields (#97): each option belongs to the types it describes.
+  if (!isFileType(type) && (field.maxSizeMb !== undefined || field.maxFiles !== undefined || field.accept || field.withExpiry !== undefined)) push(errors, where, `${field.key}: file size, count, kinds and expiry apply to file fields`);
+  if (type !== 'files' && field.maxFiles !== undefined) push(errors, where, `${field.key}: the number of files applies to a field of several files`);
+  if (type !== 'document' && field.withExpiry) push(errors, where, `${field.key}: an expiry date goes with a document`);
+  if (type === 'image' && (field.accept as string[] | undefined)?.some((k) => k !== 'images')) push(errors, where, `${field.key}: a picture field takes pictures only`);
+  if (field.maxSizeMb !== undefined && Number(field.maxSizeMb) > env.UPLOAD_MAX_MB) push(errors, where, `${field.key}: this server takes files up to ${env.UPLOAD_MAX_MB} MB`);
 }
 
 export async function resolveOptions(fields: Plain[]): Promise<DynamicField[]> {
@@ -84,7 +92,7 @@ export async function withChoices(fields: Plain[]) {
 export const fieldDefinitionDefinition = defineMaster({
   key: 'field-definitions', label: 'Custom fields', singular: 'Custom field', group: GROUPS.configuration, lockedChoices: ['type'],
   labels: { placement: 'Asked at', askedOf: 'Answered by', printOn: 'Prints on' },
-  choiceLabels: { askedOf: { office: 'The office', driver: 'The driver' }, printOn: { trip_sheet: 'Trip sheet', driver_statement: 'Driver statement' } },
+  choiceLabels: { askedOf: { office: 'The office', driver: 'The driver' }, printOn: { trip_sheet: 'Trip sheet', driver_statement: 'Driver statement' }, accept: { images: 'Pictures', pdf: 'PDFs', word: 'Word', excel: 'Excel' } },
   hints: {
     placement: 'For a trip, load, request, expense, settlement or nomination: the step where the field is asked. That step cannot finish until a required field is filled.',
     askedOf: 'A driver answers on the phone, about their trip and load. A required one holds the office step until it is answered.',
@@ -107,7 +115,11 @@ export const fieldDefinitionDefinition = defineMaster({
       if (Object.keys(errors).length) throw new ValidationError('Custom field is not valid', errors);
       return data;
     }
-    if (data.placement || data.askedOf || data.printOn) push(errors, 'placement', 'Only trips, loads, requests, expenses, settlements and nominations have steps');
+    if (data.placement || data.askedOf) push(errors, 'placement', 'Only trips, loads, requests, expenses, settlements and nominations have steps');
+    // A driver's or truck's field can print on the papers that name them (#97): a driver's photo, a truck's permit.
+    const printable = PRINTABLE_MASTERS[String(data.entity)] ?? [];
+    const notPrintable = ((data.printOn ?? []) as string[]).filter((d) => !printable.includes(d));
+    if (notPrintable.length) push(errors, 'printOn', printable.length ? `${String(data.entity)} fields print on the ${printable.join(' and ').replace(/_/g, ' ')} only` : 'Only trip, load, settlement, driver and truck fields print on documents');
     const target = getMaster(String(data.entity));
     if (!target || target.customFields === false) push(errors, 'entity', `Custom fields are not supported on "${data.entity}"`);
     else if (Object.keys(target.model.schema.paths).some((p) => p === data.key || p.startsWith(`${data.key}.`))) push(errors, 'key', `"${data.key}" is already a built-in field of ${target.label}`);
@@ -120,6 +132,9 @@ export const fieldDefinitionDefinition = defineMaster({
     return data;
   },
 });
+
+/** The documents a master's fields can print on: the papers that name its record. */
+const PRINTABLE_MASTERS: Record<string, string[]> = { drivers: ['trip_sheet', 'driver_statement'], vehicles: ['trip_sheet'] };
 
 /* ---------- Custom masters and their records ---------- */
 

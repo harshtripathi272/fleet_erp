@@ -130,12 +130,22 @@ export function systemRequired(def: MasterDefinition): Set<string> {
 }
 
 /** Checks a company's changes against what the code allows, before they are saved. */
-function checkInput(def: MasterDefinition, input: LayoutInput) {
+/** What a company may set on its own field (`custom.<key>`) here: where it sits and whether it is a list column (#97). */
+const COMPANY_FIELD_LAYOUT = new Set(['path', 'section', 'order', 'column', 'columnOrder']);
+
+function checkInput(def: MasterDefinition, input: LayoutInput, customKeys: string[] = []) {
   const paths = fieldPaths(def);
   const fixed = systemRequired(def);
   const errors: Record<string, string[]> = {};
   const add = (k: string, m: string) => (errors[k] ??= []).push(m);
+  const own = new Set(customKeys.map((k) => `custom.${k}`));
   for (const f of input.fields ?? []) {
+    // The company's own fields sit among the built-in ones (#97); their name, hint and rules are on the field itself.
+    if (own.has(f.path)) {
+      const other = Object.keys(f).filter((k) => !COMPANY_FIELD_LAYOUT.has(k) && (f as Plain)[k] !== undefined);
+      if (other.length) add(f.path, 'Change the name, hint and rules of a company field in the field itself');
+      continue;
+    }
     if (!paths.has(f.path)) { add(f.path, 'No such field on this master'); continue; }
     if (f.hidden && fixed.has(f.path)) add(f.path, 'The app needs this field, so it can be renamed or moved but not hidden');
     if (f.required === false && fixed.has(f.path)) add(f.path, 'The app requires this field; a company can only make fields stricter');
@@ -155,8 +165,8 @@ function checkInput(def: MasterDefinition, input: LayoutInput) {
 }
 
 /** Saves this company's changes to a master's definition; audited with what changed. */
-export async function saveLayout(def: MasterDefinition, input: LayoutInput, ctx: { actorId?: string; requestId?: string }) {
-  checkInput(def, input);
+export async function saveLayout(def: MasterDefinition, input: LayoutInput, ctx: { actorId?: string; requestId?: string; customKeys?: string[] }) {
+  checkInput(def, input, ctx.customKeys);
   const before = await RecordLayout.findOne({ entity: def.key }).lean<Layout & { _id: unknown }>();
   const next = {
     master: input.master ?? before?.master ?? {},

@@ -17,6 +17,8 @@ export interface UserRecord {
   lockedUntil?: Date;
   lastLoginAt?: Date;
   passwordChangedAt?: Date;
+  /** The password came from someone else (a settings file, an administrator): it must be replaced at the next sign-in. */
+  mustChangePassword?: boolean;
   version: number;
 }
 
@@ -32,6 +34,7 @@ const userSchema = masterSchema({
   lockedUntil: Date,
   lastLoginAt: Date,
   passwordChangedAt: Date,
+  mustChangePassword: { type: Boolean, default: false },
 });
 userSchema.index({ email: 1 }, { unique: true, name: 'email_unique', partialFilterExpression: { email: { $type: 'string' } } });
 userSchema.index({ driverId: 1 }, { unique: true, name: 'driver_unique', partialFilterExpression: { driverId: { $type: 'objectId' } } });

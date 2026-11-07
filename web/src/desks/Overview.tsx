@@ -1,5 +1,9 @@
 import { ArrowRight } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { api } from "../api/client";
+import { can } from "../api/session";
 import { useApp } from "../store";
+import { Button } from "../ui/kit";
 import { byId, driverBalance } from "../domain/calc";
 import { activeTrip } from "../domain/helpers";
 import { nextStep, queueFor, stageIndex, visibleStages } from "../domain/turn";
@@ -7,6 +11,20 @@ import { FleetMap } from "../tracking/FleetMap";
 import { ago, L, inBase } from "../ui/format";
 import { Card } from "./stages";
 import { Approval } from "./Finance";
+
+/** Until the company has been through the set-up, a line says so to whoever can do it. */
+function SetUpPrompt() {
+  const { me } = useApp();
+  const allowed = can(me, "company", "update");
+  const status = useQuery({ queryKey: ["setup-status"], enabled: allowed, staleTime: 60_000, retry: false, queryFn: () => api<{ finished: boolean; started: boolean }>("/setup-kit/status") });
+  if (!allowed || !status.data || status.data.finished) return null;
+  return (
+    <div className="set-up-prompt">
+      <span>{status.data.started ? "The company's set-up isn't finished." : "This company hasn't been set up yet: its name, brand, people and services."}</span>
+      <Button onClick={() => { location.hash = "#set-up"; }}>{status.data.started ? "Carry on setting up" : "Set up a company"}</Button>
+    </div>
+  );
+}
 
 export function Overview() {
   const { data, nav } = useApp();
@@ -24,6 +42,7 @@ export function Overview() {
   const waiting = { operations: queueFor(data, "operations").length, finance: queueFor(data, "finance").length };
   return (
     <div className="desk overview">
+      <SetUpPrompt />
       <div className="kpis">
         <div className="kpi">
           <span>On the road</span>

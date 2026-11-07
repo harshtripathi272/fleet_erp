@@ -123,11 +123,14 @@ describe('the registry', () => {
     assert.equal(stored.lastTest.ok, true);
     assert.match(stored.lastTest.message, /Fleet ACME/);
 
-    // Settings are checked against the provider: unknown fields, wrong types and a missing signing secret are refused.
-    for (const bad of [{ settings: { fleetCode: 'A' } }, { settings: { fleetCode: 'ACME', colour: 'red' } }, { webhookSecretEnv: undefined }, { secrets: {} }]) {
-      const r = await as(owner).post('/connections', { code: 'TRK2', name: 'Trackers 2', kind: 'gps', provider: 'test-tracker', settings: { fleetCode: 'ACME' }, secrets: { token: 'CONNECTION_TRACKER_TOKEN' }, webhookSecretEnv: 'CONNECTION_HOOK_SECRET', ...bad });
+    // Settings are checked against the provider: unknown fields and wrong types are refused.
+    for (const bad of [{ settings: { fleetCode: 'A' } }, { settings: { fleetCode: 'ACME', colour: 'red' } }]) {
+      const r = await as(owner).post('/connections', { code: 'TRK2', name: 'Trackers 2', kind: 'gps', provider: 'test-tracker', secrets: { token: 'CONNECTION_TRACKER_TOKEN' }, webhookSecretEnv: 'CONNECTION_HOOK_SECRET', ...bad });
       assert.equal(r.status, 422, JSON.stringify(bad));
     }
+    // A secret or signing secret not named is named from the code (#98): nothing is typed.
+    const named = (await as(owner).post('/connections', { code: 'TRK3', name: 'Trackers 3', kind: 'gps', provider: 'test-tracker', settings: { fleetCode: 'ACME' } }).expect(201)).body.data;
+    assert.deepEqual([named.secrets.token, named.webhookSecretEnv], ['CONNECTION_TRK3_TOKEN', 'CONNECTION_TRK3_SIGNING_SECRET']);
   });
 
   test('a failed provider test keeps the error with secrets taken out', async () => {

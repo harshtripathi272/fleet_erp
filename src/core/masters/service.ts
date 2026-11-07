@@ -5,6 +5,7 @@ import { logger } from '../logger/index.js';
 import { AuditLog } from './audit.model.js';
 import { audit, comparable, diff } from './audit.js';
 import { validateDynamicValues, type DynamicField } from './dynamicFields.js';
+import { linkRecordFiles } from './fileFields.js';
 import { assertReferences, usageOf, valuesAt, type Usage } from './references.js';
 import type { MasterContext, MasterDefinition, Plain } from './types.js';
 
@@ -15,6 +16,8 @@ type CodeGenerator = (entity: string, data: Plain) => Promise<string | null>;
 let loadFields: FieldLoader = async () => [];
 let generateCode: CodeGenerator = async () => null;
 export const setCustomFieldLoader = (fn: FieldLoader) => { loadFields = fn; };
+/** The company's own fields on a master, with their choices: for forms, import and anything else that lists them. */
+export const companyFieldsOf = (entity: string) => loadFields(entity);
 export const setCodeGenerator = (fn: CodeGenerator) => { generateCode = fn; };
 
 /* ---------- Context and serialisation ---------- */
@@ -184,6 +187,8 @@ export async function create(def: MasterDefinition, input: Plain, ctx: ServiceCo
   const doc = new def.model({ ...prepared, createdBy: ctx.actorId, updatedBy: ctx.actorId });
   await saveDoc(doc);
   const saved = doc.toObject() as Plain;
+  // Its file fields' files can now be opened by whoever can read it (#97).
+  await linkRecordFiles(def.key, doc._id, saved);
   await audit({ entity: def.key, entityId: doc._id, action: 'create', actorId: ctx.actorId, requestId: ctx.requestId, changes: diff({}, saved, def.sensitive) });
   logger.info({ entity: def.key, id: String(doc._id), requestId: ctx.requestId }, 'Record created');
   return serialize(def, saved, ctx);
@@ -227,6 +232,7 @@ export async function update(def: MasterDefinition, id: string, input: Plain, ct
   doc.set('updatedBy', ctx.actorId);
   await saveDoc(doc);
   const after = doc.toObject() as Plain;
+  await linkRecordFiles(def.key, doc._id, after);
   await audit({ entity: def.key, entityId: doc._id, action: 'update', actorId: ctx.actorId, requestId: ctx.requestId, changes: diff(before, after, def.sensitive) });
   return serialize(def, after, ctx);
 }

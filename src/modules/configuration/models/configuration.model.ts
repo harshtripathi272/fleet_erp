@@ -1,6 +1,7 @@
 import { Schema } from 'mongoose';
 import { codeNameFields, uniqueIndex } from '../../../core/masters/define.js';
 import { FIELD_TYPES } from '../../../core/masters/dynamicFields.js';
+import { FILE_KINDS } from '../../../core/masters/fileFields.js';
 import { ObjectId, masterSchema, masterModel } from '../../../core/masters/schema.js';
 
 /** A short list with no master of its own: blood groups, colours, religions… */
@@ -25,6 +26,11 @@ const fieldSpec = {
   pattern: String,
   helpText: String,
   order: { type: Number, default: 100 },
+  /** File fields (#97). */
+  maxSizeMb: Number,
+  maxFiles: Number,
+  accept: { type: [{ type: String, enum: FILE_KINDS }], default: undefined },
+  withExpiry: Boolean,
 };
 
 /**

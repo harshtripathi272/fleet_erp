@@ -31,6 +31,14 @@ export const REGIONAL_DEFAULTS: Regional = {
   firstDayOfWeek: 'monday', fiscalYearStartMonth: 1, phoneCountryCode: '', unitSystem: 'metric',
 };
 
+/**
+ * Any zone the runtime can really use, in its old or new name. Its own list holds only one name for each zone,
+ * which can be the old one (Asia/Calcutta, Europe/Kiev), so checking the list would refuse Asia/Kolkata.
+ */
+export const isTimeZone = (zone: string) => {
+  try { new Intl.DateTimeFormat('en', { timeZone: zone }); return true; } catch { return false; }
+};
+
 let current: Regional = { ...REGIONAL_DEFAULTS };
 export const regional = (): Regional => current;
 export const setRegional = (next: Partial<Regional>) => { current = { ...REGIONAL_DEFAULTS, ...next }; };

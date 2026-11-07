@@ -1,7 +1,8 @@
 import { lazy, Suspense, useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { queryClient, resetSync } from "./store";
-import { hasSession, onSignedOut } from "./api/client";
-import { DESK_SESSION, SignIn, useMe } from "./api/session";
+import { api, hasSession, onSignedOut } from "./api/client";
+import { ChooseNewPassword, DESK_SESSION, SignIn, can, useMe } from "./api/session";
 import { DriverPortal } from "./driver/DriverPortal";
 import { Waiting } from "./ui/brand";
 
@@ -10,9 +11,14 @@ import { Waiting } from "./ui/brand";
 // costs more than its bytes (#27).
 const loadOffice = () => import("./Office");
 const Office = lazy(loadOffice);
+// "Set up a company" (#96) has its own address and its own page, outside the desks.
+const SetUp = lazy(() => import("./setup/SetUp"));
+const PackagePage = lazy(() => import("./setup/PackagePage"));
+const onSetUpAddress = (hash: string) => hash.startsWith("#set-up") || hash.startsWith("#package");
 
 // Which app this browser last opened. A returning office user's desks download while their account loads.
 const LAST_APP = "fleet.app";
+const SETUP_LATER = "fleet.setup.later";
 try {
   if (hasSession() && localStorage.getItem(LAST_APP) === "office") void loadOffice();
 } catch {
@@ -44,6 +50,22 @@ export default function App() {
     [],
   );
   const me = useMe(signedIn);
+  const [hash, setHash] = useState(location.hash);
+  const settingUp = onSetUpAddress(hash);
+  useEffect(() => {
+    const onHash = () => setHash(location.hash);
+    window.addEventListener("hashchange", onHash);
+    return () => window.removeEventListener("hashchange", onHash);
+  }, []);
+  // A copy with no company yet opens on the set-up, once, for whoever may do it. "Save and leave" is honoured until the next visit.
+  const mayChange = Boolean(me.data && !me.data.driverId && !me.data.mustChangePassword && can(me.data, "company", "update"));
+  const status = useQuery({
+    queryKey: ["setup-status"], enabled: signedIn && mayChange && !settingUp, staleTime: 60_000, retry: false,
+    queryFn: () => api<{ hasCompany: boolean; finished: boolean }>("/setup-kit/status"),
+  });
+  useEffect(() => {
+    if (status.data && !status.data.hasCompany && !sessionStorage.getItem(SETUP_LATER)) location.hash = "#set-up";
+  }, [status.data]);
   const app = me.data ? (me.data.driverId ? "driver" : "office") : undefined;
   useEffect(() => {
     try {
@@ -54,7 +76,20 @@ export default function App() {
   }, [app]);
   if (!signedIn) return <SignIn onSignedIn={() => setSignedIn(true)} />;
   if (!me.data) return <Waiting text={me.error ? `Could not load your account: ${(me.error as Error).message}` : "Signing in…"} />;
+  if (me.data.mustChangePassword) return <ChooseNewPassword me={me.data} onDone={() => void queryClient.invalidateQueries()} />;
   if (me.data.driverId) return <DriverPortal me={me.data} />;
+  if (settingUp && mayChange) {
+    const leave = () => {
+      sessionStorage.setItem(SETUP_LATER, "1");
+      history.replaceState(null, "", location.pathname);
+      setHash("");
+    };
+    return (
+      <Suspense fallback={<Waiting text="Opening the set-up…" />}>
+        {hash.startsWith("#package") ? <PackagePage me={me.data} onLeave={leave} /> : <SetUp me={me.data} onLeave={leave} />}
+      </Suspense>
+    );
+  }
   return (
     <Suspense fallback={<Waiting text="Loading the desks…" />}>
       <Office me={me.data} />

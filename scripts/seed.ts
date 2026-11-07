@@ -1,6 +1,7 @@
 import '../src/app.js';
 import { connectMongo, disconnectMongo, syncIndexes } from '../src/core/db/mongo.js';
 import { logger } from '../src/core/logger/index.js';
+import { settleSends } from '../src/modules/messaging/dispatcher.js';
 import { loadSampleData } from '../src/modules/meta/sampleData.js';
 import { ensureSystemRoles } from '../src/modules/roles/roles.service.js';
 
@@ -15,5 +16,7 @@ try {
   logger.error({ err: (err as Error).message }, 'Seed skipped');
   process.exitCode = 1;
 } finally {
+  // The sample's trips queue messages that send in the background; they finish before the database closes.
+  await settleSends();
   await disconnectMongo();
 }

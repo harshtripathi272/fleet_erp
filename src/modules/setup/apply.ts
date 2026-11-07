@@ -13,6 +13,12 @@ import { SystemState } from '../auth/systemState.model.js';
 import { Company } from '../company/company.model.js';
 import { saveCompanySchema } from '../company/company.schema.js';
 import { saveCompany } from '../company/company.service.js';
+import { fetchRates, saveFeedSettings } from '../finance/rateFeed.service.js';
+import { saveLayout } from '../../core/masters/layout.js';
+import { CustomMaster, FieldDefinition, List } from '../configuration/models/configuration.model.js';
+import { customMasterDefinition, fieldDefinitionDefinition, listDefinition } from '../configuration/configuration.service.js';
+import { createCustomMasterSchema, createFieldDefinitionSchema, createListSchema, updateCustomMasterSchema, updateFieldDefinitionSchema, updateListSchema } from '../configuration/configuration.schema.js';
+import { restoreSnapshot } from './snapshot.js';
 import { Connection } from '../connections/connection.model.js';
 import { connectionDefinition, createConnectionSchema, updateConnectionSchema } from '../connections/connections.service.js';
 import * as Files from '../files/files.service.js';
@@ -54,20 +60,33 @@ export async function readCompanyFile(path: string): Promise<{ file: CompanyFile
   return { file: parsed.data, raw };
 }
 
-/** What the last start applied, for the Company kit screen. */
+/** What was last applied, for the set-up screen. */
 export async function lastApplied() {
   const state = await SystemState.findOne({ key: STATE_KEY }).lean<{ value?: Applied }>();
-  return state?.value ? { at: state.value.at, hash: state.value.hash, company: state.value.file.company.key, results: state.value.results } : null;
+  return state?.value ? { at: state.value.at, hash: state.value.hash, company: state.value.file.company.key, purpose: state.value.file.purpose ?? 'real', results: state.value.results } : null;
 }
 
 export async function applyCompanyFile(path: string): Promise<{ applied: boolean; results: Result[] }> {
   const { file, raw } = await readCompanyFile(path);
   const dir = dirname(path);
-  const read = (name: string) => readFile(join(dir, name));
+  return applyFile(file, raw, (name) => readFile(join(dir, name)));
+}
+
+/** How a person's set-up differs from a start-up: who is watching, and who is already signed in. */
+export interface ApplyOptions {
+  /** Told of each step as it finishes, so the screen can show it happening. */
+  onResult?: (result: Result) => void;
+  /** More owners can be added once the copy has its first: the set-up invites one named there. */
+  inviteOwner?: boolean;
+}
+
+/** Applies a checked company file. `read` finds the files it names, on disk at start-up or in the set-up's draft. */
+export async function applyFile(file: CompanyFile, raw: string, read: (name: string) => Promise<Buffer>, options: ApplyOptions = {}): Promise<{ applied: boolean; results: Result[] }> {
   // Data and brand files count towards "changed", so a new spreadsheet next to the same company file is applied.
   const hashes: Record<string, string> = {};
   for (const f of file.data.files) hashes[f.file] = sha(await read(f.file));
   for (const name of Object.values(file.brand.files)) if (name) hashes[name] = sha(await read(name));
+  if (file.data.snapshot) hashes[file.data.snapshot] = sha(await read(file.data.snapshot));
   const hash = sha(JSON.stringify([raw, hashes]));
 
   const state = await SystemState.findOne({ key: STATE_KEY }).lean<{ value?: Applied }>();
@@ -78,6 +97,7 @@ export async function applyCompanyFile(path: string): Promise<{ applied: boolean
   const results: Result[] = [];
   const note = (step: string, outcome: Result['outcome'], detail?: string) => {
     results.push({ step, outcome, detail });
+    options.onResult?.({ step, outcome, detail });
     (outcome === 'failed' ? logger.warn.bind(logger) : logger.info.bind(logger))({ step, outcome, detail }, 'Company file');
   };
   /** True the first time, or when the file's value differs from what was applied last. */
@@ -85,12 +105,17 @@ export async function applyCompanyFile(path: string): Promise<{ applied: boolean
   try {
     await details(file, changed, note);
     await sample(file, last, note);
+    await snapshot(file, last, hashes, read, note);
+    // After the sample, whose records don't know a company's required fields; before the spreadsheets, which may use them.
+    await mastersStep(file, last, note);
     await data(file, last, hashes, read, note);
+    await regionRecords(file, note);
     await settings(file, changed, note);
     await roles(file, last, note);
     await connections(file, last, note);
+    await rates(file, note);
     // E-mail is set up by now, so the invitations carry the company's brand and go out over its server.
-    await people(file, last, note);
+    await people(file, last, note, options);
     await brandFiles(file, last, hashes, read, note);
     await SystemState.updateOne({ key: STATE_KEY }, { $set: { value: { file, hash, hashes, at: new Date().toISOString(), results } satisfies Applied } }, { upsert: true });
   } finally {
@@ -163,11 +188,127 @@ const idByCode = async (master: string, code: string | undefined) => {
   return doc ? String(doc._id) : null;
 };
 
+/** The company's own records, as they stood where it was packaged. Once, and again only if the package's copy changes. */
+async function snapshot(file: CompanyFile, last: Applied | undefined, hashes: Record<string, string>, read: (n: string) => Promise<Buffer>, note: Note) {
+  const name = file.data.snapshot;
+  if (!name) return;
+  if (last?.hashes[name] === hashes[name]) return note('records', 'unchanged');
+  const done = await restoreSnapshot(await read(name), read);
+  note('records', 'created', `${done.records} records${done.files ? ` and ${done.files} files` : ''}`);
+}
+
+/**
+ * The masters as this company shapes them: its lists, its own masters, its own fields, then each master's layout.
+ * Found by code or key, so the same file can be applied again; a failure in one doesn't stop the rest.
+ */
+async function mastersStep(file: CompanyFile, last: Applied | undefined, note: Note) {
+  const m = file.masters;
+  if (!m) return;
+  const before = last?.file.masters;
+  await upsert({
+    step: 'list', list: m.lists as Plain[], before: before?.lists as Plain[] | undefined, keyOf: (l) => String(l.code), note,
+    find: (code) => List.findOne({ code }).lean<Plain>(),
+    create: (l) => MasterService.create(listDefinition, createListSchema.parse(l) as Plain, system),
+    update: (doc, changes) => MasterService.update(listDefinition, String(doc._id), updateListSchema.parse({ ...changes, version: doc.version }) as Plain, system),
+  });
+  // A field's list is named by code in the file; here it needs the list's id.
+  const lists = new Map((await List.find().select('code').lean<{ _id: unknown; code: string }[]>()).map((l) => [l.code, String(l._id)]));
+  const withList = <T extends { listCode?: string }>(f: T) => {
+    const { listCode, ...rest } = f;
+    return { ...rest, ...(listCode && lists.has(listCode) ? { listId: lists.get(listCode) } : {}) } as Plain;
+  };
+  await upsert({
+    step: 'master', list: m.customMasters as Plain[], before: before?.customMasters as Plain[] | undefined, keyOf: (x) => String(x.code), note,
+    find: (code) => CustomMaster.findOne({ code }).lean<Plain>(),
+    create: (x) => MasterService.create(customMasterDefinition, createCustomMasterSchema.parse({ ...x, fields: (x.fields as Plain[]).map(withList) }) as Plain, system),
+    update: (doc, changes) => MasterService.update(customMasterDefinition, String(doc._id), updateCustomMasterSchema.parse({ ...changes, ...(changes.fields ? { fields: (changes.fields as Plain[]).map(withList) } : {}), version: doc.version }) as Plain, system),
+  });
+  await upsert({
+    step: 'field', list: m.fields as Plain[], before: before?.fields as Plain[] | undefined, keyOf: (f) => `${String(f.entity)}.${String(f.key)}`, note,
+    find: (key) => { const at = key.indexOf('.'); return FieldDefinition.findOne({ entity: key.slice(0, at), key: key.slice(at + 1) }).lean<Plain>(); },
+    create: (f) => MasterService.create(fieldDefinitionDefinition, createFieldDefinitionSchema.parse(withList(f as { listCode?: string })) as Plain, system),
+    update: (doc, changes) => MasterService.update(fieldDefinitionDefinition, String(doc._id), updateFieldDefinitionSchema.parse({ ...withList(changes as { listCode?: string }), version: doc.version }) as Plain, system),
+  });
+  for (const layout of m.layouts) {
+    const { entity, ...input } = layout;
+    const was = before?.layouts.find((l) => l.entity === entity);
+    if (was && isDeepStrictEqual(was, layout)) continue;
+    const def = getMaster(entity);
+    if (!def) { note(`layout ${entity}`, 'failed', `No master "${entity}"`); continue; }
+    try {
+      await saveLayout(def, input, {});
+      note(`layout ${entity}`, 'updated', def.label);
+    } catch (err) { note(`layout ${entity}`, 'failed', (err as Error).message); }
+  }
+}
+
+/** The other currencies it works in, and their first live rates when a rate service is connected. */
+async function rates(file: CompanyFile, note: Note) {
+  const codes = (file.regional.currencies ?? []).filter((c) => c !== file.regional.baseCurrency);
+  if (!codes.length) return;
+  const def = getMaster('currencies')!;
+  const ids: string[] = [];
+  for (const code of codes) {
+    let id = await idByCode('currencies', code);
+    if (!id) {
+      try {
+        const made = await MasterService.create(def, def.createSchema.parse(currencyFromCode(code)) as Plain, system);
+        id = String(made.id);
+        note(`currency ${code}`, 'created');
+      } catch (err) { note(`currency ${code}`, 'failed', (err as Error).message); continue; }
+    }
+    ids.push(id);
+  }
+  try {
+    await saveFeedSettings({ currencyIds: ids });
+    if (!file.connections.some((c) => c.kind === 'rates' && c.enabled)) return;
+    const run = await fetchRates({ trigger: 'manual' }) as unknown as { outcome?: string; stored?: number; error?: string };
+    if (run.outcome === 'stored') note('exchange rates', 'created', `Today's rates for ${codes.join(', ')}`);
+    else note('exchange rates', 'failed', run.error ?? `The rate service answered: ${run.outcome ?? 'no rates'}. Rates can be fetched again from the exchange-rates screen.`);
+  } catch (err) { note('exchange rates', 'failed', (err as Error).message); }
+}
+
+/** The company's country and currency as records, when neither the data files nor the sample data brought them. */
+async function regionRecords(file: CompanyFile, note: Note) {
+  const { country, baseCurrency, timezone, style } = file.regional;
+  if (baseCurrency && !(await idByCode('currencies', baseCurrency))) {
+    try {
+      const def = getMaster('currencies')!;
+      await MasterService.create(def, def.createSchema.parse(currencyFromCode(baseCurrency)) as Plain, system);
+      note(`currency ${baseCurrency}`, 'created');
+    } catch (err) { note(`currency ${baseCurrency}`, 'failed', (err as Error).message); }
+  }
+  if (country && !(await idByCode('countries', country))) {
+    try {
+      const def = getMaster('countries')!;
+      const currencyId = baseCurrency ? await idByCode('currencies', baseCurrency) : undefined;
+      await MasterService.create(def, def.createSchema.parse({
+        code: country, name: new Intl.DisplayNames(['en'], { type: 'region' }).of(country) ?? country,
+        ...(style?.phoneCountryCode ? { dialCode: style.phoneCountryCode } : {}),
+        ...(timezone ? { timezones: [timezone] } : {}),
+        ...(currencyId ? { currencyId } : {}),
+      }) as Plain, system);
+      note(`country ${country}`, 'created');
+    } catch (err) { note(`country ${country}`, 'failed', (err as Error).message); }
+  }
+}
+
+/** A currency's name, symbol and decimal places, from the runtime's own list. */
+function currencyFromCode(code: string) {
+  const format = new Intl.NumberFormat('en', { style: 'currency', currency: code, currencyDisplay: 'narrowSymbol' });
+  return {
+    code, name: new Intl.DisplayNames(['en'], { type: 'currency' }).of(code) ?? code,
+    symbol: format.formatToParts(0).find((p) => p.type === 'currency')?.value.slice(0, 8) ?? code,
+    minorUnits: Math.min(4, format.resolvedOptions().maximumFractionDigits ?? 2),
+  };
+}
+
 /** Regional settings, brand, areas and the company's options: each one only when the file changed it. */
 async function settings(file: CompanyFile, changed: Changed, note: Note) {
   const patch: Plain = {};
-  const { country, baseCurrency, ...regional } = file.regional;
+  const { country, baseCurrency, style, currencies: _currencies, ...regional } = file.regional;
   for (const [k, v] of Object.entries(regional)) if (v !== undefined && changed((f) => (f.regional as Plain)[k])) patch[k] = v;
+  if (style && changed((f) => f.regional.style)) patch.regional = style;
   for (const [field, master, code] of [['countryId', 'countries', country], ['baseCurrencyId', 'currencies', baseCurrency]] as const) {
     if (!code || !changed((f) => (field === 'countryId' ? f.regional.country : f.regional.baseCurrency))) continue;
     const id = await idByCode(master, code);
@@ -180,6 +321,11 @@ async function settings(file: CompanyFile, changed: Changed, note: Note) {
   if (Object.keys(brand).length) patch.brand = brand;
   if (file.watermark && changed((f) => f.watermark)) patch.watermark = file.watermark;
   if (file.operations && changed((f) => f.operations)) patch.operations = file.operations;
+  if (file.maintenance && changed((f) => f.maintenance)) patch.maintenance = file.maintenance;
+  for (const key of ['vocabulary', 'stages', 'desks'] as const) {
+    const value = file.workspace?.[key];
+    if (value !== undefined && changed((f) => f.workspace?.[key])) patch[key] = value;
+  }
   if (file.areas && changed((f) => f.areas)) patch.modules = file.areas;
   if (changed((f) => f.selfSignUp)) patch.allowSelfRegistration = file.selfSignUp;
   if (!Object.keys(patch).length) return note('settings', 'unchanged');
@@ -261,10 +407,17 @@ async function connections(file: CompanyFile, last: Applied | undefined, note: N
 }
 
 /** The first owner, then the staff, each invited by e-mail once. */
-async function people(file: CompanyFile, last: Applied | undefined, note: Note) {
-  const { created, sent } = await ensureFirstOwner(file.owner.email);
-  note('owner', created ? 'created' : 'unchanged', created ? `${file.owner.email}${sent ? ', invited' : ', invitation not sent: use "Forgot password"'}` : undefined);
+async function people(file: CompanyFile, last: Applied | undefined, note: Note, options: ApplyOptions = {}) {
+  const { created, sent, passwordSet } = await ensureFirstOwner(file.owner.email);
+  note('owner', created ? 'created' : 'unchanged', created ? `${file.owner.email}${passwordSet ? ', with the password from OWNER_PASSWORD' : sent ? ', invited' : ', invitation not sent: use "Forgot password"'}` : undefined);
   if (created && file.owner.name) await User.updateOne({ email: file.owner.email }, { $set: { name: file.owner.name } });
+  if (options.inviteOwner && !created && !(await User.exists({ email: file.owner.email }))) {
+    try {
+      const role = await Role.findOne({ key: 'owner' }).select('_id').lean<{ _id: unknown }>();
+      await createUser(createUserSchema.parse({ name: file.owner.name ?? file.owner.email.split('@')[0], email: file.owner.email, roleIds: [String(role!._id)] }) as Plain, system);
+      note('owner', 'created', `${file.owner.email}, invited`);
+    } catch (err) { note('owner', 'failed', (err as Error).message); }
+  }
   const roleIds = async (keys: string[]) => {
     const found = await Role.find({ key: { $in: keys }, status: 'active' }).select('_id key').lean<{ _id: unknown; key: string }[]>();
     const missing = keys.filter((k) => !found.some((r) => r.key === k));

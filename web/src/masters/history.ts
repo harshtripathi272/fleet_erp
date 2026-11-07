@@ -29,10 +29,21 @@ export const choiceName = (def: Rec | undefined, path: string, value: string) =>
 export const fieldTitle = (def: Rec, path: string, key = path.split(".").pop() ?? path) =>
   String((def.fields as Rec[] | undefined)?.find((f) => f.path === path)?.label ?? label(key));
 /** A changed field's name: the master's own label when the master is known. */
-export const fieldName = (path: string, def?: Rec) => (def ? fieldTitle(def, path) : label(path.split(".").pop() ?? path));
+export const fieldName = (path: string, def?: Rec) => {
+  // A company field (custom.medicalCertificate) by the name the company gave it (#97).
+  const own = /^custom\.(.+)$/.exec(path)?.[1];
+  const named = own ? ((def?.customFields as Rec[] | undefined) ?? []).find((f) => f.key === own)?.label : undefined;
+  if (named) return String(named);
+  return def ? fieldTitle(def, path) : label(path.split(".").pop() ?? path);
+};
+/** A file kept on a record (#97): `{ fileId, name, mime, size }`. */
+const isFile = (v: unknown): v is Rec => Boolean(v) && typeof v === "object" && !Array.isArray(v) && typeof (v as Rec).fileId === "string" && typeof (v as Rec).name === "string";
 /** A value as a person reads it: dates as dates, a link to another record as such, long values cut. */
 export const short = (v: unknown): string => {
   if (v === undefined || v === null || v === "") return "—";
+  // A file reads as its name (and its expiry), several as their names: never its id.
+  if (isFile(v)) return `${String(v.name)}${v.expiresOn ? `, expires ${fullDate(String(v.expiresOn))}` : ""}`;
+  if (Array.isArray(v) && v.length && v.every(isFile)) return v.map((f) => String((f as Rec).name)).join(", ");
   if (typeof v === "string" && /^[0-9a-f]{24}$/.test(v)) return "a linked record";
   if (typeof v === "string" && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(v)) {
     const d = new Date(v);

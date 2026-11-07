@@ -82,6 +82,13 @@ if [ -n "$SMTP_USER" ]; then
   put_secret "$COMPANY-smtp-pass" "$SMTP_PASS_VALUE"
   secrets="$secrets,SMTP_PASS=$COMPANY-smtp-pass:latest"
 fi
+# The first Owner's password, for a copy with no e-mail server. Only read when that account is made.
+if [ -n "${OWNER_PASSWORD:-}" ]; then
+  put_secret "$COMPANY-owner-password" "$OWNER_PASSWORD"
+  secrets="$secrets,OWNER_PASSWORD=$COMPANY-owner-password:latest"
+elif [ -z "$SMTP_HOST" ]; then
+  [ "$DRY_RUN" = 1 ] || fail "With no e-mail server, set OWNER_PASSWORD: it's the first Owner's way in"
+fi
 # The exchange-rate provider's key, only when one is given (the provider itself is chosen in the app).
 if [ -n "${RATE_FEED_API_KEY:-}" ]; then
   put_secret "$COMPANY-rate-feed-key" "$RATE_FEED_API_KEY"
@@ -132,7 +139,8 @@ else
 fi
 # Production refuses to start without these (see the refusals in docs/deploy-gcp.md).
 env_vars="APP_URL=$APP_URL,OWNER_EMAIL=$OWNER_EMAIL,TRUST_PROXY=$TRUST_PROXY,FILE_STORAGE=gcs,GCS_BUCKET=$BUCKET"
-env_vars="$env_vars,SMTP_HOST=$SMTP_HOST,SMTP_PORT=$SMTP_PORT,SMTP_SECURE=$SMTP_SECURE,CONSOLE_ENABLED=$CONSOLE_ENABLED,IN_PROCESS_JOBS=false,UPLOAD_MAX_MB=$UPLOAD_MAX_MB"
+[ -z "$SMTP_HOST" ] || env_vars="$env_vars,SMTP_HOST=$SMTP_HOST,SMTP_PORT=$SMTP_PORT,SMTP_SECURE=$SMTP_SECURE"
+env_vars="$env_vars,CONSOLE_ENABLED=$CONSOLE_ENABLED,IN_PROCESS_JOBS=false,UPLOAD_MAX_MB=$UPLOAD_MAX_MB"
 [ -z "$SMTP_USER" ] || env_vars="$env_vars,SMTP_USER=$SMTP_USER"
 [ -z "$REDIS_URL" ] || env_vars="$env_vars,REDIS_URL=$REDIS_URL"
 [ -z "${KIT_DIR:-}" ] || env_vars="$env_vars,COMPANY_CONFIG=/mnt/bucket/kit/company.json"
@@ -140,7 +148,8 @@ env_vars="$env_vars,SMTP_HOST=$SMTP_HOST,SMTP_PORT=$SMTP_PORT,SMTP_SECURE=$SMTP_
 env_file="$(mktemp)"
 trap 'rm -f "$env_file"' EXIT
 IFS=',' read -r -a pairs <<< "$env_vars"
-for pair in "${pairs[@]}" "SMTP_FROM=$SMTP_FROM"; do
+[ -z "$SMTP_FROM" ] || pairs+=("SMTP_FROM=$SMTP_FROM")
+for pair in "${pairs[@]}"; do
   value="${pair#*=}"
   printf "%s: '%s'\n" "${pair%%=*}" "${value//\'/\'\'}" >> "$env_file"
 done

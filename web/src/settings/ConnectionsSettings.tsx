@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { ExternalLink } from "lucide-react";
 import { api, request } from "../api/client";
 import { can } from "../api/session";
 import { useApp } from "../store";
@@ -27,7 +28,18 @@ interface FieldSpec {
   max?: number;
 }
 interface SecretSpec { key: string; label: string; required: boolean; hint?: string }
-interface ProviderInfo { key: string; label: string; description?: string; simulated: boolean; fields: FieldSpec[]; secrets: SecretSpec[]; inbound: boolean }
+interface GuideStep { text: string; link?: string }
+interface ProviderInfo {
+  key: string; label: string; description?: string; simulated: boolean; fields: FieldSpec[]; secrets: SecretSpec[]; inbound: boolean;
+  ownSignature?: boolean; guide?: GuideStep[]; comingSoon?: string;
+}
+interface SecretSetup { names: { name: string; set: boolean }[]; label: string; steps: { text: string; command?: string }[] }
+interface DraftResult { ok: boolean; simulated: boolean; message: string; missing?: string[] }
+/** Where the app may run, for the commands that set its secrets there (#98). */
+const SECRET_TARGETS: { value: string; label: string }[] = [
+  { value: "env", label: "This computer (.env)" }, { value: "compose", label: "Docker Compose" }, { value: "gcp", label: "Google Cloud" },
+  { value: "aws", label: "AWS" }, { value: "azure", label: "Azure" }, { value: "fly", label: "Fly.io" }, { value: "render", label: "Render" }, { value: "railway", label: "Railway" },
+];
 interface KindState {
   kind: string;
   label: string;
@@ -65,7 +77,7 @@ const MESSAGE_KINDS = ["email", "sms", "whatsapp"];
  */
 const fitsAsButtons = (labels: string[]) => labels.length <= 5 && labels.join("").length <= 32;
 /** A provider's name, saying Simulated once when it is a stand-in. */
-const providerName = (p: ProviderInfo) => (p.simulated && !/simulated/i.test(p.label) ? `${p.label} (Simulated)` : p.label);
+const providerName = (p: ProviderInfo) => (p.comingSoon ? `${p.label} (Coming soon)` : p.simulated && !/simulated/i.test(p.label) ? `${p.label} (Simulated)` : p.label);
 
 /** What a kind uses now, in a few words. */
 function nowUsing(k: KindState) {
@@ -244,15 +256,17 @@ function settingsFrom(provider: ProviderInfo, values: Values) {
 function ConnectionForm({ kind, connection, onClose }: { kind: KindState; connection: Connection | null; onClose: () => void }) {
   const { toast } = useApp();
   const refresh = useRefresh();
-  const first = connection?.provider ?? kind.providers.find((p) => !p.simulated)?.key ?? kind.providers[0]?.key ?? "";
+  const first = connection?.provider ?? kind.providers.find((p) => !p.simulated && !p.comingSoon)?.key ?? kind.providers[0]?.key ?? "";
   const [providerKey, setProviderKey] = useState(first);
   const provider = kind.providers.find((p) => p.key === providerKey);
   const [name, setName] = useState(connection?.name ?? kind.providers.find((p) => p.key === first)?.label ?? "");
   const [code, setCode] = useState(connection?.code ?? "");
   const [values, setValues] = useState<Values>(() => valuesFrom(provider, connection));
-  const [secrets, setSecrets] = useState<Record<string, string>>(() => ({ ...(connection?.secrets ?? {}) }));
-  const [hookSecret, setHookSecret] = useState(connection?.webhookSecretEnv ?? "");
   const [enabled, setEnabled] = useState(Boolean(connection?.enabled));
+  const [target, setTarget] = useState("env");
+  const [to, setTo] = useState("");
+  const [tried, setTried] = useState<DraftResult | null>(null);
+  const message = kind.kind === "email" || kind.kind === "sms" || kind.kind === "whatsapp";
   const [errors, setErrors] = useState<Record<string, string[]>>({});
   const err = (key: string) => errors[key]?.join(" ");
 
@@ -260,20 +274,19 @@ function ConnectionForm({ kind, connection, onClose }: { kind: KindState; connec
     const next = kind.providers.find((p) => p.key === key);
     setProviderKey(key);
     setValues(valuesFrom(next, connection));
-    setSecrets(Object.fromEntries(Object.entries(connection?.secrets ?? {}).filter(([k]) => next?.secrets.some((s) => s.key === k))));
-    if (!next?.inbound) setHookSecret("");
+    setTried(null);
     if (!name.trim() || kind.providers.some((p) => p.label === name)) setName(next?.label ?? "");
   };
 
   const save = useMutation({
     mutationFn: () => {
       if (!provider) throw new Error("Choose a service");
-      const named = Object.fromEntries(Object.entries(secrets).map(([k, v]) => [k, v.trim().toUpperCase()]).filter(([k, v]) => v && provider.secrets.some((s) => s.key === k)));
+      // The server names each secret's setting from the code; a changed service keeps only what it uses.
+      const kept = connection && connection.provider === provider.key ? connection.secrets : undefined;
       const body: Record<string, unknown> = {
         name: name.trim(), provider: provider.key, enabled,
         settings: settingsFrom(provider, values),
-        secrets: Object.keys(named).length ? named : connection ? null : undefined,
-        webhookSecretEnv: hookSecret.trim() ? hookSecret.trim().toUpperCase() : connection ? null : undefined,
+        ...(connection && !kept ? { secrets: null, webhookSecretEnv: null } : {}),
       };
       if (connection) body.version = connection.version;
       else Object.assign(body, { code: code.trim(), kind: kind.kind });
@@ -295,10 +308,10 @@ function ConnectionForm({ kind, connection, onClose }: { kind: KindState; connec
       open
       title={connection ? `Edit ${connection.name}` : `New connection: ${kind.label}`}
       onClose={onClose}
-      footer={<><Button onClick={onClose}>Cancel</Button><Button tone="primary" busy={save.isPending} onClick={() => save.mutate()}>Save</Button></>}
+      footer={<><Button onClick={onClose}>Cancel</Button><Button tone="primary" busy={save.isPending} disabled={Boolean(provider?.comingSoon)} onClick={() => save.mutate()}>Save</Button></>}
     >
       <fieldset className="form-group">
-        <FieldGroup label="Service" hint={err("provider") ?? provider?.description} wide>
+        <FieldGroup label="Service" hint={err("provider") ?? provider?.comingSoon ?? provider?.description} wide>
           {fitsAsButtons(kind.providers.map(providerName)) ? (
             <Segmented choice label="Service" value={providerKey} onChange={pick}
               options={kind.providers.map((p) => ({ value: p.key, label: providerName(p) }))} />
@@ -317,17 +330,14 @@ function ConnectionForm({ kind, connection, onClose }: { kind: KindState; connec
             {provider!.fields.map((f) => <SettingField key={`${provider!.key}-${f.key}`} field={f} value={values[f.key]} error={err(`settings.${f.key}`)} onChange={(v) => setValues((s) => ({ ...s, [f.key]: v }))} />)}
           </div>
         )}
-        {(provider?.secrets ?? []).map((s) => (
-          <Field key={s.key} label={`Server setting that holds the ${s.label.toLowerCase()}${s.required ? "" : " (if needed)"}`} wide
-            hint={err(`secrets.${s.key}`) ?? <>{s.hint ? `${s.hint}. ` : ""}SMTP_PASS, RATE_FEED_API_KEY, or a name starting with CONNECTION_. Its value is set on the server or in Secret Manager, and never shown here.</>}>
-            <input className="input" value={secrets[s.key] ?? ""} onChange={(e) => setSecrets((x) => ({ ...x, [s.key]: e.target.value.toUpperCase() }))} placeholder={`CONNECTION_${(provider?.key ?? "").toUpperCase().replace(/-/g, "_")}_${s.key.replace(/([A-Z])/g, "_$1").toUpperCase()}`} />
-          </Field>
-        ))}
-        {provider?.inbound && (
-          <Field label="Server setting that holds the signing secret" wide
-            hint={err("webhookSecretEnv") ?? "The service signs each call with this secret, and unsigned calls are refused. The web address to give the service appears once the connection is saved."}>
-            <input className="input" value={hookSecret} onChange={(e) => setHookSecret(e.target.value.toUpperCase())} placeholder="CONNECTION_TRACKER_SIGNING_SECRET" />
-          </Field>
+        {provider && !provider.comingSoon && <Guide steps={provider.guide ?? []} webhookUrl={connection?.webhookUrl} />}
+        {provider && !provider.comingSoon && (provider.secrets.length > 0 || (provider.inbound && !provider.ownSignature)) && (
+          <Keys kind={kind.kind} provider={provider} code={connection?.code ?? code} connectionId={connection && connection.provider === provider.key ? connection.id : undefined} target={target} onTarget={setTarget} />
+        )}
+        {provider && !provider.comingSoon && (
+          <DraftTest kind={kind.kind} provider={provider} code={connection?.code ?? code} settings={() => settingsFrom(provider, values)}
+            secrets={connection && connection.provider === provider.key ? connection.secrets : undefined}
+            message={message} to={to} onTo={setTo} result={tried} onResult={setTried} />
         )}
         <SwitchField label="Use this connection" hint="Only one connection of this kind is in use at a time. To change service, switch the one in use off first." checked={enabled} onChange={setEnabled} />
       </fieldset>
@@ -335,8 +345,88 @@ function ConnectionForm({ kind, connection, onClose }: { kind: KindState; connec
   );
 }
 
+/** The provider's numbered steps to get each value, with links (#98). The webhook address is filled in once saved. */
+function Guide({ steps, webhookUrl }: { steps: GuideStep[]; webhookUrl?: string }) {
+  if (!steps.length) return null;
+  return (
+    <section className="connection-guide" aria-label="How to set it up">
+      <h4>How to set it up</h4>
+      <ol>
+        {steps.map((step, i) => {
+          const [before, after] = step.text.split("{webhookUrl}");
+          return (
+            <li key={i}>
+              {before}
+              {after !== undefined && (webhookUrl ? <code className="mono-wrap">{webhookUrl}</code> : <em>the web address shown here once the connection is saved</em>)}
+              {after}
+              {step.link && <> <a href={step.link} target="_blank" rel="noreferrer">Open <ExternalLink size={12} aria-hidden /></a></>}
+            </li>
+          );
+        })}
+      </ol>
+    </section>
+  );
+}
+
+/**
+ * The connection's keys, which the app never holds (#98): each one's server setting, named from the code, whether
+ * the server has it, and the commands to set it where the app runs, with <value> where the key goes.
+ */
+function Keys({ kind, provider, code, connectionId, target, onTarget }: { kind: string; provider: ProviderInfo; code: string; connectionId?: string; target: string; onTarget: (t: string) => void }) {
+  const query = connectionId ? { connectionId, target } : { kind, provider: provider.key, code: code.trim() || "NEW", target };
+  const setup = useQuery({ queryKey: ["connection-secret-setup", query], queryFn: () => api<SecretSetup>("/connection-secret-setup", { query }) });
+  return (
+    <section className="connection-keys" aria-label="Keys">
+      <div className="connection-keys-head">
+        <h4>Keys</h4>
+        <select className="input" value={target} onChange={(e) => onTarget(e.target.value)} aria-label="Where the app runs">
+          {SECRET_TARGETS.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+        </select>
+      </div>
+      <p className="muted">Keys are never typed into the app. Each one is a server setting with the name below; set it where the app runs, then test.</p>
+      {setup.data && (
+        <>
+          <ul className="connection-key-names">
+            {setup.data.names.map((n) => <li key={n.name}><code>{n.name}</code> {n.set ? <Status tone="ok">set on the server</Status> : <Status tone="wait">not set yet</Status>}</li>)}
+          </ul>
+          <ol className="connection-key-steps">
+            {setup.data.steps.map((step, i) => <li key={i}>{step.text}{step.command && <pre className="connection-command">{step.command}</pre>}</li>)}
+          </ol>
+        </>
+      )}
+      {!connectionId && !code.trim() && <p className="muted">The names follow the code above: type it first.</p>}
+    </section>
+  );
+}
+
+/** Test before saving (#98): the values on the form as they are, so nothing is stored until it works. */
+function DraftTest({ kind, provider, code, settings, secrets, message, to, onTo, result, onResult }: {
+  kind: string; provider: ProviderInfo; code: string; settings: () => Record<string, unknown>; secrets?: Record<string, string>;
+  message: boolean; to: string; onTo: (v: string) => void; result: DraftResult | null; onResult: (r: DraftResult | null) => void;
+}) {
+  const { toast } = useApp();
+  const run = useMutation({
+    mutationFn: () => api<DraftResult>("/connections/test-draft", { method: "POST", body: { kind, provider: provider.key, ...(code.trim() ? { code: code.trim() } : {}), settings: settings(), ...(secrets ? { secrets } : {}), ...(message ? { to: to.trim() } : {}) } }),
+    onSuccess: onResult,
+    onError: (e: Error) => toast(e.message, "error"),
+  });
+  return (
+    <section className="connection-draft-test" aria-label="Test">
+      <div className="connection-actions">
+        {message && <input className="input" value={to} onChange={(e) => onTo(e.target.value)} placeholder={kind === "email" ? "you@company.com" : phonePlaceholder()} aria-label="Send a test message to" />}
+        <Button busy={run.isPending} disabled={message && !to.trim()} onClick={() => run.mutate()}>{message ? "Send a test message" : "Test"}</Button>
+      </div>
+      {result && (
+        <p className={result.ok ? "connection-test-ok" : "connection-error"} role="status">
+          <Status tone={result.ok ? (result.simulated ? "info" : "ok") : "bad"}>{result.ok ? (result.simulated ? "Simulated" : "Connected") : "Not yet"}</Status> {result.message}
+        </p>
+      )}
+    </section>
+  );
+}
+
 /** One of a provider's settings, drawn from what the server says about it. */
-function SettingField({ field: f, value, error, onChange }: { field: FieldSpec; value: string | boolean | undefined; error?: string; onChange: (v: string | boolean) => void }) {
+export function SettingField({ field: f, value, error, onChange }: { field: FieldSpec; value: string | boolean | undefined; error?: string; onChange: (v: string | boolean) => void }) {
   const label = f.required ? f.label : `${f.label} (optional)`;
   if (f.type === "boolean") return <SwitchField label={f.label} hint={error ?? f.hint} checked={Boolean(value)} onChange={onChange} />;
   if (f.type === "choice" && f.choices) {
