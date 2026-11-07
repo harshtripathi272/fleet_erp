@@ -183,11 +183,11 @@ describe('a driver\'s photo over WhatsApp', () => {
     await loadSample(owner);
     const wa = await connectMeta();
     const photo = Buffer.from('89504e470d0a1a0a0000000d49484452000000010000000108020000009077', 'hex');
-    const calls = recordMeta((c) => (c.url.includes('/media-77') ? { body: { url: 'https://lookaside.fbsbx.example/photo', mime_type: 'image/png' } } : c.url.startsWith('https://lookaside') ? { raw: photo, headers: { 'content-type': 'image/png' } } : { body: {} }));
+    const calls = recordMeta((c) => (c.url.includes('/media-77') ? { body: { url: 'https://lookaside.fbsbx.com/photo', mime_type: 'image/png' } } : c.url.startsWith('https://lookaside') ? { raw: photo, headers: { 'content-type': 'image/png' } } : { body: {} }));
     const body = JSON.stringify({ entry: [{ changes: [{ value: { messages: [{ from: '260971234567', id: 'wamid.P1', timestamp: '1793900000', type: 'image', image: { id: 'media-77', mime_type: 'image/png', caption: 'Toll at Tunduma' } }] } }] }] });
     const signature = `sha256=${createHmac('sha256', SECRETS.CONNECTION_WA_APP_SECRET).update(body).digest('hex')}`;
     await api().post(`/api/v1/hooks/${wa.id}`).set('content-type', 'application/json').set('x-hub-signature-256', signature).send(body).expect(200);
-    assert.deepEqual(calls.slice(0, 2).map((c) => c.url), ['https://graph.facebook.com/v21.0/media-77', 'https://lookaside.fbsbx.example/photo'], 'the photo first, then the reply to the driver');
+    assert.deepEqual(calls.slice(0, 2).map((c) => c.url), ['https://graph.facebook.com/v21.0/media-77', 'https://lookaside.fbsbx.com/photo'], 'the photo first, then the reply to the driver');
     const doc = await DriverDocument.findOne({ note: 'Toll at Tunduma' }).lean<{ file?: { fileId?: unknown; mime?: string } }>();
     assert.ok(doc?.file?.fileId, 'the photo is stored with the document');
     assert.equal(doc!.file!.mime, 'image/png');
