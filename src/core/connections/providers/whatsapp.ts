@@ -216,11 +216,48 @@ registerProvider({
 
 /* ---------- Marichi Talks ---------- */
 
+/**
+ * The group's own messaging service, connected like any other: its address and key. Its API isn't published yet, so
+ * this states exactly what the app sends and expects (the guide below says the same), and the address is a setting,
+ * so nothing here is fixed to one server.
+ */
+interface TalksSettings { address: string; sender?: string }
+const talksAddress = (ctx: ProviderContext) => (ctx.settings as unknown as TalksSettings).address.replace(/\/$/, '');
+const talksHeaders = (ctx: ProviderContext) => ({ authorization: `Bearer ${ctx.secret('apiKey')!}`, 'content-type': 'application/json' });
+
 registerProvider({
   kind: 'whatsapp', key: 'marichi-talks', label: 'Marichi Talks',
-  description: "The group's own messaging service.",
-  comingSoon: 'Marichi Talks has no API to connect to yet. Until it has, use the WhatsApp Cloud API (Meta) or Twilio WhatsApp.',
-  fields: z.strictObject({}),
-  async test() { return { ok: false, message: 'Marichi Talks cannot be connected yet.' }; },
-  open: () => ({ async send() { throw new Error('Marichi Talks cannot be connected yet.'); } }),
+  description: "WhatsApp through the group's own messaging service. Replies come back to the app.",
+  fields: z.strictObject({
+    address: z.url().refine((u) => /^https:\/\//.test(u), 'An https address'),
+    sender: z.string().trim().min(1).max(60).optional(),
+  }),
+  labels: { address: 'Service address', sender: 'Send as' },
+  hints: { address: 'From Marichi Talks, e.g. https://talks.example.com/api', sender: 'The number or name to send from, if the service asks for one' },
+  secrets: [{ key: 'apiKey', label: 'API key', required: true, hint: 'From Marichi Talks' }],
+  guide: [
+    { text: 'Ask Marichi Talks for this service address and an API key.' },
+    { text: 'Put the key in the server setting named below, and restart.' },
+    { text: 'Give Marichi Talks {webhookUrl} as the address for replies, with the signing secret named below. It signs each call the same way as any other service here.' },
+    { text: 'Send a test message. The app sends POST <address>/messages with to, text, title and sender, using the key as a Bearer token, and expects an id back. Replies come as { messages: [{ from, text, id }] }.' },
+  ],
+  inbound: async (_ctx, body) => {
+    const list = ((body as { messages?: unknown[] }).messages ?? []) as Array<{ from?: string; text?: string; id?: string; kind?: InboundMessage['kind'] }>;
+    const messages: InboundMessage[] = list.filter((m) => m.from).map((m) => ({ from: `+${digits(String(m.from))}`, text: m.text, providerRef: m.id, kind: m.kind ?? 'text', at: new Date() }));
+    return { accepted: messages.length, messages };
+  },
+  async test(ctx) {
+    const res = await fetch(`${talksAddress(ctx)}/health`, { headers: talksHeaders(ctx), signal: AbortSignal.timeout(CALL_TIMEOUT_MS) });
+    return res.ok ? { ok: true, message: 'Marichi Talks answered.' } : { ok: false, message: `Marichi Talks answered ${res.status}${res.status === 401 || res.status === 403 ? ': check the API key' : ''}.` };
+  },
+  open: (ctx) => ({
+    async send(m: OutgoingMessage) {
+      const s = ctx.settings as unknown as TalksSettings;
+      const body = await callJson<{ id?: string }>('Marichi Talks', `${talksAddress(ctx)}/messages`, {
+        method: 'POST', headers: talksHeaders(ctx),
+        body: JSON.stringify({ to: m.to, text: m.text, ...(m.subject ? { title: m.subject } : {}), ...(s.sender ? { sender: s.sender } : {}) }),
+      });
+      return { providerRef: body.id };
+    },
+  }),
 });

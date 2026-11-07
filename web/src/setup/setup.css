@@ -1417,3 +1417,8 @@
   padding-top: 12px;
   border-top: 1px solid var(--line);
 }
+
+.su-limit {
+  justify-self: start;
+  color: var(--ink-3);
+}

@@ -352,8 +352,8 @@ describe('Set up a company', () => {
     assert.ok(cloud, 'a real WhatsApp service is offered');
     const problems = await check({ connections: [{ ...meta_, provider: cloud.key }] });
     assert.ok(!problems.some((p) => /webhookSecretEnv/.test(p.path)), JSON.stringify(problems));
-    const soon = providers.find((p) => p.comingSoon)!;
-    assert.ok((await check({ connections: [{ code: 'TALKS', name: 'Talks', kind: 'whatsapp', provider: soon.key, enabled: true }] })).some((p) => p.path.startsWith('connections.0.provider')), 'not built, so not choosable');
+    const talks = { code: 'WHATSAPP', name: 'Marichi Talks', kind: 'whatsapp', provider: 'marichi-talks', enabled: true, settings: { address: 'https://talks.example.com/api' }, secrets: { apiKey: 'CONNECTION_WHATSAPP_API_KEY' }, webhookSecretEnv: 'CONNECTION_WHATSAPP_SIGNING_SECRET' };
+    assert.deepEqual(await check({ connections: [talks], connectionRules: { whatsapp: { locked: true, providers: ['marichi-talks'] } } }), [], 'a company can be locked to Marichi Talks');
   });
 
   test('whoever sets a company up decides what it may change: a locked service can\'t be touched by its owner, on any route', async () => {

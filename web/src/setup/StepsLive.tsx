@@ -101,7 +101,6 @@ function KindRow({ kind: k, open, onToggle }: { kind: KindState; open: boolean; 
               {real.map((p) => <button key={p.key} type="button" role="radio" aria-checked={chosen?.provider === p.key} disabled={Boolean(p.comingSoon)} title={p.comingSoon} className={chosen?.provider === p.key ? "on" : ""} onClick={() => pick(p.key)}>{p.label}{p.comingSoon ? " · coming soon" : ""}</button>)}
             </div>
           </FieldGroup>
-          <CompanyChoice kind={k} chosenProvider={chosen?.provider as string | undefined} />
           {real.length === 0 && <p className="su-note">No real service for this yet: it stays simulated, and says so wherever it shows.</p>}
           {chosen && provider && !provider.simulated && (
             <>
@@ -139,6 +138,7 @@ function KindRow({ kind: k, open, onToggle }: { kind: KindState; open: boolean; 
               </SettingRow>
             </>
           )}
+          <CompanyChoice kind={k} chosenProvider={chosen?.provider as string | undefined} />
         </div>
       )}
     </article>
@@ -164,10 +164,13 @@ function CompanyChoice({ kind: k, chosenProvider }: { kind: KindState; chosenPro
     else save({ providers: usable.map((p) => p.key) });
   };
   const inUseName = usable.find((p) => p.key === inUse)?.label ?? "what's set up here";
+  // Most companies choose freely, so this stays out of the way until someone wants it.
+  const [open, setOpen] = useState(current !== "any");
+  if (!open) return <button type="button" className="su-more su-limit" onClick={() => setOpen(true)}>Limit what this company can change</button>;
   return (
     <div className="su-company-choice">
-      <FieldGroup label="What the company can do later" wide hint={current === "locked" ? `Locked to ${inUseName}. On its own copy, this company sees what's in use and can't change it.` : current === "some" ? "It can only choose from the ones ticked here." : "It can connect any of these itself."}>
-        <Segmented choice label="What the company can do later" value={current} onChange={pick} options={[{ value: "any", label: "Choose any" }, { value: "some", label: "Choose from a list" }, { value: "locked", label: "Locked" }]} />
+      <FieldGroup label="What the company can do later" wide hint={current === "locked" ? `Locked to ${inUseName}. This company sees what's in use and can't change it.` : current === "some" ? "It can only choose from the ones ticked here." : "It can connect any of these itself. That's right for most companies."}>
+        <Segmented choice label="What the company can do later" value={current} onChange={pick} options={[{ value: "any", label: "Choose any" }, { value: "some", label: "From a list" }, { value: "locked", label: "Locked" }]} />
       </FieldGroup>
       {current === "some" && (
         <ChoiceChips label={`${k.label} services offered`} options={usable.map((p) => ({ value: p.key, label: p.label }))} value={rule?.providers ?? []}

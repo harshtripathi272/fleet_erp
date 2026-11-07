@@ -31,6 +31,30 @@ export const FIELD_TYPES: FieldType[] = [
   { value: "files", label: "Several files", holds: "A few photos or PDFs together: inspection photos", icon: File, options: ["maxFiles", "accept", "maxSizeMb"] },
 ];
 
+/** The kinds most fields are; the rest wait behind "More kinds". */
+export const COMMON_FIELD_TYPES = ["text", "number", "date", "select", "boolean", "document", "image"];
+
+/**
+ * The likely kind from a field's name, so most fields need only their name. "Number" says nothing: a card number is
+ * text. Only clear words count; anything else stays as it is, and the person's own pick always wins.
+ */
+export function guessFieldType(label: string): { type: string; withExpiry?: boolean } | undefined {
+  const name = label.toLowerCase();
+  if (!name.trim()) return undefined;
+  if (/\b(date|expiry|expires|dob|birthday|valid (until|from)|issued on)\b/.test(name)) return { type: "date" };
+  if (/\b(number|no|id|code|class|type|name)\b/.test(name)) return { type: "text" };
+  if (/\b(photos|pictures|images|attachments|files)\b/.test(name)) return { type: "files" };
+  if (/\b(photo|picture|image|selfie)\b/.test(name)) return { type: "image" };
+  if (/\b(certificate|licen[cs]e|permit|passport|insurance|visa)\b/.test(name)) return { type: "document", withExpiry: true };
+  if (/\b(contract|document|pdf|scan|agreement)\b/.test(name)) return { type: "document" };
+  if (/\b(phone|mobile|cell|whatsapp)\b/.test(name)) return { type: "phone" };
+  if (/\be-?mail\b/.test(name)) return { type: "email" };
+  if (/^(is|has|can|needs|does)\b/.test(name)) return { type: "boolean" };
+  if (/\b(count|quantity|qty|weight|litres|liters|km|years|age|capacity|amount|seats)\b/.test(name)) return { type: "number" };
+  if (/\b(notes?|remarks?|comments?|description|address)\b/.test(name)) return { type: "long_text" };
+  return { type: "text" };
+}
+
 export const fieldType = (value: unknown) => FIELD_TYPES.find((t) => t.value === value);
 export const FILE_TYPES = new Set(["image", "document", "files"]);
 export const isFileType = (value: unknown) => FILE_TYPES.has(String(value));
