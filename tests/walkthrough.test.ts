@@ -41,6 +41,7 @@ function makeUnique(def: Record<string, any>, body: Record<string, any>, tag: st
     'field-definitions': () => Object.assign(body, { key: `${body.key}${tag.toLowerCase()}` }),
     'exchange-rates': () => Object.assign(body, { effectiveDate: '2031-01-01' }),
     parties: () => delete body.taxId,
+    drivers: () => Object.assign(body, { phone: `+26097${String(Date.now()).slice(-7)}` }),
   };
   special[def.key]?.();
   delete body.status;
