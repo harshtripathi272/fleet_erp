@@ -1,7 +1,7 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { z } from 'zod';
 import { registerProvider } from '../registry.js';
-import type { InboundMessage, OutgoingMessage, ProviderContext } from '../types.js';
+import type { InboundMessage, OutgoingMessage, ProviderContext, TemplateDefinition, TemplateStanding } from '../types.js';
 import { basicAuth, callJson, CALL_TIMEOUT_MS } from './http.js';
 import { TWILIO_GUIDE_START } from './messages.js';
 
@@ -53,15 +53,44 @@ async function graph(ctx: ProviderContext, path: string, init: RequestInit = {})
 
 export const OUTSIDE_WINDOW = 'Outside the 24 hours since this person last wrote, WhatsApp delivers only approved templates';
 
+/** The message as Meta takes it: a template with its values, reply buttons, or plain text. */
+function metaPayload(m: OutgoingMessage, to: string) {
+  const t = m.whatsapp?.template;
+  if (t) {
+    return {
+      messaging_product: 'whatsapp', to, type: 'template',
+      template: {
+        name: t.name, language: { code: t.language },
+        components: [
+          ...(t.header.length ? [{ type: 'header', parameters: t.header.map((text) => ({ type: 'text', text })) }] : []),
+          { type: 'body', parameters: t.body.map((text) => ({ type: 'text', text })) },
+          // Quick replies come back with their button's text; no payload is needed.
+          ...Array.from({ length: t.buttons }, (_, index) => ({ type: 'button', sub_type: 'quick_reply', index: String(index), parameters: [{ type: 'payload', payload: `reply-${index}` }] })),
+        ],
+      },
+    };
+  }
+  const buttons = (m.whatsapp?.buttons ?? []).slice(0, 3);
+  if (buttons.length) {
+    return {
+      messaging_product: 'whatsapp', to, type: 'interactive',
+      interactive: { type: 'button', body: { text: m.text.slice(0, 1024) }, action: { buttons: buttons.map((title, i) => ({ type: 'reply', reply: { id: `b${i}`, title: title.slice(0, 20) } })) } },
+    };
+  }
+  return { messaging_product: 'whatsapp', to, type: 'text', text: { body: m.text.slice(0, 4096) } };
+}
+
 async function metaSend(ctx: ProviderContext, m: OutgoingMessage) {
   const s = ctx.settings as unknown as MetaSettings;
   const path = `${s.phoneNumberId}/messages`;
   const to = digits(m.to);
   try {
-    const sent = await graph(ctx, path, { method: 'POST', body: JSON.stringify({ messaging_product: 'whatsapp', to, type: 'text', text: { body: m.text.slice(0, 4096) } }) }) as { messages?: Array<{ id: string }> };
+    const sent = await graph(ctx, path, { method: 'POST', body: JSON.stringify(metaPayload(m, to)) }) as { messages?: Array<{ id: string }> };
     return { providerRef: sent.messages?.[0]?.id };
   } catch (err) {
     if ((err as { code?: number }).code !== 131047) throw err;
+    // The messaging module chose free text, so nothing it needs is approved yet: say which template.
+    if (m.whatsapp?.needed) throw new Error(`${OUTSIDE_WINDOW}: submit the ${m.whatsapp.needed} template (Connections → WhatsApp templates) and wait for Meta to approve it.`);
     if (!s.templateName) throw new Error(`${OUTSIDE_WINDOW}: get the ${CARRIER_TEMPLATE.name} template approved and name it on this connection.`);
     const sent = await graph(ctx, path, {
       method: 'POST',
@@ -81,8 +110,10 @@ export function metaMessages(body: unknown): InboundMessage[] {
   for (const change of entries.flatMap((e) => e.changes ?? [])) {
     for (const m of change.value?.messages ?? []) {
       const text = m.text?.body ?? m.button?.text ?? m.interactive?.button_reply?.title ?? m.interactive?.list_reply?.title ?? m.image?.caption ?? m.document?.caption;
+      const file = m.image ?? m.document;
       out.push({
         from: `+${digits(String(m.from ?? ''))}`, text, providerRef: m.id, at: new Date(Number(m.timestamp ?? Date.now() / 1000) * 1000),
+        ...(file?.id ? { media: { ref: String(file.id), mime: file.mime_type, caption: file.caption, filename: file.filename } } : {}),
         kind: m.type === 'text' ? 'text' : m.type === 'button' || m.type === 'interactive' ? 'button' : m.type === 'image' || m.type === 'document' ? 'photo' : 'other',
       });
     }
@@ -122,7 +153,29 @@ registerProvider({
     const number = await graph(ctx, `${s.phoneNumberId}?fields=display_phone_number,verified_name,quality_rating`) as { display_phone_number?: string; verified_name?: string; quality_rating?: string };
     return { ok: true, message: `Connected to ${number.display_phone_number ?? s.phoneNumberId}${number.verified_name ? ` (${number.verified_name})` : ''}. Send a test message to check it reaches someone.` };
   },
-  open: (ctx) => ({ send: (m) => metaSend(ctx, m) }),
+  open: (ctx) => ({
+    send: (m) => metaSend(ctx, m),
+    templates: {
+      async submit(definition: TemplateDefinition) {
+        const s = ctx.settings as unknown as MetaSettings;
+        const made = await graph(ctx, `${s.businessAccountId}/message_templates`, { method: 'POST', body: JSON.stringify(definition) }) as { id?: string; status?: string };
+        return { id: made.id, status: String(made.status ?? 'PENDING') };
+      },
+      async standings(): Promise<TemplateStanding[]> {
+        const s = ctx.settings as unknown as MetaSettings;
+        const list = await graph(ctx, `${s.businessAccountId}/message_templates?fields=name,status,language,rejected_reason,id&limit=250`) as { data?: Array<{ name: string; status: string; language: string; rejected_reason?: string; id?: string }> };
+        return (list.data ?? []).map((t) => ({ name: t.name, language: t.language, status: t.status, id: t.id, ...(t.rejected_reason && t.rejected_reason !== 'NONE' ? { reason: t.rejected_reason } : {}) }));
+      },
+    },
+    // A photo in a reply: its address first, then the file, both with the connection's token.
+    async media(ref: string) {
+      const found = await graph(ctx, encodeURIComponent(ref)) as { url?: string; mime_type?: string };
+      if (!found.url) throw new Error('WhatsApp (Meta) gave no address for the photo');
+      const res = await fetch(found.url, { headers: { authorization: `Bearer ${ctx.secret('accessToken')}` }, signal: AbortSignal.timeout(CALL_TIMEOUT_MS) });
+      if (!res.ok) throw new Error(`WhatsApp (Meta) answered ${res.status} for the photo`);
+      return { body: Buffer.from(await res.arrayBuffer()), mime: found.mime_type ?? res.headers.get('content-type') ?? 'application/octet-stream' };
+    },
+  }),
   verifyInbound(ctx, call) {
     const given = call.headers['x-hub-signature-256'];
     if (!given) return 'The call has no X-Hub-Signature-256, so it is not from Meta.';
@@ -156,6 +209,8 @@ async function twilioSend(ctx: ProviderContext, m: OutgoingMessage) {
     if (!res.ok) throw Object.assign(new Error(`Twilio answered ${res.status}: ${body.message ?? res.statusText}`), { code: body.code });
     return { providerRef: body.sid };
   };
+  // Templates go by content SID; this connection has one, the carrier (per-template SIDs are not wired yet).
+  if (m.whatsapp?.template && s.contentSid) return post({ ContentSid: s.contentSid, ContentVariables: JSON.stringify({ 1: asTemplateText(m.text) }) });
   try {
     return await post({ Body: m.text.slice(0, 1600) });
   } catch (err) {
@@ -197,7 +252,15 @@ registerProvider({
     const body = await callJson<{ friendly_name?: string; status?: string }>('Twilio', `https://api.twilio.com/2010-04-01/Accounts/${s.accountSid}.json`, { headers: { authorization: basicAuth(s.accountSid, ctx.secret('authToken')!) } });
     return { ok: body.status !== 'suspended', message: `Account "${body.friendly_name ?? s.accountSid}" is ${body.status ?? 'reachable'}. Send a test message to check it reaches someone.` };
   },
-  open: (ctx) => ({ send: (m) => twilioSend(ctx, m) }),
+  open: (ctx) => ({
+    send: (m) => twilioSend(ctx, m),
+    async media(ref: string) {
+      const s = ctx.settings as unknown as TwilioSettings;
+      const res = await fetch(ref, { headers: { authorization: basicAuth(s.accountSid, ctx.secret('authToken')!) }, signal: AbortSignal.timeout(CALL_TIMEOUT_MS) });
+      if (!res.ok) throw new Error(`Twilio answered ${res.status} for the photo`);
+      return { body: Buffer.from(await res.arrayBuffer()), mime: res.headers.get('content-type') ?? 'application/octet-stream' };
+    },
+  }),
   verifyInbound(ctx, call) {
     const given = call.headers['x-twilio-signature'];
     if (!given) return 'The call has no X-Twilio-Signature, so it is not from Twilio.';
@@ -206,9 +269,11 @@ registerProvider({
   async inbound(_ctx, body) {
     const f = body as Record<string, string>;
     if (!f.From) return { accepted: 0, note: 'No message in the call' };
+    const photo = Number(f.NumMedia ?? 0) > 0 && f.MediaUrl0;
     const message: InboundMessage = {
       from: `+${digits(f.From)}`, text: f.Body || f.ButtonText || undefined, providerRef: f.MessageSid, at: new Date(),
-      kind: f.ButtonText ? 'button' : Number(f.NumMedia ?? 0) > 0 ? 'photo' : 'text',
+      kind: f.ButtonText ? 'button' : photo ? 'photo' : 'text',
+      ...(photo ? { media: { ref: f.MediaUrl0!, mime: f.MediaContentType0, caption: f.Body || undefined } } : {}),
     };
     return { accepted: 1, messages: [message] };
   },

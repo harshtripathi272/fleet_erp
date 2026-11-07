@@ -35,8 +35,33 @@ export interface ProviderContext {
 export interface TestResult { ok: boolean; message: string }
 
 /* What each kind can do. A provider of a kind supplies its kind's capability. */
-export interface OutgoingMessage { to: string; subject?: string; text: string; attachments?: Array<{ filename: string; content: Buffer; contentType?: string }> }
-export interface MessageSender { send(message: OutgoingMessage): Promise<{ providerRef?: string; simulated?: boolean }> }
+/**
+ * How a WhatsApp message goes out (#112), worked out by the messaging module: as written with reply buttons
+ * (inside the 24 hours), or as an approved template with its values. `needed` names the template to get
+ * approved, for the outbox when WhatsApp refuses free text.
+ */
+export interface WhatsAppDelivery {
+  buttons?: string[];
+  template?: { name: string; language: string; header: string[]; body: string[]; buttons: number };
+  needed?: string;
+}
+export interface OutgoingMessage { to: string; subject?: string; text: string; attachments?: Array<{ filename: string; content: Buffer; contentType?: string }>; whatsapp?: WhatsAppDelivery }
+
+/** A template as the messaging module asks a WhatsApp service to approve it (Meta's own shape). */
+export interface TemplateDefinition { name: string; category: string; language: string; components: unknown[] }
+export interface TemplateStanding { name: string; language: string; status: string; reason?: string; id?: string }
+/** WhatsApp services that keep templates themselves: submit one for approval, and read where each stands. */
+export interface TemplateManager {
+  submit(definition: TemplateDefinition): Promise<{ id?: string; status: string }>;
+  standings(): Promise<TemplateStanding[]>;
+}
+export interface MessageSender {
+  send(message: OutgoingMessage): Promise<{ providerRef?: string; simulated?: boolean }>;
+  /** WhatsApp services with templates of their own (#112). */
+  templates?: TemplateManager;
+  /** A photo or file someone sent, fetched with the connection's key (#112). */
+  media?(ref: string): Promise<{ body: Buffer; mime: string }>;
+}
 export interface RateSource { fetch(input: { base: string; codes: string[]; signal?: AbortSignal }): Promise<{ perBase: Record<string, number>; asOf: Date }> }
 export interface LatLng { lat: number; lng: number }
 export interface RouteAnswer { km: number; hours?: number; shape: Array<[number, number]> }
@@ -72,7 +97,11 @@ export interface Capabilities {
 export interface SecretSpec { key: string; label: string; required: boolean; hint?: string }
 
 /** A message someone sent us through a service (a WhatsApp reply): from whom, and what. */
-export interface InboundMessage { from: string; text?: string; at: Date; providerRef?: string; kind?: 'text' | 'button' | 'photo' | 'other' }
+export interface InboundMessage {
+  from: string; text?: string; at: Date; providerRef?: string; kind?: 'text' | 'button' | 'photo' | 'other';
+  /** A photo or file in the message: the service's reference for `media()`, its caption and file type. */
+  media?: { ref: string; mime?: string; caption?: string; filename?: string };
+}
 
 /** What a call to a connection's webhook brought in, for whoever listens to that kind (#60 for trackers). */
 export interface InboundResult { accepted: number; positions?: Position[]; messages?: InboundMessage[]; note?: string }

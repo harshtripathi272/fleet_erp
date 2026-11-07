@@ -282,6 +282,7 @@ export async function createTrip(input: S.CreateTripInput, ctx: OpsContext, extr
       title: `New trip ${trip.get('number')}`,
       text: `${truck.plate}${trailer ? ` with ${trailer.registrationNumber}` : ''} for ${customer.name}. ${stops.length ? await routeLabel(trip.toObject()) : 'Route to follow'}.`,
       rows: [['Planned start', Fmt.dateTime(input.plannedStart)]],
+      wa: { template: 'trip_assigned', values: [String(trip.get('number')), `${truck.plate}${trailer ? ` with ${trailer.registrationNumber}` : ''}`, String(customer.name), stops.length ? await routeLabel(trip.toObject()) : 'route to follow', Fmt.dateTime(input.plannedStart)] },
     }, ctx);
   }
   await log(ctx, at, `${trip.get('number')} created: ${truck.plate} for ${customer.name}`, { tripId: trip._id });
@@ -308,7 +309,12 @@ export async function updateTrip(id: string, input: S.UpdateTripInput, ctx: OpsC
     if (await FundRequest.exists({ tripId: trip._id, kind: 'cash', status: 'issued' })) throw conflict('The advance was paid to the current driver. Keep the driver or cancel this trip.');
     trip.set('driverId', input.driverId ?? undefined);
     if (input.driverId) {
-      await post(driverThread(input.driverId), at, { title: `New trip ${trip.get('number')}`, text: `${truck.plate} for ${await partyName(trip.get('customerId'))}. ${await routeLabel(trip.toObject())}.` }, ctx);
+      const customerName = await partyName(trip.get('customerId'));
+      const route = await routeLabel(trip.toObject());
+      await post(driverThread(input.driverId), at, {
+        title: `New trip ${trip.get('number')}`, text: `${truck.plate} for ${customerName}. ${route}.`,
+        wa: { template: 'trip_assigned', values: [String(trip.get('number')), truck.plate, customerName, route, Fmt.dateTime(trip.get('plannedStart'))] },
+      }, ctx);
     }
   }
   if (input.trailerId !== undefined && String(input.trailerId ?? '') !== String(trip.get('trailerId') ?? '')) {
@@ -363,7 +369,7 @@ export async function cancelTrip(id: string, input: S.ReasonInput, ctx: OpsConte
     await resolve(`${request._id}-issue`, 'Trip cancelled');
   }
   if (trip.get('nominationId')) await Nomination.updateOne({ _id: trip.get('nominationId') }, { $pull: { tripIds: trip._id }, $inc: { version: 1 } });
-  if (trip.get('driverId')) await post(driverThread(trip.get('driverId')), at, { text: `${trip.get('number')} is cancelled. ${input.reason}` }, ctx);
+  if (trip.get('driverId')) await post(driverThread(trip.get('driverId')), at, { text: `${trip.get('number')} is cancelled. ${input.reason}`, wa: { template: 'trip_stopped', values: [String(trip.get('number')), 'cancelled', input.reason] } }, ctx);
   await log(ctx, at, `Cancelled: ${input.reason}`, { tripId: trip._id });
   return presentTrip(trip.toObject());
 }
@@ -408,7 +414,7 @@ export async function stopTrip(id: string, input: S.StopTripInput, ctx: OpsConte
   await closeEarly(trip, { reason: input.reason, placeId, closingFuelL: input.closingFuelL, requestNote: 'Trip stopped before loading' }, at, ctx);
   const place = await placeName(placeId);
   const number = String(trip.get('number'));
-  if (trip.get('driverId')) await post(driverThread(trip.get('driverId')), at, { title: `${number} stopped`, text: `${input.reason} Park the truck at ${place}.` }, ctx);
+  if (trip.get('driverId')) await post(driverThread(trip.get('driverId')), at, { title: `${number} stopped`, text: `${input.reason} Park the truck at ${place}.`, wa: { template: 'trip_stopped', values: [number, 'stopped', `${input.reason.replace(/\.\s*$/, '')}; park the truck at ${place}`] } }, ctx);
   await post(queue('trips'), at, { title: `${number} stopped before loading`, text: `${input.reason} ${truck.plate} is free at ${place} with ${litres(input.closingFuelL)}.` }, ctx);
   await log(ctx, at, `Stopped before loading at ${place}: ${input.reason}`, { tripId: trip._id });
   return presentTrip(trip.toObject());
@@ -487,14 +493,14 @@ export async function dispatchTrip(id: string, ctx: OpsContext, input?: S.Dispat
   const base = await baseCurrency();
   const holds = Math.max(0, await carriedIn(plain.driverId, trip._id)) + (await FundRequest.find({ tripId: trip._id, kind: 'cash', status: 'issued' }).lean()).reduce((s, r) => s + Number(r.baseAmountMinor ?? 0), 0);
   const plainStops = plain.stops as Array<{ kind: string; placeId: unknown }>;
+  const loadAt = await placeName(plainStops.find((s) => s.kind === 'load')?.placeId);
+  const offloadAt = await placeName(plainStops.find((s) => s.kind === 'offload')?.placeId);
+  const truckLabel = `${truck.plate}${plain.trailerId ? ` · ${await trailerPlate(plain.trailerId)}` : ''}`;
   await post(driverThread(plain.driverId), at, {
     title: `On your way · ${plain.number}`,
-    text: `Head to ${await placeName(plainStops.find((s) => s.kind === 'load')?.placeId)} for loading. Offload at ${await placeName(plainStops.find((s) => s.kind === 'offload')?.placeId)}.`,
-    rows: [
-      ['Truck', `${truck.plate}${plain.trailerId ? ` · ${await trailerPlate(plain.trailerId)}` : ''}`],
-      ['Fuel in tank', litres(truck.fuelL)],
-      ['Cash with you', formatMoney(holds, base)],
-    ],
+    text: `Head to ${loadAt} for loading. Offload at ${offloadAt}.`,
+    rows: [['Truck', truckLabel], ['Fuel in tank', litres(truck.fuelL)], ['Cash with you', formatMoney(holds, base)]],
+    wa: { template: 'trip_dispatched', values: [String(plain.number), loadAt, offloadAt, truckLabel, litres(truck.fuelL), formatMoney(holds, base)] },
   }, ctx);
   await log(ctx, at, `Dispatched from ${await placeName(plainStops[0]?.placeId)}`, { tripId: trip._id });
   await announce('trip.dispatched', plain, ctx, { variables: { 'place.name': await placeName(plainStops[0]?.placeId) } });
@@ -516,6 +522,7 @@ async function announceArrival(trip: Plain, index: number, at: Date, ctx: OpsCon
         title: `You've reached ${place}`,
         text: loading ? 'Send a photo of the loading invoice once the tanker is filled and sealed.' : 'Send the signed delivery note with the offloading readings.',
         buttons: [{ label: loading ? 'Send loading invoice' : 'Send delivery note', attach: loading ? 'loading' : 'delivery', tone: 'primary' }],
+        wa: { template: 'arrived_send_document', values: [place, String(trip.number), loading ? 'the loading invoice once the tanker is filled and sealed' : 'the signed delivery note with the offloading readings'] },
         refId: `${trip._id}-${loading ? 'loading' : 'delivery'}`,
       }, ctx);
     }
@@ -655,6 +662,7 @@ export async function remind(id: string, ctx: OpsContext) {
     title: `Reminder · ${trip.number}`,
     text: 'Operations is waiting for your document.',
     buttons: [{ label: 'Send it now', tone: 'primary', attach: loaded ? 'delivery' : 'loading' }],
+    wa: { template: 'document_reminder', values: [String(trip.number), loaded ? 'delivery note' : 'loading invoice'] },
   }, ctx);
   await log(ctx, at, 'Reminded the driver', { tripId: trip._id });
   return { reminded: 'driver' };
@@ -691,7 +699,7 @@ export async function endTrip(id: string, input: S.EndTripInput, ctx: OpsContext
     const name = await driverName(plain.driverId);
     const unsettled = await Trip.countDocuments({ driverId: plain.driverId, ...TO_SETTLE });
     const base = await baseCurrency();
-    await post(driverThread(plain.driverId), at, { title: `${plain.number} closed`, text: `Truck parked at ${place} with ${litres(input.closingFuelL)}. Thank you.` }, ctx);
+    await post(driverThread(plain.driverId), at, { title: `${plain.number} closed`, text: `Truck parked at ${place} with ${litres(input.closingFuelL)}. Thank you.`, wa: { template: 'trip_closed', values: [String(plain.number), `truck parked at ${place} with ${litres(input.closingFuelL)}`] } }, ctx);
     await post(queue('settlements'), at, {
       title: `${plain.number} ended`,
       text: `${name} has ${unsettled} trip${unsettled > 1 ? 's' : ''} to settle. Balance ${formatMoney(await driverBalance(plain.driverId), base)}.`,

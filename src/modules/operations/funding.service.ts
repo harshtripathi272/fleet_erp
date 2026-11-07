@@ -251,6 +251,7 @@ export async function issueRequest(id: string, input: S.IssueInput, ctx: OpsCont
       title: kind === 'fuel' ? 'Fuel issued' : 'Advance paid',
       text: kind === 'fuel' ? `${amount} for ${truck.plate} by ${medium.toLowerCase()}${input.station ? ` at ${input.station}` : ''}.` : `${amount} by ${medium}. Keep receipts for what you spend.`,
       rows: [['Reference', input.reference ?? '—'], ['Trip', String(trip.number)]],
+      wa: { template: 'money_issued', values: [String(trip.number), kind === 'fuel' ? 'fuel issued' : 'advance paid', kind === 'fuel' ? `${amount} for ${truck.plate} by ${medium.toLowerCase()}${input.station ? ` at ${input.station}` : ''}` : `${amount} by ${medium}`, input.reference ?? 'none'] },
     }, ctx);
   }
   const stillOpen = await FundRequest.exists({ tripId: trip._id, status: { $in: OPEN_REQUEST } });

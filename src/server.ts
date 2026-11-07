@@ -11,6 +11,7 @@ import { applyCompanyFile } from './modules/setup/apply.js';
 import { settleSends, startOutboxWorker, stopOutboxWorker } from './modules/messaging/dispatcher.js';
 import { startEscalationWorker, stopEscalationWorker } from './modules/operations/escalation.js';
 import { ensureSystemRoles } from './modules/roles/roles.service.js';
+import { startTemplateRefresh, stopTemplateRefresh } from './modules/messaging/whatsapp/service.js';
 import { refreshRegional } from './modules/company/regional.js';
 
 await connectMongo();
@@ -34,6 +35,8 @@ await connectRedis();
 startOutboxWorker();
 if (env.IN_PROCESS_JOBS) {
   startEscalationWorker();
+  // WhatsApp templates' standing at Meta, read once a day (#112).
+  startTemplateRefresh();
   startMaintenanceWorker();
 }
 
@@ -59,6 +62,7 @@ function shutdown(reason: string, exitCode: number) {
     if (err) { logger.error({ err }, 'Shutdown failed'); process.exitCode = 1; }
     stopOutboxWorker();
     stopEscalationWorker();
+    stopTemplateRefresh();
     stopMaintenanceWorker();
     await settleSends();
     await Promise.allSettled([disconnectMongo(), disconnectRedis()]);

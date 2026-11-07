@@ -103,6 +103,8 @@ async function drivers(use: { entity: string; recordId: unknown }, driverId: str
  */
 async function canSee(file: StoredFileRecord, actor: FileActor, strict = false) {
   if (String(file.uploadedBy) === actor.userId) return true;
+  // Stored for this driver, e.g. a photo they sent on WhatsApp (#112): theirs.
+  if (actor.driverId && file.driverId && String(file.driverId) === actor.driverId) return true;
   const uses = file.usedBy ?? [];
   for (const use of uses) {
     if (actor.driverId ? await drivers(use, actor.driverId) : actor.can(use.entity, 'read')) return true;
