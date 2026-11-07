@@ -17,7 +17,8 @@ export const customerRateShape = {
   minimumCharge: money.optional(),
   taxRatePercent: percent.optional(),
   ...baseShape,
-  validFrom: day,
+  // Left out, a rate applies from any date, so it also covers trips closed before it was added.
+  validFrom: day.optional(),
   validTo: day.optional(),
 };
 export const createCustomerRateSchema = z.strictObject(customerRateShape);
