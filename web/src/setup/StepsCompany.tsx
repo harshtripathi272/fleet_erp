@@ -37,7 +37,7 @@ export function blankFile(owner: { name?: string; email: string }, purpose = "re
     selfSignUp: false,
     // Live rates from the start: they need no account, and can be changed or switched off on the Region step.
     connections: [{ code: "RATES", name: "ExchangeRate-API (free, no key)", kind: "rates", provider: "open-er-api", enabled: true, settings: {}, secrets: {} }],
-    data: { sample: purpose === "demo" ? "full" : "none", files: [] },
+    data: { sample: purpose === "demo" ? "full" : "starter", files: [] },
     deploy: { target: "compose" },
   };
 }
@@ -52,7 +52,7 @@ export function StartStep({ hasCompany }: { hasCompany: boolean }) {
   const pickPurpose = (next: string) => {
     let out = withValue(file, "purpose", next);
     // Only moves the default on: a choice already made for the data stays.
-    if (!file.data?.files?.length) out = withValue(out, "data.sample", next === "demo" ? "full" : "none");
+    if (!file.data?.files?.length) out = withValue(out, "data.sample", next === "demo" ? "full" : "starter");
     if (next === "demo") {
       out = withValue(out, "areas", ["masters", "trips", "finance", "tracking", "driver-app", "maintenance", "parts", "tyres", "billing"]);
       // The sample operation is set in Zambia, so a demonstration starts there unless a country is already chosen.
@@ -80,7 +80,7 @@ export function StartStep({ hasCompany }: { hasCompany: boolean }) {
     <div className="su-stack">
       <section className="su-choose" role="radiogroup" aria-label="What are you setting up?">
         <Choice on={purpose === "demo"} onPick={() => pickPurpose("demo")} title="A demonstration" text="To show someone how it works, or to try it yourself. Comes with made-up trucks, drivers and trips, every area switched on, and messages simulated. It can be cleared and started again." />
-        <Choice on={purpose === "real"} onPick={() => pickPurpose("real")} title="A real company" text="A company's own copy for its real work, on its own address. Starts empty, ready for its spreadsheets. People are invited by e-mail if it has an e-mail server, or given passwords if it doesn't." />
+        <Choice on={purpose === "real"} onPick={() => pickPurpose("real")} title="A real company" text="A company's own copy for its real work, on its own address. Starts with the usual lists, ready for its own trucks, drivers, places and customers. People are invited by e-mail if it has an e-mail server, or given passwords if it doesn't." />
       </section>
       <SettingsSection title="Start from">
         {(hasCompany || file.company?.legalName) && (
@@ -191,7 +191,7 @@ export function RegionStep() {
   const setStyle = (key: string, value: unknown) => set(`regional.style.${key}`, value);
   const shown = useMemo(() => sample(r), [r]);
   const numbers = `${s.decimalSeparator ?? "."}${s.thousandsSeparator ?? ","}`;
-  const sampleData = file.data?.sample && file.data.sample !== "none";
+  const sampleData = file.data?.sample === "small" || file.data?.sample === "full";
   return (
     <div className="su-stack">
       <SettingsSection title="Where the company is" description="Choosing the country fills in everything below with what's usual there. Change anything that's different for this company.">

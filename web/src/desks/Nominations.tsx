@@ -8,6 +8,7 @@ import { activeTrip, placeName } from "../domain/helpers";
 import { nextStep } from "../domain/turn";
 import type { AppData, Nomination } from "../domain/types";
 import { Avatar, Button, Drawer, Empty, Field, Modal, Segmented, Status } from "../ui/kit";
+import { AddNew, FirstTripSteps } from "./firstTrip";
 import { ago, day, hoursText, km, localDate, num } from "../ui/format";
 import { Turn } from "./Trips";
 import { w, wl } from "../domain/words";
@@ -52,7 +53,11 @@ export function Nominations() {
         {list.map((n) => (
           <NominationCard key={n.id} n={n} onEdit={() => setEditing(n)} onConvert={() => setConverting(n)} />
         ))}
-        {!list.length && <Empty title={filter === "open" ? "No open nominations" : "Nothing here yet"} />}
+        {!list.length && (
+          <Empty title={filter === "open" ? "No open nominations" : "Nothing here yet"}>
+            {!data.nominations.length && <FirstTripSteps intro={`add what a ${wl(data, "nomination")} needs: ${wl(data, "customer", true)}, places and ${wl(data, "truck", true)}.`} />}
+          </Empty>
+        )}
       </div>
       <NominationForm open={editing !== null} editing={editing === "new" ? undefined : editing ?? undefined} onClose={() => setEditing(null)} />
       <Convert n={converting} onClose={() => setConverting(null)} />
@@ -254,7 +259,7 @@ function NominationForm({ open, editing, onClose }: { open: boolean; editing?: N
           <Button tone="quiet" onClick={onClose}>
             Cancel
           </Button>
-          <Button tone="primary" disabled={!picked.length || !company.ready} onClick={save}>
+          <Button tone="primary" disabled={!picked.length || !customerId || !loadingPlaceId || !company.ready} onClick={save}>
             <Check /> Save {picked.length ? `with ${picked.length} truck${picked.length === 1 ? "" : "s"}` : ""}
           </Button>
         </>
@@ -263,14 +268,16 @@ function NominationForm({ open, editing, onClose }: { open: boolean; editing?: N
       <div className="stack">
         {company.block}
         <div className="grid-2">
-          <Field label="Customer">
+          <Field label="Customer" hint={!data.customers.length ? `No ${wl(data, "customer", true)} yet: add one to start.` : undefined}>
             <select value={customerId} onChange={(e) => setCustomerId(e.target.value)}>
+              {!data.customers.length && <option value="">None yet</option>}
               {data.customers.map((c) => (
                 <option key={c.id} value={c.id}>
                   {c.name}
                 </option>
               ))}
             </select>
+            <AddNew master="parties" what={wl(data, "customer")} initial={{ roles: ["customer"] }} onCreated={setCustomerId} />
           </Field>
           <Field label="Order came">
             <Segmented
@@ -283,8 +290,9 @@ function NominationForm({ open, editing, onClose }: { open: boolean; editing?: N
           <Field label={referenceNeeded ? "Reference (required)" : "Customer order no."}>
             <input value={reference} onChange={(e) => setReference(e.target.value)} placeholder="PO-7731" />
           </Field>
-          <Field label="Loading at">
+          <Field label="Loading at" hint={!data.places.some((p) => p.kind !== "border") ? "No places yet: add where trucks load." : undefined}>
             <select value={loadingPlaceId} onChange={(e) => setLoading(e.target.value)}>
+              {!data.places.some((p) => p.kind !== "border") && <option value="">None yet</option>}
               {data.places
                 .filter((p) => p.kind !== "border")
                 .map((p) => (
@@ -293,6 +301,7 @@ function NominationForm({ open, editing, onClose }: { open: boolean; editing?: N
                   </option>
                 ))}
             </select>
+            <AddNew master="places" what="place" onCreated={setLoading} />
           </Field>
           <Field label="Cargo">
             <select value={productId} onChange={(e) => setProductId(e.target.value)}>
@@ -317,7 +326,8 @@ function NominationForm({ open, editing, onClose }: { open: boolean; editing?: N
         <div>
           <div className="pick-head">
             <strong>Trucks</strong>
-            <span className="muted">Nearest to {placeName(data, loadingPlaceId)} first</span>
+            <span className="muted">{trucks.length ? `Nearest to ${placeName(data, loadingPlaceId)} first` : `No ${wl(data, "truck", true)} yet`}</span>
+            <AddNew master="vehicles" what={wl(data, "truck")} onCreated={(id) => setPicked((p) => [...p, id])} />
           </div>
           <div className="truck-list">
             {trucks.map(({ truck, away, busy: onTrip, held: nominated }) => {

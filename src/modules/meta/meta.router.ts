@@ -17,6 +17,8 @@ router.get('/outbox', authorize('users', 'update'), MetaController.outbox);
 /** `full` (default): ten trucks with trips at every stage. `small`: the masters with two trucks, which the tests use. */
 const sampleBody = z.strictObject({ size: z.enum(['small', 'full']).default('full') }).default({ size: 'full' });
 router.post('/sample-data', authorize('company', 'update'), validate({ body: sampleBody }), MetaController.sampleData);
+/** The usual lists every transport company uses (#116): payment methods, vehicle types, units… Fine in production; nothing made up. */
+router.post('/starter-lists', authorize('company', 'update'), MetaController.starterLists);
 /** Loading a master from a spreadsheet: the columns, a CSV template, and a dry run or load of up to 500 rows at a time. */
 const importParams = z.strictObject({ master: z.string().regex(/^[a-z][a-z0-9-]{1,39}$/) });
 const importBody = z.strictObject({

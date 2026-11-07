@@ -29,7 +29,7 @@ const STEPS = [
   { key: "work", title: "How it works", heading: "How it works", text: "The company's own words and rules. Every default is shown, and only what you change is kept." },
   { key: "people", title: "People", heading: "Who works here", text: "The owner, the staff at the desks, and what each may do." },
   { key: "connections", title: "Connections", heading: "Outside services", text: "E-mail, WhatsApp, SMS, file storage and the rest. Choose a method for each, or leave it simulated for now." },
-  { key: "data", title: "Data", heading: "What it starts with", text: "Made-up records to look around in, the company's own spreadsheets, or nothing yet." },
+  { key: "data", title: "Data", heading: "What it starts with", text: "The usual lists every transport company has, the company's own spreadsheets, or a made-up operation to look around in." },
   { key: "where", title: "Where it runs", heading: "Where it runs", text: "Right here, or a package to deploy somewhere else." },
   { key: "guide", title: "Deploy guide", heading: "How to deploy it", text: "What you'll need, and every step, with this company's own values already in the commands.", packageOnly: true },
   { key: "review", title: "Review", heading: "Review", text: "Everything you've chosen. Go back to anything that isn't right." },
@@ -358,7 +358,7 @@ function ReviewStep({ hasCompany, saveNow, onLeave }: { hasCompany: boolean; sav
       {phase === "done" && (
         <section className="su-done">
           <h2>{failed ? `Set up, with ${failed} ${failed === 1 ? "step" : "steps"} to look at` : `${String(file.company?.tradingName || file.company?.legalName)} is set up`}</h2>
-          <p>{failed ? "Everything else worked. Fix what failed above, then apply again: what already worked is left alone." : file.purpose === "demo" ? "It's ready to show." : "Next, add what a first trip needs. Masters shows what's still missing."}</p>
+          <p>{failed ? "Everything else worked. Fix what failed above, then apply again: what already worked is left alone." : file.purpose === "demo" ? "It's ready to show." : "Next, add the company's own places, customers, trucks and drivers. Overview shows what a first trip still needs."}</p>
           {logins.length > 0 && <DemoLogins logins={logins} owner={me.email} />}
           <span className="su-actions">
             <Button tone="primary" size="lg" onClick={() => { history.replaceState(null, "", location.pathname); onLeave(); location.reload(); }}><ExternalLink size={16} /> Open the app and try it</Button>

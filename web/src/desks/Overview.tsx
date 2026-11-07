@@ -11,6 +11,7 @@ import { FleetMap } from "../tracking/FleetMap";
 import { ago, L, inBase } from "../ui/format";
 import { Card } from "./stages";
 import { Approval } from "./Finance";
+import { FirstTripSteps } from "./firstTrip";
 
 /** Until the company has been through the set-up, a line says so to whoever can do it. */
 function SetUpPrompt() {
@@ -43,6 +44,7 @@ export function Overview() {
   return (
     <div className="desk overview">
       <SetUpPrompt />
+      <FirstTripSteps />
       <div className="kpis">
         <div className="kpi">
           <span>On the road</span>
