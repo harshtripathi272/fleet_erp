@@ -7,13 +7,14 @@ import { StoredFile } from '../files/file.model.js';
 /**
  * A company's records as they stand on this copy, to travel in its package and be restored once on first start.
  * Ids are kept, so every link between records still holds. It never carries accounts, sessions or the audit log:
- * people are invited on the new copy, and its history starts there.
+ * people are invited on the new copy, and its history starts there. Nor messages: on a new copy queued ones would
+ * send twice, and WhatsApp button tokens would still answer.
  */
 const { EJSON } = mongoose.mongo.BSON;
 export type RecordsLevel = 'none' | 'masters' | 'everything';
 
 /** Set by the company file, or belonging to the copy they were made on. */
-const NEVER = new Set(['User', 'Role', 'Session', 'PasswordReset', 'SystemState', 'Company', 'Connection', 'AuditLog', 'Audit', 'IdempotencyKey', 'RateLimit', 'RecordLayout', 'RateFeedRun', 'StoredFile']);
+const NEVER = new Set(['User', 'Role', 'Session', 'PasswordReset', 'SystemState', 'Company', 'Connection', 'AuditLog', 'Audit', 'IdempotencyKey', 'RateLimit', 'RecordLayout', 'RateFeedRun', 'StoredFile', 'OutboundMessage']);
 
 function modelsFor(level: RecordsLevel) {
   if (level === 'none') return [];

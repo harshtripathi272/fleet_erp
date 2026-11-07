@@ -1,6 +1,6 @@
-import { Router } from 'express';
+import { type RequestHandler, Router } from 'express';
 import { z } from 'zod';
-import { ValidationError } from '../../core/errors/index.js';
+import { ForbiddenError, ValidationError } from '../../core/errors/index.js';
 import { ApiResponse } from '../../core/response/index.js';
 import { authorize } from '../../middleware/authorize.js';
 import { validate } from '../../middleware/validate.js';
@@ -56,6 +56,7 @@ router.post('/draft/file/remove', authorize('company', 'update'), validate({ bod
  * company's. The answer is one JSON line per finished step, so the screen shows each as it happens.
  */
 router.post('/apply', authorize('company', 'update'), authorize('users', 'create'), authorize('roles', 'update'), authorize('connections', 'update'),
+  (req, res, next) => ownerOnly(req, res, next),
   validate({ body: z.strictObject({ file: z.unknown(), clear: z.strictObject({ confirm: z.string().max(200).optional() }).optional() }) }),
   asyncHandler(async (req, res) => {
     res.setHeader('Content-Type', 'application/x-ndjson');
@@ -75,11 +76,16 @@ router.post('/apply', authorize('company', 'update'), authorize('users', 'create
 
 /** Every master as the company has it, including those of areas not yet on, for shaping them in the set-up. */
 router.get('/masters', authorize('company', 'update'), asyncHandler(async (req, res) => ApiResponse.success(res, await describeMasters(req.auth, { allAreas: true }))));
+/** Applying can grant anything, and a package with records carries everything: only an Owner, as for granting Owner elsewhere. */
+const ownerOnly: RequestHandler = (req, _res, next) => {
+  if (!req.auth?.roles.includes('owner')) throw new ForbiddenError('Only an owner can do this');
+  next();
+};
 router.post('/guide', authorize('company', 'update'), validate({ body: z.strictObject({ file: z.unknown() }) }), asyncHandler(async (req, res) => {
   ApiResponse.success(res, Setup.guideFor(req.body as { file: unknown }));
 }));
 /** The whole company as it stands on this copy, as one zip; 422 with each problem when it can't be built. */
-router.post('/package', authorize('company', 'update'), validate({ body: z.strictObject({
+router.post('/package', authorize('company', 'update'), ownerOnly, validate({ body: z.strictObject({
   file: z.unknown(), include: z.strictObject({ records: z.enum(['none', 'masters', 'everything']).optional(), files: z.boolean().optional() }).optional(),
 }) }), asyncHandler(async (req, res) => {
   const result = await Setup.packageCurrent(req.body as { file: unknown; include?: { records?: 'none' | 'masters' | 'everything'; files?: boolean } });

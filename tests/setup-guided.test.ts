@@ -391,4 +391,14 @@ describe('Set up a company', () => {
     const bad = (await api().post('/api/v1/setup-kit/check').set(bearer(owner)).send({ file: file({ ...lockedFile, connectionRules: { sms: { providers: ['africastalking'] } } }), finish: 'here' }).expect(200)).body.data.problems;
     assert.ok(bad.some((p: { path: string }) => p.path.startsWith('connectionRules')), JSON.stringify(bad));
   });
+
+  test('only an owner can apply or package, and a real company in production can\'t become a demonstration', async () => {
+    const admin = await userWithRole(owner, 'admin');
+    await api().post('/api/v1/setup-kit/apply').set(bearer(admin)).send({ file: file() }).expect(403);
+    await api().post('/api/v1/setup-kit/package').set(bearer(admin)).send({ file: file() }).expect(403);
+    await apply(owner, { file: file() });
+    env.NODE_ENV = 'production';
+    const refused = endOf(await apply(owner, { file: file({ purpose: 'demo' }) }));
+    assert.match(refused.message, /can't become a demonstration/);
+  });
 });
