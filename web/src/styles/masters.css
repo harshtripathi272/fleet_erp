@@ -285,3 +285,6 @@ details.form-group summary { cursor: pointer; }
 .kind-fixed { font-weight: 600; }
 .field-editor-switches { display: grid; gap: 8px; }
 .field-editor-foot { position: sticky; bottom: 0; padding-block: 10px; background: var(--surface); }
+
+.su-wait h1 { margin: 0; font: 500 24px/1.25 var(--serif); }
+.su-wait p { margin: 0; }

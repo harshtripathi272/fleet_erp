@@ -21,7 +21,7 @@ import { customMasterDefinition, fieldDefinitionDefinition, listDefinition } fro
 import { createCustomMasterSchema, createFieldDefinitionSchema, createListSchema, updateCustomMasterSchema, updateFieldDefinitionSchema, updateListSchema } from '../configuration/configuration.schema.js';
 import { restoreSnapshot } from './snapshot.js';
 import { Connection } from '../connections/connection.model.js';
-import { type ConnectionRule, connectionDefinition, createConnectionSchema, saveConnectionRules, updateConnectionSchema } from '../connections/connections.service.js';
+import { type ConnectionRule, connectionDefinition, connectionRules, createConnectionSchema, saveConnectionRules, updateConnectionSchema } from '../connections/connections.service.js';
 import * as Files from '../files/files.service.js';
 import { loadSampleData } from '../meta/sampleData.js';
 import { Role } from '../roles/role.model.js';
@@ -250,6 +250,8 @@ async function mastersStep(file: CompanyFile, last: Applied | undefined, note: N
  */
 async function rulesStep(file: CompanyFile, changed: Changed, note: Note, options: ApplyOptions) {
   if (!changed((f) => f.connectionRules)) return;
+  // Most companies have none, and "none" isn't news.
+  if (!file.connectionRules && !Object.keys(await connectionRules()).length) return;
   if (options.inviteOwner && !env.SETUP_PACKAGES) return note('connection rules', 'skipped', "This copy's connection rules come from its company file");
   await saveConnectionRules((file.connectionRules ?? {}) as Record<string, ConnectionRule>);
   note('connection rules', 'updated');

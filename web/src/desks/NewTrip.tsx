@@ -101,6 +101,7 @@ export function NewTrip({ open, onClose, onCreated }: { open: boolean; onClose: 
       }
     >
       <div className="stack">
+        {free.length === 0 && <p className="form-problem">{data.trucks.length ? "Every truck is on a trip right now." : "No trucks yet. Add them under Masters, with a driver and a customer, and they'll show here."}</p>}
         <div className="truck-pick" role="radiogroup" aria-label="Truck">
           {free.map((t) => (
             <button key={t.id} role="radio" aria-checked={t.id === truckId} disabled={held.has(t.id)} className={`truck-tile ${t.id === truckId ? "on" : ""}`} onClick={() => pickTruck(t.id)}>
