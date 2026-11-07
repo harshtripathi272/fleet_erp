@@ -28,6 +28,7 @@ import { useSim } from "../tracking/sim";
 import { MiniRoute } from "../tracking/MiniRoute";
 import { StopsTimeline } from "./Trips";
 import { wl } from "../domain/words";
+import { AddNew } from "./firstTrip";
 
 export function StagePanel({ trip, stage, step }: { trip: Trip; stage: StageId; step: NextStep }) {
   return (
@@ -856,7 +857,14 @@ function UploadDoc({ trip, kind, label }: { trip: Trip; kind: DocKind; label: st
 
 /* ================= Loading ================= */
 
-function MeasureForm({
+/** Every load names a product, so with none yet the form says so and offers to add one, rather than failing. */
+function MeasureForm(props: Parameters<typeof MeasureFormForm>[0]) {
+  const { data } = useApp();
+  if (!data.products.length) return <div className="stack"><p className="form-problem">No products yet. Every load names what it carries, so add one first.</p><AddNew master="products" what="product" /></div>;
+  return <MeasureFormForm {...props} />;
+}
+
+function MeasureFormForm({
   trip,
   mode,
   doc,
@@ -871,7 +879,7 @@ function MeasureForm({
 }) {
   const { data, run } = useApp();
   const read = doc?.read ?? {};
-  const [productId, setProductId] = useState(read.productId ?? consignment?.productId ?? trip.productId ?? data.products[0].id);
+  const [productId, setProductId] = useState(read.productId ?? consignment?.productId ?? trip.productId ?? data.products[0]!.id);
   const product = byId(data.products, productId)!;
   const [docNo, setDocNo] = useState(read.docNo ?? "");
   const [consignor, setConsignor] = useState(read.consignor ?? "");

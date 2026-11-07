@@ -54,6 +54,8 @@ const driverSchema = masterSchema({
   assignedVehicleId: { type: ObjectId, ref: 'Vehicle' },
 });
 uniqueIndex(driverSchema, { code: 1 });
+// A driver's messages and sign-in are found by phone, so two drivers can't share one.
+uniqueIndex(driverSchema, { phone: 1 });
 uniqueIndex(driverSchema, { 'nationalId.countryId': 1, 'nationalId.number': 1 }, { 'nationalId.number': { $type: 'string' } });
 uniqueIndex(driverSchema, { 'licence.number': 1 }, { 'licence.number': { $type: 'string' } });
 uniqueIndex(driverSchema, { 'passport.number': 1 }, { 'passport.number': { $type: 'string' } });

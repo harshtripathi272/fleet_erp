@@ -188,6 +188,9 @@ export function NewTrip({ open, onClose, onCreated }: { open: boolean; onClose: 
             </div>
             <StopEditor stops={stops} onChange={setStops} startLocked={truck.placeId || undefined} />
             <AddNew master="places" what="place" />
+            {preview && stops.find((x) => x.kind === "load")?.placeId === stops.find((x) => x.kind === "offload")?.placeId && (
+              <p className="muted">Loading and offloading are at the same place. Check that's right.</p>
+            )}
             {preview ? (
               <div className="route-summary">
                 <MiniRoute stops={preview.stops} height={130} />
