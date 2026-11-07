@@ -245,6 +245,9 @@ export async function clearCopy(confirm: string | undefined, keepUserId: string)
 export async function applyHere(input: { file: unknown; clear?: { confirm?: string } }, actor: { userId: string }, onResult: (r: Result) => void) {
   const parsed = companyFileSchema.safeParse(input.file);
   if (!parsed.success) throw new ValidationError('The company file has problems', { problems: parsed.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`) });
+  // Once real, always real: re-labelling a real company's copy as a demonstration must not open the way to clearing it.
+  const before = await lastApplied();
+  if (before?.purpose === 'real' && parsed.data.purpose === 'demo' && env.NODE_ENV === 'production') throw new ForbiddenError("A real company's copy can't become a demonstration.");
   if (input.clear) {
     await clearCopy(input.clear.confirm, actor.userId);
     onResult({ step: 'clear', outcome: 'updated', detail: 'Everything on this copy was removed, except your account.' });
