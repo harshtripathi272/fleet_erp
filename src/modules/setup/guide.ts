@@ -155,7 +155,7 @@ const checkIt = (file: CompanyFile, url: string): GuideStep => ({
   title: 'Check it worked',
   text: `It should answer "mongo":"connected". Then open the address: you should see the company's name and colour. ${hasMail(file)
     ? `${file.owner.email} gets an e-mail to choose a password. If it doesn't arrive, use "Forgot password" on the sign-in page.`
-    : `Sign in as ${file.owner.email} with OWNER_PASSWORD, and change it under Your account. With no e-mail server, you set each person's password yourself under Users, and "Forgot password" won't send anything.`}`,
+    : `Sign in as ${file.owner.email} with OWNER_PASSWORD, and change it under Your account. With no e-mail server, you set each person's password yourself under Users, and "Forgot password" won't send anything. If the only owner ever forgets theirs, set OWNER_PASSWORD_RESET to a new password, restart, sign in with it, then remove the variable.`}`,
   commands: [`curl -fsS ${url}/api/v1/health/ready`],
 });
 

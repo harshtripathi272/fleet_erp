@@ -148,7 +148,7 @@ export async function signOut() {
 /** Drivers sign in with their phone number; everyone else with their e-mail. */
 const looksLikePhone = (value: string) => /^\+?[\d\s-]{7,}$/.test(value.trim());
 
-interface SignInOptions { company: string | null; firstOwner: boolean; signUp: boolean; demo?: boolean }
+interface SignInOptions { company: string | null; firstOwner: boolean; signUp: boolean; demo?: boolean; mail?: boolean }
 
 /** A "#reset=…" link from an invitation or reset e-mail opens the "choose your password" form. */
 const resetTokenInLink = () => (location.hash.startsWith("#reset=") ? decodeURIComponent(location.hash.slice(7)) : "");
@@ -238,7 +238,9 @@ export function SignIn({ company, onSignedIn }: { company?: string; onSignedIn: 
             {mode !== "in" && <Button tone="quiet" type="button" onClick={() => go("in")}>Back to sign in</Button>}
           </div>
           {mode === "up" && options.data?.firstOwner && <p className="muted">This first account becomes the Owner. The set-up opens next.</p>}
-          {mode === "forgot" && <p className="muted">Drivers who sign in with a phone number: ask the office to set a new password.</p>}
+          {mode === "forgot" && (options.data?.mail === false
+            ? <p className="muted">This copy has no e-mail server, so no link can be sent. Ask your Owner to set a new password under Users. If you are the only Owner, whoever runs this copy can get you back in by setting OWNER_PASSWORD_RESET and restarting it.</p>
+            : <p className="muted">Drivers who sign in with a phone number: ask the office to set a new password.</p>)}
         </form>
       </main>
     </div>

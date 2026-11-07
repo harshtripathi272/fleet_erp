@@ -5,6 +5,7 @@ import { env } from '../../config/env.js';
 import { ConflictError, ForbiddenError, TooManyRequestsError, UnauthorizedError, ValidationError } from '../../core/errors/index.js';
 import { logger } from '../../core/logger/index.js';
 import { sendMail } from '../../core/mail/mailer.js';
+import { senderFor } from '../messaging/connections.service.js';
 import { audit } from '../../core/masters/audit.js';
 import { serialize } from '../../core/masters/service.js';
 import type { Plain } from '../../core/masters/types.js';
@@ -251,6 +252,32 @@ export async function issuePasswordReset(emailAddress: string, purpose: 'reset' 
   return { sent, ...(env.EXPOSE_RESET_TOKEN ? { resetToken: token } : {}) };
 }
 
+/**
+ * Gets a locked-out Owner back in, from OWNER_PASSWORD_RESET (see env.ts). Reaching this needs the platform's own
+ * controls, not the app's. It applies once per value, so a later restart can't undo the password the Owner then chooses.
+ */
+export async function applyOwnerPasswordReset(password = env.OWNER_PASSWORD_RESET, emailAddress = env.OWNER_EMAIL): Promise<{ applied: boolean; reason?: string }> {
+  if (!password) return { applied: false };
+  const key = 'owner-password-reset';
+  const used = await SystemState.findOne({ key }).select('value').lean<{ value?: { hash?: string } }>();
+  if (used?.value?.hash && await verifyPassword(password, used.value.hash)) return { applied: false, reason: 'already-used' };
+  const role = await Role.findOne({ key: 'owner' }).select('_id').lean();
+  const user = emailAddress && role ? await User.findOne({ email: emailAddress, roleIds: role._id }).select('_id').lean() : null;
+  if (!user) {
+    logger.warn('OWNER_PASSWORD_RESET is set, but OWNER_EMAIL is not the address of an Owner, so nothing changed');
+    return { applied: false, reason: 'no-owner' };
+  }
+  await User.updateOne({ _id: user._id }, {
+    $set: { passwordHash: await hashPassword(password), passwordChangedAt: new Date(), failedLoginCount: 0, mustChangePassword: true },
+    $unset: { lockedUntil: 1 }, $inc: { tokenVersion: 1 },
+  });
+  await Session.updateMany({ userId: user._id, revokedAt: null }, { $set: { revokedAt: new Date(), revokedReason: 'owner-password-reset' } });
+  await SystemState.updateOne({ key }, { $set: { value: { hash: await hashPassword(password) } } }, { upsert: true });
+  await audit({ entity: 'users', entityId: user._id, action: 'custom', summary: 'Owner password reset from OWNER_PASSWORD_RESET; all sessions ended' });
+  logger.warn({ userId: String(user._id) }, 'Owner password reset from OWNER_PASSWORD_RESET. Remove the variable now');
+  return { applied: true };
+}
+
 export async function forgotPassword(emailAddress: string) {
   const result = await issuePasswordReset(emailAddress, 'reset');
   return env.EXPOSE_RESET_TOKEN && result.resetToken ? { resetToken: result.resetToken } : {};
@@ -258,16 +285,17 @@ export async function forgotPassword(emailAddress: string) {
 
 /** What the sign-in screen may offer before anyone signs in: the company's name and whether sign-up is open. */
 export async function signInOptions() {
-  const [claimed, company, sample, companyFile] = await Promise.all([
+  const [claimed, company, sample, companyFile, mailer] = await Promise.all([
     SystemState.exists({ key: 'owner-claimed' }),
     Company.findOne().select('tradingName legalName allowSelfRegistration').lean<{ tradingName?: string; legalName?: string; allowSelfRegistration?: boolean }>(),
     SystemState.exists({ key: 'sample-data' }),
     SystemState.findOne({ key: 'company-file' }).select('value.file.purpose').lean<{ value?: { file?: { purpose?: string } } }>(),
+    senderFor('email'),
   ]);
   const firstOwner = !env.OWNER_EMAIL && !claimed;
   // A copy with the sample operation, or set up as a demonstration, says so before anyone signs in (#103).
   const demo = Boolean(sample) || companyFile?.value?.file?.purpose === 'demo';
-  return { company: company?.tradingName || company?.legalName || null, firstOwner, signUp: firstOwner || company?.allowSelfRegistration === true, demo };
+  return { company: company?.tradingName || company?.legalName || null, firstOwner, signUp: firstOwner || company?.allowSelfRegistration === true, demo, mail: Boolean(mailer.send && !mailer.simulated) };
 }
 
 export async function resetPassword(token: string, password: string) {
