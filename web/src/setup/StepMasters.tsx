@@ -3,10 +3,11 @@ import { useQuery } from "@tanstack/react-query";
 import { ArrowDown, ArrowUp, ChevronDown, ChevronUp, GripVertical, Plus, Search, Undo2 } from "lucide-react";
 import { api } from "../api/client";
 import type { Rec } from "../api/adapter";
-import { FIELD_TYPE_INFO, fieldTypeInfo, keyFromLabel } from "../masters/fieldTypes";
+import { FieldEditor, type FieldSpec } from "../masters/FieldEditor";
+import { fieldType } from "../masters/fieldTypes";
 import { label as wordsFor } from "../masters/history";
 import { OPERATIONAL_RECORDS } from "../masters/MastersScreen";
-import { Button, Drawer, Field, FieldGroup, SettingRow, SettingsSection, Status, Switch } from "../ui/kit";
+import { Button, Drawer, Field, SettingRow, SettingsSection, Status, Switch } from "../ui/kit";
 import { useSetUp } from "./context";
 
 /**
@@ -328,9 +329,8 @@ function OwnFields({ entity, title, text, fields, all, onFields, defs, steps, cu
   return (
     <SettingsSection title={title} description={text}>
       {fields.map((f) => {
-        const info = fieldTypeInfo(f.type);
         return (
-          <SettingRow key={String(f.key)} title={<>{String(f.label)}{f.required ? <span className="status status-info area-early">Required</span> : null}</>} description={[info.label, f.helpText, steps?.find((s) => s.value === f.placement)?.label && `Asked when ${String(steps.find((s) => s.value === f.placement)!.label).toLowerCase()}`].filter(Boolean).join(" · ")}>
+          <SettingRow key={String(f.key)} title={<>{String(f.label)}{f.required ? <span className="status status-info area-early">Required</span> : null}</>} description={[fieldType(f.type)?.label, f.helpText, steps?.find((s) => s.value === f.placement)?.label && `Asked when ${String(steps.find((s) => s.value === f.placement)!.label).toLowerCase()}`].filter(Boolean).join(" · ")}>
             <span className="su-actions">
               <Button size="sm" onClick={() => setEditing(f)}>Change</Button>
               <Button size="sm" tone="quiet" onClick={() => onFields(all.filter((x) => x !== f))}>Remove</Button>
@@ -351,99 +351,42 @@ function OwnFields({ entity, title, text, fields, all, onFields, defs, steps, cu
   );
 }
 
-/* ---------- Making one field ---------- */
+/* ---------- Making one field: the same editor as Customise and the record's own form ---------- */
 
 function FieldDrawer({ field, defs, steps, taken, onClose, onSave }: { field?: Rec; defs: Rec[]; steps?: { value: string; label: string }[]; taken: string[]; onClose: () => void; onSave: (f: Rec) => void }) {
-  const [draft, setDraft] = useState<Rec>(field ?? { type: "text", ...(steps ? { placement: steps[0]!.value, askedOf: "office" } : {}) });
-  const [choiceText, setChoiceText] = useState(((field?.options ?? []) as string[]).join("\n"));
-  const info = fieldTypeInfo(draft.type);
-  const takes = (x: string) => (info as { takes?: string[] }).takes?.includes(x);
-  const key = field ? String(field.key) : keyFromLabel(String(draft.label ?? ""));
-  const options = choiceText.split("\n").map((s) => s.trim()).filter(Boolean);
-  const set = (change: Rec) => setDraft((d) => ({ ...d, ...change }));
-  const pickType = (type: string) => setDraft((d) => ({ label: d.label, helpText: d.helpText, required: d.required, placement: d.placement, askedOf: d.askedOf, printOn: d.printOn, type }));
-  const clash = taken.includes(key);
-  const problem = !String(draft.label ?? "").trim() ? "Give it a name." : clash ? "This master already has a field with that name." : takes("choices") && !options.length ? "Add at least one choice." : takes("master") && !draft.referenceMaster ? "Choose which master it links to." : undefined;
-  const save = () => {
-    const out: Rec = { key, label: String(draft.label).trim(), type: draft.type };
-    if (draft.required) out.required = true;
-    if (draft.helpText) out.helpText = draft.helpText;
-    if (takes("choices")) out.options = [...new Set(options)];
-    if (takes("master")) out.referenceMaster = draft.referenceMaster;
-    if (takes("length") && draft.maxLength) out.maxLength = Number(draft.maxLength);
-    if (takes("range") && draft.min !== undefined && draft.min !== "") out.min = Number(draft.min);
-    if (takes("range") && draft.max !== undefined && draft.max !== "") out.max = Number(draft.max);
-    if (takes("pattern") && draft.pattern) out.pattern = draft.pattern;
-    if (steps) { out.placement = draft.placement; out.askedOf = draft.askedOf; if ((draft.printOn as string[] | undefined)?.length) out.printOn = draft.printOn; }
+  const [placement, setPlacement] = useState(String(field?.placement ?? steps?.[0]?.value ?? ""));
+  const [askedOf, setAskedOf] = useState(String(field?.askedOf ?? "office"));
+  const lists = useQuery({ queryKey: ["lists-for-fields"], queryFn: () => api<Rec[]>("/lists", { query: { status: "active", limit: 100 } }) });
+  const { file, set } = useSetUp();
+  const save = (spec: FieldSpec) => {
+    const { listId, ...rest } = spec as Rec;
+    const out: Rec = { ...rest };
+    // A list is named by its code in the company file: ids mean nothing on another copy, and it travels with the file.
+    const list = listId ? lists.data?.find((l) => l.id === listId) : undefined;
+    if (field?.listCode && !listId) out.listCode = field.listCode;
+    if (list) {
+      out.listCode = list.code;
+      const known = ((file.masters?.lists ?? []) as Rec[]);
+      if (!known.some((l) => l.code === list.code)) set("masters.lists", [...known, { code: list.code, name: list.name, ...(list.description ? { description: list.description } : {}), values: ((list.values ?? []) as Rec[]).map((v) => ({ value: v.value, label: v.label })) }]);
+    }
+    if (steps) { out.placement = placement; out.askedOf = askedOf; if (field?.printOn) out.printOn = field.printOn; }
     onSave(out);
   };
   return (
-    <Drawer open title={field ? `Change ${String(field.label)}` : "Add a field"} onClose={onClose} width={720}
-      footer={<><span className="su-drawer-problem">{draft.label ? problem : ""}</span><Button tone="quiet" onClick={onClose}>Cancel</Button><Button tone="primary" disabled={Boolean(problem)} onClick={save}>{field ? "Save field" : "Add field"}</Button></>}>
-      <div className="su-stack">
-        <Field label="Name *" hint={key && !field ? `Stored as ${key}.` : undefined}><input className="input" autoFocus value={String(draft.label ?? "")} onChange={(e) => set({ label: e.target.value })} placeholder="Medical certificate number" /></Field>
-        <FieldGroup label="What it holds" wide hint={field ? "A field's kind can't change once it's made, so existing values stay valid." : undefined}>
-          <div className="su-types" role="radiogroup" aria-label="What it holds">
-            {FIELD_TYPE_INFO.map((t) => {
-              const Icon = t.icon;
-              return (
-                <button key={t.type} type="button" role="radio" aria-checked={draft.type === t.type} disabled={Boolean(field) && draft.type !== t.type} className={draft.type === t.type ? "on" : ""} onClick={() => pickType(t.type)}>
-                  <Icon size={16} aria-hidden /><strong>{t.label}</strong><small>{t.text}</small>
-                </button>
-              );
-            })}
-          </div>
-        </FieldGroup>
-        {takes("choices") && <Field label="Choices *" hint="One per line. People pick from these, in this order."><textarea className="input" rows={5} value={choiceText} onChange={(e) => setChoiceText(e.target.value)} placeholder={"Class A\nClass B\nClass C"} /></Field>}
-        {takes("master") && (
-          <Field label="Links to *" hint="People pick a record of this master.">
-            <select className="input" value={String(draft.referenceMaster ?? "")} onChange={(e) => set({ referenceMaster: e.target.value })}>
-              <option value="">Choose a master</option>
-              {defs.map((d) => <option key={String(d.key)} value={String(d.key)}>{String(d.label)}</option>)}
-            </select>
-          </Field>
-        )}
-        {takes("range") && (
-          <div className="grid-2">
-            <Field label="Smallest allowed"><input className="input" type="number" value={String(draft.min ?? "")} onChange={(e) => set({ min: e.target.value })} /></Field>
-            <Field label="Largest allowed"><input className="input" type="number" value={String(draft.max ?? "")} onChange={(e) => set({ max: e.target.value })} /></Field>
-          </div>
-        )}
-        <Field label="Help text" hint="Shown under the field, for whoever fills it in."><input className="input" value={String(draft.helpText ?? "")} onChange={(e) => set({ helpText: e.target.value })} /></Field>
-        <SettingRow title="Required" description="A record can't be saved without it. Records already there are only asked when next changed.">
-          <Switch label="Required" checked={Boolean(draft.required)} onChange={(v) => set({ required: v })} />
-        </SettingRow>
-        {steps && (
+    <Drawer open title={field ? `Change ${String(field.label)}` : "Add a field"} onClose={onClose} width={720}>
+      <FieldEditor initial={(field ?? {}) as FieldSpec} defs={defs} editing={Boolean(field)} takenKeys={taken} onSave={save} onCancel={onClose} saveLabel={field ? "Save field" : "Add field"}
+        extra={steps && (
           <div className="grid-2">
             <Field label="Asked when">
-              <select className="input" value={String(draft.placement ?? steps[0]!.value)} onChange={(e) => set({ placement: e.target.value })}>{steps.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}</select>
+              <select className="input" value={placement} onChange={(e) => setPlacement(e.target.value)}>{steps.map((x) => <option key={x.value} value={x.value}>{x.label}</option>)}</select>
             </Field>
             <Field label="Answered by">
-              <select className="input" value={String(draft.askedOf ?? "office")} onChange={(e) => set({ askedOf: e.target.value })}><option value="office">The office</option><option value="driver">The driver</option></select>
+              <select className="input" value={askedOf} onChange={(e) => setAskedOf(e.target.value)}><option value="office">The office</option><option value="driver">The driver</option></select>
             </Field>
           </div>
-        )}
-        <FieldGroup label="How it will look" wide>
-          <div className="su-field-preview"><FieldPreview draft={draft} options={options} /></div>
-        </FieldGroup>
-      </div>
+        )} />
     </Drawer>
   );
-}
-
-function FieldPreview({ draft, options }: { draft: Rec; options: string[] }) {
-  const title = `${String(draft.label || "Your field")}${draft.required ? " *" : ""}`;
-  const hint = draft.helpText ? String(draft.helpText) : undefined;
-  switch (draft.type) {
-    case "boolean": return <SettingRow title={title} description={hint}><Switch label={title} checked={false} onChange={() => undefined} /></SettingRow>;
-    case "long_text": return <Field label={title} hint={hint}><textarea className="input" rows={2} readOnly /></Field>;
-    case "select": return <Field label={title} hint={hint}><select className="input"><option>Choose</option>{options.map((o) => <option key={o}>{o}</option>)}</select></Field>;
-    case "reference": return <Field label={title} hint={hint}><select className="input"><option>Choose a record</option></select></Field>;
-    case "multi_select": return <FieldGroup label={title} hint={hint}><div className="choice-chips">{(options.length ? options : ["First choice", "Second choice"]).map((o) => <button key={o} type="button">{o}</button>)}</div></FieldGroup>;
-    case "date": return <Field label={title} hint={hint}><input className="input" type="date" readOnly /></Field>;
-    case "number": return <Field label={title} hint={hint}><input className="input" type="number" readOnly /></Field>;
-    default: return <Field label={title} hint={hint}><input className="input" readOnly placeholder={draft.type === "email" ? "name@example.com" : draft.type === "phone" ? "+260…" : ""} /></Field>;
-  }
 }
 
 /* ---------- A master of the company's own ---------- */
@@ -459,7 +402,7 @@ function OwnMaster({ master, onEdit, onRemove }: { master: Rec; onEdit: () => vo
         <table className="cust-table">
           <thead><tr><th>Field</th><th>Holds</th><th>Required</th></tr></thead>
           <tbody>{((master.fields ?? []) as Rec[]).map((f) => (
-            <tr key={String(f.key)}><td>{String(f.label)}{f.key === master.titleField && <> <Status tone="mute">Names each record</Status></>}</td><td>{fieldTypeInfo(f.type).label}</td><td>{f.required ? "Yes" : "No"}</td></tr>
+            <tr key={String(f.key)}><td>{String(f.label)}{f.key === master.titleField && <> <Status tone="mute">Names each record</Status></>}</td><td>{fieldType(f.type)?.label}</td><td>{f.required ? "Yes" : "No"}</td></tr>
           ))}</tbody>
         </table>
       </div>
@@ -489,7 +432,7 @@ function MasterDrawer({ master, defs, taken, onClose, onSave }: { master?: Rec; 
         <Field label="What it's for"><input className="input" value={description} onChange={(e) => setDescription(e.target.value)} /></Field>
         <SettingsSection title="Its fields">
           {fields.map((f) => (
-            <SettingRow key={String(f.key)} title={<>{String(f.label)}{f.required ? <span className="status status-info area-early">Required</span> : null}</>} description={fieldTypeInfo(f.type).label}>
+            <SettingRow key={String(f.key)} title={<>{String(f.label)}{f.required ? <span className="status status-info area-early">Required</span> : null}</>} description={fieldType(f.type)?.label}>
               <span className="su-actions">
                 <Button size="sm" onClick={() => setEditing(f)}>Change</Button>
                 <Button size="sm" tone="quiet" disabled={fields.length === 1} onClick={() => setFields(fields.filter((x) => x !== f))}>Remove</Button>

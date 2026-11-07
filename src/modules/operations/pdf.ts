@@ -11,7 +11,9 @@ export type PdfBlock =
   | { kind: 'text'; text: string }
   | { kind: 'facts'; rows: Array<[string, string]> }
   | { kind: 'table'; columns: Array<{ label: string; width: number; align?: 'right' }>; rows: string[][] }
-  | { kind: 'signatures'; labels: string[] };
+  | { kind: 'signatures'; labels: string[] }
+  /** A company picture field (#97): its name, then the photo, at most 150 points tall. A JPEG, as the logo is. */
+  | { kind: 'picture'; label: string; jpeg: Buffer };
 
 export interface PdfLayout {
   paperSize?: 'A4' | 'A5' | 'Letter';
@@ -105,6 +107,7 @@ export function renderPdf(blocks: PdfBlock[], layout: PdfLayout = {}): Buffer {
   // A line under the text just written.
   const rule = (weight = 0.5) => { ops.push(`${weight} w ${MARGIN} ${(y - 3).toFixed(1)} m ${w - MARGIN} ${(y - 3).toFixed(1)} l S`); y -= 3; };
   newPage();
+  const pictures: Array<{ jpeg: Buffer; width: number; height: number; components: number }> = [];
 
   // The logo, top right of the first page, at most 34 points tall and 140 wide.
   const logoSize = layout.logo ? jpegSize(layout.logo) : null;
@@ -157,6 +160,16 @@ export function renderPdf(blocks: PdfBlock[], layout: PdfLayout = {}): Buffer {
           if (y - 12 < MARGIN + FOOTER) { newPage(); header(); }
           y -= 12; row(cells, false);
         }
+        break;
+      }
+      case 'picture': {
+        const size = jpegSize(block.jpeg);
+        if (!size) break;
+        const scale = Math.min(150 / size.height, Math.min(260, usable) / size.width, 1);
+        const [pw, ph] = [size.width * scale, size.height * scale];
+        room(ph + 22); y -= 14; text(MARGIN, 9, true, fit(block.label, 9, usable)); y -= ph + 4;
+        pictures.push({ jpeg: block.jpeg, ...size });
+        ops.push(`q ${pw.toFixed(1)} 0 0 ${ph.toFixed(1)} ${MARGIN} ${y.toFixed(1)} cm /Im${pictures.length + 1} Do Q`);
         break;
       }
       case 'signatures': {
@@ -218,7 +231,12 @@ export function renderPdf(blocks: PdfBlock[], layout: PdfLayout = {}): Buffer {
   objects[7] = logoSize && layout.logo
     ? `<< /Type /XObject /Subtype /Image /Width ${logoSize.width} /Height ${logoSize.height} /ColorSpace /${logoSize.components === 1 ? 'DeviceGray' : logoSize.components === 4 ? 'DeviceCMYK' : 'DeviceRGB'} /BitsPerComponent 8 /Filter /DCTDecode /Length ${layout.logo.length} >>\nstream\n${layout.logo.toString('latin1')}\nendstream`
     : '<< >>';
-  const resources = `/Font << /F1 3 0 R /F2 4 0 R >> /ExtGState << /GS1 5 0 R /GS2 6 0 R >>${logoSize ? ' /XObject << /Im1 7 0 R >>' : ''}`;
+  // Pictures follow the pages: Im2, Im3… after the logo's Im1.
+  const pictureIds = pictures.map((_, i) => 8 + pages.length * 2 + i);
+  const image = (p: { jpeg: Buffer; width: number; height: number; components: number }) => `<< /Type /XObject /Subtype /Image /Width ${p.width} /Height ${p.height} /ColorSpace /${p.components === 1 ? 'DeviceGray' : p.components === 4 ? 'DeviceCMYK' : 'DeviceRGB'} /BitsPerComponent 8 /Filter /DCTDecode /Length ${p.jpeg.length} >>\nstream\n${p.jpeg.toString('latin1')}\nendstream`;
+  pictures.forEach((p, i) => { objects[pictureIds[i]!] = image(p); });
+  const xobjects = [...(logoSize ? ['/Im1 7 0 R'] : []), ...pictureIds.map((id, i) => `/Im${i + 2} ${id} 0 R`)];
+  const resources = `/Font << /F1 3 0 R /F2 4 0 R >> /ExtGState << /GS1 5 0 R /GS2 6 0 R >>${xobjects.length ? ` /XObject << ${xobjects.join(' ')} >>` : ''}`;
   pages.forEach((page, i) => {
     const stream = page.join('\n');
     objects[pageIds[i]!] = `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${w} ${h}] /Resources << ${resources} >> /Contents ${pageIds[i]! + 1} 0 R >>`;

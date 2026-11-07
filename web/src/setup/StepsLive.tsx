@@ -12,10 +12,15 @@ import { FileDrop, saveBlob, useSetUp, type MasterOption, type TargetField } fro
 
 interface FieldSpec { key: string; label: string; hint?: string; type: "string" | "number" | "boolean" | "choice"; required: boolean; choices?: { value: string; label: string }[]; default?: unknown; min?: number; max?: number }
 interface SecretSpec { key: string; label: string; required: boolean; hint?: string }
-interface ProviderInfo { key: string; label: string; description?: string; simulated: boolean; fields: FieldSpec[]; secrets: SecretSpec[]; inbound?: boolean }
+interface GuideLine { text: string; link?: string; linkText?: string; command?: string }
+interface ProviderInfo { key: string; label: string; description?: string; simulated: boolean; fields: FieldSpec[]; secrets: SecretSpec[]; inbound?: boolean; ownSignature?: boolean; guide?: GuideLine[]; comingSoon?: string }
 interface KindState { kind: string; label: string; description: string; whenNone: string; providers: ProviderInfo[] }
 
-const envName = (kind: string, key: string) => `CONNECTION_${kind}_${key}`.toUpperCase().replace(/[^A-Z0-9_]/g, "_");
+/** The server's own naming (secretEnvName), so the connection screens and the set-up say the same name. */
+const envName = (code: string, key: string) => {
+  const part = (x: string) => x.replace(/([a-z0-9])([A-Z])/g, "$1_$2").toUpperCase().replace(/[^A-Z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+  return `CONNECTION_${`${part(code) || "X"}_${part(key)}`.slice(0, 50).replace(/_+$/, "")}`;
+};
 /** E-mail, then WhatsApp and SMS, and the rest in the server's order. */
 const FIRST = ["email", "whatsapp", "sms", "storage"];
 
@@ -52,7 +57,7 @@ function KindRow({ kind: k, open, onToggle }: { kind: KindState; open: boolean; 
     const next: Rec = {
       code: k.kind.toUpperCase(), name: p.label, kind: k.kind, provider: p.key, enabled: true, settings,
       secrets: Object.fromEntries(p.secrets.map((s) => [s.key, envName(k.kind, s.key)])),
-      ...(p.inbound ? { webhookSecretEnv: envName(k.kind, "SIGNING_SECRET") } : {}),
+      ...(p.inbound && !p.ownSignature ? { webhookSecretEnv: envName(k.kind, "signingSecret") } : {}),
     };
     set("connections", at >= 0 ? list.map((c, i) => (i === at ? next : c)) : [...list, next]);
   };
@@ -84,12 +89,26 @@ function KindRow({ kind: k, open, onToggle }: { kind: KindState; open: boolean; 
           <FieldGroup label="How" wide hint={provider?.description ?? (simulated ? simulated.description ?? k.whenNone : k.whenNone)}>
             <div className="su-methods" role="radiogroup" aria-label={`${k.label} method`}>
               <button type="button" role="radio" aria-checked={!chosen || Boolean(provider?.simulated)} className={!chosen || provider?.simulated ? "on" : ""} onClick={() => pick("none")}>{simulated ? "Simulated" : k.kind === "storage" ? "This server's own" : "Not connected"}</button>
-              {real.map((p) => <button key={p.key} type="button" role="radio" aria-checked={chosen?.provider === p.key} className={chosen?.provider === p.key ? "on" : ""} onClick={() => pick(p.key)}>{p.label}</button>)}
+              {real.map((p) => <button key={p.key} type="button" role="radio" aria-checked={chosen?.provider === p.key} disabled={Boolean(p.comingSoon)} title={p.comingSoon} className={chosen?.provider === p.key ? "on" : ""} onClick={() => pick(p.key)}>{p.label}{p.comingSoon ? " · coming soon" : ""}</button>)}
             </div>
           </FieldGroup>
           {real.length === 0 && <p className="su-note">No real service for this yet: it stays simulated, and says so wherever it shows.</p>}
           {chosen && provider && !provider.simulated && (
             <>
+              {(provider.guide ?? []).length > 0 && (
+                <details className="su-kind-guide" open>
+                  <summary>How to get these</summary>
+                  <ol>
+                    {provider.guide!.map((g, i) => (
+                      <li key={i}>
+                        {g.text.replace(/\{webhookUrl\}/g, "the address shown on its connection once it's set up")}
+                        {g.link && <> <a className="su-link" href={g.link} target="_blank" rel="noreferrer">{g.linkText ?? "Open"}</a></>}
+                        {g.command && <pre>{g.command}</pre>}
+                      </li>
+                    ))}
+                  </ol>
+                </details>
+              )}
               {provider.fields.length > 0 && (
                 <div className="grid-2">
                   {provider.fields.map((f) => <SettingField key={f.key} field={f as never} value={(chosen.settings?.[f.key] ?? "") as string} error={err(`connections.${at}.settings.${f.key}`)} onChange={(v) => setting(f.key, v)} />)}
@@ -104,6 +123,7 @@ function KindRow({ kind: k, open, onToggle }: { kind: KindState; open: boolean; 
                   <ul>{secretNames.map((s) => <li key={s.name}><code>{s.name}=</code><span>{s.label}</span></li>)}</ul>
                 </div>
               )}
+              <DraftTest kind={k.kind} provider={provider} chosen={chosen} />
               <SettingRow title="Use it from the start" description="Off: it's set up, but the simulated stand-in keeps working until someone switches it on.">
                 <Switch label="Use it from the start" checked={Boolean(chosen.enabled)} onChange={(v) => set("connections", list.map((c, i) => (i === at ? { ...c, enabled: v } : c)))} />
               </SettingRow>
@@ -112,6 +132,32 @@ function KindRow({ kind: k, open, onToggle }: { kind: KindState; open: boolean; 
         </div>
       )}
     </article>
+  );
+}
+
+/** Tries the values on the form before anything is saved. It needs the keys set on this server, and says which aren't. */
+function DraftTest({ kind, provider, chosen }: { kind: string; provider: ProviderInfo; chosen: Rec }) {
+  const [to, setTo] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState<{ ok: boolean; message: string; missing?: string[] } | null>(null);
+  const message = ["email", "sms", "whatsapp"].includes(kind);
+  const run = async () => {
+    setBusy(true);
+    setResult(null);
+    try {
+      setResult(await api("/connections/test-draft", { method: "POST", body: { kind, provider: provider.key, code: chosen.code, settings: chosen.settings ?? {}, secrets: chosen.secrets ?? {}, ...(message ? { to } : {}) } }));
+    } catch (e) { setResult({ ok: false, message: (e as Error).message }); } finally { setBusy(false); }
+  };
+  return (
+    <div className="su-draft-test">
+      <span className="su-actions">
+        {message && <input className="input" aria-label="Send the test message to" placeholder={kind === "email" ? "you@example.com" : "+260…"} value={to} onChange={(e) => setTo(e.target.value.trim())} />}
+        <Button busy={busy} disabled={message && !to} onClick={() => void run()}>{message ? "Send a test message" : "Test it"}</Button>
+      </span>
+      {result && (result.missing?.length
+        ? <p className="muted">Not tested yet: its keys aren't on this server. That's fine if it will run somewhere else, where they'll be set.</p>
+        : <p>{result.ok ? <Status tone="ok">Works</Status> : <Status tone="bad">Didn't work</Status>} {result.message}</p>)}
+    </div>
   );
 }
 

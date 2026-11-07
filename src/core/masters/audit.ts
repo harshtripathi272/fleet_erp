@@ -5,6 +5,9 @@ import { AuditLog } from './audit.model.js';
 import type { Plain } from './types.js';
 
 const SECRET_PATHS = /password|token|secret|hash/i;
+/** Where a record keeps the company's own fields: `custom` on masters, `data` on a custom master's records. */
+const COMPANY_VALUES = new Set(['custom', 'data']);
+const isPlain = (v: unknown) => Boolean(v) && typeof v === 'object' && !Array.isArray(v);
 
 /** JSON-comparable form: ObjectIds and dates become strings. */
 export function comparable(value: unknown): unknown {
@@ -26,6 +29,11 @@ export function diff(before: Plain, after: Plain, masked: string[] = []): Array<
     const from = comparable(before[key]);
     const to = comparable(after[key]);
     if (JSON.stringify(from) === JSON.stringify(to)) continue;
+    // The company's own values read field by field in the history (#97): "Medical certificate: — → cert.pdf".
+    if (COMPANY_VALUES.has(key) && isPlain(from ?? {}) && isPlain(to ?? {})) {
+      out.push(...diff((from ?? {}) as Plain, (to ?? {}) as Plain, masked).map((c) => ({ ...c, path: `${key}.${c.path}` })));
+      continue;
+    }
     const hide = SECRET_PATHS.test(key) || masked.some((m) => m === key || m.startsWith(`${key}.`));
     out.push({ path: key, from: hide ? '[hidden]' : from, to: hide ? '[hidden]' : to });
   }

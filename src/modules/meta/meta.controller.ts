@@ -1,10 +1,11 @@
 import { env } from '../../config/env.js';
 import { ForbiddenError, NotFoundError } from '../../core/errors/index.js';
 import { contextOf } from '../../core/masters/controller.js';
-import { companyColumns, importableMaster, importRows, templateCsv } from '../../core/masters/import.js';
+import { companyColumns, importableMaster, importRows, leftOutOfImport, templateCsv } from '../../core/masters/import.js';
 import { getLayout as readLayout, saveLayout as writeLayout, type LayoutInput } from '../../core/masters/layout.js';
 import { getMaster } from '../../core/masters/registry.js';
 import { Company } from '../company/company.model.js';
+import { FieldDefinition } from '../configuration/models/configuration.model.js';
 import { ApiResponse } from '../../core/response/index.js';
 import { asyncHandler } from '../../utils/asyncHandler.js';
 import auditRouter from '../audit/audit.router.js';
@@ -70,7 +71,7 @@ const importable = (req: Parameters<Parameters<typeof asyncHandler>[0]>[0]) => {
 };
 export const importInfo = asyncHandler(async (req, res) => {
   const def = importable(req);
-  ApiResponse.success(res, { master: def.key, label: def.label, columns: await companyColumns(def) });
+  ApiResponse.success(res, { master: def.key, label: def.label, columns: await companyColumns(def), leftOut: await leftOutOfImport(def) });
 });
 export const importTemplate = asyncHandler(async (req, res) => {
   const def = importable(req);
@@ -98,7 +99,9 @@ export const getLayout = asyncHandler(async (req, res) => ApiResponse.success(re
 export const saveLayout = asyncHandler(async (req, res) => {
   const def = masterOr404(String(req.params.master));
   const ctx = contextOf(req);
-  ApiResponse.success(res, await writeLayout(def, req.body as LayoutInput, { actorId: ctx.actorId, requestId: ctx.requestId }));
+  // The company's own fields on this master can be placed among the built-in ones and be list columns (#97).
+  const customKeys = (await FieldDefinition.find({ entity: def.key, status: 'active' }).select('key').lean()).map((f) => String(f.key));
+  ApiResponse.success(res, await writeLayout(def, req.body as LayoutInput, { actorId: ctx.actorId, requestId: ctx.requestId, customKeys }));
 });
 
 /** The company's words, stages and desks (#73), for every signed-in person. */

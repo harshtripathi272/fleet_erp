@@ -332,4 +332,27 @@ describe('Set up a company', () => {
     const waiting = (await api().post('/api/v1/setup-kit/check-sheet').set(bearer(owner)).send({ master: 'countries', path: 'data/countries.csv', others: ['currencies'] }).expect(200)).body.data;
     assert.equal(waiting.problemCount, 0, 'the currency comes from its own spreadsheet');
   });
+
+  test('the set-up carries file fields, and the new services: Meta and Twilio need no signing secret, and what isn\'t built can\'t be chosen', async () => {
+    const check = async (over: Record<string, unknown>) => (await api().post('/api/v1/setup-kit/check').set(bearer(owner)).send({ file: file(over), finish: 'here' }).expect(200)).body.data.problems as { path: string; message: string }[];
+    const fields = { layouts: [], lists: [], customMasters: [], fields: [{ entity: 'drivers', key: 'medicalCertificate', label: 'Medical certificate', type: 'document', withExpiry: true, accept: ['pdf'], maxSizeMb: 5 }] };
+    assert.deepEqual(await check({ masters: fields }), []);
+    const lines = await apply(owner, { file: file({ masters: fields }) });
+    assert.ok(!lines.some((l) => l.outcome === 'failed'), JSON.stringify(lines));
+    const made = (await meta(owner)).find((d) => d.key === 'drivers')!.customFields.find((f: { key: string }) => f.key === 'medicalCertificate');
+    assert.equal(made.type, 'document');
+    const captured = (await api().get('/api/v1/setup-kit').set(bearer(owner)).expect(200)).body.data.file;
+    const back = captured.masters.fields.find((f: { key: string }) => f.key === 'medicalCertificate');
+    assert.equal(back.withExpiry, true, 'packaged again with its options');
+    assert.deepEqual(back.accept, ['pdf']);
+
+    const meta_ = { code: 'WHATSAPP', name: 'Meta', kind: 'whatsapp', provider: 'meta-cloud', enabled: true, settings: { phoneNumberId: '123456789', businessAccountId: '987654321' }, secrets: { accessToken: 'CONNECTION_WHATSAPP_ACCESS_TOKEN', appSecret: 'CONNECTION_WHATSAPP_APP_SECRET', verifyToken: 'CONNECTION_WHATSAPP_VERIFY_TOKEN' } };
+    const providers = (await api().get('/api/v1/connection-kinds').set(bearer(owner)).expect(200)).body.data.find((k: { kind: string }) => k.kind === 'whatsapp').providers as { key: string; ownSignature?: boolean; comingSoon?: string; simulated: boolean }[];
+    const cloud = providers.find((p) => p.ownSignature)!;
+    assert.ok(cloud, 'a real WhatsApp service is offered');
+    const problems = await check({ connections: [{ ...meta_, provider: cloud.key }] });
+    assert.ok(!problems.some((p) => /webhookSecretEnv/.test(p.path)), JSON.stringify(problems));
+    const soon = providers.find((p) => p.comingSoon)!;
+    assert.ok((await check({ connections: [{ code: 'TALKS', name: 'Talks', kind: 'whatsapp', provider: soon.key, enabled: true }] })).some((p) => p.path.startsWith('connections.0.provider')), 'not built, so not choosable');
+  });
 });

@@ -1100,57 +1100,6 @@
 .su-choices {
   padding: 12px 16px;
 }
-.su-types {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-  gap: 8px;
-  width: 100%;
-}
-.su-types button {
-  display: grid;
-  gap: 2px;
-  justify-items: start;
-  padding: 10px;
-  border: 1px solid var(--line-2);
-  border-radius: var(--radius-sm);
-  background: var(--surface);
-  color: var(--ink);
-  text-align: left;
-  cursor: pointer;
-  transition: background 0.15s, border-color 0.15s;
-}
-.su-types button svg {
-  color: var(--ink-3);
-}
-.su-types button:hover:not(:disabled) {
-  background: var(--surface-2);
-}
-.su-types button.on {
-  border-color: var(--pine-700);
-  background: var(--pine-50);
-}
-.su-types button.on svg {
-  color: var(--pine-700);
-}
-.su-types button:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
-}
-.su-types small {
-  color: var(--ink-3);
-  font-size: 12px;
-  line-height: 1.35;
-}
-.su-field-preview {
-  width: 100%;
-  padding: 12px;
-  border: 1px dashed var(--line-2);
-  border-radius: var(--radius-sm);
-  background: var(--surface-2);
-}
-.su-field-preview .setting-row {
-  padding: 0;
-}
 .su-drawer-problem {
   flex: 1;
   color: var(--rust);
@@ -1427,4 +1376,37 @@
 }
 .su-field-more td:first-child {
   padding: 0;
+}
+
+.su-kind-guide {
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--paper-2);
+  font-size: 13.5px;
+}
+.su-kind-guide summary {
+  font-weight: 600;
+  cursor: pointer;
+}
+.su-kind-guide ol {
+  display: grid;
+  gap: 4px;
+  margin: 8px 0 0;
+  padding-left: 18px;
+}
+.su-kind-guide pre {
+  margin: 4px 0 0;
+  overflow-x: auto;
+  font: 400 12.5px/1.5 var(--mono);
+}
+.su-draft-test {
+  display: grid;
+  gap: 6px;
+}
+.su-draft-test .input {
+  max-width: 260px;
+}
+.su-draft-test p {
+  margin: 0;
+  font-size: 13.5px;
 }

@@ -66,7 +66,8 @@ export async function fromInstallation(): Promise<{ file: CompanyFileInput; atta
   const listCode = new Map(listDocs.map((l) => [String(l._id), String(l.code)]));
   const spec = (f: Plain) => defined({
     key: f.key, label: f.label, type: f.type, required: f.required || undefined, options: f.options, referenceMaster: f.referenceMaster, min: f.min, max: f.max,
-    maxLength: f.maxLength, pattern: f.pattern, helpText: f.helpText, order: f.order, listCode: f.listId ? listCode.get(String(f.listId)) : undefined,
+    maxLength: f.maxLength, pattern: f.pattern, helpText: f.helpText, order: f.order,
+    maxSizeMb: f.maxSizeMb, maxFiles: f.maxFiles, accept: f.accept, withExpiry: f.withExpiry, listCode: f.listId ? listCode.get(String(f.listId)) : undefined,
   });
   const ownerRole = await Role.findOne({ key: 'owner' }).select('_id').lean<{ _id: unknown }>();
   const people = await User.find({ status: 'active', driverId: null }).sort({ createdAt: 1 }).select('name email phone roleIds').lean<Plain[]>();

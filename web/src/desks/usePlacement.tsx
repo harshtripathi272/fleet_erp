@@ -2,7 +2,9 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { Rec } from "../api/adapter";
 import { api } from "../api/client";
-import { Field } from "../ui/kit";
+import { Field, FieldGroup } from "../ui/kit";
+import { FileField } from "../masters/FileField";
+import { isFileType } from "../masters/fieldTypes";
 
 /**
  * Company fields on an operational record (#67). Each step draws the fields a company placed there, using one
@@ -12,6 +14,8 @@ import { Field } from "../ui/kit";
 export interface CompanyField {
   entity: string; placement: string; askedOf: "office" | "driver"; printOn: string[]; key: string; label: string;
   type: string; required: boolean; options?: string[]; referenceMaster?: string; min?: number; max?: number; helpText?: string;
+  /** File fields (#97): what they take, so the upload control can say so before anything is sent. */
+  accept?: string[]; maxSizeMb?: number; maxFiles?: number; withExpiry?: boolean;
 }
 
 export const useCompanyFields = () =>
@@ -19,7 +23,7 @@ export const useCompanyFields = () =>
 
 const blank = (value: unknown) => value === undefined || value === "" || (Array.isArray(value) && !value.length);
 
-export function FieldInput({ field, value, onChange }: { field: Pick<CompanyField, "key" | "label" | "type" | "required" | "options" | "referenceMaster" | "min" | "max" | "helpText">; value: unknown; onChange: (next: unknown) => void }) {
+export function FieldInput({ field, value, onChange }: { field: Pick<CompanyField, "key" | "label" | "type" | "required" | "options" | "referenceMaster" | "min" | "max" | "helpText"> & Partial<Pick<CompanyField, "entity" | "accept" | "maxSizeMb" | "maxFiles" | "withExpiry">>; value: unknown; onChange: (next: unknown) => void }) {
   const options = useQuery({
     queryKey: ["company-field-options", field.referenceMaster],
     enabled: field.type === "reference" && Boolean(field.referenceMaster),
@@ -27,6 +31,8 @@ export function FieldInput({ field, value, onChange }: { field: Pick<CompanyFiel
   });
   const label = `${field.label}${field.required ? " *" : ""}`;
   const text = (value as string | undefined) ?? "";
+  // A photo or document (#97): the same upload control as the masters, on the desks and on the phone.
+  if (isFileType(field.type) && field.entity) return <FieldGroup label={label} hint={field.helpText}><FileField field={field} target={{ entity: field.entity }} value={value} onChange={onChange} /></FieldGroup>;
   if (field.type === "boolean") {
     return (
       <Field label={label} hint={field.helpText}>

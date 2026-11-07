@@ -2,7 +2,7 @@ import { fullDate, moment } from "../ui/format";
 import { useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Archive, ChevronLeft, History, Link2, Plus, RotateCcw, Search, Settings2, Trash2, Upload } from "lucide-react";
+import { Archive, ArrowDown, ArrowUp, ChevronLeft, History, Link2, Plus, RotateCcw, Search, Settings2, Trash2, Upload } from "lucide-react";
 import { api, ApiError, request } from "../api/client";
 import type { Rec } from "../api/adapter";
 import { can } from "../api/session";
@@ -22,6 +22,9 @@ import ConnectionsSettings from "../settings/ConnectionsSettings";
 import { AUDIT_VIEW, choiceName, fieldName, fieldTitle, label, short, shown, singular, wantsAuditLog } from "./history";
 import { AuditLog } from "./AuditLog";
 import { Customise } from "./Customise";
+import { FileChip, FileField, type FileTarget, type FileValue } from "./FileField";
+import { CompanyFieldEditor, FieldEditor, specLine, type FieldSpec } from "./FieldEditor";
+import { FIELD_TYPES, isFileType } from "./fieldTypes";
 
 export { label };
 
@@ -249,13 +252,19 @@ function Records({ def, defs, openId }: { def: Def; defs: Def[]; openId?: string
       )}
       {open && <RecordDrawer def={def} defs={defs} id={open === "new" ? undefined : open} onClose={() => setOpen(null)} />}
       {customising && !fieldEdit && <Customise def={def} onClose={() => setCustomising(false)} onEditField={(id) => setFieldEdit({ id })} />}
-      {fieldEdit && fieldDefs && <RecordDrawer def={fieldDefs} defs={defs} id={fieldEdit.id} initial={{ entity: def.key }} onClose={() => setFieldEdit(null)} />}
+      {fieldEdit && fieldDefs && (
+        <Drawer open title={fieldEdit.id ? "Change a field" : `Add a field to ${String(def.label).toLowerCase()}`} onClose={() => setFieldEdit(null)} width={760}>
+          <CompanyFieldEditor entity={def.key} entityLabel={String(def.label)} field={fieldEdit.id ? { id: fieldEdit.id } : undefined} defs={defs} onSaved={() => setFieldEdit(null)} onCancel={() => setFieldEdit(null)} />
+        </Drawer>
+      )}
     </div>
   );
 }
 
 function listColumns(def: Def) {
-  const fields = def.fields as Rec[];
+  // The company's own fields can be list columns too (#97): a picture field shows as a small picture.
+  const own: Rec[] = ((def.customFields ?? []) as Rec[]).map((f) => ({ ...f, path: `custom.${f.key}`, label: f.label, company: true }));
+  const fields = [...(def.fields as Rec[]), ...own];
   const top = (p: string) => !p.includes(".");
   const title = fields.find((f) => f.path === def.titleField);
   const code = def.titleField !== "code" ? fields.find((f) => f.path === "code") : undefined;
@@ -285,6 +294,9 @@ function RecordDrawer({ def, defs, id, onClose, initial }: { def: Def; defs: Def
   const [busy, setBusy] = useState(false);
   const [asking, setAsking] = useState<null | "archive" | "delete">(null);
   const [reason, setReason] = useState("");
+  // Adding a field from the record itself (#97): the editor opens beside the form, which keeps what was typed.
+  const { me } = useApp();
+  const [addingField, setAddingField] = useState(false);
   const canSensitive = Boolean(def.permissions?.sensitive);
   const writable = !id ? creatable(def) : def.permissions?.update && !def.managed?.update && record.data?.status !== "archived" && !record.data?.isSystem;
   const base = id ? record.data : undefined;
@@ -336,7 +348,7 @@ function RecordDrawer({ def, defs, id, onClose, initial }: { def: Def; defs: Def
       open
       title={title}
       onClose={onClose}
-      width={def.key === "roles" ? 900 : 720}
+      width={addingField ? 1240 : def.key === "roles" ? 900 : 720}
       footer={
         asking === "archive" ? (
           <>
@@ -378,8 +390,21 @@ function RecordDrawer({ def, defs, id, onClose, initial }: { def: Def; defs: Def
               Archived{base.archivedAt ? ` on ${fullDate(String(base.archivedAt))}` : ""}{base.archiveReason ? `: ${base.archiveReason}` : ""}. Restore it to make changes.
             </p>
           )}
-          <Extras def={def} id={id} record={base} />
-          <SchemaForm schema={id ? withoutWriteOnly(def.createSchema) : def.createSchema} def={def} defs={defs} value={value} onChange={setDraft} readOnly={!writable} canSensitive={canSensitive} editing={Boolean(id)} />
+          <div className={addingField ? "record-split" : undefined}>
+            <div>
+              <Extras def={def} id={id} record={base} />
+              <SchemaForm schema={id ? withoutWriteOnly(def.createSchema) : def.createSchema} def={def} defs={defs} value={value} onChange={setDraft} readOnly={!writable} canSensitive={canSensitive} editing={Boolean(id)} recordId={id} />
+              {writable && def.customFieldsAllowed !== false && can(me, "field-definitions", "create") && !addingField && (
+                <div className="add-field-row"><Button size="sm" tone="quiet" onClick={() => setAddingField(true)}><Plus size={14} /> Add a field to {String(def.label).toLowerCase()}</Button></div>
+              )}
+            </div>
+            {addingField && (
+              <aside aria-label="Add a field">
+                <h3>Add a field to {String(def.label).toLowerCase()}</h3>
+                <CompanyFieldEditor entity={def.key} entityLabel={String(def.label)} defs={defs} onSaved={() => setAddingField(false)} onCancel={() => setAddingField(false)} />
+              </aside>
+            )}
+          </div>
         </>
       )}
       {tab === "usage" && id && <Usage def={def} id={id} />}
@@ -531,7 +556,7 @@ function CustomRecords({ master, defs }: { master: Rec; defs: Def[] }) {
           <tbody>
             {(rows.data ?? []).map((r) => (
               <tr key={r.id} className="clickable" onClick={() => { setDraft(r.data ?? {}); setSure(false); setOpen(r); }}>
-                {fields.slice(0, 4).map((f) => <td key={f.key}><Value value={r.data?.[f.key]} field={{ ref: f.referenceMaster, type: f.type }} defs={defs} /></td>)}
+                {fields.slice(0, 4).map((f) => <td key={f.key}><Value value={r.data?.[f.key]} field={{ ref: f.referenceMaster, type: f.type, company: true }} defs={defs} /></td>)}
                 <td><Status tone={r.status === "active" ? "ok" : "mute"}>{label(String(r.status))}</Status></td>
               </tr>
             ))}
@@ -554,11 +579,7 @@ function CustomRecords({ master, defs }: { master: Rec; defs: Def[] }) {
           {open !== "new" && open.status === "archived" && <p className="drawer-note">Archived. Restore it to make changes.</p>}
           <div className="grid-2">
             {fields.map((f) => (
-              <Field key={f.key} label={`${f.label}${f.required ? " *" : ""}`}>
-                {f.type === "reference"
-                  ? <RefSelect target={f.referenceMaster} defs={defs} value={draft[f.key] ?? ""} onChange={(v) => setDraft({ ...draft, [f.key]: v })} />
-                  : <ScalarInput type={f.type} choices={f.choices} value={draft[f.key]} onChange={(v) => setDraft({ ...draft, [f.key]: v })} />}
-              </Field>
+              <CompanyInput key={f.key} field={f} defs={defs} target={{ master: String(master.id) }} value={draft[f.key]} onChange={(v) => setDraft({ ...draft, [f.key]: v })} />
             ))}
           </div>
         </Drawer>
@@ -576,9 +597,10 @@ function CustomRecords({ master, defs }: { master: Rec; defs: Def[] }) {
 const FOR_TYPES: Record<string, string[]> = {
   options: ["select", "multi_select"], listId: ["select", "multi_select"], referenceMaster: ["reference"],
   min: ["number"], max: ["number"], maxLength: ["text", "long_text"], pattern: ["text"],
+  maxSizeMb: ["image", "document", "files"], maxFiles: ["files"], accept: ["document", "files"], withExpiry: ["document"],
 };
-const TYPE_LABEL: Record<string, string> = { boolean: "Yes or no", select: "One choice", multi_select: "Several choices", reference: "A record of another master", long_text: "Long text" };
-const SPEC_LABEL: Record<string, string> = { entity: "Master", listId: "Choices from a list", options: "Choices", referenceMaster: "Links to", maxLength: "Longest text", pattern: "Must match (pattern)", helpText: "Help text" };
+const TYPE_LABEL: Record<string, string> = Object.fromEntries(FIELD_TYPES.map((t) => [t.value, t.label]));
+const SPEC_LABEL: Record<string, string> = { entity: "Master", listId: "Choices from a list", options: "Choices", referenceMaster: "Links to", maxLength: "Longest text", pattern: "Must match (pattern)", helpText: "Help text", maxSizeMb: "Largest file (MB)", maxFiles: "How many files", accept: "Kinds of file it takes", withExpiry: "It has an expiry date" };
 const isFieldSpec = (schema: Schema) => Boolean(schema.properties?.type?.enum?.includes?.("multi_select") && schema.properties?.key && schema.properties?.label);
 /** "Union membership no." → "unionMembershipNo", the key a new field is stored under. */
 const keyFromLabel = (text: string) => text.trim().replace(/[^A-Za-z0-9]+(.)?/g, (_, c: string | undefined) => (c ? c.toUpperCase() : "")).replace(/^[^a-z]+/i, "").replace(/^./, (c) => c.toLowerCase()).slice(0, 40);
@@ -599,7 +621,7 @@ function unwrap(schema: Schema): Schema {
   return schema ?? {};
 }
 
-function SchemaForm({ schema, def, defs, value, onChange, readOnly, canSensitive, path = "", editing, currencyId, numbered }: { schema: Schema; def: Def; defs: Def[]; value: Rec; onChange: (v: Rec) => void; readOnly?: boolean; canSensitive: boolean; path?: string; editing?: boolean; currencyId?: string; numbered?: boolean }) {
+function SchemaForm({ schema, def, defs, value, onChange, readOnly, canSensitive, path = "", editing, currencyId, numbered }: { schema: Schema; def: Def; defs: Def[]; value: Rec; onChange: (v: Rec) => void; readOnly?: boolean; canSensitive: boolean; path?: string; editing?: boolean; currencyId?: string; numbered?: boolean; recordId?: string }) {
   // Amounts kept in minor units ("minAmountMinor") are entered in the currency of the record, or of the record holding them.
   const currency = (value.currencyId as string | undefined) ?? currencyId;
   const props = Object.entries((schema.properties ?? {}) as Record<string, Schema>);
@@ -632,38 +654,32 @@ function SchemaForm({ schema, def, defs, value, onChange, readOnly, canSensitive
   };
   // Sections the company named, in its order; fields with none come first, unheaded.
   const sectionOf = ([k]: [string, Schema]) => (path ? "" : String(infoOf(k)?.section ?? ""));
-  const named = [...new Set([...((def.sections as string[] | undefined) ?? []), ...main.map(sectionOf).filter(Boolean)])];
+  // The company's own fields sit among the built-in ones, in the order and sections it chose (#97); without a place
+  // of their own they follow the built-in fields.
+  const own = path ? [] : ((def.customFields ?? []) as Rec[]);
+  type Entry = { kind: "built-in"; entry: [string, Schema]; rank: number; section: string } | { kind: "company"; field: Rec; rank: number; section: string };
+  const entries: Entry[] = [
+    ...main.map((e): Entry => ({ kind: "built-in", entry: e, rank: rank(e[0]), section: sectionOf(e) })),
+    ...own.map((f): Entry => ({ kind: "company", field: f, rank: f.layoutOrder !== undefined ? Number(f.layoutOrder) : 1000 + Number(f.order ?? 100), section: String(f.section ?? "") })),
+  ].sort((a, b) => a.rank - b.rank);
+  const draw = (e: Entry) => (e.kind === "built-in" ? render(e.entry) : (
+    <CompanyInput key={`custom.${e.field.key}`} field={e.field} defs={defs} target={{ entity: String(def.key) }} disabled={readOnly}
+      value={(value.custom ?? {})[e.field.key]} onChange={(v) => set("custom", { ...(value.custom ?? {}), [e.field.key]: v })} />
+  ));
+  const named = [...new Set([...((def.sections as string[] | undefined) ?? []), ...entries.map((e) => e.section).filter(Boolean)])];
   return (
     <div className="schema-form">
-      <div className="grid-2">{main.filter((e) => !sectionOf(e)).map(render)}</div>
+      <div className="grid-2">{entries.filter((e) => !e.section).map(draw)}</div>
       {named.map((section) => {
-        const inSection = main.filter((e) => sectionOf(e) === section);
+        const inSection = entries.filter((e) => e.section === section);
         return inSection.length > 0 && (
           // A heading, not a box: fields inside it may have boxes of their own (an address, a contact).
           <section key={section} className="form-section" aria-label={section}>
             <h4>{section}</h4>
-            <div className="grid-2">{inSection.map(render)}</div>
+            <div className="grid-2">{inSection.map(draw)}</div>
           </section>
         );
       })}
-      {!path && (def.customFields as Rec[]).length > 0 && (
-        <fieldset className="form-group">
-          <legend>Company fields</legend>
-          <div className="grid-2">
-            {(def.customFields as Rec[]).map((f) => {
-              // Several choices are a group of buttons, which a <label> can't name; everything else is one control.
-              const Wrap = f.type === "multi_select" ? FieldGroup : Field;
-              return (
-                <Wrap key={f.key} label={`${f.label}${f.required ? " *" : ""}`}>
-                  {f.type === "reference"
-                    ? <RefSelect target={f.referenceMaster} defs={defs} disabled={readOnly} value={(value.custom ?? {})[f.key] ?? ""} onChange={(v) => set("custom", { ...(value.custom ?? {}), [f.key]: v })} />
-                    : <ScalarInput type={f.type} choices={f.choices} value={(value.custom ?? {})[f.key]} disabled={readOnly} onChange={(v) => set("custom", { ...(value.custom ?? {}), [f.key]: v })} />}
-                </Wrap>
-              );
-            })}
-          </div>
-        </fieldset>
-      )}
       {more.length > 0 && (
         <details className="form-group">
           <summary>Status, validity, branches and notes</summary>
@@ -714,6 +730,8 @@ function FieldInput({ name, path, schema, required, def, defs, value, onChange, 
   }
   const ref = refOf(def, path);
   const info = fieldOf(def, path);
+  if (def.key === "custom-masters" && path === "fields")
+    return <CustomMasterFields value={(value as Rec[] | undefined) ?? []} onChange={onChange} defs={defs} readOnly={readOnly} />;
   if (def.key === "roles" && path === "permissions")
     return <Field label={title} hint={hint} wide><PermissionMatrix value={(value as { resource: string; actions: string[] }[]) ?? []} onChange={onChange} defs={defs} readOnly={readOnly} /></Field>;
   if (schema.type === "object" && schema.properties?.amountMinor && schema.properties?.currencyId)
@@ -780,6 +798,66 @@ function FieldInput({ name, path, schema, required, def, defs, value, onChange, 
 }
 
 type Choice = { value: string; label: string };
+
+/** One company field on a form: a link, a file, or a plain value (#97). The same on masters and custom masters. */
+function CompanyInput({ field: f, defs, target, value, onChange, disabled }: { field: Rec; defs: Def[]; target: FileTarget; value: unknown; onChange: (v: unknown) => void; disabled?: boolean }) {
+  const name = `${f.label}${f.required ? " *" : ""}`;
+  const hint = f.helpText as string | undefined;
+  if (isFileType(f.type))
+    return <FieldGroup label={name} hint={hint} wide><FileField field={{ ...f, key: String(f.key), type: String(f.type) }} target={target} value={value} onChange={onChange} disabled={disabled} /></FieldGroup>;
+  // Several choices are a group of buttons, which a <label> can't name; everything else is one control.
+  const Wrap = f.type === "multi_select" ? FieldGroup : Field;
+  return (
+    <Wrap label={name} hint={hint}>
+      {f.type === "reference"
+        ? <RefSelect target={f.referenceMaster} defs={defs} disabled={disabled} value={(value as string) ?? ""} onChange={onChange} />
+        : <ScalarInput type={f.type} choices={f.choices} value={value} disabled={disabled} onChange={onChange} />}
+    </Wrap>
+  );
+}
+
+/** A custom master's fields: one line each with what it holds, edited in the field editor, in their order. */
+function CustomMasterFields({ value, onChange, defs, readOnly }: { value: Rec[]; onChange: (v: unknown) => void; defs: Def[]; readOnly?: boolean }) {
+  const [editing, setEditing] = useState<number | "new" | null>(null);
+  const save = (spec: FieldSpec) => {
+    const next = editing === "new" ? [...value, spec] : value.map((f, i) => (i === editing ? { ...f, ...spec } : f));
+    onChange(next.map((f, i) => ({ ...f, order: i })));
+    setEditing(null);
+  };
+  const move = (i: number, by: -1 | 1) => {
+    const j = i + by;
+    if (j < 0 || j >= value.length) return;
+    const next = [...value];
+    [next[i], next[j]] = [next[j]!, next[i]!];
+    onChange(next.map((f, k) => ({ ...f, order: k })));
+  };
+  return (
+    <FieldGroup label="Fields *" hint="The first required text field can name each record." wide>
+      <div className="cm-fields">
+        {!value.length && <p className="muted">No fields yet.</p>}
+        {value.map((f, i) => (
+          editing === i ? (
+            <div key={i} className="item-card"><FieldEditor initial={f} defs={defs} editing={Boolean(f.key) && i < value.length} takenKeys={value.filter((_, j) => j !== i).map((x) => String(x.key))} onSave={save} onCancel={() => setEditing(null)} saveLabel="Done" /></div>
+          ) : (
+            <div key={i} className="cm-field">
+              <div><strong>{String(f.label ?? f.key)}</strong><span className="muted small">{specLine(f)}</span></div>
+              {!readOnly && (
+                <span className="cust-move">
+                  <button type="button" className="icon-btn" aria-label={`Move ${String(f.label)} up`} onClick={() => move(i, -1)}><ArrowUp size={15} /></button>
+                  <button type="button" className="icon-btn" aria-label={`Move ${String(f.label)} down`} onClick={() => move(i, 1)}><ArrowDown size={15} /></button>
+                  <Button size="sm" tone="quiet" onClick={() => setEditing(i)}>Edit</Button>
+                  <Button size="sm" tone="quiet" onClick={() => onChange(value.filter((_, j) => j !== i))}>Remove</Button>
+                </span>
+              )}
+            </div>
+          )
+        ))}
+        {editing === "new" && <div className="item-card"><FieldEditor initial={{}} defs={defs} takenKeys={value.map((x) => String(x.key))} onSave={save} onCancel={() => setEditing(null)} saveLabel="Add field" /></div>}
+        {!readOnly && editing === null && <div><Button size="sm" onClick={() => setEditing("new")}><Plus size={14} /> Add a field</Button></div>}
+      </div>
+    </FieldGroup>
+  );
+}
 
 function ScalarInput({ type, value, onChange, disabled, choices }: { type: string; value: unknown; onChange: (v: unknown) => void; disabled?: boolean; choices?: Choice[] }) {
   if (type === "select")
@@ -873,7 +951,10 @@ function RefName({ target, id, defs }: { target: string; id: string; defs: Def[]
 
 function Value({ value, field, defs }: { value: unknown; field: Rec; defs: Def[] }): ReactNode {
   if (value === undefined || value === null || value === "") return <span className="muted">—</span>;
+  if (isFileType(field.type) && typeof value === "object") return <FileChip value={value as FileValue | FileValue[]} thumbnail={field.type === "image"} />;
   if (field.ref && typeof value === "string") return <RefName target={field.ref} id={value} defs={defs} />;
+  // A company link field names its master as referenceMaster.
+  if (field.company && field.referenceMaster && typeof value === "string") return <RefName target={String(field.referenceMaster)} id={value} defs={defs} />;
   if (field.ref && Array.isArray(value)) return value.length ? value.map((id, i) => <span key={String(id)}>{i ? ", " : ""}<RefName target={field.ref} id={String(id)} defs={defs} /></span>) : <span className="muted">—</span>;
   // A custom field's master is stored as its key ("drivers"); show its name.
   if (field.path === "entity" && typeof value === "string") { const target = defs.find((d) => d.key === value); if (target) return String(target.label); }

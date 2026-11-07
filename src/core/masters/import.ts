@@ -3,7 +3,9 @@ import { ConflictError, NotFoundError } from '../errors/index.js';
 import { fullLabel } from './labels.js';
 import { getLayout, systemRequired } from './layout.js';
 import { getMaster, getRefTarget, refsOf } from './registry.js';
-import { create, type ServiceContext } from './service.js';
+import { companyFieldsOf, create, type ServiceContext } from './service.js';
+import { isFileType } from './fileFields.js';
+import type { DynamicField } from './dynamicFields.js';
 import type { MasterDefinition, Plain } from './types.js';
 
 /**
@@ -98,12 +100,34 @@ export function importColumns(def: MasterDefinition): ImportColumn[] {
  * The columns as this company has shaped the master (#65): its names, its required fields, its choice names, and
  * without the fields it hid or kept out of import. `aliases` keeps the code's own names, so older sheets still load.
  */
+/** A company field as an import column (#97): the same kinds as built-in fields. Files are added on the record. */
+function companyColumn(f: DynamicField): ImportColumn | undefined {
+  const base = { path: `custom.${f.key}`, label: f.label, required: Boolean(f.required) };
+  switch (f.type) {
+    case 'number': return { ...base, kind: 'number' };
+    case 'boolean': return { ...base, kind: 'boolean' };
+    case 'date': return { ...base, kind: 'date' };
+    case 'select': return { ...base, kind: 'choice', choices: f.options ?? [] };
+    case 'multi_select': return { ...base, kind: 'list', of: 'choice', choices: f.options ?? [] };
+    case 'reference': return f.referenceMaster ? { ...base, kind: 'ref', target: f.referenceMaster } : undefined;
+    case 'image': case 'document': case 'files': return undefined;
+    default: return { ...base, kind: 'text' };
+  }
+}
+
+/** Company fields a spreadsheet can't hold: files are added on each record. The template and the dialog name them. */
+export async function leftOutOfImport(def: MasterDefinition) {
+  if (def.customFields === false) return [];
+  return (await companyFieldsOf(def.key)).filter((f) => isFileType(f.type)).map((f) => ({ label: f.label, reason: 'Files are added on the record, not by import' }));
+}
+
 export async function companyColumns(def: MasterDefinition): Promise<(ImportColumn & { aliases: string[] })[]> {
   const layout = await getLayout(def.key);
+  const own = def.customFields === false ? [] : (await companyFieldsOf(def.key)).map(companyColumn).filter((c): c is ImportColumn => Boolean(c));
   const byPath = new Map(layout.fields.map((f) => [f.path, f]));
   const choices = new Map(layout.choices.map((c) => [c.path, c.values]));
   const fixed = systemRequired(def);
-  return importColumns(def)
+  return [...importColumns(def), ...own]
     .filter((c) => { const l = byPath.get(c.path); return fixed.has(c.path) || !(l?.hidden || l?.inImport === false); })
     .map((c) => {
       const l = byPath.get(c.path);
@@ -128,7 +152,9 @@ export function importableMaster(key: string): MasterDefinition {
 /** A CSV header line for the master: the columns' labels, quoted where needed. */
 export async function templateCsv(def: MasterDefinition) {
   const cell = (v: string) => (/[",;\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v);
-  return `${(await companyColumns(def)).map((c) => cell(`${c.label}${c.required ? ' *' : ''}`)).join(',')}\r\n`;
+  // A file field gets a column that says where it goes instead; the import leaves any column it doesn't know.
+  const notes = (await leftOutOfImport(def)).map((f) => cell(`${f.label} (add on the record)`));
+  return `${[...(await companyColumns(def)).map((c) => cell(`${c.label}${c.required ? ' *' : ''}`)), ...notes].join(',')}\r\n`;
 }
 
 const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');

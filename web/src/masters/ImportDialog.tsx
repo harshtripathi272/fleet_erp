@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Download, Upload } from "lucide-react";
 import { api, ApiError, authorizedFetch } from "../api/client";
 import { useApp } from "../store";
@@ -52,6 +52,9 @@ export function ImportDialog({ master, label, onClose }: { master: string; label
   const [summary, setSummary] = useState<Summary | null>(null);
   const [busy, setBusy] = useState<"check" | "load" | "template" | null>(null);
   const [loaded, setLoaded] = useState(false);
+  // Fields a spreadsheet can't hold (files, #97): named here so nobody wonders where they went.
+  const info = useQuery({ queryKey: ["import-info", master], queryFn: () => api<{ leftOut?: { label: string }[] }>(`/meta/import/${master}`), staleTime: 60_000 });
+  const leftOut = (info.data?.leftOut ?? []).map((f) => f.label);
 
   /** Sends the rows in batches the API accepts and adds up the answers. */
   const send = async (all: Record<string, string>[], dryRun: boolean) => {
@@ -145,6 +148,11 @@ export function ImportDialog({ master, label, onClose }: { master: string; label
             </label>
           </li>
         </ol>
+        {leftOut.length > 0 && (
+          <p className="drawer-note">
+            {leftOut.length === 1 ? `${leftOut[0]} holds a file, so it` : `${leftOut.slice(0, -1).join(", ")} and ${leftOut.at(-1)} hold files, so they`} {leftOut.length === 1 ? "isn't" : "aren't"} in the import. Add {leftOut.length === 1 ? "it" : "them"} on each record after loading; the template has a column that says so, and the import leaves it.
+          </p>
+        )}
         {busy === "check" && <p className="muted">Checking {rows?.length ?? 0} rows…</p>}
         {summary && (
           <p className="import-summary">

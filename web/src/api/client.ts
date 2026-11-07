@@ -138,6 +138,30 @@ export async function authorizedFetch(path: string, init: RequestInit = {}): Pro
   return res;
 }
 
+/**
+ * Sends a body with the session and reports how much has gone (0 to 1), for the upload control (#97). fetch can't
+ * report upload progress, so this uses XMLHttpRequest; a 401 refreshes once and sends again, as everything else does.
+ */
+export async function sendWithProgress<T>(path: string, query: Query, body: Blob, headers: Record<string, string>, onProgress: (share: number) => void): Promise<T> {
+  const go = () => new Promise<{ status: number; body: { data?: T; error?: { message?: string; code?: string; details?: unknown } } }>((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", url(path, query));
+    for (const [k, v] of Object.entries(headers)) xhr.setRequestHeader(k, v);
+    if (tokens?.accessToken) xhr.setRequestHeader("Authorization", `Bearer ${tokens.accessToken}`);
+    xhr.upload.onprogress = (e) => { if (e.lengthComputable) onProgress(e.loaded / e.total); };
+    xhr.onload = () => { let parsed = {}; try { parsed = JSON.parse(xhr.responseText); } catch { /* not JSON: the status says enough */ } resolve({ status: xhr.status, body: parsed }); };
+    xhr.onerror = () => reject(new ApiError("The upload stopped. Check the connection and try again.", 0));
+    xhr.send(body);
+  });
+  let res = await go();
+  if (res.status === 401 && (await refresh())) res = await go();
+  if (res.status < 200 || res.status >= 300) {
+    if (res.status === 401) setTokens(null);
+    throw new ApiError(res.body.error?.message ?? "The upload didn't go through.", res.status, res.body.error?.code, res.body.error?.details);
+  }
+  return res.body.data as T;
+}
+
 /** Every page of a list, for the reference data the desks keep in memory. */
 export async function all<T>(path: string, query: Query = {}): Promise<T[]> {
   const out: T[] = [];

@@ -27,7 +27,7 @@ const STOP_LABEL: Record<string, string> = { start: "Start", load: "Loading", vi
 interface Stop { id: string; kind: string; place: string; legKm?: number; arrivedAt?: string; arrivedVia?: string }
 interface Doc { id: string; kind: Kind; status: string; at: string; note?: string; returnReason?: string; simulated?: boolean; file?: { fileId?: string; name?: string; mime?: string; sampleId?: string } }
 interface Home {
-  questions?: { key: string; label: string; type: string; required: boolean; options?: string[]; min?: number; max?: number; helpText?: string }[];
+  questions?: { entity?: string; key: string; label: string; type: string; required: boolean; options?: string[]; min?: number; max?: number; helpText?: string; accept?: string[]; maxSizeMb?: number; maxFiles?: number; withExpiry?: boolean }[];
   canReportDefect?: boolean;
   driver: { id: string; name: string; code?: string };
   trip: null | {

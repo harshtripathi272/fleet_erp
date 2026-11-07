@@ -120,8 +120,8 @@ export function setCommand(file: CompanyFile, name: string): string | undefined 
       const id = name === 'MONGODB_URI' ? `${key}-mongodb-uri` : name === 'SMTP_PASS' ? `${key}-smtp-pass` : `${key}-connection-${name.replace(/^CONNECTION_/, '').toLowerCase().replace(/_/g, '-')}`;
       return `printf '%s' 'VALUE' | gcloud secrets create ${id} --data-file=- --project ${d.projectId}`;
     }
-    case 'aws': return `aws secretsmanager create-secret --region ${d.region} --name fleet-${key}/${name} --secret-string 'VALUE'`;
-    case 'azure': return `az keyvault secret set --vault-name fleet-${key} --name ${name.toLowerCase().replace(/_/g, '-')} --value 'VALUE'`;
+    case 'aws': return `aws secretsmanager create-secret --region ${d.region} --name fleet/${key}/${name} --secret-string 'VALUE'`;
+    case 'azure': return `az keyvault secret set --vault-name fleet-${key.slice(0, 17)} --name ${name.toLowerCase().replace(/_/g, '-')} --value 'VALUE'`;
     case 'fly': return `fly secrets set ${name}='VALUE' --app fleet-${key}`;
     case 'railway': return `railway variables --set ${name}='VALUE'`;
     case 'render': return undefined;

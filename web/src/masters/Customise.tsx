@@ -6,6 +6,7 @@ import type { Rec } from "../api/adapter";
 import { useApp } from "../store";
 import { Button, Drawer, SettingRow, SettingsSection, Switch } from "../ui/kit";
 import { label } from "./history";
+import { specLine } from "./FieldEditor";
 import { ComingSoonRows } from "../ui/comingSoon";
 
 /**
@@ -23,6 +24,9 @@ interface Layout { master: { label?: string; singular?: string; description?: st
 const SKIP = new Set(["custom", "externalRefs", "attachments", "version"]);
 const editable = (f: Rec) => f.entered && f.group === "master" && !f.hidden && !SKIP.has(String(f.path).split(".")[0]);
 const depth = (path: string) => path.split(".").length - 1;
+/** The company's own fields sit at the top level with the built-in ones (#97), though they are stored under `custom`. */
+const depthOf = (f: Rec) => (f.company ? 0 : depth(String(f.path)));
+const parentOf = (f: Rec) => (f.company ? "" : String(f.path).split(".").slice(0, -1).join("."));
 
 export function Customise({ def, onClose, onEditField }: { def: Rec; onClose: () => void; onEditField: (id?: string) => void }) {
   const client = useQueryClient();
@@ -33,7 +37,11 @@ export function Customise({ def, onClose, onEditField }: { def: Rec; onClose: ()
   const [newSection, setNewSection] = useState("");
   useEffect(() => { if (saved.data && !draft) setDraft({ master: saved.data.master ?? {}, sections: saved.data.sections ?? [], fields: saved.data.fields ?? [], choices: saved.data.choices ?? [] }); }, [saved.data, draft]);
 
-  const fields = useMemo(() => ((def.fields as Rec[]) ?? []).filter(editable), [def.fields]);
+  // Built-in fields and the company's own, in one table: the company's follow the built-in ones until moved.
+  const fields = useMemo((): Rec[] => [
+    ...((def.fields as Rec[]) ?? []).filter(editable),
+    ...((def.customFields as Rec[] | undefined) ?? []).map((f) => ({ ...f, path: `custom.${f.key}`, codeLabel: f.label, order: 1000 + Number(f.order ?? 100), company: true })),
+  ], [def.fields, def.customFields]);
   if (!draft) return <Drawer open title={`Customise ${String(def.label).toLowerCase()}`} onClose={onClose} width={960}><p className="muted">Loading…</p></Drawer>;
 
   /* ---------- Reading and changing the draft ---------- */
@@ -46,7 +54,8 @@ export function Customise({ def, onClose, onEditField }: { def: Rec; onClose: ()
   };
   const ordered = [...fields].sort((a, b) => (fieldOf(a.path).order ?? Number(a.order ?? 0)) - (fieldOf(b.path).order ?? Number(b.order ?? 0)));
   const move = (path: string, by: -1 | 1) => {
-    const list = ordered.filter((f) => depth(f.path) === depth(path) && String(f.path).split(".").slice(0, -1).join(".") === path.split(".").slice(0, -1).join("."));
+    const self = ordered.find((f) => f.path === path)!;
+    const list = ordered.filter((f) => depthOf(f) === depthOf(self) && parentOf(f) === parentOf(self));
     const i = list.findIndex((f) => f.path === path);
     const j = i + by;
     if (j < 0 || j >= list.length) return;
@@ -125,7 +134,7 @@ export function Customise({ def, onClose, onEditField }: { def: Rec; onClose: ()
           </SettingRow>
         </SettingsSection>
 
-        <SettingsSection title="Fields" description="Every field this master has. Hidden fields keep their stored values and are still accepted from imports and other systems. Fields the app needs can be renamed and moved, but not hidden or made optional.">
+        <SettingsSection title="Fields" description="Every field this master has, the company's own included. Hidden fields keep their stored values and are still accepted from imports and other systems. Fields the app needs can be renamed and moved, but not hidden or made optional. A company field's name and rules are changed in the field itself.">
           <div className="cust-table-wrap">
             <table className="cust-table">
               <thead><tr><th>Field</th><th>Hint</th><th>Shown</th><th>Required</th><th>In list</th><th>Section</th><th>Order</th></tr></thead>
@@ -133,6 +142,28 @@ export function Customise({ def, onClose, onEditField }: { def: Rec; onClose: ()
                 {ordered.map((f) => {
                   const l = fieldOf(f.path);
                   const inList = String(f.path).split(".").length > 1 && ordered.some((p) => p.array && String(f.path).startsWith(`${p.path}.`));
+                  if (f.company) return (
+                    <tr key={f.path} className="cust-own">
+                      <td>
+                        <span className="cust-own-name"><strong>{String(f.label)}</strong><Button size="sm" tone="quiet" onClick={() => onEditField(String(f.id))}>Edit</Button></span>
+                        <span className="cust-spec">{specLine(f)}</span>
+                      </td>
+                      <td className="muted">{f.helpText ? String(f.helpText) : "—"}</td>
+                      <td><Switch label={`${String(f.label)} is shown`} checked disabled onChange={() => undefined} /></td>
+                      <td><Switch label={`${String(f.label)} is required`} checked={Boolean(f.required)} disabled onChange={() => undefined} /></td>
+                      <td><Switch label={`Show ${String(f.label)} as a list column`} checked={Boolean(l.column)} onChange={(on) => setField(f.path, { column: on || undefined })} /></td>
+                      <td>
+                        <select className="input" aria-label={`Section of ${String(f.label)}`} value={l.section ?? ""} onChange={(e) => setField(f.path, { section: e.target.value || undefined })}>
+                          <option value="">Main</option>
+                          {draft.sections.map((sec) => <option key={sec} value={sec}>{sec}</option>)}
+                        </select>
+                      </td>
+                      <td className="cust-move">
+                        <button type="button" className="icon-btn" aria-label={`Move ${String(f.label)} up`} onClick={() => move(f.path, -1)}><ArrowUp size={15} /></button>
+                        <button type="button" className="icon-btn" aria-label={`Move ${String(f.label)} down`} onClick={() => move(f.path, 1)}><ArrowDown size={15} /></button>
+                      </td>
+                    </tr>
+                  );
                   return (
                     <tr key={f.path} className={depth(f.path) ? "cust-child" : undefined}>
                       <td>
@@ -203,13 +234,8 @@ export function Customise({ def, onClose, onEditField }: { def: Rec; onClose: ()
         )}
 
         {def.customFieldsAllowed !== false && (
-          <SettingsSection title="The company's own fields" description="Fields this company added. They work like built-in ones: in forms, lists, search and the import template.">
-            {customFields.map((f) => (
-              <SettingRow key={f.key} title={String(f.label)} description={`${label(String(f.type))}${f.required ? " · required" : ""}`}>
-                <Button size="sm" onClick={() => onEditField(String(f.id))}>Edit</Button>
-              </SettingRow>
-            ))}
-            <SettingRow title="Add a field" description="Text, a number, a date, yes or no, a choice from a list, or a link to another master.">
+          <SettingsSection title="The company's own fields" description={customFields.length ? `${customFields.length} field${customFields.length === 1 ? "" : "s"} this company added, in the table above with the built-in ones. They work like built-in ones: in forms, lists, search and the import template.` : "Fields this company adds work like built-in ones: in forms, lists, search and the import template."}>
+            <SettingRow title="Add a field" description="Text, a number, a date, yes or no, a choice, a link to another master, a picture, a document or several files.">
               <Button size="sm" onClick={() => onEditField()}><Plus size={14} /> Add a field</Button>
             </SettingRow>
           </SettingsSection>

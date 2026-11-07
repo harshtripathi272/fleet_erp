@@ -50,12 +50,14 @@ const connection = z.strictObject({
   // Checked against the provider's own form, so a file written by hand fails here and not on the server.
   const provider = providerFor(c.kind, c.provider);
   if (!provider) { ctx.addIssue({ code: 'custom', path: ['provider'], message: `No ${c.kind} provider "${c.provider}"` }); return; }
+  if (provider.comingSoon) { ctx.addIssue({ code: 'custom', path: ['provider'], message: provider.comingSoon }); return; }
   const settings = provider.fields.safeParse(c.settings);
   if (!settings.success) for (const issue of settings.error.issues) ctx.addIssue({ code: 'custom', path: ['settings', ...issue.path.map(String)], message: issue.message });
   const known = new Set((provider.secrets ?? []).map((s) => s.key));
   for (const key of Object.keys(c.secrets)) if (!known.has(key)) ctx.addIssue({ code: 'custom', path: ['secrets', key], message: `${provider.label} has no secret "${key}"` });
   for (const s of provider.secrets ?? []) if (s.required && !c.secrets[s.key]) ctx.addIssue({ code: 'custom', path: ['secrets', s.key], message: `Name the server setting that holds the ${s.label.toLowerCase()}` });
-  if (provider.inbound && c.enabled && !c.webhookSecretEnv) ctx.addIssue({ code: 'custom', path: ['webhookSecretEnv'], message: 'Name the server setting that holds the signing secret for calls from this service' });
+  // Meta and Twilio sign their calls themselves, so only our own webhooks need a signing secret named.
+  if (provider.inbound && !provider.verifyInbound && c.enabled && !c.webhookSecretEnv) ctx.addIssue({ code: 'custom', path: ['webhookSecretEnv'], message: 'Name the server setting that holds the signing secret for calls from this service' });
 });
 
 const role = z.strictObject({
@@ -71,6 +73,7 @@ const { listId: _fieldList, ...fieldSpecShape } = {
   options: fieldDefinitionShape.options, listId: fieldDefinitionShape.listId, referenceMaster: fieldDefinitionShape.referenceMaster,
   min: fieldDefinitionShape.min, max: fieldDefinitionShape.max, maxLength: fieldDefinitionShape.maxLength, pattern: fieldDefinitionShape.pattern,
   helpText: fieldDefinitionShape.helpText, order: fieldDefinitionShape.order,
+  maxSizeMb: fieldDefinitionShape.maxSizeMb, maxFiles: fieldDefinitionShape.maxFiles, accept: fieldDefinitionShape.accept, withExpiry: fieldDefinitionShape.withExpiry,
 };
 /** A field's list is named by its code: ids mean nothing on another copy. */
 const fieldSpec = { ...fieldSpecShape, listCode: z.string().trim().min(1).max(32).optional() };

@@ -14,6 +14,11 @@ export interface StoredFileRecord {
   driverId?: Types.ObjectId;
   /** The storage connection that holds it; absent for the server's own storage (FILE_STORAGE). */
   connectionId?: Types.ObjectId;
+  /**
+   * The records whose fields hold it (#97): whoever can read one of them can open the file. Written when the
+   * record saves and never removed, so a replaced file can still be opened from the record's history.
+   */
+  usedBy?: { entity: string; recordId: Types.ObjectId; field: string }[];
   at: Date;
 }
 
@@ -27,6 +32,7 @@ const storedFileSchema = new Schema<StoredFileRecord>({
   uploadedBy: { type: ObjectId, ref: 'User', required: true },
   driverId: { type: ObjectId, ref: 'Driver' },
   connectionId: { type: ObjectId, ref: 'Connection' },
+  usedBy: { type: [{ _id: false, entity: String, recordId: ObjectId, field: String }], default: undefined },
   at: { type: Date, required: true },
 }, { ...schemaOptions, collection: 'files' });
 storedFileSchema.index({ key: 1 }, { unique: true });
