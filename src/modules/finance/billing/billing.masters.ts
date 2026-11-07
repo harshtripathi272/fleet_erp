@@ -47,7 +47,6 @@ export const customerRateDefinition = defineMaster({
     const min = data.minimumCharge as { currencyId?: unknown } | undefined;
     const price = data.price as { currencyId?: unknown } | undefined;
     if (min && String(min.currencyId) !== String(price?.currencyId)) throw new ValidationError('The minimum charge must be in the price\'s currency', { minimumCharge: ['Use the price\'s currency'] });
-    if (!data.validFrom) throw new ValidationError('Say from when the rate applies', { validFrom: ['Required'] });
     return data;
   },
 });

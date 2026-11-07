@@ -129,12 +129,13 @@ export async function createRequest(input: S.CreateRequestInput, ctx: OpsContext
     if (!input.litres) throw refuse('Enter the litres.');
     if (f.fuel.room !== null && input.litres > f.fuel.room) throw refuse(`${await plateOf(trip.vehicleId)} can take ${litres(f.fuel.room)} more.`);
     suggested = f.fuel.suggested;
-    over = input.litres > suggested * 1.001;
+    // With no budget set there's nothing to be above, so a new company isn't asked to explain every request.
+    over = f.fuel.budget > 0 && input.litres > suggested * 1.001;
   } else {
     if (!input.amount?.amountMinor) throw refuse('Enter an amount.');
     await currencyInfo(input.amount.currencyId);
     suggested = f.cash.suggestedMinor;
-    over = (await toBase(input.amount.amountMinor, input.amount.currencyId)).baseMinor > suggested * 1.001;
+    over = f.cash.budgetMinor > 0 && (await toBase(input.amount.amountMinor, input.amount.currencyId)).baseMinor > suggested * 1.001;
   }
   const approval = await routeApproval(input.kind === 'fuel' ? 'fuel_request' : 'cash_advance', input.kind === 'fuel' ? { litres: input.litres! } : input.amount!, over);
   if (over && approval.requireReasonAboveBudget && !input.reason) throw refuse("Say why it's above the budget.");

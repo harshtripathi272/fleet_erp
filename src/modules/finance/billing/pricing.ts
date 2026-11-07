@@ -60,15 +60,16 @@ export const tripDay = (trip: Plain) => new Date((trip.dispatchedAt ?? trip.plan
 export async function rateFor(trip: Plain): Promise<Plain> {
   const day = tripDay(trip);
   const candidates = await CustomerRate.find({
-    customerId: trip.customerId, status: 'active', validFrom: { $lte: day },
+    customerId: trip.customerId, status: 'active',
     $and: [
+      { $or: [{ validFrom: { $exists: false } }, { validFrom: null }, { validFrom: { $lte: day } }] },
       { $or: [{ validTo: { $exists: false } }, { validTo: null }, { validTo: { $gte: new Date(Date.UTC(day.getUTCFullYear(), day.getUTCMonth(), day.getUTCDate())) } }] },
       { $or: [{ routeId: { $exists: false } }, { routeId: null }, ...(trip.routeId ? [{ routeId: trip.routeId }] : [])] },
       { $or: [{ productId: { $exists: false } }, { productId: null }, ...(trip.productId ? [{ productId: trip.productId }] : [])] },
     ],
   }).lean() as Plain[];
   const score = (r: Plain) => (r.routeId ? 2 : 0) + (r.productId ? 1 : 0);
-  const best = candidates.sort((a, b) => score(b) - score(a) || +new Date(b.validFrom as string) - +new Date(a.validFrom as string))[0];
+  const best = candidates.sort((a, b) => score(b) - score(a) || +new Date((b.validFrom ?? 0) as string) - +new Date((a.validFrom ?? 0) as string))[0];
   if (!best) throw refuse(`No customer rate covers ${trip.number} on ${Fmt.date(day)}. Add one under Customer rates.`);
   return best;
 }
