@@ -23,8 +23,11 @@ The company file never holds a secret. A password or key is named by the server 
 
 Unzip it and follow its `README.md`, which is written for that company and that platform.
 
+Every package carries the app's source and a Dockerfile that builds it (#103), so no image needs building beforehand on any platform; Google Cloud builds it in Cloud Build.
+
 | Platform | Guide | Tested in CI |
 | --- | --- | --- |
+| This computer: a separate copy with its own database and files, started with `start.command`, `start.bat` or `./start.sh` | the package's README (needs Docker Desktop) | Yes, end to end |
 | A server with Docker Compose (DigitalOcean, Hetzner, on-premises) | [compose.md](compose.md) | Yes, end to end |
 | Google Cloud (Cloud Run, Atlas, Secret Manager, Cloud Storage, Cloud Scheduler) | [gcp.md](gcp.md) | Script dry run; the kit applied in the image |
 | AWS (App Runner, Atlas or DocumentDB, Secrets Manager, S3) | [aws.md](aws.md) | Not yet |

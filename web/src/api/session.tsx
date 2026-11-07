@@ -148,7 +148,7 @@ export async function signOut() {
 /** Drivers sign in with their phone number; everyone else with their e-mail. */
 const looksLikePhone = (value: string) => /^\+?[\d\s-]{7,}$/.test(value.trim());
 
-interface SignInOptions { company: string | null; firstOwner: boolean; signUp: boolean }
+interface SignInOptions { company: string | null; firstOwner: boolean; signUp: boolean; demo?: boolean }
 
 /** A "#reset=…" link from an invitation or reset e-mail opens the "choose your password" form. */
 const resetTokenInLink = () => (location.hash.startsWith("#reset=") ? decodeURIComponent(location.hash.slice(7)) : "");
@@ -210,6 +210,7 @@ export function SignIn({ company, onSignedIn }: { company?: string; onSignedIn: 
       </aside>
       <main className="picker-main">
         <h1>{heading}</h1>
+        {options.data?.demo && <p className="signin-demo" role="note">This copy holds made-up data, for showing and trying the app.</p>}
         <form className="signin" onSubmit={submit}>
           {mode === "up" && (
             <Field label="Name">

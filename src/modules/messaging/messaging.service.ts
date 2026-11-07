@@ -120,7 +120,7 @@ async function sampleValues(): Promise<Record<string, string>> {
     'user.name': 'Mutale Chanda', 'driver.name': 'Joseph Mwansa', 'driver.phone': `${Fmt.regional().phoneCountryCode || '+'}971234567`,
     'vehicle.registration': 'ALC 4821', 'trailer.registration': 'TAC 7821', 'trip.number': 'TRIP/26/0137', 'route.name': 'Dar es Salaam port to Lusaka fuel depot',
     'place.name': 'Beira fuel terminal', 'customer.name': 'Zambezi Energy', amount: Fmt.amount(535_000, base?.minorUnits ?? 2), 'document.name': 'Road tax',
-    'document.number': 'RT-2026-0042', 'document.expiryDate': Fmt.date(new Date(now.getTime() + 25 * 86_400_000)), reason: 'Above route budget', date: Fmt.date(now),
+    'document.number': 'RT-2026-0042', 'document.holder': 'ALC 4821', 'document.expiryDate': Fmt.date(new Date(now.getTime() + 25 * 86_400_000)), reason: 'Above route budget', date: Fmt.date(now),
   };
 }
 

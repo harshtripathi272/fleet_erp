@@ -31,7 +31,8 @@ export const models = asyncHandler(async (_req, res) => {
 
 export const overview = asyncHandler(async (req, res) => {
   ApiResponse.success(res, {
-    system: MetaService.system(),
+    // How the server is set up (database, Redis, mail host) is for whoever runs the company's copy, not every person (#105).
+    ...(req.auth!.can('company', 'update') ? { system: MetaService.system() } : {}),
     limits: MetaService.limits(),
     you: { userId: req.auth!.userId, name: req.auth!.name, email: req.auth!.email, roles: req.auth!.roles, permissions: req.auth!.permissions },
     endpoints: [
@@ -45,8 +46,8 @@ export const overview = asyncHandler(async (req, res) => {
   });
 });
 
-export const stats = asyncHandler(async (_req, res) => {
-  ApiResponse.success(res, await MetaService.stats());
+export const stats = asyncHandler(async (req, res) => {
+  ApiResponse.success(res, await MetaService.stats(req.auth));
 });
 
 /** Development aid: e-mails the API would have sent (only when EXPOSE_RESET_TOKEN=true). */

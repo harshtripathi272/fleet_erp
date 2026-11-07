@@ -17,6 +17,8 @@ import { Connection } from '../connections/connection.model.js';
 import { setMessageTest } from '../connections/connections.service.js';
 import { type Channel, CHANNEL_LABEL, CHANNELS, isAddressFor, scrub, type Sender, senderFor, senderOn } from './connections.service.js';
 import { OutboundMessage, type OutboundRecord } from './models/connection.model.js';
+import { outboxPlan, useForCompanyTemplate } from './whatsapp/service.js';
+import type { WaUse } from './whatsapp/templates.js';
 import { EVENTS, MessageTemplate, NotificationRule } from './models/messaging.model.js';
 
 /** Waits after the 1st, 2nd, ... failed attempt; after the last one the message is marked failed. */
@@ -143,6 +145,7 @@ export async function dispatch(input: DispatchInput, { background = false }: { b
       subject: template.subject ? render(String(template.subject), values) : undefined,
       body: render(String(template.body), values),
       attachments: channel === 'email' && attachments.length ? attachments : undefined,
+      whatsapp: channel === 'whatsapp' ? useForCompanyTemplate(template.providerTemplateId, (text) => render(text, values)) : undefined,
       status: to ? 'queued' : 'skipped',
       note: to ? undefined : noAddress(recipient, channel),
       nextAttemptAt: to ? new Date(now + Number(rule.delayMinutes ?? 0) * 60000) : undefined,
@@ -265,9 +268,12 @@ async function deliver(id: Types.ObjectId, { override, sender, once }: DeliverOp
   }
   const attempts = message.attempts + 1;
   try {
+    const text = override?.text ?? message.body;
     const result = await via.send({
-      to: message.to!, subject: message.subject, text: override?.text ?? message.body,
+      to: message.to!, subject: message.subject, text,
       attachments: override?.attachments ?? (message.attachments?.length ? await loadAttachments(message.attachments) : undefined),
+      // WhatsApp after the 24 hours needs an approved template (#112).
+      ...(message.channel === 'whatsapp' && connectionId ? { whatsapp: await outboxPlan(connectionId, message.to!, text, message.whatsapp as WaUse | undefined) } : {}),
     });
     if (connectionId) await Connection.updateOne({ _id: connectionId }, { $set: { lastUsedAt: new Date() } });
     return OutboundMessage.findByIdAndUpdate(id, {

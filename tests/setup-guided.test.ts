@@ -78,7 +78,8 @@ describe('Set up a company', () => {
     assert.deepEqual(missing.sort(), ['regional.baseCurrency', 'regional.country']);
     assert.deepEqual(await check({ file: file(), finish: 'here' }), [], 'no image, domain or e-mail server needed here');
     const packaged = await check({ file: file(), finish: 'package' });
-    assert.ok(packaged.includes('deploy.image'), packaged.join());
+    // The package carries the app's source, so no image needs naming (#103).
+    assert.ok(!packaged.includes('deploy.image'), packaged.join());
     assert.ok(!packaged.includes('deploy.smtp'), 'e-mail is optional: the first owner can have a password instead');
   });
 
@@ -390,5 +391,15 @@ describe('Set up a company', () => {
     // And a lock can't name a service that isn't in use.
     const bad = (await api().post('/api/v1/setup-kit/check').set(bearer(owner)).send({ file: file({ ...lockedFile, connectionRules: { sms: { providers: ['africastalking'] } } }), finish: 'here' }).expect(200)).body.data.problems;
     assert.ok(bad.some((p: { path: string }) => p.path.startsWith('connectionRules')), JSON.stringify(bad));
+  });
+
+  test('only an owner can apply or package, and a real company in production can\'t become a demonstration', async () => {
+    const admin = await userWithRole(owner, 'admin');
+    await api().post('/api/v1/setup-kit/apply').set(bearer(admin)).send({ file: file() }).expect(403);
+    await api().post('/api/v1/setup-kit/package').set(bearer(admin)).send({ file: file() }).expect(403);
+    await apply(owner, { file: file() });
+    env.NODE_ENV = 'production';
+    const refused = endOf(await apply(owner, { file: file({ purpose: 'demo' }) }));
+    assert.match(refused.message, /can't become a demonstration/);
   });
 });

@@ -5,12 +5,14 @@ import { connectMongo, disconnectMongo, syncIndexes } from './core/db/mongo.js';
 import { logger } from './core/logger/index.js';
 import { ensureFirstOwner } from './modules/auth/auth.service.js';
 import { startMaintenanceWorker, stopMaintenanceWorker } from './modules/maintenance/maintenance.service.js';
+import { startExpiryWorker, stopExpiryWorker } from './modules/compliance/expiryReminders.js';
 import { ensureBillingMessages, ensureDefaultMessages } from './modules/messaging/defaults.js';
 import { migrateToConnections } from './modules/connections/migrate.js';
 import { applyCompanyFile } from './modules/setup/apply.js';
 import { settleSends, startOutboxWorker, stopOutboxWorker } from './modules/messaging/dispatcher.js';
 import { startEscalationWorker, stopEscalationWorker } from './modules/operations/escalation.js';
 import { ensureSystemRoles } from './modules/roles/roles.service.js';
+import { startTemplateRefresh, stopTemplateRefresh } from './modules/messaging/whatsapp/service.js';
 import { refreshRegional } from './modules/company/regional.js';
 
 await connectMongo();
@@ -34,7 +36,10 @@ await connectRedis();
 startOutboxWorker();
 if (env.IN_PROCESS_JOBS) {
   startEscalationWorker();
+  // WhatsApp templates' standing at Meta, read once a day (#112).
+  startTemplateRefresh();
   startMaintenanceWorker();
+  startExpiryWorker();
 }
 
 const server = app.listen(env.PORT, env.HOST, () => {
@@ -59,7 +64,9 @@ function shutdown(reason: string, exitCode: number) {
     if (err) { logger.error({ err }, 'Shutdown failed'); process.exitCode = 1; }
     stopOutboxWorker();
     stopEscalationWorker();
+    stopTemplateRefresh();
     stopMaintenanceWorker();
+    stopExpiryWorker();
     await settleSends();
     await Promise.allSettled([disconnectMongo(), disconnectRedis()]);
     logger.info({}, 'Server stopped');

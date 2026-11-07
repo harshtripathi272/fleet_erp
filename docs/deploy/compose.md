@@ -21,7 +21,7 @@ Tested end to end in CI (the `kit` job in `.github/workflows/check.yml`).
 ```bash
 unzip acme-haulage-kit.zip && cd acme-haulage-kit
 cp .env.example .env
-nano .env                  # the SECRET lines, and FLEET_VERSION
+nano .env                  # the SECRET lines (FLEET_VERSION too, only for a package without the source)
 docker compose up -d --build
 docker compose logs -f app # "Company file applied", then "Server started"
 curl -fsS https://fleet.acme-haulage.example/api/v1/health/ready
@@ -38,8 +38,8 @@ Only what the file changed is applied.
 
 ## Upgrade
 
-1. Set `FLEET_VERSION` in `.env` to the new tag.
-2. Run `docker compose up -d --build`.
+1. Unzip the new package over the old one, keeping `.env` (or, for a package without the source, set `FLEET_VERSION` in `.env` to the new tag).
+2. Run `docker compose up -d --build`. The image is built from the new source.
 
 To roll back, set the old tag and run it again. Back up first: `docker compose exec backup sh -c 'mongodump --uri="$MONGODB_URI" --gzip --archive=/backups/before-upgrade.gz'`.
 

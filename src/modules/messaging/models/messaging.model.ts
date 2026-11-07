@@ -32,7 +32,7 @@ export const CHANNEL_NAMES: Record<(typeof MESSAGE_CHANNELS)[number], string> = 
 /** Placeholders a template may use, written {{name}}. */
 export const VARIABLES = [
   'company.name', 'company.signature', 'user.name', 'driver.name', 'driver.phone', 'vehicle.registration', 'trailer.registration', 'trip.number',
-  'route.name', 'place.name', 'customer.name', 'amount', 'currency', 'document.name', 'document.number', 'document.expiryDate',
+  'route.name', 'place.name', 'customer.name', 'amount', 'currency', 'document.name', 'document.number', 'document.expiryDate', 'document.holder',
   'reason', 'link', 'date',
   'invoice.number', 'invoice.kind', 'invoice.total', 'invoice.due', 'payment.number', 'payment.amount', 'payment.invoices', 'statement.period', 'statement.balance',
 ] as const;

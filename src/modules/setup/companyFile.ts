@@ -107,7 +107,7 @@ const common = {
   image: z.string().trim().regex(/^[a-z0-9.-]+(:\d+)?(\/[a-z0-9._-]+)+$/, 'An image name without a tag, e.g. ghcr.io/acme/fleet-erp').optional(),
   smtp: smtp.optional(),
 };
-export const TARGETS = ['gcp', 'compose', 'aws', 'azure', 'render', 'fly', 'railway'] as const;
+export const TARGETS = ['gcp', 'compose', 'local', 'aws', 'azure', 'render', 'fly', 'railway'] as const;
 export type Target = (typeof TARGETS)[number];
 const deploy = z.discriminatedUnion('target', [
   z.strictObject({
@@ -119,6 +119,10 @@ const deploy = z.discriminatedUnion('target', [
     minInstances: z.number().int().min(0).max(10).default(0),
     maxInstances: z.number().int().min(1).max(10).default(1),
     schedulerRegion: z.string().trim().regex(/^[a-z]+-[a-z]+\d$/).optional(),
+    /** Who gets the alerts (#104): when it's down, failing, or near its budget. The owner unless set. */
+    alertEmail: email.optional(),
+    /** The monthly budget alerted on, in the billing account's own currency. */
+    monthlyBudget: z.number().int().min(1).max(1_000_000).default(50),
   }),
   z.strictObject({
     target: z.literal('compose'), ...common,
@@ -131,6 +135,8 @@ const deploy = z.discriminatedUnion('target', [
   z.strictObject({ target: z.literal('render'), ...common, region: z.enum(['frankfurt', 'oregon', 'ohio', 'virginia', 'singapore']).default('frankfurt') }),
   z.strictObject({ target: z.literal('fly'), ...common, region: z.string().trim().regex(/^[a-z]{3}$/).default('jnb') }),
   z.strictObject({ target: z.literal('railway'), ...common }),
+  // A separate copy on this computer (#103): its own database and files, at http://localhost:<port>.
+  z.strictObject({ target: z.literal('local'), ...common, port: z.number().int().min(1024).max(65535).default(8080) }),
 ]);
 
 export const companyFileSchema = z.strictObject({

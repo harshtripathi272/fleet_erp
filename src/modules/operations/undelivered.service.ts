@@ -74,7 +74,7 @@ async function returnLoad(trip: Doc, consignment: Doc, input: S.UndeliveredInput
   await save(consignment);
   const name = await placeName(place);
   const plain = trip.toObject() as Plain;
-  if (plain.driverId) await post(driverThread(plain.driverId), at, { title: `Take the load back · ${plain.number}`, text: `${why}. Return the load to ${name}.` }, ctx);
+  if (plain.driverId) await post(driverThread(plain.driverId), at, { title: `Take the load back · ${plain.number}`, text: `${why}. Return the load to ${name}.`, wa: { template: 'load_return', values: [String(plain.number), why, name] } }, ctx);
   await log(ctx, at, `Load ${consignment.get('number')} going back to ${name}: ${why}`, { tripId: trip._id });
   await announce('trip.load_returned', plain, ctx, { variables: { reason: why, 'place.name': name } });
   return presentTrip(plain);
@@ -126,7 +126,7 @@ async function transferLoad(trip: Doc, consignment: Doc, input: S.UndeliveredInp
   await save(trip);
 
   const name = await placeName(here);
-  if (old.driverId) await post(driverThread(old.driverId), at, { title: `${old.number} closed`, text: `${why}. The load moves to ${truck.plate} at ${name}.` }, ctx);
+  if (old.driverId) await post(driverThread(old.driverId), at, { title: `${old.number} closed`, text: `${why}. The load moves to ${truck.plate} at ${name}.`, wa: { template: 'trip_closed', values: [String(old.number), `${why}; the load moves to ${truck.plate} at ${name}`] } }, ctx);
   await post(queue('trips'), at, { title: `Load moved to ${truck.plate}`, text: `${old.number} closed: ${why}. ${created.number} carries ${consignment.get('number')} from ${name}.`, buttons: [{ label: 'Open trip', nav: { tripId: String(created.id) } }] }, ctx);
   await log(ctx, at, `Load ${consignment.get('number')} moved to ${created.number} (${truck.plate}) at ${name}: ${why}`, { tripId: trip._id });
   await log(ctx, at, `Carries ${consignment.get('number')} from ${old.number}`, { tripId: created.id });
@@ -197,6 +197,7 @@ async function approveWriteOff(trip: Doc, consignment: Doc, at: Date, ctx: OpsCo
     await post(driverThread(plain.driverId), at, {
       title: `${plain.number} closed`,
       text: w.carrier === 'driver' ? `The load was written off: ${w.reason}. ${money} goes on your account.` : `The load was written off: ${w.reason}.`,
+      wa: { template: 'trip_closed', values: [String(plain.number), w.carrier === 'driver' ? `the load was written off (${w.reason}) and ${money} goes on your account` : `the load was written off (${w.reason})`] },
     }, ctx);
   }
   await log(ctx, at, `Wrote off ${consignment.get('number')} (${money}), carried by ${String(CARRIER_NAME[String(w.carrier)]).toLowerCase()}: ${w.reason}`, { tripId: trip._id });

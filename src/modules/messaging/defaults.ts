@@ -40,7 +40,7 @@ export const DEFAULT_TEMPLATES: DefaultTemplate[] = [
   { code: 'SMS-TRIP-CLOSED', name: 'Trip closed (SMS to driver)', channel: 'sms', event: 'trip.closed', audience: 'driver', body: '{{trip.number}} is closed. Truck {{vehicle.registration}} is parked at {{place.name}}. Thank you.' },
   { code: 'EM-TRIP-CLOSED', name: 'Trip sheet (e-mail to the office)', channel: 'email', event: 'trip.closed', audience: 'operations', subject: 'Trip sheet {{trip.number}}', body: `Trip {{trip.number}} ({{route.name}}) is closed. {{vehicle.registration}} is free at {{place.name}}.\n\nThe trip sheet is attached. The trip is ready to settle with {{driver.name}}.${SIGN}` },
   // Money requests
-  { code: 'WA-ADV-REQ', name: 'Advance request to Finance', channel: 'whatsapp', event: 'fund_request.created', audience: 'finance', body: '{{driver.name}} needs {{currency}} {{amount}} for {{trip.number}} ({{route.name}}). Reason: {{reason}}', buttons: [{ label: 'Approve', action: 'approve' }, { label: 'Reject', action: 'reject' }], providerTemplateId: 'advance_request_v1' },
+  { code: 'WA-ADV-REQ', name: 'Advance request to Finance', channel: 'whatsapp', event: 'fund_request.created', audience: 'finance', body: '{{driver.name}} needs {{currency}} {{amount}} for {{trip.number}} ({{route.name}}). Reason: {{reason}}', buttons: [{ label: 'Approve', action: 'approve' }, { label: 'Reject', action: 'reject' }], providerTemplateId: 'advance_request' },
   { code: 'EM-FUND-REQUESTED', name: 'Money request (e-mail to Finance)', channel: 'email', event: 'fund_request.created', audience: 'finance', subject: '{{trip.number}}: {{amount}} {{currency}} requested', body: `{{amount}} {{currency}} is requested for trip {{trip.number}} ({{route.name}}), truck {{vehicle.registration}}, driver {{driver.name}}.\n\nReason: {{reason}}\n\nApprove or reject it in the app: {{link}}${SIGN}` },
   { code: 'EM-FUND-APPROVED', name: 'Request approved (e-mail to Operations)', channel: 'email', event: 'fund_request.approved', audience: 'operations', subject: '{{trip.number}}: {{amount}} {{currency}} approved', body: `The request for {{amount}} {{currency}} on trip {{trip.number}} is approved and waiting to be paid.${SIGN}` },
   { code: 'EM-FUND-REJECTED', name: 'Request rejected (e-mail to Operations)', channel: 'email', event: 'fund_request.rejected', audience: 'operations', subject: '{{trip.number}}: {{amount}} {{currency}} rejected', body: `The request for {{amount}} {{currency}} on trip {{trip.number}} was rejected.\n\nReason: {{reason}}${SIGN}` },
@@ -60,7 +60,8 @@ export const DEFAULT_TEMPLATES: DefaultTemplate[] = [
   // Nominations
   { code: 'EM-NOMINATION', name: 'Nomination (e-mail to customer)', channel: 'email', event: 'nomination.sent', audience: 'customer', subject: 'Nomination {{document.number}}: trucks for loading at {{place.name}}', body: `Hello,\n\nWe nominate {{vehicle.registration}} for loading at {{place.name}} on {{date}} (nomination {{document.number}}). Please confirm.${SIGN}` },
   // Documents
-  { code: 'EMAIL-DOC-EXP', name: 'Document expiring e-mail', channel: 'email', event: 'document.expiring', audience: 'operations', subject: '{{document.name}} for {{vehicle.registration}} expires {{document.expiryDate}}', body: 'Hello,\n\n{{document.name}} {{document.number}} expires on {{document.expiryDate}}. Renew it to avoid blocking dispatch.\n\n{{company.name}}' },
+  { code: 'EMAIL-DOC-EXP', name: 'Document expiring e-mail', channel: 'email', event: 'document.expiring', audience: 'operations', subject: '{{document.name}} for {{document.holder}} expires {{document.expiryDate}}', body: 'Hello,\n\n{{document.name}} {{document.number}} expires on {{document.expiryDate}}. Renew it to avoid blocking dispatch.\n\n{{company.name}}' },
+  { code: 'EMAIL-DOC-EXPIRED', name: 'Document expired e-mail', channel: 'email', event: 'document.expired', audience: 'operations', subject: '{{document.name}} for {{document.holder}} expired {{document.expiryDate}}', body: 'Hello,\n\n{{document.name}} {{document.number}} for {{document.holder}} expired on {{document.expiryDate}}. Renew it and put the new one on the record.\n\n{{company.name}}' },
 ];
 
 const driver: Recipient = { kind: 'driver' };
@@ -93,6 +94,7 @@ export const DEFAULT_RULES: DefaultRule[] = [
   { code: 'SETTLEMENT-DRIVER', name: 'Send the driver their statement', event: 'settlement.posted', recipients: [driver], templates: [{ channel: 'sms', template: 'SMS-SETTLEMENT' }, { channel: 'email', template: 'EM-SETTLEMENT' }] },
   { code: 'NOMINATION-CUSTOMER', name: 'Send the nomination to the customer', event: 'nomination.sent', recipients: [customer], templates: [{ channel: 'email', template: 'EM-NOMINATION' }] },
   { code: 'DOC-EXPIRING-OPS', name: 'Tell Operations a document is expiring', event: 'document.expiring', recipients: [role('operations')], templates: [{ channel: 'email', template: 'EMAIL-DOC-EXP' }] },
+  { code: 'DOC-EXPIRED-OPS', name: 'Tell Operations a document has expired', event: 'document.expired', recipients: [role('operations')], templates: [{ channel: 'email', template: 'EMAIL-DOC-EXPIRED' }] },
 ];
 
 /** One record per installation saying the default set was created, so it is never created again. */

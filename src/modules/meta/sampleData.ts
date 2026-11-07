@@ -1,4 +1,5 @@
 import { ConflictError } from '../../core/errors/index.js';
+import { SystemState } from '../auth/systemState.model.js';
 import { logger } from '../../core/logger/index.js';
 import { getMaster } from '../../core/masters/registry.js';
 import * as MasterService from '../../core/masters/service.js';
@@ -220,6 +221,8 @@ export async function loadSampleData(actorId?: string, size: SampleSize = 'full'
   await make('work-orders', 'woV2', { vehicleId: ids.v2, source: 'service', servicePlanId: ids.planA, workshopPartyId: ids.workshop, stage: 'done', stopsTruck: false, startedAt: days(-21).toISOString(), endedAt: days(-20).toISOString(), labour: money(1_450_00), description: 'A service done on schedule.' });
   await make('tyre-records', 'tyreV2', { vehicleId: ids.v2, position: 'Front left', action: 'replaced', serialNumber: 'MX-44721', at: days(-20).toISOString(), cost: money(4_800_00) });
   if (size === 'full') created += await loadSampleHistory(ids, names, actorId);
+  // The sign-in page then says this copy holds made-up data (#103).
+  await SystemState.updateOne({ key: 'sample-data' }, { $set: { value: { size, at: new Date() } } }, { upsert: true });
   logger.info({ created, size }, 'Sample data loaded');
   return { created };
 }

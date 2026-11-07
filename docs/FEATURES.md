@@ -157,6 +157,7 @@ Owners: LD = lakshya-desktop, LT = lakshya-t3, HD = harsh-desktop, HT = harsh-t3
 | Every new company starts with templates and rules | Built | #43 | |
 | E-mail through the server's or the company's own SMTP, with presets (Google, Microsoft 365, SES, Zoho), or SendGrid, Resend, Mailgun | Building | #98 | HD; each with a guide; tested on recorded answers |
 | Real WhatsApp: Meta Cloud API or Twilio, replies reach the app; Marichi Talks coming soon | Building | #98 | HD; no live Meta account tested yet; one approved template for after 24 hours |
+| WhatsApp templates for every message, submitted to Meta and tracked; photos from drivers kept | Building | #112 | HD; tested on recorded Meta answers, not a live account |
 | SMS providers (Africa's Talking, Twilio), with guides | Building | #59, #98 | HD |
 | Trip sheet and driver statement as PDF, by print layout | Built | #44 | |
 | Logo and watermark on PDFs | Building | #71 | LD |
@@ -193,7 +194,7 @@ Owners: LD = lakshya-desktop, LT = lakshya-t3, HD = harsh-desktop, HT = harsh-t3
 | Production hardening: headers, rate limits, compression, simulators off in production | Built | #18 | |
 | Set up a company: guided steps, a draft that saves itself, finish on this copy or download a package; demo sign-ins per role | Built | #96 | The sidebar, or `npm run kit` |
 | File, image and document fields on any master | Planned | #97 | Customise, on any record |
-| Real WhatsApp and e-mail methods; keys typed on screen | Planned | #98 | Set up a company → Connections |
+| Real WhatsApp and e-mail methods; keys named by the app, never typed on screen | Building | #98 | Set up a company → Connections |
 | Run on this computer; every platform described on screen | Planned | #99 | Set up a company → Where it runs |
 | Guides and scripts for AWS, Azure, any VM with Docker Compose, Render, Fly.io, Railway | Building | #76 | docs/deploy/; Compose tested in CI |
 | Upgrades and rollbacks between versions | Building | #76 | docs/deploy/README.md |

@@ -98,10 +98,10 @@ export async function sendChat(input: S.ChatInput, ctx: OpsContext) {
   const [kind, id] = input.thread.split(':');
   if (kind === 'customer') {
     if (!(await Party.exists({ _id: id }))) throw new NotFoundError('Customer not found');
-    await post(input.thread, at, { from: 'me', text: input.text }, ctx);
+    await post(input.thread, at, { from: 'me', text: input.text, wa: { template: 'office_message', values: [ctx.name, input.text] } }, ctx);
   } else if (kind === 'driver') {
     if (!(await Driver.exists({ _id: id }))) throw new NotFoundError('Driver not found');
-    await post(input.thread, at, { from: 'bot', title: ctx.name, text: input.text }, ctx);
+    await post(input.thread, at, { from: 'bot', title: ctx.name, text: input.text, wa: { template: 'office_message', values: [ctx.name, input.text] } }, ctx);
   } else {
     await post(input.thread, at, { from: 'me', text: input.text }, ctx);
     const open = await waitingIn(input.thread);
