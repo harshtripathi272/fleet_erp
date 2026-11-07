@@ -1531,3 +1531,10 @@
     flex: 1 1 0;
   }
 }
+
+/* The line at the end of a list that goes further back than the desks have loaded (#125). */
+.older-records {
+  margin: 12px 14px;
+  font-size: 13px;
+  line-height: 1.5;
+}

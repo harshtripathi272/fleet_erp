@@ -40,24 +40,29 @@ async function loadApprovers(): Promise<Approver[]> {
 
 /* ---------- Trip-side records, merged from the incremental sync ---------- */
 
-type Collection = Exclude<keyof Operations, "reads">;
+type Collection = Exclude<keyof Operations, "reads" | "history">;
 const COLLECTIONS: Collection[] = ["trips", "requests", "documents", "consignments", "expenses", "settlements", "nominations", "vehicleStates", "driverAccounts", "messages", "activity"];
 
-interface Synced { userId: string; since?: string; maps: Record<Collection, Map<string, Rec>>; reads: Operations["reads"] }
+interface Synced { userId: string; since?: string; from?: string; history?: Operations["history"]; maps: Record<Collection, Map<string, Rec>>; reads: Operations["reads"] }
 let synced: Synced | null = null;
 
 async function syncOperations(userId: string): Promise<Operations> {
   if (synced?.userId !== userId) synced = { userId, maps: Object.fromEntries(COLLECTIONS.map((c) => [c, new Map()])) as Synced["maps"], reads: [] };
   const state = synced;
   // Like the lists above: someone who may not read trips (an auditor, say) still gets the app, with no trips in it.
-  const res = await api<Rec>("/operations/sync", { query: { since: state.since } }).catch((error: unknown) => {
+  const { since, from } = state;
+  const res = await api<Rec>("/operations/sync", { query: { since, from } }).catch((error: unknown) => {
     if (error instanceof ApiError && error.status === 403) return {} as Rec;
     throw error;
   });
+  // "Load older" was pressed while this was on its way: this answer is for the old window, and the next one replaces it.
+  if (state.from !== from) throw new Error("Superseded by a longer history");
   for (const c of COLLECTIONS) for (const row of (res[c] ?? []) as Rec[]) state.maps[c].set(String(row.id), row);
   state.reads = res.reads ?? [];
   state.since = res.serverTime;
-  return { ...(Object.fromEntries(COLLECTIONS.map((c) => [c, [...state.maps[c].values()]])) as Omit<Operations, "reads">), reads: state.reads };
+  // The first load says what it left out and each driver's balance from it; the window stays put from then on.
+  if (res.history) { state.history = res.history; state.from = res.history.from; }
+  return { ...(Object.fromEntries(COLLECTIONS.map((c) => [c, [...state.maps[c].values()]])) as Pick<Operations, Collection>), reads: state.reads, history: state.history };
 }
 
 export function useSharedData(me: Me) {
@@ -76,6 +81,14 @@ export function useSharedData(me: Me) {
   );
   const refreshReference = useCallback(() => client.invalidateQueries({ queryKey: ["reference", me.id] }), [client, me.id]);
   return { data, approvers: policies.data ?? [], perform, refreshReference, error: reference.error ?? operations.error, loading: reference.isLoading || operations.isLoading };
+}
+
+/** Reaches three months further back: older trips and settlements load, and what's carried is worked out again. */
+export function loadOlderRecords() {
+  if (!synced?.from) return;
+  synced.from = new Date(new Date(synced.from).getTime() - 91 * 86400000).toISOString();
+  synced.since = undefined;
+  void queryClient.invalidateQueries({ queryKey: ["operations"] });
 }
 
 export function resetSync() {

@@ -29,9 +29,21 @@ export const regionalSettings = () => regional;
 export const phonePlaceholder = () => `${regional.phoneCountryCode || "+"}…`;
 
 /** A number with the company's separators: 12,500.5 or 12.500,5 or 12 500,5. */
+// Making a formatter is slow enough to show when every row of a long list formats several numbers.
+const PLAIN_FORMATS = new Map<string, Intl.NumberFormat>();
+function plainFormat(min: number, max: number) {
+  const key = `${String(min)}:${String(max)}`;
+  let format = PLAIN_FORMATS.get(key);
+  if (!format) {
+    format = new Intl.NumberFormat("en-US", { minimumFractionDigits: min, maximumFractionDigits: max });
+    PLAIN_FORMATS.set(key, format);
+  }
+  return format;
+}
+
 export function num(value: number | undefined | null, digits = 0, maxDigits = digits) {
   if (value == null || Number.isNaN(value)) return "—";
-  const plain = new Intl.NumberFormat("en-US", { minimumFractionDigits: digits, maximumFractionDigits: Math.max(digits, maxDigits) }).format(value || 0);
+  const plain = plainFormat(digits, Math.max(digits, maxDigits)).format(value);
   return plain.replace(/[,.]/g, (c) => (c === "," ? "\u0001" : "\u0002")).replace(/\u0001/g, regional.thousandsSeparator).replace(/\u0002/g, regional.decimalSeparator);
 }
 

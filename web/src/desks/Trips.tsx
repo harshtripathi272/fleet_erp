@@ -28,7 +28,7 @@ import { NewTrip } from "./NewTrip";
 import { usePlacement } from "./usePlacement";
 import { DriverMessages, StagePanel } from "./stages";
 import { TripAside } from "./TripAside";
-import { FirstTripSteps, useFirstTrip } from "./firstTrip";
+import { FirstTripSteps, OlderRecords, useFirstTrip } from "./firstTrip";
 import { w, wl } from "../domain/words";
 
 type Filter = "mine" | "active" | "closed";
@@ -119,10 +119,11 @@ export function TripsPage({
           ))}
           {!shown.length && (
             <Empty title={filter === "mine" ? "Nothing waiting on you" : `No ${wl(data, "trip", true)} here`}>
-              {!data.trips.length ? <NoTripsYet onNew={may("trip.create") ? () => setCreating(true) : undefined} />
+              {!data.trips.length && !data.history?.older ? <NoTripsYet onNew={may("trip.create") ? () => setCreating(true) : undefined} />
                 : filter === "mine" && <button className="link-btn" onClick={() => setFilter("active")}>See active trips</button>}
             </Empty>
           )}
+          {filter === "closed" && <OlderRecords what={`closed ${wl(data, "trip", true)}`} />}
         </div>
       </section>
       <section className="trip-detail-pane">

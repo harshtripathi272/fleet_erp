@@ -37,6 +37,8 @@ export interface Driver {
   licence: string;
   /** Balance carried in from before the system went live. Positive: driver holds company cash. */
   openingBalanceBase: number;
+  /** The balance from records older than the desks have loaded (#125). The server works it out. */
+  carriedBase?: number;
   settleRequestedAt?: string;
   settleRequestedBy?: Role;
 }
@@ -411,6 +413,8 @@ export interface ActivityEvent {
 }
 
 export interface AppData {
+  /** How far back trips and settlements are loaded, and whether there's more. */
+  history?: { from: string; older: boolean };
   version: 4;
   settings: Settings;
   places: Place[];

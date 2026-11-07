@@ -9,7 +9,7 @@ import type { Driver } from "../domain/types";
 import { Avatar, Button, Empty, Field, Segmented, Status } from "../ui/kit";
 import { ago, day, dayYear, inBase, baseLabel } from "../ui/format";
 import { Card } from "./stages";
-import { AddNew } from "./firstTrip";
+import { AddNew, OlderRecords } from "./firstTrip";
 import { wl } from "../domain/words";
 
 export function Accounts({ driverId, onDriver }: { driverId?: string; onDriver: (id: string | undefined) => void }) {
@@ -320,6 +320,7 @@ function History({ driver }: { driver: Driver }) {
     return (
       <Card>
         <Empty title="No statements yet" />
+        <OlderRecords what="statements" />
       </Card>
     );
   return (
@@ -338,6 +339,7 @@ function History({ driver }: { driver: Driver }) {
           </button>
         ))}
       </div>
+      <OlderRecords what="statements" />
     </Card>
   );
 }

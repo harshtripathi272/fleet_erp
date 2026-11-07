@@ -96,24 +96,68 @@ export async function tripSheet(id: string) {
  * (everything when omitted), plus the caller's read marks. Records are never deleted, so a client
  * merges by id. Only areas the caller may read are included, and only the threads they see.
  */
-export async function sync(since: Date | undefined, viewer: Viewer) {
+/** How far back the desks' first load reaches. Older records stay on the server, and can be asked for. */
+export const HISTORY_DAYS = 30;
+
+/**
+ * What the desks' first load leaves out: trips settled or cancelled before the window starts, with what belongs to
+ * them. It's fixed once they're that old, so what's left out can't change while the desks are open.
+ */
+async function historyScope(from: Date) {
+  const oldSettlements = await Settlement.find({ postedAt: { $lt: from } }).select('_id').lean();
+  const old: Plain = { $or: [{ settlementId: { $in: oldSettlements.map((s) => s._id) } }, { cancelledAt: { $lt: from } }] };
+  return { old, kept: { $nor: [old] } as Plain };
+}
+
+/**
+ * Each driver's balance from what the first load leaves out, in the same terms as `driverLedger`, so the desks can add
+ * it to what they did load and arrive at the same balance. tests/history-window.test.ts holds the two together.
+ */
+async function carriedBalances(keptTripIds: unknown[], from: Date) {
+  const totals = new Map<string, number>();
+  const add = (driverId: unknown, minor: number) => { if (driverId && minor) totals.set(String(driverId), (totals.get(String(driverId)) ?? 0) + minor); };
+  const [advances, shortages, writeOffs, expenses, settlements] = await Promise.all([
+    FundRequest.aggregate<{ _id: unknown; sum: number }>([{ $match: { kind: 'cash', status: 'issued', tripId: { $nin: keptTripIds } } }, { $group: { _id: '$tripId', sum: { $sum: { $ifNull: ['$baseAmountMinor', 0] } } } }]),
+    Consignment.aggregate<{ _id: unknown; sum: number }>([{ $match: { 'shortage.status': 'charged', tripId: { $nin: keptTripIds } } }, { $group: { _id: '$tripId', sum: { $sum: '$shortage.baseAmountMinor' } } }]),
+    Consignment.aggregate<{ _id: unknown; sum: number }>([{ $match: { 'writeOff.status': 'approved', 'writeOff.carrier': 'driver', tripId: { $nin: keptTripIds } } }, { $group: { _id: '$tripId', sum: { $sum: '$writeOff.baseAmountMinor' } } }]),
+    Expense.aggregate<{ _id: unknown; sum: number }>([{ $match: { status: 'approved', $nor: [{ tripId: { $in: keptTripIds } }, { tripId: null, at: { $gte: from } }] } }, { $group: { _id: '$driverId', sum: { $sum: '$baseAmountMinor' } } }]),
+    Settlement.aggregate<{ _id: unknown; sum: number }>([{ $match: { postedAt: { $lt: from }, cashMinor: { $ne: 0 } } }, { $group: { _id: '$driverId', sum: { $sum: '$cashMinor' } } }]),
+  ]);
+  const byTrip = [...advances, ...shortages, ...writeOffs];
+  const drivers = new Map((await Trip.find({ _id: { $in: byTrip.map((r) => r._id) } }).select('driverId').lean()).map((t) => [String(t._id), t.driverId]));
+  for (const r of byTrip) add(drivers.get(String(r._id)), Number(r.sum));
+  for (const r of expenses) add(r._id, -Number(r.sum));
+  for (const r of settlements) add(r._id, -Number(r.sum));
+  return Object.fromEntries(totals);
+}
+
+export async function sync(since: Date | undefined, viewer: Viewer, fromInput?: Date) {
   const { userId, can } = viewer;
   const serverTime = new Date();
-  const changed = since ? { updatedAt: { $gt: since } } : {};
+  const from = fromInput ?? new Date(serverTime.getTime() - HISTORY_DAYS * 86400000);
+  const changed: Plain = since ? { updatedAt: { $gt: since } } : {};
   const read = async (resource: string, run: () => Promise<unknown[]>) => (can(resource, 'read') ? run() : []);
+  const { old, kept } = await historyScope(from);
+  // On the first load, which trips are in. After that the desks hold them, so only what changed comes, within the window.
+  const keptTrips = await Trip.find({ ...kept, ...changed }).lean();
+  const keptIds = since ? (await Trip.find(kept).select('_id').lean()).map((t) => t._id) : keptTrips.map((t) => t._id);
+  const ofKept: Plain = { ...changed, tripId: { $in: keptIds } };
+  const orRecent = (field: string): Plain => ({ ...changed, $or: [{ tripId: { $in: keptIds } }, { tripId: null, [field]: { $gte: from } }] });
   const [trips, requests, documents, consignments, expenses, settlements, nominations, vehicleStates, driverAccounts, messages, activity] = await Promise.all([
-    read('trips', async () => (await Trip.find(changed).lean()).map((t) => presentTrip(t as Plain))),
-    read('fund-requests', async () => (await FundRequest.find(changed).lean()).map(present)),
-    read('driver-documents', async () => (await DriverDocument.find(changed).lean()).map(present)),
-    read('consignments', async () => (await Consignment.find(changed).lean()).map(present)),
-    read('expenses', async () => (await Expense.find(changed).lean()).map(present)),
-    read('settlements', async () => (await Settlement.find(changed).lean()).map(present)),
-    read('nominations', async () => (await Nomination.find(changed).lean()).map(present)),
+    read('trips', async () => keptTrips.map((t) => presentTrip(t as Plain))),
+    read('fund-requests', async () => (await FundRequest.find(ofKept).lean()).map(present)),
+    read('driver-documents', async () => (await DriverDocument.find(orRecent('createdAt')).lean()).map(present)),
+    read('consignments', async () => (await Consignment.find(ofKept).lean()).map(present)),
+    read('expenses', async () => (await Expense.find(orRecent('at')).lean()).map(present)),
+    read('settlements', async () => (await Settlement.find({ ...changed, postedAt: { $gte: from } }).lean()).map(present)),
+    read('nominations', async () => (await Nomination.find({ ...changed, $or: [{ status: { $in: ['draft', 'sent', 'accepted'] } }, { updatedAt: { $gte: from } }] }).lean()).map(present)),
     read('vehicle-states', async () => (await VehicleState.find(changed).lean()).map(present)),
     read('settlements', async () => (await DriverAccount.find(changed).lean()).map(present)),
     read('messages', async () => (await Message.find({ ...changed, ...threadFilter(viewer) }).sort({ at: 1 }).limit(since ? 2000 : 1000).lean()).map(present)),
     read('activity', async () => (await Activity.find(changed).sort({ at: -1 }).limit(since ? 2000 : 500).lean()).map(present)),
   ]);
+  // Only on the first load: what's left out doesn't change once it's that old.
+  const history = since ? undefined : { from: from.toISOString(), older: Boolean(await Trip.exists(old)), carried: can('settlements', 'read') ? await carriedBalances(keptIds, from) : {} };
   const reads = (await ThreadRead.find({ userId }).lean()).map((r) => ({ thread: r.thread, at: r.at }));
-  return { serverTime, since: since ?? null, currency: await baseCurrency().catch(() => null), trips, requests, documents, consignments, expenses, settlements, nominations, vehicleStates, driverAccounts, messages, activity, reads };
+  return { serverTime, since: since ?? null, ...(history ? { history } : {}), currency: await baseCurrency().catch(() => null), trips, requests, documents, consignments, expenses, settlements, nominations, vehicleStates, driverAccounts, messages, activity, reads };
 }
