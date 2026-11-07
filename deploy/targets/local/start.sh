@@ -21,7 +21,8 @@ port="${PORT:-8080}"
 
 if [ ! -f .env ]; then
   cp .env.example .env
-  random() { LC_ALL=C tr -dc 'A-Za-z0-9' < /dev/urandom | head -c "$1"; }
+  # A fixed amount read first: nothing in the pipe stops early, so pipefail doesn't see tr killed by SIGPIPE.
+  random() { head -c 4096 /dev/urandom | LC_ALL=C tr -dc 'A-Za-z0-9' | cut -c "1-$1"; }
   jwt="$(random 48)"
   password="Fleet$(random 10)7"
   # Fill in the two secrets this copy makes itself; nothing else is secret on this computer.
