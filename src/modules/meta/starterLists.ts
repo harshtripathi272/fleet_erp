@@ -92,6 +92,10 @@ export async function loadStarterLists(actorId?: string) {
   await put('numbering-series', { code: 'TRIPS', name: 'Trip numbers', entity: 'trips', prefix: 'TRIP', pattern: '{PREFIX}/{YY}/{SEQ}', padding: 4, resetPolicy: 'yearly' }, { entity: 'trips', branchId: { $exists: false } });
 
   // Who approves money and fuel: Finance, in the app or on WhatsApp. One level; add more as the company grows.
+  // What's carried: one general product, so a load can be recorded from day one. Rename it, or add the company's own.
+  const goods = await put('product-groups', { code: 'GENERAL', name: 'General goods' });
+  if (goods && tonne) await put('products', { code: 'GENERAL', name: 'General cargo', groupId: goods, unitId: tonne });
+
   const finance = await Role.findOne({ key: 'finance' }).select('_id').lean<{ _id: unknown }>();
   if (currency && finance) {
     const approver = String(finance._id);

@@ -22,7 +22,7 @@ const CHECKS: Check[] = [
   { key: 'drivers', label: 'Drivers', why: 'Each trip has a driver.', master: 'drivers', min: 1, required: true },
   { key: 'payment-methods', label: 'Payment methods', why: 'How fuel and cash reach a driver: cash, mobile money, fuel card…', master: 'payment-methods', min: 1, required: true, usual: true },
   { key: 'routes', label: 'Routes', why: 'Distances, fuel and cash budgets come from routes.', master: 'routes', min: 1, required: false },
-  { key: 'products', label: 'Products', why: 'What is carried; fuel products get the 20 °C reconciliation.', master: 'products', min: 1, required: false },
+  { key: 'products', label: 'Products', why: 'What is carried; every load names one. Fuel products get the 20 °C reconciliation.', master: 'products', min: 1, required: true, usual: true },
   { key: 'trip-types', label: 'Default trip type', why: 'The stages a trip goes through.', master: 'trip-types', min: 1, required: false, filter: { isDefault: true } },
   { key: 'trailers', label: 'Trailers', why: 'Only if trucks pull trailers.', master: 'trailers', min: 1, required: false },
   { key: 'trip-budgets', label: 'Trip budgets', why: 'Cash per route; otherwise each trip is budgeted by hand.', master: 'trip-budgets', min: 1, required: false },
