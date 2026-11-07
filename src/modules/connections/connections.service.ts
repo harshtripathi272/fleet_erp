@@ -2,8 +2,11 @@ import { z } from 'zod';
 import { env } from '../../config/env.js';
 import {
   type Capabilities, contextFor, describeFields, describeSecrets, type InboundResult, isKind, type Kind, KIND_INFO, KINDS,
-  type Provider, providerFor, providersOf, scrub, SECRET_ENV, SECRET_ENV_HINT, simulatedProvider, verifySignature,
+  type MessageSender, type Provider, providerFor, providersOf, scrub, SECRET_ENV, SECRET_ENV_HINT, secretEnvName, secretSetup,
+  type SecretTarget, simulatedProvider, verifySignature,
 } from '../../core/connections/index.js';
+import { Company } from '../company/company.model.js';
+import { productName } from '../company/brand.service.js';
 import { NotFoundError, UnauthorizedError, ValidationError } from '../../core/errors/index.js';
 import { logger } from '../../core/logger/index.js';
 import { defineMaster } from '../../core/masters/define.js';
@@ -41,25 +44,37 @@ async function prepare(data: Plain) {
     add('provider', `For ${KIND_INFO[kind].label}, use ${providersOf(kind).map((p) => p.key).join(', ')}`);
     throw new ValidationError('Connection is not valid', errors);
   }
+  if (provider.comingSoon) {
+    add('provider', provider.comingSoon);
+    throw new ValidationError('Connection is not valid', errors);
+  }
   const parsed = provider.fields.safeParse(data.settings ?? {});
   if (parsed.success) data.settings = Object.keys(parsed.data).length ? parsed.data : undefined;
   else for (const issue of parsed.error.issues) add(issue.path.length ? `settings.${issue.path.join('.')}` : 'settings', issue.message);
   const wanted = new Map(describeSecrets(provider).map((s) => [s.key, s]));
   for (const key of Object.keys((data.secrets ?? {}) as Plain)) if (!wanted.has(key)) add(`secrets.${key}`, `${provider.label} does not use this secret`);
-  for (const spec of wanted.values()) if (spec.required && !(data.secrets as Record<string, string> | undefined)?.[spec.key]) add(`secrets.${spec.key}`, `Name the server setting that holds the ${spec.label}`);
-  if (data.secrets && !Object.keys(data.secrets as Plain).length) data.secrets = undefined;
-  if (provider.inbound && !data.webhookSecretEnv) add('webhookSecretEnv', 'Name the server setting that holds this connection\'s signing secret');
-  if (!provider.inbound && data.webhookSecretEnv) add('webhookSecretEnv', `${provider.label} does not call us, so it needs no signing secret`);
+  // Each secret's server setting is named from the connection's code unless one is given (#98): nobody types it.
+  const names = { ...((data.secrets ?? {}) as Record<string, string>) };
+  for (const spec of wanted.values()) names[spec.key] ??= secretEnvName(String(data.code), spec.key);
+  data.secrets = Object.keys(names).length ? names : undefined;
+  const ownSignature = Boolean(provider.verifyInbound);
+  if (provider.inbound && !ownSignature) data.webhookSecretEnv ??= secretEnvName(String(data.code), 'signingSecret');
+  if ((!provider.inbound || ownSignature) && data.webhookSecretEnv) add('webhookSecretEnv', provider.inbound ? `${provider.label} signs its calls itself, so it needs no signing secret of ours` : `${provider.label} does not call us, so it needs no signing secret`);
   if (Object.keys(errors).length) throw new ValidationError('Connection is not valid', errors);
   return data;
 }
+
+/** The address a service calls for this connection. */
+export const webhookUrlOf = (id: unknown) => `${env.APP_URL.replace(/\/$/, '')}/api/v1/hooks/${String(id)}`;
+const takesCalls = (doc: Plain) => Boolean(providerFor(doc.kind as Kind, String(doc.provider))?.inbound);
 
 /** What the screen may know about secrets: each one's setting name and whether the server has it, never its value. */
 function present(doc: Plain) {
   const secrets = (doc.secrets ?? {}) as Record<string, string>;
   return {
     secretsSet: Object.fromEntries(Object.entries(secrets).map(([k, envName]) => [k, Boolean(process.env[envName])])),
-    ...(doc.webhookSecretEnv ? { webhookSecretSet: Boolean(process.env[String(doc.webhookSecretEnv)]), webhookUrl: `${env.APP_URL.replace(/\/$/, '')}/api/v1/hooks/${String(doc._id ?? doc.id)}` } : {}),
+    ...(doc.webhookSecretEnv ? { webhookSecretSet: Boolean(process.env[String(doc.webhookSecretEnv)]) } : {}),
+    ...(takesCalls(doc) ? { webhookUrl: webhookUrlOf(doc._id ?? doc.id) } : {}),
   };
 }
 
@@ -193,6 +208,72 @@ export async function testConnection(id: string, input: { to?: string }, actorId
   return { ok: result.ok, status: result.ok ? 'ok' : 'failed', note: result.message };
 }
 
+/**
+ * Tests values not saved yet (#98), so the form and the guided set-up can say "Connected" or exactly what
+ * failed before anything is stored. Message kinds send a real test message (not through the outbox, since
+ * there is no connection yet); the others run the provider's own check. Simulated providers say so.
+ */
+export const testDraftSchema = z.strictObject({
+  kind: z.enum(KINDS),
+  provider: z.string().trim().regex(/^[a-z][a-z0-9-]{1,39}$/),
+  code: code.optional(),
+  settings: z.record(z.string().max(60), z.unknown()).optional(),
+  secrets: z.record(z.string().regex(/^[a-zA-Z][a-zA-Z0-9]{0,39}$/), secretName).optional(),
+  to: z.string().trim().min(3).max(254).optional(),
+});
+export type TestDraftInput = z.infer<typeof testDraftSchema>;
+
+export async function testDraft(input: TestDraftInput) {
+  const provider = providerFor(input.kind, input.provider);
+  if (!provider) throw new ValidationError('Connection is not valid', { provider: [`No ${KIND_INFO[input.kind].label} provider "${input.provider}"`] });
+  if (provider.comingSoon) return { ok: false, simulated: false, message: provider.comingSoon };
+  const parsed = provider.fields.safeParse(input.settings ?? {});
+  if (!parsed.success) {
+    const fields: Record<string, string[]> = {};
+    for (const issue of parsed.error.issues) (fields[issue.path.length ? `settings.${issue.path.join('.')}` : 'settings'] ??= []).push(issue.message);
+    throw new ValidationError('Fill in the settings first', fields);
+  }
+  const names = { ...(input.secrets ?? {}) };
+  for (const spec of describeSecrets(provider)) names[spec.key] ??= secretEnvName(input.code ?? 'NEW', spec.key);
+  const missing = describeSecrets(provider).filter((s) => s.required && !process.env[names[s.key]!]).map((s) => names[s.key]!);
+  if (missing.length) return { ok: false, simulated: false, missing, message: `Set ${missing.length > 1 ? `${missing.slice(0, -1).join(', ')} and ${missing.at(-1)}` : missing[0]} on the server first, restart, then test again.` };
+  const draft = { settings: parsed.data, secrets: names } as never;
+  const ctx = contextFor(provider, draft);
+  try {
+    if (isMessageKind(input.kind)) {
+      if (!input.to) throw new ValidationError('Who should get the test message?', { to: [input.kind === 'email' ? 'An e-mail address' : 'A phone number in international format: + and the country code first'] });
+      if (provider.simulated) return { ok: true, simulated: true, message: 'Simulated: the test message is kept in the outbox view and nothing is sent.' };
+      const sender = provider.open(ctx) as MessageSender;
+      const product = await productName();
+      const sent = await sender.send({ to: input.to, subject: `${product} test message`, text: `This is a test message from ${product}. If you received it, this connection works.` });
+      return { ok: true, simulated: false, message: `Sent to ${input.to}${sent.providerRef ? ` (reference ${sent.providerRef})` : ''}. Check it arrived.` };
+    }
+    const result = await provider.test(ctx);
+    return { ok: result.ok, simulated: Boolean(provider.simulated), message: provider.simulated ? `Simulated: ${result.message}` : result.message };
+  } catch (err) {
+    if (err instanceof ValidationError) throw err;
+    return { ok: false, simulated: false, message: scrub(err instanceof Error ? err.message : String(err), draft) };
+  }
+}
+
+/** How to set a connection's secrets on a platform: its setting names and the exact commands (#98). */
+export async function secretSetupFor(input: { connectionId?: string; kind?: Kind; provider?: string; code?: string; target: SecretTarget }) {
+  let names: string[];
+  if (input.connectionId) {
+    const connection = await Connection.findById(input.connectionId).lean() as Plain | null;
+    if (!connection) throw new NotFoundError('Connection not found');
+    names = [...Object.values((connection.secrets ?? {}) as Record<string, string>), ...(connection.webhookSecretEnv ? [String(connection.webhookSecretEnv)] : [])];
+  } else {
+    const provider = input.kind && input.provider ? providerFor(input.kind, input.provider) : undefined;
+    if (!provider) throw new ValidationError('Name the kind and provider', { provider: ['Required'] });
+    const code = input.code ?? 'NEW';
+    names = [...describeSecrets(provider).map((s) => secretEnvName(code, s.key)), ...(provider.inbound && !provider.verifyInbound ? [secretEnvName(code, 'signingSecret')] : [])];
+  }
+  const company = await Company.findOne().select('tradingName legalName').lean<{ tradingName?: string; legalName?: string }>();
+  const key = String(company?.tradingName ?? company?.legalName ?? 'company').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 30) || 'company';
+  return { names: names.map((name) => ({ name, set: Boolean(process.env[name]) })), ...secretSetup(names, input.target, key) };
+}
+
 /* The screen */
 
 /** Every kind, what it is connected to now, and every provider it could use with the form to set it up. */
@@ -213,6 +294,7 @@ export async function kindsStatus() {
       providers: providersOf(kind).map((p) => ({
         key: p.key, label: p.label, description: p.description, simulated: Boolean(p.simulated),
         fields: describeFields(p), secrets: describeSecrets(p), inbound: Boolean(p.inbound),
+        ownSignature: Boolean(p.verifyInbound), guide: p.guide ?? [], ...(p.comingSoon ? { comingSoon: p.comingSoon } : {}),
       })),
     };
   }));
@@ -229,11 +311,39 @@ export function onInbound(listener: InboundListener) { listeners.push(listener);
  * One call to a connection's webhook. Refused unless the connection is switched on, its provider takes
  * calls, and the call is signed with its signing secret within the last five minutes.
  */
-export async function receiveInbound(id: string, headers: { timestamp?: string; signature?: string }, raw: Buffer) {
+async function inboundTarget(id: string) {
   if (!/^[0-9a-f]{24}$/i.test(id)) throw new NotFoundError('Not found');
   const connection = await Connection.findOne({ _id: id, enabled: true, status: 'active' }).lean() as Plain | null;
   const provider = connection && isKind(String(connection.kind)) ? providerFor(connection.kind as Kind, String(connection.provider)) : undefined;
-  if (!connection || !provider?.inbound || !connection.webhookSecretEnv) throw new NotFoundError('Not found');
+  if (!connection || !provider?.inbound) throw new NotFoundError('Not found');
+  return { connection, provider };
+}
+
+/** A service checking the address before it sends anything (Meta's GET with hub.challenge): the answer it expects. */
+export async function answerHandshake(id: string, query: Record<string, string | undefined>) {
+  const { connection, provider } = await inboundTarget(id);
+  if (!provider.handshake) throw new NotFoundError('Not found');
+  try {
+    return provider.handshake(contextFor(provider, connection as never), query);
+  } catch (err) {
+    await recordError(connection._id, `A webhook check was refused: ${(err as Error).message}`);
+    throw new UnauthorizedError((err as Error).message);
+  }
+}
+
+export async function receiveInbound(id: string, headers: { timestamp?: string; signature?: string; all?: Record<string, string | undefined>; contentType?: string }, raw: Buffer) {
+  const { connection, provider } = await inboundTarget(id);
+  if (provider.verifyInbound) {
+    // Meta and Twilio sign with their own keys; theirs is the check.
+    let refused: string | undefined;
+    try { refused = provider.verifyInbound(contextFor(provider, connection as never), { headers: headers.all ?? {}, raw, url: webhookUrlOf(connection._id) }); } catch (err) { refused = (err as Error).message; }
+    if (refused) {
+      await recordError(connection._id, `A call was refused: ${refused}`);
+      throw new UnauthorizedError(refused);
+    }
+    return deliverInbound(connection, provider, raw, headers.contentType);
+  }
+  if (!connection.webhookSecretEnv) throw new NotFoundError('Not found');
   const secret = process.env[String(connection.webhookSecretEnv)];
   if (!secret) {
     await recordError(connection._id, `A call came in, but ${String(connection.webhookSecretEnv)} is not set on the server, so it can't be checked`);
@@ -244,9 +354,17 @@ export async function receiveInbound(id: string, headers: { timestamp?: string; 
     await recordError(connection._id, `A call was refused: ${refused}`);
     throw new UnauthorizedError(refused);
   }
+  return deliverInbound(connection, provider, raw, headers.contentType);
+}
+
+/** Reads a checked call (JSON, or a form as Twilio sends) and hands what it carried to the features listening. */
+async function deliverInbound(connection: Plain, provider: Provider, raw: Buffer, contentType?: string) {
   let body: unknown;
-  try { body = JSON.parse(raw.toString('utf8')); } catch { throw new ValidationError('The body is not JSON'); }
-  const result = await provider.inbound(contextFor(provider, connection as never), body);
+  if (contentType?.includes('application/x-www-form-urlencoded')) body = Object.fromEntries(new URLSearchParams(raw.toString('utf8')));
+  else {
+    try { body = JSON.parse(raw.toString('utf8')); } catch { throw new ValidationError('The body is not JSON'); }
+  }
+  const result = await provider.inbound!(contextFor(provider, connection as never), body);
   await recordUse(connection._id);
   for (const listener of listeners) await listener(connection.kind as Kind, connection, result);
   return { accepted: result.accepted, ...(result.note ? { note: result.note } : {}) };
