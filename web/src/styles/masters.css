@@ -278,3 +278,15 @@ details.form-group summary { cursor: pointer; }
 .cust-spec { display: block; margin-top: 2px; color: var(--ink-3); font-size: 12.5px; }
 .record-split > aside { max-height: calc(100vh - 170px); overflow-y: auto; }
 .type-change { justify-self: start; margin-top: 6px; }
+
+.kind-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.kind-chips button { display: inline-flex; gap: 6px; align-items: center; min-height: 36px; padding: 0 10px; border: 1px solid var(--line-2); border-radius: 8px; background: var(--surface); color: var(--ink-2); font-weight: 540; cursor: pointer; transition: background 0.15s, border-color 0.15s, color 0.15s; }
+.kind-chips button:hover { background: var(--surface-2); }
+.kind-chips button.on { border-color: var(--pine-700); background: var(--pine-50); color: var(--pine-700); font-weight: 600; }
+.kind-chips .kind-more { border-style: dashed; color: var(--ink-3); }
+.kind-fixed { font-weight: 600; }
+.field-editor-switches { display: grid; gap: 8px; }
+.field-editor-foot { position: sticky; bottom: 0; padding-block: 10px; background: var(--surface); }
+
+.su-wait h1 { margin: 0; font: 500 24px/1.25 var(--serif); }
+.su-wait p { margin: 0; }

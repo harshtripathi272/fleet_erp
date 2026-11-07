@@ -353,7 +353,43 @@ describe('Set up a company', () => {
     assert.ok(cloud, 'a real WhatsApp service is offered');
     const problems = await check({ connections: [{ ...meta_, provider: cloud.key }] });
     assert.ok(!problems.some((p) => /webhookSecretEnv/.test(p.path)), JSON.stringify(problems));
-    const soon = providers.find((p) => p.comingSoon)!;
-    assert.ok((await check({ connections: [{ code: 'TALKS', name: 'Talks', kind: 'whatsapp', provider: soon.key, enabled: true }] })).some((p) => p.path.startsWith('connections.0.provider')), 'not built, so not choosable');
+    const talks = { code: 'WHATSAPP', name: 'Marichi Talks', kind: 'whatsapp', provider: 'marichi-talks', enabled: true, settings: { address: 'https://talks.example.com/api' }, secrets: { apiKey: 'CONNECTION_WHATSAPP_API_KEY' }, webhookSecretEnv: 'CONNECTION_WHATSAPP_SIGNING_SECRET' };
+    assert.deepEqual(await check({ connections: [talks], connectionRules: { whatsapp: { locked: true, providers: ['marichi-talks'] } } }), [], 'a company can be locked to Marichi Talks');
+  });
+
+  test('whoever sets a company up decides what it may change: a locked service can\'t be touched by its owner, on any route', async () => {
+    const lockedFile = { connectionRules: { sms: { locked: true, providers: ['twilio'] }, email: { providers: ['smtp', 'simulated'] } }, connections: [{ code: 'SMS', name: 'Twilio', kind: 'sms', provider: 'twilio', enabled: true, settings: { accountSid: 'AC0123456789abcdef0123456789abcdef', from: '+15551234567' }, secrets: { authToken: 'CONNECTION_SMS_AUTH_TOKEN' } }] };
+    const lines = await apply(owner, { file: file(lockedFile) });
+    assert.ok(!lines.some((l) => l.outcome === 'failed'), JSON.stringify(lines));
+    const kinds = (await api().get('/api/v1/connection-kinds').set(bearer(owner)).expect(200)).body.data as { kind: string; locked: boolean; allowed: string[] | null }[];
+    assert.equal(kinds.find((k) => k.kind === 'sms')!.locked, true);
+    assert.deepEqual(kinds.find((k) => k.kind === 'email')!.allowed, ['smtp', 'simulated']);
+
+    const listed = (await api().get('/api/v1/connections').set(bearer(owner)).expect(200)).body.data as { id: string; version: number; kind: string }[];
+    const sms = listed.find((c) => c.kind === 'sms')!;
+    await api().patch(`/api/v1/connections/${sms.id}`).set(bearer(owner)).send({ enabled: false, version: sms.version }).expect(403);
+    await api().delete(`/api/v1/connections/${sms.id}`).set(bearer(owner)).expect(403);
+    await api().post(`/api/v1/connections/${sms.id}/archive`).set(bearer(owner)).send({}).expect(403);
+    await api().post('/api/v1/connections').set(bearer(owner)).send({ code: 'SMS2', name: 'Africa', kind: 'sms', provider: 'africastalking', settings: { username: 'x' } }).expect(403);
+    // Limited, not locked: an allowed one goes in, another is refused.
+    const refused = await api().post('/api/v1/connections').set(bearer(owner)).send({ code: 'MAIL2', name: 'Mailgun', kind: 'email', provider: 'mailgun', settings: {} });
+    assert.equal(refused.status, 422);
+    assert.match(JSON.stringify(refused.body), /isn't offered/);
+    await api().post('/api/v1/connections').set(bearer(owner)).send({ code: 'MAIL1', name: 'Sim', kind: 'email', provider: 'simulated' }).expect(201);
+    // No company screen or route holds these rules.
+    await api().patch('/api/v1/company').set(bearer(owner)).send({ connectionRules: {} }).expect((r) => assert.ok(r.status >= 400));
+
+    // A real company's own copy: re-running the set-up can't lift the lock.
+    env.SETUP_PACKAGES = false;
+    const again = await apply(owner, { file: file({ ...lockedFile, connectionRules: {}, company: { key: 'acme-haulage', legalName: 'Acme Haulage Limited', tradingName: 'Renamed' } }) });
+    assert.ok(again.some((l) => l.step === 'connection rules' && l.outcome === 'skipped'), JSON.stringify(again));
+    await api().patch(`/api/v1/connections/${sms.id}`).set(bearer(owner)).send({ enabled: false, version: sms.version }).expect(403);
+    env.SETUP_PACKAGES = true;
+    // It travels in the package.
+    const captured = (await api().get('/api/v1/setup-kit').set(bearer(owner)).expect(200)).body.data.file;
+    assert.equal(captured.connectionRules.sms.locked, true);
+    // And a lock can't name a service that isn't in use.
+    const bad = (await api().post('/api/v1/setup-kit/check').set(bearer(owner)).send({ file: file({ ...lockedFile, connectionRules: { sms: { providers: ['africastalking'] } } }), finish: 'here' }).expect(200)).body.data.problems;
+    assert.ok(bad.some((p: { path: string }) => p.path.startsWith('connectionRules')), JSON.stringify(bad));
   });
 });

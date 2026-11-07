@@ -1609,7 +1609,7 @@ export function ReceiptReview({ doc }: { doc: DriverDoc }) {
   const { data, run, me } = useApp();
   const may = useMay();
   const read = doc.read ?? {};
-  const [categoryId, setCategoryId] = useState(read.categoryId ?? data.categories[0].id);
+  const [categoryId, setCategoryId] = useState(read.categoryId ?? data.categories[0]?.id ?? "");
   const [amount, setAmount] = useState(String(read.amount ?? ""));
   const [currency, setCurrency] = useState<Currency>(read.currency ?? ((data.baseCurrency?.code ?? "") as Currency));
   const finance = may("expense.record");

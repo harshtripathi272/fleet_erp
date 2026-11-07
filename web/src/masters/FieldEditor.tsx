@@ -6,13 +6,13 @@ import type { Rec } from "../api/adapter";
 import { useApp } from "../store";
 import { can } from "../api/session";
 import { Button, ChoiceChips, Field, FieldGroup, SwitchField, UnitInput } from "../ui/kit";
-import { FILE_KINDS, FIELD_TYPES, fieldType, isFileType, kindsOf, type FileKind } from "./fieldTypes";
+import { COMMON_FIELD_TYPES, FILE_KINDS, FIELD_TYPES, fieldType, guessFieldType, isFileType, kindsOf, type FileKind } from "./fieldTypes";
 import { FileField } from "./FileField";
 
 /**
- * The field editor (#97): one for a company field on any master and for a custom master's fields. It starts with
- * what the field holds, as a picture of each kind, then asks only what that kind needs, and shows the field as the
- * form will. The key it is stored under is made from the name and sits under "More".
+ * The field editor (#97): one for a company field on any master and for a custom master's fields. Most fields need
+ * a name and nothing else, so that's what it asks: the kind follows from the name where it can, the common kinds show
+ * first, and only what a kind can't work without appears. Everything else waits under "More options".
  */
 
 /** A field's definition as the API takes it (`field-definitions`, or one of a custom master's `fields`). */
@@ -70,65 +70,71 @@ export function FieldEditor({ initial, defs, editing, takenKeys = [], onSave, on
   /** Settings of the place the field is added to, shown before the preview (a master's list column). */
   extra?: ReactNode;
 }) {
-  const [spec, setSpec] = useState<FieldSpec>(initial);
+  const [spec, setSpec] = useState<FieldSpec>(initial.type ? initial : { ...initial, type: "text" });
   const [keyTouched, setKeyTouched] = useState(Boolean(editing));
-  const [more, setMore] = useState(false);
-  // Once a kind is chosen the cards fold to that one, so its settings come straight after; "Change" opens them again.
-  const [picking, setPicking] = useState(!initial.type);
-  const lists = useQuery({ queryKey: ["lists-for-fields"], queryFn: () => api<Rec[]>("/lists", { query: { status: "active", limit: 100 } }), enabled: spec.type === "select" || spec.type === "multi_select", staleTime: 60_000 });
+  // A kind someone picked themselves is never overridden by a guess from the name.
+  const [kindPicked, setKindPicked] = useState(Boolean(initial.type));
+  const startsOpen = Boolean(editing) && ["helpText", "pattern", "min", "max", "maxLength", "maxSizeMb", "maxFiles", "listId", "accept"].some((k) => spec[k] !== undefined);
+  const [more, setMore] = useState(startsOpen);
+  const [allKinds, setAllKinds] = useState(() => !COMMON_FIELD_TYPES.includes(String(initial.type ?? "text")));
+  const lists = useQuery({ queryKey: ["lists-for-fields"], queryFn: () => api<Rec[]>("/lists", { query: { status: "active", limit: 100 } }), enabled: more && (spec.type === "select" || spec.type === "multi_select"), staleTime: 60_000 });
   const set = (change: FieldSpec) => setSpec((s) => ({ ...s, ...change }));
   const type = fieldType(spec.type);
   const has = (o: string) => Boolean(type?.options.includes(o as never));
-  const setLabel = (label: string) => set({ label, ...(keyTouched ? {} : { key: keyFromLabel(label) || undefined }) });
+  const setLabel = (label: string) => {
+    const guessed = kindPicked || editing ? undefined : guessFieldType(label);
+    if (guessed && !COMMON_FIELD_TYPES.includes(guessed.type)) setAllKinds(true);
+    set({ label, ...(keyTouched ? {} : { key: keyFromLabel(label) || undefined }), ...(guessed ? { type: guessed.type, withExpiry: guessed.withExpiry || undefined } : {}) });
+  };
   const keyClash = !editing && spec.key && takenKeys.includes(String(spec.key));
-  const choicesText = ((spec.options as string[] | undefined) ?? []).join("\n");
-  const missing = !spec.type ? "Choose what the field holds" : !String(spec.label ?? "").trim() ? "Give the field a name" : !spec.key ? "Give the field a key under More" : keyClash ? "Another field already uses this key" : (spec.type === "select" || spec.type === "multi_select") && !(spec.options as string[] | undefined)?.length && !spec.listId ? "Add the choices" : spec.type === "reference" && !spec.referenceMaster ? "Choose what it links to" : null;
+  const [choicesText, setChoicesText] = useState(((spec.options as string[] | undefined) ?? []).join("\n"));
+  const missing = !String(spec.label ?? "").trim() ? "Give the field a name" : !spec.key ? "Give the field a key under More options" : keyClash ? "Another field already has this name" : (spec.type === "select" || spec.type === "multi_select") && !(spec.options as string[] | undefined)?.length && !spec.listId ? "Add the choices" : spec.type === "reference" && !spec.referenceMaster ? "Choose what it links to" : null;
+  const kinds = allKinds ? FIELD_TYPES : FIELD_TYPES.filter((t) => COMMON_FIELD_TYPES.includes(t.value));
 
   return (
     <div className="field-editor">
-      <FieldGroup label="What it holds" wide>
-        <div className="type-cards" role="radiogroup" aria-label="What it holds">
-          {FIELD_TYPES.filter((t) => (picking && !editing) || t.value === spec.type).map((t) => {
-            const Icon = t.icon;
-            const on = spec.type === t.value;
-            return (
-              <button key={t.value} type="button" role="radio" aria-checked={on} className={on ? "type-card on" : "type-card"} disabled={editing}
-                onClick={() => { set({ type: t.value }); setPicking(false); }}>
-                <Icon size={18} aria-hidden />
-                <strong>{t.label}</strong>
-                <span>{t.holds}</span>
-              </button>
-            );
-          })}
-        </div>
-        {!editing && !picking && <button type="button" className="link-btn type-change" onClick={() => setPicking(true)}>Change what it holds</button>}
-        {editing && <span className="field-hint">What a field holds can't change once it may have values. Add a new field instead, and archive this one.</span>}
+      <Field label="Name *"><input autoFocus={!editing} value={String(spec.label ?? "")} maxLength={80} placeholder="e.g. Medical certificate" onChange={(e) => setLabel(e.target.value)} /></Field>
+
+      <FieldGroup label="What it holds" wide hint={editing ? "This can't change once it may have values. Add a new field instead, and archive this one." : type?.holds}>
+        {editing ? <strong className="kind-fixed">{type?.label ?? String(spec.type)}</strong> : (
+          <div className="kind-chips" role="radiogroup" aria-label="What it holds">
+            {kinds.map((t) => {
+              const Icon = t.icon;
+              const on = spec.type === t.value;
+              return <button key={t.value} type="button" role="radio" aria-checked={on} className={on ? "on" : ""} onClick={() => { setKindPicked(true); set({ type: t.value }); }}><Icon size={15} aria-hidden /> {t.label}</button>;
+            })}
+            {!allKinds && <button type="button" className="kind-more" onClick={() => setAllKinds(true)}>More kinds</button>}
+          </div>
+        )}
       </FieldGroup>
 
-      {spec.type && (
-        <div className="field-editor-body">
-          <div className="grid-2">
-            <Field label="Name *" hint="As people will see it on the form and in lists."><input autoFocus={!editing} value={String(spec.label ?? "")} maxLength={80} placeholder={spec.type === "document" ? "Medical certificate" : spec.type === "image" ? "Photo" : "Union number"} onChange={(e) => setLabel(e.target.value)} /></Field>
-            <Field label="Help text" hint="A line under the field: what to put in it."><input value={String(spec.helpText ?? "")} maxLength={300} onChange={(e) => set({ helpText: e.target.value || undefined })} /></Field>
-          </div>
-          <SwitchField label="Required" hint={isFileType(spec.type) ? "A record can't be saved without the file." : "A record can't be saved without it."} checked={Boolean(spec.required)} onChange={(on) => set({ required: on || undefined })} />
+      {/* Only what this kind can't work without. Everything else waits under More options. */}
+      {has("choices") && !spec.listId && (
+        <Field label="Choices *" hint="One per line, in the order people pick from."><textarea rows={4} value={choicesText} onChange={(e) => { setChoicesText(e.target.value); set({ options: e.target.value.split("\n").map((c) => c.trim()).filter(Boolean), listId: undefined }); }} /></Field>
+      )}
+      {has("referenceMaster") && (
+        <Field label="Links to *" hint="The kind of record people pick.">
+          <select disabled={editing} value={String(spec.referenceMaster ?? "")} onChange={(e) => set({ referenceMaster: e.target.value || undefined })}>
+            <option value="">Choose a master</option>
+            {defs.filter((d) => d.key !== "custom-records" && d.kind !== "custom").map((d) => <option key={String(d.key)} value={String(d.key)}>{String(d.label)}</option>)}
+          </select>
+        </Field>
+      )}
+      <div className="field-editor-switches">
+        <SwitchField label="Required" hint={isFileType(spec.type) ? "A record can't be saved without the file." : "A record can't be saved without it."} checked={Boolean(spec.required)} onChange={(on) => set({ required: on || undefined })} />
+        {has("withExpiry") && <SwitchField label="It has an expiry date" hint="Asked with the file, and shown beside it." checked={Boolean(spec.withExpiry)} onChange={(on) => set({ withExpiry: on || undefined })} />}
+      </div>
+      {extra}
 
+      <button type="button" className="link-btn field-editor-more" aria-expanded={more} onClick={() => setMore(!more)}><ChevronDown size={14} aria-hidden /> More options</button>
+      {more && (
+        <div className="field-editor-body">
+          <Field label="Help text" hint="A line under the field: what to put in it."><input value={String(spec.helpText ?? "")} maxLength={300} onChange={(e) => set({ helpText: e.target.value || undefined })} /></Field>
           {has("choices") && (
-            <div className="grid-2">
-              <Field label="Choices" hint="One per line, in the order people pick from."><textarea rows={4} disabled={Boolean(spec.listId)} value={choicesText} onChange={(e) => set({ options: e.target.value.split("\n").map((c) => c.trim()).filter(Boolean), listId: undefined })} /></Field>
-              <Field label="Or the choices of a list" hint="A simple list kept in Masters, shared by several fields.">
-                <select value={String(spec.listId ?? "")} onChange={(e) => set({ listId: e.target.value || undefined, options: e.target.value ? undefined : spec.options })}>
-                  <option value="">None: use the choices typed here</option>
-                  {(lists.data ?? []).map((l) => <option key={String(l.id)} value={String(l.id)}>{String(l.name)}</option>)}
-                </select>
-              </Field>
-            </div>
-          )}
-          {has("referenceMaster") && (
-            <Field label="Links to *" hint="The kind of record people pick.">
-              <select disabled={editing} value={String(spec.referenceMaster ?? "")} onChange={(e) => set({ referenceMaster: e.target.value || undefined })}>
-                <option value="">—</option>
-                {defs.filter((d) => d.key !== "custom-records" && d.kind !== "custom").map((d) => <option key={String(d.key)} value={String(d.key)}>{String(d.label)}</option>)}
+            <Field label="Or use a shared list" hint="A simple list kept in Masters, shared by several fields.">
+              <select value={String(spec.listId ?? "")} onChange={(e) => set({ listId: e.target.value || undefined, options: e.target.value ? undefined : choicesText.split("\n").map((c) => c.trim()).filter(Boolean) })}>
+                <option value="">None: use the choices typed above</option>
+                {(lists.data ?? []).map((l) => <option key={String(l.id)} value={String(l.id)}>{String(l.name)}</option>)}
               </select>
             </Field>
           )}
@@ -139,7 +145,6 @@ export function FieldEditor({ initial, defs, editing, takenKeys = [], onSave, on
               {has("maxLength") && <Field label="Longest" hint="Characters."><input type="number" min={1} max={5000} value={spec.maxLength === undefined ? "" : String(spec.maxLength)} onChange={(e) => set({ maxLength: e.target.value === "" ? undefined : Number(e.target.value) })} /></Field>}
             </div>
           )}
-          {has("withExpiry") && <SwitchField label="It has an expiry date" hint="Asked with the file, and shown beside it." checked={Boolean(spec.withExpiry)} onChange={(on) => set({ withExpiry: on || undefined })} />}
           {has("accept") && (
             <FieldGroup label="Kinds of file it takes" hint="Pictures and PDFs open in the browser. Word and Excel files are always downloaded, never opened in the app.">
               <ChoiceChips label="Kinds of file it takes" options={FILE_KINDS.map((k) => ({ value: k.value as FileKind, label: k.label }))} value={kindsOf(spec)}
@@ -152,26 +157,20 @@ export function FieldEditor({ initial, defs, editing, takenKeys = [], onSave, on
               {has("maxFiles") && <Field label="How many files"><input type="number" min={1} max={20} placeholder="10" value={spec.maxFiles === undefined ? "" : String(spec.maxFiles)} onChange={(e) => set({ maxFiles: e.target.value === "" ? undefined : Math.min(20, Math.max(1, Number(e.target.value))) })} /></Field>}
             </div>
           )}
-
-          {extra}
+          <div className="grid-2">
+            <Field label="Key" hint={editing ? "Fixed once the field exists: imports and other systems use it." : "Where the value is stored, made from the name. Imports and other systems use it."}>
+              <input className="mono" disabled={editing} value={String(spec.key ?? "")} maxLength={40} onChange={(e) => { setKeyTouched(true); set({ key: e.target.value || undefined }); }} />
+            </Field>
+            {has("pattern") && <Field label="Must match" hint="A pattern the text must follow, for example ^[A-Z]{3}[0-9]{4}$."><input className="mono" value={String(spec.pattern ?? "")} onChange={(e) => set({ pattern: e.target.value || undefined })} /></Field>}
+          </div>
           <section className="field-editor-preview" aria-label="How it will look">
             <h4>How it will look</h4>
             <div className="grid-2"><Preview spec={spec} defs={defs} /></div>
           </section>
-
-          <button type="button" className="link-btn field-editor-more" aria-expanded={more} onClick={() => setMore(!more)}><ChevronDown size={14} aria-hidden /> More</button>
-          {more && (
-            <div className="grid-2">
-              <Field label="Key" hint={editing ? "Fixed once the field exists: imports and other systems use it." : "Where the value is stored, made from the name. Imports and other systems use it."}>
-                <input className="mono" disabled={editing} value={String(spec.key ?? "")} maxLength={40} onChange={(e) => { setKeyTouched(true); set({ key: e.target.value || undefined }); }} />
-              </Field>
-              {has("pattern") && <Field label="Must match" hint="A pattern the text must follow, for example ^[A-Z]{3}[0-9]{4}$."><input className="mono" value={String(spec.pattern ?? "")} onChange={(e) => set({ pattern: e.target.value || undefined })} /></Field>}
-            </div>
-          )}
         </div>
       )}
       <div className="field-editor-foot">
-        {missing && spec.type && <span className="muted small">{missing}</span>}
+        {missing && String(spec.label ?? "") !== "" && <span className="muted small">{missing}</span>}
         <span className="spacer" />
         <Button tone="quiet" disabled={busy} onClick={onCancel}>Cancel</Button>
         <Button tone="primary" busy={busy} disabled={Boolean(missing)} onClick={() => onSave(cleanSpec(spec))}>{saveLabel ?? (editing ? "Save field" : "Add field")}</Button>

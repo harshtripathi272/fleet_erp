@@ -5,7 +5,7 @@ import { audit } from '../../core/masters/audit.js';
 import * as MasterService from '../../core/masters/service.js';
 import type { Plain } from '../../core/masters/types.js';
 import { Connection } from '../connections/connection.model.js';
-import { activeConnection, connectionDefinition, openConnection, recordError, recordUse } from '../connections/connections.service.js';
+import { activeConnection, connectionDefinition, connectionRules, openConnection, recordError, recordUse } from '../connections/connections.service.js';
 import { Company } from '../company/company.model.js';
 import { effectiveRegional } from '../company/regional.js';
 import * as Fmt from '../../core/format/regional.js';
@@ -50,11 +50,12 @@ function keysSet(connection: Plain | null) {
 
 /** What the exchange-rates screen shows: the setting, the providers, whether a key is set (never the key), the last runs. */
 export async function feedStatus() {
-  const [settings, runs, c, connection] = await Promise.all([feedSettings(), RateFeedRun.find().sort({ at: -1 }).limit(10).lean(), company(), activeConnection('rates')]);
+  const [settings, runs, c, connection, rules] = await Promise.all([feedSettings(), RateFeedRun.find().sort({ at: -1 }).limit(10).lean(), company(), activeConnection('rates'), connectionRules()]);
+  const allowed = rules.rates?.providers;
   return {
     ...settings,
     baseCurrencyId: c?.baseCurrencyId ? String(c.baseCurrencyId) : null,
-    providers: [{ key: 'manual', label: 'Manual (no feed)', needsKey: false, simulated: false }, ...providersOf('rates').map((p) => ({ key: p.key, label: p.label, needsKey: (p.secrets ?? []).some((x) => x.required), simulated: Boolean(p.simulated) }))],
+    providers: [{ key: 'manual', label: 'Manual (no feed)', needsKey: false, simulated: false }, ...providersOf('rates').filter((p) => !allowed?.length || allowed.includes(p.key)).map((p) => ({ key: p.key, label: p.label, needsKey: (p.secrets ?? []).some((x) => x.required), simulated: Boolean(p.simulated) }))],
     keyConfigured: keysSet(connection),
     connectionId: connection ? String(connection._id) : null,
     runs: runs.map(({ _id, ...r }) => ({ id: String(_id), ...r })),

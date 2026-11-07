@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useState } from "react";
+import { Component, lazy, Suspense, useEffect, useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { queryClient, resetSync } from "./store";
 import { api, hasSession, onSignedOut } from "./api/client";
@@ -34,6 +34,23 @@ window.addEventListener("vite:preloadError", (event) => {
   event.preventDefault();
   location.reload();
 });
+
+/** One screen failing says so and offers a way back, rather than leaving a blank page. */
+class ScreenFailed extends Component<{ children: ReactNode }, { failed: boolean }> {
+  state = { failed: false };
+  static getDerivedStateFromError() { return { failed: true }; }
+  componentDidCatch(error: Error) { console.error(error); }
+  render() {
+    if (!this.state.failed) return this.props.children;
+    return (
+      <div className="su-wait">
+        <h1>This screen ran into a problem</h1>
+        <p className="muted">Nothing you saved was lost. Going back usually clears it.</p>
+        <button type="button" className="btn btn-primary" onClick={() => { history.replaceState(null, "", location.pathname); sessionStorage.removeItem(DESK_SESSION); location.reload(); }}>Back to the start</button>
+      </div>
+    );
+  }
+}
 
 /** Signed out: the sign-in screen. Signed in: the driver app, or the desks the person's permissions allow. */
 export default function App() {
@@ -91,8 +108,10 @@ export default function App() {
     );
   }
   return (
-    <Suspense fallback={<Waiting text="Loading the desks…" />}>
-      <Office me={me.data} />
-    </Suspense>
+    <ScreenFailed>
+      <Suspense fallback={<Waiting text="Loading the desks…" />}>
+        <Office me={me.data} />
+      </Suspense>
+    </ScreenFailed>
   );
 }
