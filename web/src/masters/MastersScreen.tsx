@@ -285,7 +285,7 @@ const WRITE_ONLY = new Set(["password"]);
 
 /* ---------- One record ---------- */
 
-function RecordDrawer({ def, defs, id, onClose, initial }: { def: Def; defs: Def[]; id?: string; onClose: () => void; initial?: Rec }) {
+function RecordDrawer({ def, defs, id, onClose, initial, onCreated }: { def: Def; defs: Def[]; id?: string; onClose: () => void; initial?: Rec; onCreated?: (id: string) => void }) {
   const client = useQueryClient();
   const { refreshReference, toast } = useApp();
   const record = useQuery({ queryKey: ["record", def.key, id], queryFn: () => api<Rec>(`/${def.key}/${id}`), enabled: Boolean(id) });
@@ -336,6 +336,8 @@ function RecordDrawer({ def, defs, id, onClose, initial }: { def: Def; defs: Def
     return api(`/${def.key}/${id}`, { method: "PATCH", body: { ...changes, version: base!.version } });
   }, (result) => {
     if (id) return `${def.singular} saved`;
+    const createdId = (result as Rec | undefined)?.id ?? ((result as Rec | undefined)?.user as Rec | undefined)?.id;
+    if (createdId) onCreated?.(String(createdId));
     // A user created without a password is sent an invitation to set one.
     const invitation = (result as Rec | undefined)?.invitation as Rec | undefined;
     if (!invitation) return `${def.singular} created`;
@@ -411,6 +413,18 @@ function RecordDrawer({ def, defs, id, onClose, initial }: { def: Def; defs: Def
       {tab === "history" && id && <HistoryList def={def} id={id} />}
     </Drawer>
   );
+}
+
+/**
+ * A new record of one master, opened from a desk's form (#116): the same form as Masters, and the new record is
+ * picked in the form that asked for it. `initial` fills what the form already knows, such as a customer's role.
+ */
+export function QuickAdd({ master, initial, onCreated, onClose }: { master: string; initial?: Rec; onCreated: (id: string) => void; onClose: () => void }) {
+  const masters = useMasters();
+  const def = masters.data?.find((d) => d.key === master);
+  // Not yet loaded, or a master this person can't see: nothing opens.
+  if (!masters.data || !def) return null;
+  return <RecordDrawer def={def} defs={masters.data} onClose={onClose} initial={initial} onCreated={onCreated} />;
 }
 
 /** A message template filled with sample values, shown the way the person would receive it. */

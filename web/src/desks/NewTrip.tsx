@@ -12,6 +12,7 @@ import { fromLocalInput, km, L, localInput, inBase } from "../ui/format";
 import { StopEditor } from "./stages";
 import { MiniRoute } from "../tracking/MiniRoute";
 import { wl } from "../domain/words";
+import { AddNew, FirstTripSteps } from "./firstTrip";
 
 /** Truck first: pick the truck, its driver and trailer follow, the route starts where it stands. */
 export function NewTrip({ open, onClose, onCreated }: { open: boolean; onClose: () => void; onCreated: (id: string) => void }) {
@@ -94,14 +95,16 @@ export function NewTrip({ open, onClose, onCreated }: { open: boolean; onClose: 
           <Button tone="quiet" onClick={onClose}>
             Cancel
           </Button>
-          <Button tone="primary" disabled={!truck || !driverId || Boolean(problem) || !company.ready} onClick={create}>
+          <Button tone="primary" disabled={!truck || !driverId || !customerId || Boolean(problem) || !company.ready} onClick={create}>
             <Check /> Create trip
           </Button>
         </>
       }
     >
       <div className="stack">
-        {free.length === 0 && <p className="form-problem">{data.trucks.length ? "Every truck is on a trip right now." : "No trucks yet. Add them under Masters, with a driver and a customer, and they'll show here."}</p>}
+        {free.length === 0 && <p className="form-problem">{data.trucks.length ? "Every truck is on a trip right now." : "No trucks yet."}</p>}
+        {!data.trucks.length && <FirstTripSteps />}
+        <AddNew master="vehicles" what={wl(data, "truck")} onCreated={pickTruck} />
         <div className="truck-pick" role="radiogroup" aria-label="Truck">
           {free.map((t) => (
             <button key={t.id} role="radio" aria-checked={t.id === truckId} disabled={held.has(t.id)} className={`truck-tile ${t.id === truckId ? "on" : ""}`} onClick={() => pickTruck(t.id)}>
@@ -133,6 +136,7 @@ export function NewTrip({ open, onClose, onCreated }: { open: boolean; onClose: 
                       </option>
                     ))}
                 </select>
+                <AddNew master="drivers" what={wl(data, "driver")} onCreated={setDriverId} />
               </Field>
               <Field label="Trailer">
                 <select value={trailerId} onChange={(e) => setTrailerId(e.target.value)}>
@@ -147,14 +151,16 @@ export function NewTrip({ open, onClose, onCreated }: { open: boolean; onClose: 
                     ))}
                 </select>
               </Field>
-              <Field label="Customer">
+              <Field label="Customer" hint={!data.customers.length ? `No ${wl(data, "customer", true)} yet: add one to start.` : undefined}>
                 <select value={customerId} onChange={(e) => setCustomerId(e.target.value)}>
+                  {!data.customers.length && <option value="">None yet</option>}
                   {data.customers.map((c) => (
                     <option key={c.id} value={c.id}>
                       {c.name}
                     </option>
                   ))}
                 </select>
+                <AddNew master="parties" what={wl(data, "customer")} initial={{ roles: ["customer"] }} onCreated={setCustomerId} />
               </Field>
               <Field label="Leaves">
                 <input type="datetime-local" value={start} onChange={(e) => setStart(e.target.value)} />

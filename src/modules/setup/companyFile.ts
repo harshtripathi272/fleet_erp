@@ -178,8 +178,11 @@ export const companyFileSchema = z.strictObject({
   owner: z.strictObject({ name: name.optional(), email }),
   staff: z.array(person).max(200).default([]).superRefine(unique((p) => p.email, 'E-mail')),
   data: z.strictObject({
-    /** The sample operation, for a demonstration copy; never for a company's real one. */
-    sample: z.enum(['none', 'small', 'full']).default('none'),
+    /**
+     * `starter`: the usual lists every transport company uses (payment methods, vehicle types…), nothing made up (#116).
+     * `small` and `full`: the sample operation, for a demonstration copy; never for a company's real one.
+     */
+    sample: z.enum(['none', 'starter', 'small', 'full']).default('none'),
     /** Imported in this order on first start, like the import screen: a row already there is left alone. */
     files: z.array(z.strictObject({ master: z.string().regex(/^[a-z][a-z0-9-]{1,39}$/), file: kitPath('data') })).max(60).default([]).superRefine(unique((f) => f.file, 'Data file')),
     /** This company's records exactly as they stood on the copy it was packaged from, restored once on first start. */

@@ -253,10 +253,11 @@ export function DataStep() {
 
   return (
     <div className="su-stack">
-      <SettingsSection title="Sample data" description="A made-up operation to look around in: trucks, drivers, customers, routes and trips at every stage.">
-        <div className="su-pad su-choose three" role="radiogroup" aria-label="Sample data">
+      <SettingsSection title="What it starts with" description="The usual lists save a real company typing what every transport company has. The samples are a made-up operation to look around in.">
+        <div className="su-pad su-choose" role="radiogroup" aria-label="What it starts with">
           {[
-            { value: "none", title: "None", text: "Starts empty, ready for the company's own records." },
+            { value: "starter", title: "Just the usual lists", text: "Payment methods, vehicle types and makes, units, expense types, document types, numbering and approvals. Nothing made up; all editable." },
+            { value: "none", title: "None", text: "Starts empty, for a company bringing all its own lists." },
             { value: "small", title: "Small", text: "Only the masters: a few trucks, drivers, customers and routes, to run your own trips on." },
             { value: "full", title: "Full", text: "The masters and a working operation: trips under way, requests waiting and settlements done." },
           ].map((o) => (
@@ -266,7 +267,7 @@ export function DataStep() {
             </button>
           ))}
         </div>
-        {real && sample !== "none" && <p className="su-note bad">This is set up as a real company. Sample data mixes made-up records with its real ones, and they're awkward to remove. Choose None, unless this is only a try-out.</p>}
+        {real && (sample === "small" || sample === "full") && <p className="su-note bad">This is set up as a real company. Sample data mixes made-up records with its real ones, and they're awkward to remove. Choose None, unless this is only a try-out.</p>}
       </SettingsSection>
 
       <SettingsSection title="The company's own records" description={err("data.files") ?? "Spreadsheets to bring in: one for each master, as CSV. Download a template for the exact columns. A row that's already there is left alone. The order is worked out for you."}>
@@ -439,7 +440,7 @@ const OUTCOME: Record<string, { tone: "ok" | "wait" | "bad" | "info" | "mute"; w
   created: { tone: "ok", word: "Added" }, updated: { tone: "ok", word: "Updated" }, unchanged: { tone: "mute", word: "No change" }, skipped: { tone: "wait", word: "Skipped" }, failed: { tone: "bad", word: "Failed" },
 };
 export const stepName = (step: string) => STEP_WORDS[step]
-  ?? step.replace(/^data data\//, "Spreadsheet ").replace(/^brand files\//, "Logo ").replace(/^sample data$/, "Sample data").replace(/^role /, "Role ").replace(/^connection /, "Connection ").replace(/^staff /, "").replace(/^currency /, "Currency ").replace(/^country /, "Country ").replace(/^regional /, "Region: ");
+  ?? step.replace(/^data data\//, "Spreadsheet ").replace(/^brand files\//, "Logo ").replace(/^sample data$/, "Sample data").replace(/^usual lists$/, "The usual lists").replace(/^role /, "Role ").replace(/^connection /, "Connection ").replace(/^staff /, "").replace(/^currency /, "Currency ").replace(/^country /, "Country ").replace(/^regional /, "Region: ");
 
 export interface Result { step: string; outcome: string; detail?: string }
 /** The server lists what it changed by field; this says it in words. */
@@ -490,7 +491,7 @@ export function useSummaries(): Record<string, string> {
       work: words ? `${words} ${words === 1 ? "word" : "words"} changed` : "The usual",
       people: `Owner${staff ? ` and ${staff} ${staff === 1 ? "person" : "people"}` : ""}`,
       connections: `${connected.length ? connected.join(", ") : "All simulated"}${locks ? ` · ${locks} locked` : ""}`,
-      data: [file.data?.sample && file.data.sample !== "none" ? `${String(file.data.sample) === "full" ? "Full" : "Small"} sample` : "", spreadsheets ? `${spreadsheets} spreadsheet${spreadsheets === 1 ? "" : "s"}` : ""].filter(Boolean).join(" · ") || "Empty",
+      data: [file.data?.sample === "starter" ? "The usual lists" : file.data?.sample === "small" || file.data?.sample === "full" ? `${String(file.data.sample) === "full" ? "Full" : "Small"} sample` : "", spreadsheets ? `${spreadsheets} spreadsheet${spreadsheets === 1 ? "" : "s"}` : ""].filter(Boolean).join(" · ") || "Empty",
       where: finish === "here" ? "This copy" : target ?? "",
       guide: "Secrets and steps",
     };

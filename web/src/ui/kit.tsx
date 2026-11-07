@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import type { ButtonHTMLAttributes, ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "motion/react";
@@ -119,12 +119,21 @@ export function Empty({ title, children }: { title: string; children?: ReactNode
   );
 }
 
+/** Open drawers and dialogs, newest last: Escape closes only the top one (a record added from inside a form, #116). */
+const escapeStack: object[] = [];
 function useEscape(onClose: () => void) {
+  const latest = useRef(onClose);
+  latest.current = onClose;
   useEffect(() => {
-    const handler = (event: KeyboardEvent) => event.key === "Escape" && onClose();
+    const entry = {};
+    escapeStack.push(entry);
+    const handler = (event: KeyboardEvent) => event.key === "Escape" && escapeStack[escapeStack.length - 1] === entry && latest.current();
     window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
-  }, [onClose]);
+    return () => {
+      window.removeEventListener("keydown", handler);
+      escapeStack.splice(escapeStack.indexOf(entry), 1);
+    };
+  }, []);
 }
 
 export function Drawer({

@@ -17,6 +17,7 @@ import * as MetaService from './meta.service.js';
 import * as Workspace from '../company/workspace.js';
 import * as Readiness from './readiness.service.js';
 import { loadSampleData, type SampleSize } from './sampleData.js';
+import { loadStarterLists } from './starterLists.js';
 
 export const masters = asyncHandler(async (req, res) => {
   ApiResponse.success(res, await MetaService.describeMasters(req.auth));
@@ -58,6 +59,12 @@ export const outbox = asyncHandler(async (_req, res) => {
 export const sampleData = asyncHandler(async (req, res) => {
   if (env.NODE_ENV === 'production') throw new NotFoundError('Route not found');
   ApiResponse.created(res, await loadSampleData(req.auth?.userId, (req.body as { size: SampleSize }).size), 'Sample data loaded');
+});
+
+/** The usual lists (#116); a list already there is left as it is. */
+export const starterLists = asyncHandler(async (req, res) => {
+  const result = await loadStarterLists(req.auth?.userId);
+  ApiResponse.created(res, result, result.created ? `Added ${result.created} records` : 'The usual lists were already there');
 });
 
 /** What a new company still needs before its first trip (#45). */

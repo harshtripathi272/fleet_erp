@@ -24,6 +24,7 @@ import { Connection } from '../connections/connection.model.js';
 import { type ConnectionRule, connectionDefinition, connectionRules, createConnectionSchema, saveConnectionRules, updateConnectionSchema } from '../connections/connections.service.js';
 import * as Files from '../files/files.service.js';
 import { loadSampleData } from '../meta/sampleData.js';
+import { loadStarterLists } from '../meta/starterLists.js';
 import { Role } from '../roles/role.model.js';
 import { roleDefinition, systemRoles } from '../roles/roles.service.js';
 import { createRoleSchema, updateRoleSchema } from '../roles/roles.schema.js';
@@ -112,6 +113,8 @@ export async function applyFile(file: CompanyFile, raw: string, read: (name: str
     await data(file, last, hashes, read, note);
     await regionRecords(file, note);
     await settings(file, changed, note);
+    // After the settings: the lists use the company's base currency.
+    await starter(file, last, note);
     await roles(file, last, note);
     await connections(file, last, note);
     await rates(file, note);
@@ -150,7 +153,7 @@ async function details(file: CompanyFile, changed: Changed, note: Note) {
 }
 
 async function sample(file: CompanyFile, last: Applied | undefined, note: Note) {
-  if (file.data.sample === 'none' || (last && last.file.data.sample !== 'none')) return;
+  if (file.data.sample === 'none' || file.data.sample === 'starter' || (last && last.file.data.sample !== 'none')) return;
   try {
     const { created } = await loadSampleData(undefined, file.data.sample);
     note('sample data', 'created', `${created} records`);
@@ -158,6 +161,15 @@ async function sample(file: CompanyFile, last: Applied | undefined, note: Note) 
     if (err instanceof ConflictError) note('sample data', 'skipped', err.message);
     else throw err;
   }
+}
+
+/** The usual lists, the first time the file asks for them. A list the company already has is left alone. */
+async function starter(file: CompanyFile, last: Applied | undefined, note: Note) {
+  if (file.data.sample !== 'starter' || last?.file.data.sample === 'starter') return;
+  try {
+    const { created, existing, failed } = await loadStarterLists();
+    note('usual lists', failed.length ? 'failed' : 'created', [`${created} records`, existing ? `${existing} already there` : '', ...failed].filter(Boolean).join('; '));
+  } catch (err) { note('usual lists', 'failed', (err as Error).message); }
 }
 
 /** Each data file once, and again only when it changes: rows already there are left as they are. */

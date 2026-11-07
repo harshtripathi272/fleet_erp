@@ -28,9 +28,18 @@ import { NewTrip } from "./NewTrip";
 import { usePlacement } from "./usePlacement";
 import { DriverMessages, StagePanel } from "./stages";
 import { TripAside } from "./TripAside";
+import { FirstTripSteps, useFirstTrip } from "./firstTrip";
 import { w, wl } from "../domain/words";
 
 type Filter = "mine" | "active" | "closed";
+
+/** A company with no trips yet (#116): what's missing first, or the way to start one. */
+function NoTripsYet({ onNew }: { onNew?: () => void }) {
+  const { data } = useApp();
+  const readiness = useFirstTrip();
+  if (readiness.data && !readiness.data.ready) return <FirstTripSteps intro={`add what a ${wl(data, "trip")} needs first.`} />;
+  return onNew ? <Button tone="primary" onClick={onNew}>Start the first {wl(data, "trip")}</Button> : null;
+}
 
 export function TripsPage({
   tripId,
@@ -110,7 +119,8 @@ export function TripsPage({
           ))}
           {!shown.length && (
             <Empty title={filter === "mine" ? "Nothing waiting on you" : `No ${wl(data, "trip", true)} here`}>
-              {filter === "mine" && <button className="link-btn" onClick={() => setFilter("active")}>See active trips</button>}
+              {!data.trips.length ? <NoTripsYet onNew={may("trip.create") ? () => setCreating(true) : undefined} />
+                : filter === "mine" && <button className="link-btn" onClick={() => setFilter("active")}>See active trips</button>}
             </Empty>
           )}
         </div>

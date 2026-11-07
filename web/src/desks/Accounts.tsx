@@ -9,6 +9,8 @@ import type { Driver } from "../domain/types";
 import { Avatar, Button, Empty, Field, Segmented, Status } from "../ui/kit";
 import { ago, day, dayYear, inBase, baseLabel } from "../ui/format";
 import { Card } from "./stages";
+import { AddNew } from "./firstTrip";
+import { wl } from "../domain/words";
 
 export function Accounts({ driverId, onDriver }: { driverId?: string; onDriver: (id: string | undefined) => void }) {
   const { data } = useApp();
@@ -51,7 +53,14 @@ export function Accounts({ driverId, onDriver }: { driverId?: string; onDriver: 
         </div>
       </section>
       <section className="acc-detail-pane">
-        {selected ? <DriverAccount key={selected.id} driver={selected} onBack={() => onDriver(undefined)} /> : <Empty title="Pick a driver" />}
+        {selected ? <DriverAccount key={selected.id} driver={selected} onBack={() => onDriver(undefined)} />
+          : data.drivers.length ? <Empty title="Pick a driver" />
+          : (
+            <Empty title={`No ${wl(data, "driver", true)} yet`}>
+              <span>Each {wl(data, "driver")}'s account shows here: the cash and fuel they hold, the trips to settle and their statements.</span>
+              <AddNew master="drivers" what={wl(data, "driver")} onCreated={onDriver} />
+            </Empty>
+          )}
       </section>
     </div>
   );
