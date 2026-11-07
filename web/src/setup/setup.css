@@ -1410,3 +1410,15 @@
   margin: 0;
   font-size: 13.5px;
 }
+
+.su-company-choice {
+  display: grid;
+  gap: 8px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+
+.su-limit {
+  justify-self: start;
+  color: var(--ink-3);
+}

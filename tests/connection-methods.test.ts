@@ -58,10 +58,30 @@ describe('guides and names', () => {
     const kinds = (await as(owner).get('/connection-kinds').expect(200)).body.data as Array<{ kind: string; providers: Array<{ key: string; guide: unknown[]; comingSoon?: string; ownSignature: boolean }> }>;
     const whatsapp = kinds.find((k) => k.kind === 'whatsapp')!;
     assert.deepEqual(whatsapp.providers.map((p) => p.key).sort(), ['marichi-talks', 'meta', 'simulated', 'twilio']);
-    assert.match(whatsapp.providers.find((p) => p.key === 'marichi-talks')!.comingSoon!, /no API/);
+    assert.equal(whatsapp.providers.find((p) => p.key === 'marichi-talks')!.comingSoon, undefined, 'it can be connected');
     assert.ok(whatsapp.providers.find((p) => p.key === 'meta')!.ownSignature);
     assert.match(JSON.stringify(whatsapp.providers.find((p) => p.key === 'meta')!.guide), /\{webhookUrl\}/);
+    // Marichi Talks connects like any other: it needs its address, and then it's saved and sends.
     await as(owner).post('/connections', { code: 'MT', name: 'Marichi Talks', kind: 'whatsapp', provider: 'marichi-talks' }).expect(422);
+    const talks = (await as(owner).post('/connections', { code: 'MT', name: 'Marichi Talks', kind: 'whatsapp', provider: 'marichi-talks', settings: { address: 'https://talks.example.com/api/' } }).expect(201)).body.data;
+    assert.equal(talks.secrets.apiKey, 'CONNECTION_MT_API_KEY');
+    assert.equal(talks.webhookSecretEnv, 'CONNECTION_MT_SIGNING_SECRET');
+    const provider = providersOf('whatsapp').find((p) => p.key === 'marichi-talks')!;
+    const realFetch = globalThis.fetch;
+    let sent: { url: string; body: Record<string, unknown>; auth?: string } | undefined;
+    globalThis.fetch = (async (url: string, init: RequestInit) => {
+      sent = { url: String(url), body: JSON.parse(String(init.body)), auth: (init.headers as Record<string, string>).authorization };
+      return new Response(JSON.stringify({ id: 'mt-1' }), { status: 200, headers: { 'content-type': 'application/json' } });
+    }) as typeof fetch;
+    try {
+      const sender = provider.open({ settings: { address: 'https://talks.example.com/api/' }, secret: () => 'the-key' } as never) as { send(m: { to: string; text: string }): Promise<{ providerRef?: string }> };
+      assert.equal((await sender.send({ to: '+260971234567', text: 'Hello' })).providerRef, 'mt-1');
+      assert.equal(sent!.url, 'https://talks.example.com/api/messages');
+      assert.equal(sent!.auth, 'Bearer the-key');
+      assert.deepEqual(sent!.body, { to: '+260971234567', text: 'Hello' });
+    } finally { globalThis.fetch = realFetch; }
+    const replies = await (provider.inbound as (c: unknown, b: unknown) => Promise<{ accepted: number; messages?: { from: string; text?: string }[] }>)({}, { messages: [{ from: '260971234567', text: 'Loaded', id: 'r1' }] });
+    assert.equal(replies.messages![0]!.from, '+260971234567');
   });
 
   test('settings are named from the code, never typed; only our own webhooks get a signing secret', async () => {

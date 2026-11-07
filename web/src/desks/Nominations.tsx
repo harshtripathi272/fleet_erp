@@ -183,7 +183,7 @@ function NominationForm({ open, editing, onClose }: { open: boolean; editing?: N
   const company = usePlacement("nominations", "create", editing?.custom);
   const { data, run } = useApp();
   const now = new Date(Date.now() + data.settings.clockOffsetMs).toISOString();
-  const [customerId, setCustomerId] = useState(editing?.customerId ?? data.customers[0].id);
+  const [customerId, setCustomerId] = useState(editing?.customerId ?? data.customers[0]?.id ?? "");
   const [source, setSource] = useState<Nomination["source"]>(editing?.source ?? firstSource(data));
   const [reference, setReference] = useState(editing?.reference ?? "");
   const referenceNeeded = Boolean(data.orderSources?.find((o) => o.name === source)?.referenceRequired);
@@ -199,7 +199,7 @@ function NominationForm({ open, editing, onClose }: { open: boolean; editing?: N
   if (key !== lastKey) {
     setLastKey(key);
     setVersion(editing?.version);
-    setCustomerId(editing?.customerId ?? data.customers[0].id);
+    setCustomerId(editing?.customerId ?? data.customers[0]?.id ?? "");
     setSource(editing?.source ?? firstSource(data));
     setReference(editing?.reference ?? "");
     setLoading(editing?.loadingPlaceId ?? firstLoadingPlace(data));

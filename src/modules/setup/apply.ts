@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
+import { env } from '../../config/env.js';
 import { ConflictError } from '../../core/errors/index.js';
 import { logger } from '../../core/logger/index.js';
 import { importRows, importableMaster, MAX_ROWS } from '../../core/masters/import.js';
@@ -20,7 +21,7 @@ import { customMasterDefinition, fieldDefinitionDefinition, listDefinition } fro
 import { createCustomMasterSchema, createFieldDefinitionSchema, createListSchema, updateCustomMasterSchema, updateFieldDefinitionSchema, updateListSchema } from '../configuration/configuration.schema.js';
 import { restoreSnapshot } from './snapshot.js';
 import { Connection } from '../connections/connection.model.js';
-import { connectionDefinition, createConnectionSchema, updateConnectionSchema } from '../connections/connections.service.js';
+import { type ConnectionRule, connectionDefinition, connectionRules, createConnectionSchema, saveConnectionRules, updateConnectionSchema } from '../connections/connections.service.js';
 import * as Files from '../files/files.service.js';
 import { loadSampleData } from '../meta/sampleData.js';
 import { Role } from '../roles/role.model.js';
@@ -114,6 +115,7 @@ export async function applyFile(file: CompanyFile, raw: string, read: (name: str
     await roles(file, last, note);
     await connections(file, last, note);
     await rates(file, note);
+    await rulesStep(file, changed, note, options);
     // E-mail is set up by now, so the invitations carry the company's brand and go out over its server.
     await people(file, last, note, options);
     await brandFiles(file, last, hashes, read, note);
@@ -240,6 +242,19 @@ async function mastersStep(file: CompanyFile, last: Applied | undefined, note: N
       note(`layout ${entity}`, 'updated', def.label);
     } catch (err) { note(`layout ${entity}`, 'failed', (err as Error).message); }
   }
+}
+
+/**
+ * What this company may change later. A real company's own copy takes these only from the file it starts with: its
+ * owner re-running the set-up there can't lift a lock that was put on it.
+ */
+async function rulesStep(file: CompanyFile, changed: Changed, note: Note, options: ApplyOptions) {
+  if (!changed((f) => f.connectionRules)) return;
+  // Most companies have none, and "none" isn't news.
+  if (!file.connectionRules && !Object.keys(await connectionRules()).length) return;
+  if (options.inviteOwner && !env.SETUP_PACKAGES) return note('connection rules', 'skipped', "This copy's connection rules come from its company file");
+  await saveConnectionRules((file.connectionRules ?? {}) as Record<string, ConnectionRule>);
+  note('connection rules', 'updated');
 }
 
 /** The other currencies it works in, and their first live rates when a rate service is connected. */

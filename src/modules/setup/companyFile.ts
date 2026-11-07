@@ -171,6 +171,8 @@ export const companyFileSchema = z.strictObject({
   /** Anyone may make an account, waiting for a role; off unless the company asks for it. */
   selfSignUp: z.boolean().default(false),
   connections: z.array(connection).max(50).default([]).superRefine(unique((c) => c.code, 'Connection')),
+  /** Which services this company may choose for each kind afterwards, or that it's locked to what's set up here. */
+  connectionRules: z.partialRecord(z.enum(KINDS), z.strictObject({ providers: z.array(z.string().trim().regex(/^[a-z][a-z0-9-]{1,39}$/)).max(30).optional(), locked: z.boolean().optional() })).optional(),
   /** The company's own roles; the built-in ones (Owner, Operations…) come with every installation. */
   roles: z.array(role).max(50).default([]).superRefine(unique((r) => r.key, 'Role')),
   owner: z.strictObject({ name: name.optional(), email }),
@@ -186,6 +188,11 @@ export const companyFileSchema = z.strictObject({
   deploy,
 }).superRefine((file, ctx) => {
   if (file.staff.some((p) => p.email === file.owner.email)) ctx.addIssue({ code: 'custom', path: ['staff'], message: 'The owner is set under owner, not again under staff' });
+  for (const [kind, rule] of Object.entries(file.connectionRules ?? {})) {
+    for (const key of rule.providers ?? []) if (!providerFor(kind as (typeof KINDS)[number], key)) ctx.addIssue({ code: 'custom', path: ['connectionRules', kind], message: `No ${kind} provider "${key}"` });
+    const using = file.connections.find((c) => c.kind === kind && c.enabled);
+    if (using && rule.providers?.length && !rule.providers.includes(using.provider)) ctx.addIssue({ code: 'custom', path: ['connectionRules', kind], message: `${using.name} is in use but isn't among those offered` });
+  }
   const enabled = new Map<string, string>();
   file.connections.forEach((c, i) => {
     if (!c.enabled) return;
