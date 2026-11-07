@@ -83,6 +83,11 @@ load_company() {
   # The same for "Service due" reminders (the Maintenance area).
   REMINDERS_JOB="${REMINDERS_JOB:-$SERVICE-service-reminders}"
   SCHEDULER_REGION="${SCHEDULER_REGION:-$([ "$REGION" = africa-south1 ] && echo europe-west1 || echo "$REGION")}"
+  # Watching it (#104): who gets the alerts, the monthly budget (in the billing account's currency), and how many
+  # errors in 10 minutes count as failing.
+  ALERT_EMAIL="${ALERT_EMAIL:-$OWNER_EMAIL}"
+  BUDGET_MONTHLY="${BUDGET_MONTHLY:-50}"
+  ERROR_ALERT_COUNT="${ERROR_ALERT_COUNT:-5}"
 }
 
 # The version to deploy: the one given, or the current git commit (the tag build-image.sh gives it).

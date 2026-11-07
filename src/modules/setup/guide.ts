@@ -32,6 +32,8 @@ export const TARGET_FIELDS: Record<Target, TargetField[]> = {
     { key: 'egress', label: 'Outgoing address', hint: 'A fixed address lets MongoDB Atlas allow only this app, and costs a little. Open needs Atlas to accept connections from anywhere.', type: 'choice', default: 'static', choices: [{ value: 'static', label: 'Fixed (recommended)' }, { value: 'open', label: 'Open' }] },
     { key: 'minInstances', label: 'Always running', hint: '0 sleeps when nobody is using it: cheapest, with a few seconds to wake up. 1 is always ready.', type: 'number', default: 0, min: 0, max: 10 },
     { key: 'maxInstances', label: 'At most', hint: 'Above 1 also needs Redis, so sign-in limits are shared. 1 is enough for a company of this size to start.', type: 'number', default: 1, min: 1, max: 10 },
+    { key: 'alertEmail', label: 'Alerts go to', hint: "E-mailed when it's down, logging errors, or near its budget. Empty: the owner.", type: 'text', placeholder: 'it@acme.example' },
+    { key: 'monthlyBudget', label: 'Monthly budget', hint: "In the billing account's own currency. An e-mail at half, 90% and all of it; nothing is stopped.", type: 'number', default: 50, min: 1, max: 1000000 },
   ],
   compose: [
     { ...DOMAIN, required: true, hint: 'The server must already answer on this address: the certificate is fetched from it on first start.' },
@@ -180,6 +182,7 @@ export function guideSteps(file: CompanyFile): GuideStep[] {
         ...(d.egress === 'static' ? [{ title: 'Let the database accept it', text: 'The script prints a fixed outgoing address. Add it in Atlas, under Network Access.', link: { href: 'https://cloud.mongodb.com/', label: 'Open MongoDB Atlas' } }] : [{ title: 'Let the database accept it', text: 'In Atlas, under Network Access, allow connections from anywhere (0.0.0.0/0), since this app has no fixed address.' }]),
         ...(d.domain && d.domainMode !== 'none' ? [{ title: `Point ${d.domain} at it`, text: d.domainMode === 'lb' ? 'The script prints an IP address. Add an A record for it where the domain is managed. The certificate follows within about an hour.' : 'The script prints the DNS records to add. The certificate follows once they are in place.' }] : []),
         checkIt(file, url),
+        ...runningOnGoogle(file),
       ];
     }
     case 'compose': return [
@@ -196,6 +199,52 @@ export function guideSteps(file: CompanyFile): GuideStep[] {
     ];
     default: return platformSteps(file, database);
   }
+}
+
+/**
+ * Running it on Google Cloud, every day after deploying (#104), with this company's own names in the commands.
+ * Nothing here has been tried against a real Google Cloud project yet; the restore was done, in CI, on Compose.
+ */
+export function runningOnGoogle(file: CompanyFile): GuideStep[] {
+  const d = file.deploy;
+  if (d.target !== 'gcp') return [];
+  const service = `fleet-${file.company.key}`;
+  const at = `--region ${d.region} --project ${d.projectId}`;
+  const bucket = `${d.projectId}-${file.company.key}-files`;
+  return [
+    {
+      title: "Running it: knowing it's down or failing",
+      text: `The script set up two alerts, e-mailed to ${d.alertEmail ?? file.owner.email}: the address's health check failing for two minutes, and more than 5 errors in the log in 10 minutes. Each e-mail says what to read. To read the log yourself:`,
+      commands: [`gcloud run services logs read ${service} ${at} --limit 100`, `gcloud logging read 'resource.labels.service_name=${service} AND severity>=ERROR' --project ${d.projectId} --limit 50`],
+      link: { href: `https://console.cloud.google.com/run/detail/${d.region}/${service}/logs?project=${d.projectId}`, label: 'Open the log' },
+    },
+    {
+      title: 'Running it: what it costs',
+      text: `A budget of ${d.monthlyBudget} a month (in the billing account's currency) sends an e-mail at half, 90% and all of it; nothing is stopped. What costs money: Cloud Run while it runs (${d.minInstances > 0 ? `always, since ${d.minInstances} instance stays running` : 'only while someone uses it, since it sleeps when idle'}), ${d.domainMode === 'lb' ? 'the load balancer for the domain (a fixed monthly charge), ' : ''}${d.egress === 'static' ? 'the fixed outgoing address (Cloud NAT and a reserved address), ' : ''}Cloud Storage for files, Secret Manager, Cloud Scheduler, and the database, billed by MongoDB. No prices are given here: none were checked against Google's price list for this guide (7 November 2026), so use the calculator with these choices.`,
+      link: { href: 'https://cloud.google.com/products/calculator', label: 'Google Cloud pricing calculator' },
+    },
+    {
+      title: 'Running it: backups and restoring them',
+      list: [
+        "MongoDB Atlas keeps the database's backups. The free tier keeps none, so it is not for a company's real data. Flex takes a snapshot every day. M10 and above keep the snapshots you schedule and can restore to any minute with continuous backup, at extra cost. Check the tier's page before relying on it.",
+        'To restore a snapshot: Atlas → the cluster → Backup → Snapshots → Restore → this cluster. Everything written since that snapshot is lost, so take a fresh one first if you can.',
+        'A copy of your own, any time, from a computer with the MongoDB database tools (these exact commands are run on every CI run, against the Docker Compose package):',
+        `mongodump --uri "<MONGODB_URI>" --gzip --archive=${file.company.key}-$(date +%F).gz`,
+        `mongorestore --uri "<MONGODB_URI>" --gzip --archive=${file.company.key}-<date>.gz --drop`,
+        `Uploaded files keep every old version in gs://${bucket}. A deleted or overwritten file comes back from its older version:`,
+        `gcloud storage ls --all-versions gs://${bucket}/<path>   then   gcloud storage cp gs://${bucket}/<path>#<generation> gs://${bucket}/<path>`,
+      ],
+    },
+    {
+      title: 'Running it: upgrades and going back a version',
+      text: 'To upgrade, make a new package (Set up a company, or Package this company) and run ./deploy.sh from it, as the first time. It builds the new version and starts it; the old one stays, ready to go back to. On start, the server moves the database forward to the new version. Going back to an older version afterwards is safe unless the new one changed the database: then restore the snapshot taken before the upgrade. Take one before every upgrade.',
+      commands: [`gcloud run revisions list --service ${service} ${at}`, `gcloud run services update-traffic ${service} --to-revisions <revision>=100 ${at}`],
+    },
+    {
+      title: 'Running it: changing the company later',
+      text: "Running a new package again applies only what its company file changed since the last time. A setting someone has since changed in the app keeps its value, unless the file changes that same setting again. Nothing is deleted: a connection, role or person left out of the file stays, and a data row that's already there is left alone. To remove something, do it in the app.",
+    },
+  ];
 }
 
 /** AWS, Azure, Render, Fly and Railway: each one's own steps. Their scripts have been written, not yet run for real. */

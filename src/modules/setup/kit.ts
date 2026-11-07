@@ -187,7 +187,8 @@ function kitEnv(file: CompanyFile): string {
   if (d.target === 'gcp') {
     pairs.push(['PROJECT_ID', d.projectId], ['REGION', d.region], ['DOMAIN_MODE', d.domain ? d.domainMode : 'none'], ['EGRESS', d.egress],
       ['MIN_INSTANCES', d.minInstances], ['MAX_INSTANCES', d.maxInstances], ['SCHEDULER_REGION', d.schedulerRegion],
-      ['SMTP_HOST', smtp.host], ['SMTP_PORT', smtp.port], ['SMTP_SECURE', smtp.secure], ['SMTP_USER', smtp.user], ['SMTP_FROM', smtp.from]);
+      ['SMTP_HOST', smtp.host], ['SMTP_PORT', smtp.port], ['SMTP_SECURE', smtp.secure], ['SMTP_USER', smtp.user], ['SMTP_FROM', smtp.from],
+      ['ALERT_EMAIL', d.alertEmail ?? file.owner.email], ['BUDGET_MONTHLY', d.monthlyBudget]);
   } else if (d.target === 'local') pairs.push(['PORT', d.port]);
   else if (d.target === 'aws' || d.target === 'render' || d.target === 'fly') pairs.push(['REGION', d.region]);
   else if (d.target === 'azure') pairs.push(['LOCATION', d.location], ['RESOURCE_GROUP', d.resourceGroup ?? `fleet-${file.company.key}`]);
@@ -386,8 +387,17 @@ Edit \`company.json\` (or use Set up a company), build the package again, and de
 
 ## Upgrading
 
-Deploy the new version with the same command and the new \`<version>\`. The server moves the database forward on start. To roll back, deploy the version before. Back up the database first: a newer version may have changed it.
+${appSource() ? 'Make a new package and deploy it with the same command: it builds the new version from its source.' : 'Deploy the new version with the same command and the new `<version>`.'} The server moves the database forward on start. To roll back, deploy the version before. Back up the database first: a newer version may have changed it.
+${d.target === 'gcp' ? `
+## Running it
 
+- **Down or failing:** the script set up an uptime check and an alert on errors in the log, e-mailed to ${d.alertEmail ?? file.owner.email}. Read the log with \`gcloud run services logs read fleet-${file.company.key} --region ${d.region} --project ${d.projectId} --limit 100\`.
+- **Cost:** a budget of ${d.monthlyBudget} a month (the billing account's currency) e-mails at half, 90% and all of it. No prices are given: check them in Google's pricing calculator.
+- **Backups:** MongoDB Atlas keeps the database's (the free tier keeps none). Uploaded files keep every old version in the bucket.
+- **Going back a version:** \`gcloud run services update-traffic fleet-${file.company.key} --to-revisions <revision>=100 --region ${d.region} --project ${d.projectId}\`. If the newer version changed the database, restore the snapshot taken before it.
+
+The deploy guide on the Set up a company screen, and docs/deploy/gcp.md in the repository, have each of these step by step. None of it has been tried against a real Google Cloud project yet.
+` : ''}
 ## Do
 
 - **Use a managed database with backups** (MongoDB Atlas M10 or above, or the platform's), or keep this kit's nightly backups and copy them off the server.

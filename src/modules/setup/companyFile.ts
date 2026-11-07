@@ -119,6 +119,10 @@ const deploy = z.discriminatedUnion('target', [
     minInstances: z.number().int().min(0).max(10).default(0),
     maxInstances: z.number().int().min(1).max(10).default(1),
     schedulerRegion: z.string().trim().regex(/^[a-z]+-[a-z]+\d$/).optional(),
+    /** Who gets the alerts (#104): when it's down, failing, or near its budget. The owner unless set. */
+    alertEmail: email.optional(),
+    /** The monthly budget alerted on, in the billing account's own currency. */
+    monthlyBudget: z.number().int().min(1).max(1_000_000).default(50),
   }),
   z.strictObject({
     target: z.literal('compose'), ...common,

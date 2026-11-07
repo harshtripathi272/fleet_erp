@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { after, before, beforeEach, describe, test } from 'node:test';
 import { TARGETS, companyFileSchema, type CompanyFile } from '../src/modules/setup/companyFile.js';
-import { TARGET_FIELDS, TARGET_NEEDS, guideSteps } from '../src/modules/setup/guide.js';
+import { TARGET_FIELDS, TARGET_NEEDS, guideSteps, runningOnGoogle } from '../src/modules/setup/guide.js';
 import { appSource, buildKit, checkKit, envTemplate } from '../src/modules/setup/kit.js';
 import { unzip } from '../src/modules/setup/zip.js';
 import { api, bearer, loadSample, resetDatabase, signUp, startDatabase, stopDatabase } from './helpers.js';
@@ -72,6 +72,25 @@ describe('every platform', () => {
       assert.ok(steps.some((s) => /not yet run against a real account/.test(s.text ?? '')), `${target}: says honestly it hasn't been run`);
       assert.ok(steps.some((s) => s.title === 'Check it worked'), `${target}: ends with a check`);
     }
+  });
+});
+
+describe('running it on Google Cloud (#104)', () => {
+  test("alerts, cost, backups, going back and changing it later, with this company's names", () => {
+    const file = forTarget({ target: 'gcp', projectId: 'acme-fleet-prod', region: 'europe-west1', domain: 'fleet.acme-haulage.example', alertEmail: 'it@acme-haulage.example', monthlyBudget: 120, smtp: fixture().deploy.smtp });
+    const steps = runningOnGoogle(file);
+    assert.deepEqual(steps.map((s) => s.title.replace(/^Running it: /, '')), ["knowing it's down or failing", 'what it costs', 'backups and restoring them', 'upgrades and going back a version', 'changing the company later']);
+    const all = JSON.stringify(steps);
+    assert.match(all, /it@acme-haulage\.example/);
+    assert.match(all, /gcloud run services update-traffic fleet-acme-haulage --to-revisions <revision>=100 --region europe-west1 --project acme-fleet-prod/);
+    assert.match(all, /gs:\/\/acme-fleet-prod-acme-haulage-files/);
+    assert.match(all, /A budget of 120 a month/);
+    assert.doesNotMatch(all, /US\$|\$\d/, 'no prices are guessed');
+    assert.equal(guideSteps(file).filter((s) => s.title.startsWith('Running it')).length, 5, 'the deploy guide includes them');
+    const entries = unzip(buildKit(file, attachmentsOf(file)));
+    assert.match(entries.get('acme-haulage-kit/deploy/kit.env')!.toString(), /^ALERT_EMAIL=it@acme-haulage\.example$/m);
+    assert.match(entries.get('acme-haulage-kit/deploy/kit.env')!.toString(), /^BUDGET_MONTHLY=120$/m);
+    assert.match(entries.get('acme-haulage-kit/README.md')!.toString(), /## Running it/);
   });
 });
 

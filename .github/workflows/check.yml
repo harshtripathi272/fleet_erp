@@ -212,6 +212,14 @@ jobs:
           [ "$(q 'String(db.vehicles.countDocuments())')" = 2 ] || { echo "Vehicles duplicated"; exit 1; }
           [ "$(q 'String(db.users.countDocuments())')" = 2 ] || { echo "People duplicated"; exit 1; }
           [ "$(docker compose logs app | grep -c 'Company file applied')" = 1 ] || { echo "Applied again with nothing changed"; exit 1; }
+      - name: A backup and a restore, with the commands the guide gives (#104)
+        run: |
+          q() { docker compose exec -T mongo mongosh fleet --quiet --eval "$1"; }
+          docker compose exec -T mongo mongodump --uri mongodb://localhost:27017/fleet --gzip --archive=/tmp/fleet.gz
+          q 'db.vehicles.deleteMany({})' >/dev/null
+          [ "$(q 'String(db.vehicles.countDocuments())')" = 0 ] || { echo "The vehicles were not deleted"; exit 1; }
+          docker compose exec -T mongo mongorestore --uri mongodb://localhost:27017/fleet --gzip --archive=/tmp/fleet.gz --drop
+          [ "$(q 'String(db.vehicles.countDocuments())')" = 2 ] || { echo "The restore did not bring the vehicles back"; exit 1; }
       - name: This computer (#103), started as someone would, with one command and no image built before
         working-directory: .
         run: |
