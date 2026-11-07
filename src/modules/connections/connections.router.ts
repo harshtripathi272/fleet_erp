@@ -1,5 +1,6 @@
 import express, { type Request, Router } from 'express';
 import { createMasterRouter } from '../../core/masters/router.js';
+import type { Plain } from '../../core/masters/types.js';
 import { idParams } from '../../core/masters/zod.js';
 import { ApiResponse } from '../../core/response/index.js';
 import { authorize } from '../../middleware/authorize.js';
@@ -8,7 +9,7 @@ import { asyncHandler } from '../../utils/asyncHandler.js';
 import { z } from 'zod';
 import { KINDS, SECRET_TARGETS, type Kind, type SecretTarget } from '../../core/connections/index.js';
 import {
-  answerHandshake, connectionDefinition, kindsStatus, receiveInbound, secretSetupFor, testConnection, testConnectionSchema, testDraft, testDraftSchema,
+  answerHandshake, connectionDefinition, guardConnectionChange, kindsStatus, receiveInbound, secretSetupFor, testConnection, testConnectionSchema, testDraft, testDraftSchema,
   type TestDraftInput,
 } from './connections.service.js';
 
@@ -16,7 +17,10 @@ const id = (req: Request) => (req.params as { id: string }).id;
 
 /** Masters → Connections. Mounted at /api/v1 behind sign-in. */
 const router = Router();
-router.use('/connections', createMasterRouter(connectionDefinition, (r) => {
+router.use('/connections', asyncHandler(async (req, _res, next) => {
+  await guardConnectionChange(req.method, req.path, req.body as Plain | undefined, req.auth?.userId);
+  next();
+}), createMasterRouter(connectionDefinition, (r) => {
   // Before saving (#98): the values on the form, tested as they are.
   r.post('/test-draft', authorize('connections', 'create'), validate({ body: testDraftSchema }), asyncHandler(async (req, res) => {
     ApiResponse.success(res, await testDraft(req.body as TestDraftInput));

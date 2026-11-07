@@ -11,6 +11,7 @@ import { getMaster, refsOf } from '../../core/masters/registry.js';
 import { SystemState } from '../auth/systemState.model.js';
 import { Company } from '../company/company.model.js';
 import { Connection } from '../connections/connection.model.js';
+import { connectionRules } from '../connections/connections.service.js';
 import { RecordLayout } from '../../core/masters/layout.js';
 import { contextFor, providerFor, type Provider } from '../../core/connections/index.js';
 import { CustomMaster, FieldDefinition, List } from '../configuration/models/configuration.model.js';
@@ -105,6 +106,7 @@ export async function fromInstallation(): Promise<{ file: CompanyFileInput; atta
     data: { sample: 'none', files: [] },
     deploy: { target: 'compose' },
     purpose: (await lastApplied())?.purpose ?? 'real',
+    connectionRules: Object.keys(await connectionRules()).length ? await connectionRules() as CompanyFileInput['connectionRules'] : undefined,
     masters: {
       layouts: layouts.map((l) => ({ entity: l.entity, master: l.master ?? {}, sections: l.sections ?? [], fields: l.fields ?? [], choices: l.choices ?? [] })),
       lists: listDocs.map((l) => defined({ code: l.code, name: l.name, description: l.description, values: ((l.values ?? []) as Plain[]).map((v) => defined({ value: v.value, label: v.label, order: v.order, active: v.active })) })),

@@ -7,13 +7,14 @@ import {
 } from '../../core/connections/index.js';
 import { Company } from '../company/company.model.js';
 import { productName } from '../company/brand.service.js';
-import { NotFoundError, UnauthorizedError, ValidationError } from '../../core/errors/index.js';
+import { ForbiddenError, NotFoundError, UnauthorizedError, ValidationError } from '../../core/errors/index.js';
 import { logger } from '../../core/logger/index.js';
 import { defineMaster } from '../../core/masters/define.js';
 import { GROUPS } from '../../core/masters/groups.js';
 import type { Plain } from '../../core/masters/types.js';
 import { baseShape, code, name, text, toUpdateSchema } from '../../core/masters/zod.js';
 import { type FileStore, serverFileStore, setStoreResolver } from '../../core/storage/index.js';
+import { SystemState } from '../auth/systemState.model.js';
 import { Connection } from './connection.model.js';
 
 export const MESSAGE_KINDS = ['email', 'sms', 'whatsapp'] as const;
@@ -34,8 +35,35 @@ export const createConnectionSchema = z.strictObject(connectionShape);
 export const updateConnectionSchema = toUpdateSchema(connectionShape);
 export const testConnectionSchema = z.strictObject({ to: z.string().trim().min(3).max(254).optional() });
 
+/* What whoever set this company up lets it choose (#113). Held apart from the company's own settings, so no screen or API it can reach changes them: only a company file does. */
+
+export interface ConnectionRule { providers?: string[]; locked?: boolean }
+const RULES = 'connection-rules';
+export const connectionRules = async () => ((await SystemState.findOne({ key: RULES }).lean<{ value?: Record<string, ConnectionRule> }>())?.value ?? {});
+export const saveConnectionRules = async (rules: Record<string, ConnectionRule>) => { await SystemState.updateOne({ key: RULES }, { $set: { value: rules } }, { upsert: true }); };
+
+/** Refuses what the rules don't allow. A company file's own step has no person behind it, so it isn't held to them. */
+async function checkRules(kind: string, provider: string | undefined, actorId: string | undefined) {
+  if (!actorId) return;
+  const rule = (await connectionRules())[kind];
+  if (!rule) return;
+  const label = KIND_INFO[kind as Kind]?.label ?? kind;
+  if (rule.locked) throw new ForbiddenError(`${label} was set up for this company and can't be changed here`);
+  if (provider && rule.providers?.length && !rule.providers.includes(provider)) throw new ValidationError(`That service isn't offered for ${label} here`, { provider: [`Choose from: ${rule.providers.map((k) => providerFor(kind as Kind, k)?.label ?? k).join(', ')}`] });
+}
+
+/** Stops changes to a locked connection that don't pass through its form: switching off, archiving, deleting. */
+export async function guardConnectionChange(method: string, path: string, body: Plain | undefined, actorId?: string) {
+  if (method === 'GET' || /\/test(-draft)?$/.test(path)) return;
+  const id = /^\/([0-9a-f]{24})/i.exec(path)?.[1];
+  const doc = id ? await Connection.findById(id).select('kind provider').lean<{ kind: string; provider: string }>() : null;
+  const kind = doc?.kind ?? (body?.kind as string | undefined);
+  if (kind) await checkRules(kind, (body?.provider as string | undefined) ?? doc?.provider, actorId);
+}
+
 /** Checks a connection against its provider: known provider, settings that fit its fields, only its secrets. */
-async function prepare(data: Plain) {
+async function prepare(data: Plain, ctx?: { actorId?: string }) {
+  await checkRules(String(data.kind), String(data.provider), ctx?.actorId);
   const errors: Record<string, string[]> = {};
   const add = (key: string, message: string) => { (errors[key] ??= []).push(message); };
   const kind = data.kind as Kind;
@@ -279,12 +307,15 @@ export async function secretSetupFor(input: { connectionId?: string; kind?: Kind
 /** Every kind, what it is connected to now, and every provider it could use with the form to set it up. */
 export async function kindsStatus() {
   const connections = await Connection.find({ status: 'active' }).lean() as Plain[];
+  const rules = await connectionRules();
   return Promise.all(KINDS.map(async (kind) => {
     const now = await using(kind);
     const active = now.connection;
     const kindConnections = connections.filter((c) => c.kind === kind);
     return {
       kind, ...KIND_INFO[kind],
+      locked: Boolean(rules[kind]?.locked),
+      allowed: rules[kind]?.providers ?? null,
       via: kind === 'rates' && !active ? 'none' : now.via,
       provider: kind === 'rates' && !active ? undefined : { key: now.provider.key, label: now.provider.label, simulated: Boolean(now.provider.simulated) },
       connectionId: active ? String(active._id) : undefined,

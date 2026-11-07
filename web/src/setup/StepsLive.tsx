@@ -5,7 +5,7 @@ import { api, authorizedFetch } from "../api/client";
 import type { Rec } from "../api/adapter";
 import { SettingField } from "../settings/ConnectionsSettings";
 import { COMING_SOON } from "../ui/comingSoon";
-import { Button, Field, FieldGroup, SettingRow, SettingsSection, Status, Switch } from "../ui/kit";
+import { Button, ChoiceChips, Field, FieldGroup, Segmented, SettingRow, SettingsSection, Status, Switch } from "../ui/kit";
 import { FileDrop, saveBlob, useSetUp, type MasterOption, type TargetField } from "./context";
 
 /* ---------- Connections ---------- */
@@ -51,6 +51,15 @@ function KindRow({ kind: k, open, onToggle }: { kind: KindState; open: boolean; 
   const simulated = k.providers.find((p) => p.simulated);
 
   const pick = (key: string) => {
+    // A lock follows what's chosen: it always means "this one".
+    const rules = (file.connectionRules ?? {}) as Record<string, { providers?: string[]; locked?: boolean }>;
+    const rule = rules[k.kind];
+    if (rule?.locked) {
+      const to = key === "none" ? k.providers.find((p) => p.simulated)?.key : key;
+      setTimeout(() => set("connectionRules", { ...rules, [k.kind]: { locked: true, ...(to ? { providers: [to] } : {}) } }), 0);
+    } else if (rule?.providers?.length && key !== "none" && !rule.providers.includes(key)) {
+      setTimeout(() => set("connectionRules", { ...rules, [k.kind]: { providers: [...rule.providers!, key] } }), 0);
+    }
     if (key === "none") return set("connections", list.filter((_, i) => i !== at));
     const p = k.providers.find((x) => x.key === key)!;
     const settings = Object.fromEntries(p.fields.filter((f) => f.default !== undefined).map((f) => [f.key, f.default]));
@@ -92,6 +101,7 @@ function KindRow({ kind: k, open, onToggle }: { kind: KindState; open: boolean; 
               {real.map((p) => <button key={p.key} type="button" role="radio" aria-checked={chosen?.provider === p.key} disabled={Boolean(p.comingSoon)} title={p.comingSoon} className={chosen?.provider === p.key ? "on" : ""} onClick={() => pick(p.key)}>{p.label}{p.comingSoon ? " · coming soon" : ""}</button>)}
             </div>
           </FieldGroup>
+          <CompanyChoice kind={k} chosenProvider={chosen?.provider as string | undefined} />
           {real.length === 0 && <p className="su-note">No real service for this yet: it stays simulated, and says so wherever it shows.</p>}
           {chosen && provider && !provider.simulated && (
             <>
@@ -132,6 +142,38 @@ function KindRow({ kind: k, open, onToggle }: { kind: KindState; open: boolean; 
         </div>
       )}
     </article>
+  );
+}
+
+/** What whoever sets this company up lets it do with this service afterwards: enforced on the company's own copy. */
+function CompanyChoice({ kind: k, chosenProvider }: { kind: KindState; chosenProvider?: string }) {
+  const { file, set } = useSetUp();
+  const rules = (file.connectionRules ?? {}) as Record<string, { providers?: string[]; locked?: boolean }>;
+  const rule = rules[k.kind];
+  const current = rule?.locked ? "locked" : rule?.providers?.length ? "some" : "any";
+  const usable = k.providers.filter((p) => !p.comingSoon);
+  const inUse = chosenProvider ?? usable.find((p) => p.simulated)?.key;
+  const save = (next?: { providers?: string[]; locked?: boolean }) => {
+    const out = { ...rules };
+    if (next) out[k.kind] = next; else delete out[k.kind];
+    set("connectionRules", Object.keys(out).length ? out : undefined);
+  };
+  const pick = (mode: string) => {
+    if (mode === "any") save();
+    else if (mode === "locked") save({ locked: true, ...(inUse ? { providers: [inUse] } : {}) });
+    else save({ providers: usable.map((p) => p.key) });
+  };
+  const inUseName = usable.find((p) => p.key === inUse)?.label ?? "what's set up here";
+  return (
+    <div className="su-company-choice">
+      <FieldGroup label="What the company can do later" wide hint={current === "locked" ? `Locked to ${inUseName}. On its own copy, this company sees what's in use and can't change it.` : current === "some" ? "It can only choose from the ones ticked here." : "It can connect any of these itself."}>
+        <Segmented choice label="What the company can do later" value={current} onChange={pick} options={[{ value: "any", label: "Choose any" }, { value: "some", label: "Choose from a list" }, { value: "locked", label: "Locked" }]} />
+      </FieldGroup>
+      {current === "some" && (
+        <ChoiceChips label={`${k.label} services offered`} options={usable.map((p) => ({ value: p.key, label: p.label }))} value={rule?.providers ?? []}
+          onChange={(providers) => { if (providers.length && (!chosenProvider || providers.includes(chosenProvider))) save({ providers }); }} />
+      )}
+    </div>
   );
 }
 
@@ -432,6 +474,7 @@ export function useSummaries(): Record<string, string> {
     const connected = ((file.connections ?? []) as Rec[]).filter((x) => x.enabled).map((x) => String(x.name));
     const spreadsheets = ((file.data?.files ?? []) as Rec[]).length;
     const words = Object.keys(file.workspace?.vocabulary ?? {}).length;
+    const locks = Object.values((file.connectionRules ?? {}) as Record<string, { locked?: boolean }>).filter((r) => r.locked).length;
     const target = info.targets.find((t) => t.key === file.deploy?.target)?.label;
     const masterChanges = new Set([...((file.masters?.layouts ?? []) as Rec[]).map((l) => String(l.entity)), ...((file.masters?.fields ?? []) as Rec[]).map((f) => String(f.entity))]).size + ((file.masters?.customMasters ?? []) as Rec[]).length;
     return {
@@ -443,7 +486,7 @@ export function useSummaries(): Record<string, string> {
       areas: areas ? `${areas.length} switched on` : "The usual",
       work: words ? `${words} ${words === 1 ? "word" : "words"} changed` : "The usual",
       people: `Owner${staff ? ` and ${staff} ${staff === 1 ? "person" : "people"}` : ""}`,
-      connections: connected.length ? connected.join(", ") : "All simulated",
+      connections: `${connected.length ? connected.join(", ") : "All simulated"}${locks ? ` · ${locks} locked` : ""}`,
       data: [file.data?.sample && file.data.sample !== "none" ? `${String(file.data.sample) === "full" ? "Full" : "Small"} sample` : "", spreadsheets ? `${spreadsheets} spreadsheet${spreadsheets === 1 ? "" : "s"}` : ""].filter(Boolean).join(" · ") || "Empty",
       where: finish === "here" ? "This copy" : target ?? "",
       guide: "Secrets and steps",

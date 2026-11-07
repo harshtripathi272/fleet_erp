@@ -41,6 +41,10 @@ const SECRET_TARGETS: { value: string; label: string }[] = [
   { value: "aws", label: "AWS" }, { value: "azure", label: "Azure" }, { value: "fly", label: "Fly.io" }, { value: "render", label: "Render" }, { value: "railway", label: "Railway" },
 ];
 interface KindState {
+  /** Set up for this company by whoever packaged it (#113): it can't be changed here. */
+  locked?: boolean;
+  /** The only services this company is offered, when that was limited. */
+  allowed?: string[] | null;
   kind: string;
   label: string;
   description: string;
@@ -116,7 +120,8 @@ export default function ConnectionsSettings() {
                 <p className="muted">{k.description}</p>
                 {soon && <p className="muted">{soon.description}</p>}
               </div>
-              {creatable && <Button onClick={() => setEditing({ kind: k, connection: null })}>Add a connection</Button>}
+              {creatable && !k.locked && <Button onClick={() => setEditing({ kind: k, connection: null })}>Add a connection</Button>}
+              {k.locked && <span className="setting-fixed">Set up for this company</span>}
             </div>
             <div className="card-body">
               <dl className="connection-facts">
@@ -126,7 +131,7 @@ export default function ConnectionsSettings() {
               {mine.length > 0 && (
                 <div className="connection-list">
                   {mine.map((c) => (
-                    <ConnectionCard key={c.id} connection={c} kind={k} writable={writable} onEdit={() => setEditing({ kind: k, connection: c })} />
+                    <ConnectionCard key={c.id} connection={c} kind={k} writable={writable && !k.locked} onEdit={() => setEditing({ kind: k, connection: c })} />
                   ))}
                 </div>
               )}
@@ -253,7 +258,9 @@ function settingsFrom(provider: ProviderInfo, values: Values) {
   return out;
 }
 
-function ConnectionForm({ kind, connection, onClose }: { kind: KindState; connection: Connection | null; onClose: () => void }) {
+function ConnectionForm({ kind: given, connection, onClose }: { kind: KindState; connection: Connection | null; onClose: () => void }) {
+  // Only the services this company is offered; the one already in use stays visible.
+  const kind = { ...given, providers: given.providers.filter((p) => !given.allowed?.length || given.allowed.includes(p.key) || p.key === connection?.provider) };
   const { toast } = useApp();
   const refresh = useRefresh();
   const first = connection?.provider ?? kind.providers.find((p) => !p.simulated && !p.comingSoon)?.key ?? kind.providers[0]?.key ?? "";
