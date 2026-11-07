@@ -187,6 +187,7 @@ export function NewTrip({ open, onClose, onCreated }: { open: boolean; onClose: 
               </Field>
             </div>
             <StopEditor stops={stops} onChange={setStops} startLocked={truck.placeId} />
+            <AddNew master="places" what="place" />
             {preview ? (
               <div className="route-summary">
                 <MiniRoute stops={preview.stops} height={130} />

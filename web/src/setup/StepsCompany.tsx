@@ -80,7 +80,7 @@ export function StartStep({ hasCompany }: { hasCompany: boolean }) {
     <div className="su-stack">
       <section className="su-choose" role="radiogroup" aria-label="What are you setting up?">
         <Choice on={purpose === "demo"} onPick={() => pickPurpose("demo")} title="A demonstration" text="To show someone how it works, or to try it yourself. Comes with made-up trucks, drivers and trips, every area switched on, and messages simulated. It can be cleared and started again." />
-        <Choice on={purpose === "real"} onPick={() => pickPurpose("real")} title="A real company" text="A company's own copy for its real work, on its own address. Starts empty, ready for its spreadsheets. People are invited by e-mail if it has an e-mail server, or given passwords if it doesn't." />
+        <Choice on={purpose === "real"} onPick={() => pickPurpose("real")} title="A real company" text="A company's own copy for its real work, on its own address. Starts with the usual lists, ready for its own trucks, drivers, places and customers. People are invited by e-mail if it has an e-mail server, or given passwords if it doesn't." />
       </section>
       <SettingsSection title="Start from">
         {(hasCompany || file.company?.legalName) && (

@@ -253,7 +253,7 @@ export function DataStep() {
 
   return (
     <div className="su-stack">
-      <SettingsSection title="What it starts with" description="The usual lists save a real company typing what every transport company has. The samples are a made-up operation to look around in.">
+      <SettingsSection title="Lists and samples" description="The usual lists save a real company typing what every transport company has. The samples are a made-up operation to look around in.">
         <div className="su-pad su-choose" role="radiogroup" aria-label="What it starts with">
           {[
             { value: "starter", title: "Just the usual lists", text: "Payment methods, vehicle types and makes, units, expense types, document types, numbering and approvals. Nothing made up; all editable." },

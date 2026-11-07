@@ -1,5 +1,5 @@
 import { lazy, Suspense, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowRight, Plus } from "lucide-react";
 import { api } from "../api/client";
 import type { Rec } from "../api/adapter";
@@ -51,8 +51,9 @@ export function FirstTripSteps({ intro }: { intro?: string }) {
  * "Add a new one" beside a picker (#116): the master's own form opens on top, and the new record is picked
  * here, so nobody leaves a half-filled form. Offered only to people who may create that master.
  */
-export function AddNew({ master, what, initial, onCreated }: { master: string; what: string; initial?: Rec; onCreated: (id: string) => void }) {
+export function AddNew({ master, what, initial, onCreated }: { master: string; what: string; initial?: Rec; onCreated?: (id: string) => void }) {
   const { me, refreshReference } = useApp();
+  const queries = useQueryClient();
   const [open, setOpen] = useState(false);
   if (!can(me, master, "create")) return null;
   return (
@@ -60,7 +61,7 @@ export function AddNew({ master, what, initial, onCreated }: { master: string; w
       <button type="button" className="link-btn add-new" onClick={() => setOpen(true)}><Plus size={13} /> Add a new {what}</button>
       {open && (
         <Suspense fallback={null}>
-          <QuickAdd master={master} initial={initial} onClose={() => setOpen(false)} onCreated={(id) => { refreshReference(); onCreated(id); }} />
+          <QuickAdd master={master} initial={initial} onClose={() => setOpen(false)} onCreated={(id) => { refreshReference(); void queries.invalidateQueries({ queryKey: ["readiness"] }); onCreated?.(id); }} />
         </Suspense>
       )}
     </>
