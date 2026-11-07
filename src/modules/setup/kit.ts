@@ -22,13 +22,14 @@ export const TARGET_LABEL: Record<Target, string> = {
   render: 'Render',
   fly: 'Fly.io',
   railway: 'Railway',
+  local: 'This computer',
 };
 /** Tested end to end in CI; the others have a script and a guide, not yet run there. */
-export const TESTED_TARGETS: Target[] = ['compose', 'gcp'];
+export const TESTED_TARGETS: Target[] = ['compose', 'gcp', 'local'];
 /** What's been run for real, in words for the screen. Google Cloud's script has only had a dry run so far. */
-export const TARGET_STATE: Record<Target, 'tested' | 'dry-run' | 'script'> = { compose: 'tested', gcp: 'dry-run', aws: 'script', azure: 'script', render: 'script', fly: 'script', railway: 'script' };
+export const TARGET_STATE: Record<Target, 'tested' | 'dry-run' | 'script'> = { compose: 'tested', local: 'tested', gcp: 'dry-run', aws: 'script', azure: 'script', render: 'script', fly: 'script', railway: 'script' };
 /** Where uploaded files live on each target. Containers on the rest lose their disk on restart. */
-const DISK: Partial<Record<Target, string>> = { compose: '/data/files', azure: '/data/files', render: '/data/files', fly: '/data/files', railway: '/data/files' };
+const DISK: Partial<Record<Target, string>> = { compose: '/data/files', local: '/data/files', azure: '/data/files', render: '/data/files', fly: '/data/files', railway: '/data/files' };
 
 /** Problems that stop a kit being built, in words for whoever wrote the file. */
 export function checkKit(file: CompanyFile, attachments: Map<string, Buffer>): string[] {
@@ -49,7 +50,8 @@ export function checkKit(file: CompanyFile, attachments: Map<string, Buffer>): s
   if (file.deploy.target === 'gcp' && file.company.key.length > 24) problems.push(`company.key: on Google Cloud the short name can be at most 24 characters; "${file.company.key}" has ${file.company.key.length}`);
   const storage = file.connections.find((c) => c.kind === 'storage' && c.enabled);
   if (file.deploy.target === 'aws' && !storage) problems.push('deploy: on AWS uploaded files need a storage connection (Amazon S3), switched on: App Runner has no lasting disk');
-  if (file.deploy.target !== 'gcp' && !file.deploy.image) problems.push('deploy.image: name the shared image to run, without its version (where deploy/build-image.sh pushed it)');
+  // A package with the app's source builds its own image (#103); one without needs an image built beforehand.
+  if (file.deploy.target !== 'gcp' && !appSource() && !file.deploy.image) problems.push('deploy.image: name the shared image to run, without its version (where deploy/build-image.sh pushed it)');
   if (NEEDS_DOMAIN.includes(file.deploy.target) && !file.deploy.domain) problems.push(`deploy.domain: on ${TARGET_LABEL[file.deploy.target]} the company's address is needed before the first start, for password links`);
   if (file.deploy.target === 'gcp' && file.deploy.domainMode !== 'none' && !file.deploy.domain) problems.push(`deploy.domain: domainMode ${file.deploy.domainMode} needs a domain`);
   return problems;
@@ -79,6 +81,7 @@ const quote = (v: string) => (/[\s<>"'#$`\\]/.test(v) ? `"${v.replace(/(["\\$`])
 const productName = (file: CompanyFile) => file.brand.productName ?? file.company.tradingName ?? file.company.legalName;
 /** The public address: the domain, or the platform's own address when it is known before the first deploy. */
 const appUrl = (file: CompanyFile) => {
+  if (file.deploy.target === 'local') return `http://localhost:${file.deploy.port}`;
   if (file.deploy.domain) return `https://${file.deploy.domain}`;
   if (file.deploy.target === 'fly') return `https://fleet-${file.company.key}.fly.dev`;
   if (file.deploy.target === 'render') return `https://fleet-${file.company.key}.onrender.com`;
@@ -110,7 +113,8 @@ export function envTemplate(file: CompanyFile): string {
     '# Never commit .env, send it by e-mail or paste it in a chat. company.json and this template hold no secret values.',
     '',
     '# --- From company.json (change them there and build the kit again) ---',
-    set('NODE_ENV', 'production'),
+    // This computer runs in development mode: production refuses a plain http://localhost address.
+    set('NODE_ENV', target === 'local' ? 'development' : 'production'),
     target === 'gcp' ? '# APP_URL is set by the deploy script (the domain, or the Cloud Run address).' : set('APP_URL', appUrl(file)),
     set('OWNER_EMAIL', file.owner.email),
     set('COMPANY_CONFIG', '/kit/company.json'),
@@ -124,19 +128,20 @@ export function envTemplate(file: CompanyFile): string {
     set('CONSOLE_ENABLED', false),
     // A real company's copy makes no packages for other companies; a demonstration copy can.
     set('SETUP_PACKAGES', file.purpose === 'demo'),
-    set('DRIVER_PHONE_SIMULATOR', false),
+    // A copy on this computer keeps the simulated driver phones, to try the driver's side.
+    set('DRIVER_PHONE_SIMULATOR', target === 'local'),
     // Cloud Run and Container Apps scale to nothing and run the timed work as scheduled jobs instead.
     set('IN_PROCESS_JOBS', target === 'gcp' || target === 'azure' ? false : true),
     '',
     '# --- SECRET: fill these in ---',
-    target === 'compose'
+    target === 'compose' || target === 'local'
       ? '# SECRET. The bundled database is mongodb://mongo:27017/fleet. For MongoDB Atlas, its connection string.'
       : '# SECRET. The connection string of the company\'s own database (MongoDB Atlas, or the platform\'s MongoDB).',
-    set('MONGODB_URI', target === 'compose' ? 'mongodb://mongo:27017/fleet' : ''),
-    '# SECRET. At least 32 random characters, made once and never changed (it would sign everyone out): openssl rand -base64 48',
+    set('MONGODB_URI', target === 'compose' || target === 'local' ? 'mongodb://mongo:27017/fleet' : ''),
+    target === 'local' ? '# SECRET. Made by start.sh or start.bat the first time; never changed (it would sign everyone out).' : '# SECRET. At least 32 random characters, made once and never changed (it would sign everyone out): openssl rand -base64 48',
     target === 'gcp' ? '# JWT_SECRET is generated by the deploy script and kept in Secret Manager.' : set('JWT_SECRET', ''),
     ...(smtp.user ? ['# SECRET. The password of the e-mail account above.', set('SMTP_PASS', '')] : ['# SMTP_PASS= (only with SMTP_USER)']),
-    ...(smtp.host ? ['# OWNER_PASSWORD= (only without an e-mail server)'] : [`# SECRET. The first password for ${file.owner.email}, at least 8 characters with a letter and a digit. Used once, when that account is made; change it after signing in.`, set('OWNER_PASSWORD', '')]),
+    ...(smtp.host && target !== 'local' ? ['# OWNER_PASSWORD= (only without an e-mail server)'] : [`# SECRET. The first password for ${file.owner.email}, at least 8 characters with a letter and a digit. Used once, when that account is made; change it after signing in.${target === 'local' ? ' start.sh or start.bat makes one the first time.' : ''}`, set('OWNER_PASSWORD', '')]),
     ...secrets.flatMap((s) => [`# SECRET. ${s.why}.`, set(s.name, '')]),
     '',
     '# --- Defaults: change only with a reason ---',
@@ -163,9 +168,9 @@ export function envTemplate(file: CompanyFile): string {
     lines.push(
       '',
       '# --- For Docker Compose (not read by the server) ---',
-      `# The image and the version to run. Never "latest", so a rollback can name the version before.`,
-      set('FLEET_IMAGE', file.deploy.image),
-      set('FLEET_VERSION', ''),
+      ...(appSource()
+        ? ['# The image is built from the source in this package (Dockerfile): no image to name.', `FLEET_VERSION=${appSource()!.version}`]
+        : ['# The image and the version to run. Never "latest", so a rollback can name the version before.', set('FLEET_IMAGE', file.deploy.image), set('FLEET_VERSION', '')]),
       set('DOMAIN', file.deploy.domain),
       set('CERTIFICATE_EMAIL', file.deploy.target === 'compose' ? file.deploy.certificateEmail ?? file.owner.email : ''),
       set('BACKUP_DAYS', file.deploy.target === 'compose' ? file.deploy.backupDays : 14),
@@ -182,10 +187,12 @@ function kitEnv(file: CompanyFile): string {
   if (d.target === 'gcp') {
     pairs.push(['PROJECT_ID', d.projectId], ['REGION', d.region], ['DOMAIN_MODE', d.domain ? d.domainMode : 'none'], ['EGRESS', d.egress],
       ['MIN_INSTANCES', d.minInstances], ['MAX_INSTANCES', d.maxInstances], ['SCHEDULER_REGION', d.schedulerRegion],
-      ['SMTP_HOST', smtp.host], ['SMTP_PORT', smtp.port], ['SMTP_SECURE', smtp.secure], ['SMTP_USER', smtp.user], ['SMTP_FROM', smtp.from],
-      ['APP_VERSION', appSource()?.version]);
-  } else if (d.target === 'aws' || d.target === 'render' || d.target === 'fly') pairs.push(['REGION', d.region]);
+      ['SMTP_HOST', smtp.host], ['SMTP_PORT', smtp.port], ['SMTP_SECURE', smtp.secure], ['SMTP_USER', smtp.user], ['SMTP_FROM', smtp.from]);
+  } else if (d.target === 'local') pairs.push(['PORT', d.port]);
+  else if (d.target === 'aws' || d.target === 'render' || d.target === 'fly') pairs.push(['REGION', d.region]);
   else if (d.target === 'azure') pairs.push(['LOCATION', d.location], ['RESOURCE_GROUP', d.resourceGroup ?? `fleet-${file.company.key}`]);
+  // The version of the source the package carries: the scripts build and tag that, with nothing to name.
+  pairs.push(['APP_VERSION', appSource()?.version]);
   return [
     `# ${file.company.legalName}: where it is deployed. Written from company.json by \`npm run kit\`; no secrets.`,
     ...pairs.filter(([, v]) => v !== undefined && v !== '').map(([k, v]) => `${k}=${quote(String(v))}`),
@@ -200,6 +207,11 @@ function targetFiles(target: Target): ZipEntry[] {
   switch (target) {
     case 'gcp': return [script('lib.sh', 'deploy/lib.sh'), script('new-company.sh', 'deploy/new-company.sh'), script('update-company.sh', 'deploy/update-company.sh'), ...common, script('targets/gcp.sh', 'deploy/gcp.sh')];
     case 'compose': return [{ path: 'docker-compose.yml', data: deployFile('targets/compose/docker-compose.yml') }, { path: 'Caddyfile', data: deployFile('targets/compose/Caddyfile') }, ...common, script('targets/compose/backup.sh', 'deploy/backup.sh')];
+    case 'local': return [
+      { path: 'docker-compose.yml', data: deployFile('targets/local/docker-compose.yml') },
+      script('targets/local/start.sh', 'start.sh'), script('targets/local/start.command', 'start.command'),
+      { path: 'start.bat', data: deployFile('targets/local/start.bat').replace(/\r?\n/g, '\r\n') },
+    ];
     default: return [...common, script(`targets/${target}.sh`, `deploy/${target}.sh`)];
   }
 }
@@ -212,15 +224,13 @@ export function kitEntries(file: CompanyFile, attachments: Map<string, Buffer>):
     { path: 'company.json', data: `${JSON.stringify(file, null, 2)}\n` },
     { path: '.env.example', data: envTemplate(file) },
     { path: 'deploy/kit.env', data: kitEnv(file) },
-    // The company's own image: the shared one plus this kit, for platforms that run an image as it is.
-    { path: 'Dockerfile', data: deployFile('targets/Dockerfile.kit') },
+    // The company's own image: built from the app's source in this package (#103), or the shared image plus this kit.
+    { path: 'Dockerfile', data: deployFile(appSource() ? 'targets/Dockerfile.source' : 'targets/Dockerfile.kit') },
     { path: '.dockerignore', data: '.env\n.env.*\n!.env.example\nbackups\n*.zip\n' },
     { path: '.gitignore', data: '.env\nbackups/\n' },
     ...targetFiles(file.deploy.target),
-    ...(file.deploy.target === 'gcp' ? [
-      { path: 'deploy.sh', data: deployFile('targets/gcp-all.sh'), executable: true },
-      ...(appSource() ? [{ path: 'app-source.tar.gz', data: appSource()!.body }] : []),
-    ] : []),
+    ...(file.deploy.target === 'gcp' ? [{ path: 'deploy.sh', data: deployFile('targets/gcp-all.sh'), executable: true }] : []),
+    ...(appSource() ? [{ path: 'app-source.tar.gz', data: appSource()!.body }] : []),
     // The Dockerfile copies both folders, so they are there even when empty.
     { path: 'files/.keep', data: '' },
     { path: 'data/.keep', data: '' },
@@ -249,13 +259,25 @@ function readme(file: CompanyFile): string {
   ].filter(Boolean).join('\n');
 
   const steps: Record<Target, string> = {
+    local: `A copy of its own on this computer, with its own database and files: the copy this package came from is not touched. It needs [Docker Desktop](https://www.docker.com/products/docker-desktop/), installed and running.
+
+- **Mac:** unzip, then double-click \`start.command\`. The first time, macOS may ask you to allow it: right-click it, choose Open, then Open.
+- **Windows:** unzip, then double-click \`start.bat\`.
+- **Linux, or a terminal:**
+
+\`\`\`bash
+unzip ${kitName(file)} && cd ${file.company.key}-kit
+./start.sh
+\`\`\`
+
+The first start builds the app from the source in this package, which takes a few minutes. It makes \`.env\` with a new sign-in key and a first password for ${file.owner.email}, shows that password once (it stays in \`.env\`), then opens ${appUrl(file)}. Stop it with \`docker compose --project-name fleet-${file.company.key}-local down\`; the data stays for next time.`,
     compose: `On a server with Docker (2 GB of memory is enough to start), with ports 80 and 443 open and \`${d.domain}\` pointing at it:
 
 \`\`\`bash
 unzip ${kitName(file)} && cd ${file.company.key}-kit
 cp .env.example .env
-# fill in the SECRET lines and FLEET_VERSION (the image version to run)
-docker compose up -d
+# fill in the SECRET lines${appSource() ? '' : ' and FLEET_VERSION (the image version to run)'}
+docker compose up -d --build
 \`\`\`
 
 Caddy gets the HTTPS certificate on the first request. The database, uploaded files and nightly backups (in \`backups/\`, kept ${d.target === 'compose' ? d.backupDays : 14} days) live in Docker volumes on this server. Copy \`backups/\` somewhere else too: a backup on the same disk is lost with the disk.`,
@@ -317,7 +339,7 @@ It sets the variables and deploys this company's image. Add a volume mounted at 
   return `# ${name}: deployment kit
 
 Made from \`company.json\` (format ${COMPANY_FILE_FORMAT}) for **${TARGET_LABEL[d.target]}**.
-${tested}
+${file.purpose === 'demo' || file.data.sample !== 'none' ? '\n> **This copy holds made-up data.** It is for showing and trying the app, and its sign-in page says so too.\n' : ''}${tested}
 ## What's in it
 
 | File | What it is |

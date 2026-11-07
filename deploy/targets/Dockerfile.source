@@ -1,0 +1,46 @@
+# This company's image, built from the app's source in this package (#103): no image needs to exist beforehand.
+# The same steps as the repository's Dockerfile, then this kit's company.json, files/ and data/ in /kit, applied
+# on start. Any platform that builds a Dockerfile builds this one: docker build .
+
+# The source, unpacked once for the stages below.
+FROM node:22-alpine AS source
+WORKDIR /src
+ADD app-source.tar.gz /src/
+
+# The API, compiled.
+FROM node:22-alpine AS build
+WORKDIR /app
+COPY --from=source /src/package.json /src/package-lock.json ./
+RUN npm ci
+COPY --from=source /src/tsconfig.json /src/tsconfig.build.json ./
+COPY --from=source /src/src ./src
+RUN npm run build
+
+# The web app, as static files.
+FROM node:22-alpine AS web
+WORKDIR /app/web
+COPY --from=source /src/web/package.json /src/web/package-lock.json ./
+RUN npm ci
+COPY --from=source /src/web ./
+RUN npm run build
+
+# What runs: production dependencies, the compiled API, the web app, and this company's kit.
+FROM node:22-alpine
+ENV NODE_ENV=production HOST=0.0.0.0 PORT=3000
+WORKDIR /app
+COPY --from=source /src/package.json /src/package-lock.json ./
+RUN npm ci --omit=dev && npm cache clean --force
+COPY --from=build /app/dist ./dist
+COPY --from=source /src/public ./public
+COPY --from=source /src/deploy ./deploy
+COPY --from=web /app/web/dist ./web/dist
+# Uploaded files go to /data/files on platforms that mount a disk there; the app runs as "node".
+RUN mkdir -p /data/files && chown -R node:node /data
+COPY --chown=node:node company.json /kit/company.json
+COPY --chown=node:node files /kit/files
+COPY --chown=node:node data /kit/data
+USER node
+ENV COMPANY_CONFIG=/kit/company.json
+EXPOSE 3000
+HEALTHCHECK --interval=15s --timeout=5s --start-period=20s CMD wget -qO- http://127.0.0.1:3000/api/v1/health/ready || exit 1
+CMD ["node", "dist/server.js"]

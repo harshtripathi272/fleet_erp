@@ -127,7 +127,8 @@ describe('the kit', () => {
     const file = parsed();
     assert.deepEqual(checkKit(file, new Map()).map((p) => p.split(':')[0]), ['brand.files.logo', 'data.files.0', 'data.files.1', 'data.files.2', 'data.files.3', 'data.files.4']);
     const aws = parsed({ ...fixture(), deploy: { target: 'aws', smtp: fixture().deploy.smtp } });
-    assert.ok(checkKit(aws, attachmentsOf(aws)).some((p) => /deploy\.image/.test(p)));
+    // With the app's source in the package, the image is built from it (#103): none needs naming.
+    assert.ok(!checkKit(aws, attachmentsOf(aws)).some((p) => /deploy\.image/.test(p)));
     assert.ok(checkKit(aws, attachmentsOf(aws)).some((p) => /storage connection/.test(p)));
     assert.ok(checkKit(aws, attachmentsOf(aws)).some((p) => /deploy\.domain/.test(p)));
     const noMail = parsed({ ...fixture(), deploy: { target: 'compose', domain: 'fleet.acme-haulage.example', image: 'registry.example.com/fleet/fleet-erp' } });

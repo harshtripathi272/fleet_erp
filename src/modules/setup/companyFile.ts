@@ -107,7 +107,7 @@ const common = {
   image: z.string().trim().regex(/^[a-z0-9.-]+(:\d+)?(\/[a-z0-9._-]+)+$/, 'An image name without a tag, e.g. ghcr.io/acme/fleet-erp').optional(),
   smtp: smtp.optional(),
 };
-export const TARGETS = ['gcp', 'compose', 'aws', 'azure', 'render', 'fly', 'railway'] as const;
+export const TARGETS = ['gcp', 'compose', 'local', 'aws', 'azure', 'render', 'fly', 'railway'] as const;
 export type Target = (typeof TARGETS)[number];
 const deploy = z.discriminatedUnion('target', [
   z.strictObject({
@@ -131,6 +131,8 @@ const deploy = z.discriminatedUnion('target', [
   z.strictObject({ target: z.literal('render'), ...common, region: z.enum(['frankfurt', 'oregon', 'ohio', 'virginia', 'singapore']).default('frankfurt') }),
   z.strictObject({ target: z.literal('fly'), ...common, region: z.string().trim().regex(/^[a-z]{3}$/).default('jnb') }),
   z.strictObject({ target: z.literal('railway'), ...common }),
+  // A separate copy on this computer (#103): its own database and files, at http://localhost:<port>.
+  z.strictObject({ target: z.literal('local'), ...common, port: z.number().int().min(1024).max(65535).default(8080) }),
 ]);
 
 export const companyFileSchema = z.strictObject({

@@ -18,7 +18,10 @@ const GCP_REGIONS: [string, string][] = [
 const choices = (list: [string, string][]) => list.map(([value, label]) => ({ value, label: `${label} (${value})` }));
 
 const DOMAIN: TargetField = { key: 'domain', label: "The company's address", hint: 'The web address people will use, without https://. You point it at the platform at the end.', type: 'text', placeholder: 'fleet.acme.example' };
-const IMAGE: TargetField = { key: 'image', label: 'App image', hint: 'Where the shared image lives, without its version. deploy/build-image.sh in the repository makes one.', type: 'text', required: true, placeholder: 'ghcr.io/acme/fleet-erp' };
+// With the app's source in the package, the image is built from it (#103) and none is named.
+const IMAGE: TargetField = appSource()
+  ? { key: 'image', label: 'App image (optional)', hint: "Leave empty: the package carries the app's source, and the image is built from it. Name one only to run an image already built elsewhere.", type: 'text', placeholder: 'ghcr.io/acme/fleet-erp' }
+  : { key: 'image', label: 'App image', hint: 'Where the shared image lives, without its version. deploy/build-image.sh in the repository makes one.', type: 'text', required: true, placeholder: 'ghcr.io/acme/fleet-erp' };
 
 export const TARGET_FIELDS: Record<Target, TargetField[]> = {
   gcp: [
@@ -54,16 +57,18 @@ export const TARGET_FIELDS: Record<Target, TargetField[]> = {
     DOMAIN, IMAGE,
   ],
   railway: [{ ...DOMAIN, required: true }, IMAGE],
+  local: [{ key: 'port', label: 'Address on this computer', hint: 'It opens at http://localhost and this number. Pick another if something already uses it.', type: 'number', default: 8080, min: 1024, max: 65535 }],
 };
 
 export const TARGET_NEEDS: Record<Target, string[]> = {
   gcp: ['A Google account, and a project with billing switched on', 'A MongoDB Atlas database (free to start)', 'Nothing to install: it runs in Google Cloud Shell'],
-  compose: ['A server with Docker, reachable from the internet', 'A domain pointing at it'],
-  aws: ['An AWS account, and the aws tool signed in', 'A MongoDB Atlas database', 'An S3 bucket for files'],
-  azure: ['An Azure subscription, and the az tool signed in', 'A MongoDB Atlas database'],
-  render: ['A Render account', 'A MongoDB Atlas database'],
-  fly: ['A Fly.io account, and the fly tool signed in', 'A MongoDB Atlas database'],
-  railway: ['A Railway account, and the railway tool signed in', 'A MongoDB Atlas database'],
+  compose: ['A Linux server with Docker and 2 GB of memory, reachable from the internet on ports 80 and 443', 'A domain pointing at it', 'Nothing else: the database, HTTPS and backups come in the package'],
+  local: ['Docker Desktop, installed and running (free for personal and small-business use)', 'Nothing else: no domain, no e-mail server, no database to make'],
+  aws: ['An AWS account, with the aws tool installed and signed in (aws configure)', 'Docker on the computer you deploy from, to build the image', 'A MongoDB Atlas database', 'An S3 bucket and a storage connection for files (App Runner keeps no disk)'],
+  azure: ['An Azure subscription, with the az tool installed and signed in (az login)', 'Docker on the computer you deploy from, to build the image', 'A MongoDB Atlas database'],
+  render: ['A Render account on a paid plan (a disk for files needs one)', 'A private Git repository to hold this package', 'A MongoDB Atlas database'],
+  fly: ['A Fly.io account, with the fly tool installed and signed in (fly auth login)', 'A MongoDB Atlas database'],
+  railway: ['A Railway account and a project, with the railway tool installed and linked (railway link)', 'A MongoDB Atlas database'],
 };
 
 export interface EnvVar { name: string; value?: string; secret: boolean; why: string; where?: string; generate?: string; automatic?: boolean }
@@ -126,6 +131,7 @@ export function setCommand(file: CompanyFile, name: string): string | undefined 
     case 'railway': return `railway variables --set ${name}='VALUE'`;
     case 'render': return undefined;
     case 'compose': return undefined;
+    case 'local': return undefined;
   }
 }
 
@@ -177,20 +183,67 @@ export function guideSteps(file: CompanyFile): GuideStep[] {
       ];
     }
     case 'compose': return [
-      { title: 'Get a server ready', text: `Any server with Docker, 2 GB of memory, and ports 80 and 443 open. Point ${d.domain} at it, and copy this package over.`, commands: [`scp ${kitName(file)} you@${d.domain}:`] },
+      { title: 'Get a server ready', text: `Any Linux server with Docker, 2 GB of memory, and ports 80 and 443 open (DigitalOcean, Hetzner, your own). Point ${d.domain} at its address, and copy this package over.`, commands: [`scp ${kitName(file)} you@${d.domain}:`], link: { href: 'https://docs.docker.com/engine/install/', label: 'Install Docker on the server' } },
       fillIn(file),
-      { title: 'Start it', text: 'Also set FLEET_VERSION in .env to the image version to run. The database, HTTPS and nightly backups come with it.', commands: ['docker compose up -d'] },
+      { title: 'Start it', text: `${appSource() ? 'It builds the app from the source in this package, a few minutes the first time.' : 'Also set FLEET_VERSION in .env to the image version to run.'} The database, HTTPS and nightly backups come with it.`, commands: ['docker compose up -d --build'] },
       checkIt(file, `https://${d.domain}`),
     ];
-    default: {
-      const url = d.domain ? `https://${d.domain}` : d.target === 'fly' ? `https://fleet-${file.company.key}.fly.dev` : d.target === 'render' ? `https://fleet-${file.company.key}.onrender.com` : 'https://<the address it prints>';
-      return [
-        database,
-        fillIn(file),
-        { title: 'Deploy', text: 'Name the image version to run. This platform\'s script has been written but not yet run for real, so check each step as it goes.', commands: [`DRY_RUN=1 deploy/${d.target}.sh ${version}`, `deploy/${d.target}.sh ${version}`] },
-        checkIt(file, url),
-      ];
-    }
+    case 'local': return [
+      { title: 'Install Docker Desktop', text: "Free for personal use and small businesses. Start it once it's installed, and wait until it says it is running.", link: { href: 'https://www.docker.com/products/docker-desktop/', label: 'Get Docker Desktop' } },
+      { title: 'Unzip the package and start it', text: `On a Mac, double-click start.command (the first time: right-click it, Open, then Open). On Windows, double-click start.bat. Or in a terminal, the commands below. It builds the app from the source in the package, a few minutes the first time, with its own database and files: the copy you're in now is not touched.`, commands: [unpack(file), './start.sh'] },
+      { title: 'Sign in', text: `It opens http://localhost:${d.port}. Sign in as ${file.owner.email} with the password it shows the first time (it is also in .env as OWNER_PASSWORD), and change it under Your account.` },
+      { title: 'Stop or start it again', text: 'The data stays between starts. Run start.command, start.bat or ./start.sh again to start it.', commands: [`docker compose --project-name fleet-${file.company.key}-local down`] },
+    ];
+    default: return platformSteps(file, database);
+  }
+}
+
+/** AWS, Azure, Render, Fly and Railway: each one's own steps. Their scripts have been written, not yet run for real. */
+function platformSteps(file: CompanyFile, database: GuideStep): GuideStep[] {
+  const d = file.deploy;
+  const key = file.company.key;
+  const built = appSource() ? 'It builds the app from the source in this package.' : 'Name the image version to run.';
+  const run = (script: string) => (appSource() ? [`DRY_RUN=1 deploy/${script}.sh`, `deploy/${script}.sh`] : [`DRY_RUN=1 deploy/${script}.sh <version>`, `deploy/${script}.sh <version>`]);
+  const untested = "This script has been written from the platform's documentation but not yet run against a real account, so read each step as it goes.";
+  switch (d.target) {
+    case 'aws': return [
+      database,
+      { title: 'Make the bucket for files', text: `App Runner keeps no disk, so uploaded files go to S3. Make a bucket in ${d.region}, an IAM user that may use only it, and add a storage connection (Amazon S3) to the company file before building the package.`, link: { href: 'https://s3.console.aws.amazon.com/s3/bucket/create', label: 'Create an S3 bucket' } },
+      fillIn(file),
+      { title: 'Deploy', text: `${built} It pushes the image to ECR, keeps each secret in Secrets Manager as fleet/${key}/<NAME>, and creates the App Runner service. ${untested}`, commands: run('aws') },
+      { title: `Point ${d.domain} at it`, text: 'The script asks App Runner for the domain and prints the command that lists the DNS records to add.' },
+      checkIt(file, `https://${d.domain}`),
+    ];
+    case 'azure': return [
+      database,
+      fillIn(file),
+      { title: 'Deploy', text: `${built} It makes a resource group, a container registry, a Key Vault for the secrets, a file share for uploads, the container app and its two scheduled jobs. ${untested}`, commands: ['az login', ...run('azure')] },
+      { title: `Point ${d.domain} at it`, text: 'The script prints the CNAME and TXT records to add, then the command that binds the domain with a free certificate.' },
+      checkIt(file, `https://${d.domain}`),
+    ];
+    case 'render': return [
+      database,
+      fillIn(file),
+      { title: 'Write the blueprint', text: `It writes render.yaml: a web service built from this package's Dockerfile, with a disk for uploaded files and the hourly rates job. ${untested}`, commands: run('render') },
+      { title: 'Put the package in a private repository', text: 'Without .env: it stays on your computer.', commands: ['git init && git add -A && git commit -m "Fleet package"', 'git remote add origin <your private repository>', 'git push -u origin main'] },
+      { title: 'Create the Blueprint', text: 'In Render: New → Blueprint → that repository. Render asks for each secret: paste them from .env.', link: { href: 'https://dashboard.render.com/select-repo?type=blueprint', label: 'New Blueprint' } },
+      checkIt(file, d.domain ? `https://${d.domain}` : `https://fleet-${key}.onrender.com`),
+    ];
+    case 'fly': return [
+      database,
+      fillIn(file),
+      { title: 'Deploy', text: `${built.replace('It builds', "Fly's builder builds")} It creates the app and a volume for files, sets the secrets from .env, and deploys. ${untested}`, commands: ['fly auth login', ...run('fly')] },
+      ...(d.domain ? [{ title: `Point ${d.domain} at it`, text: `The script asks Fly for a certificate and prints the DNS records: fly certs show ${d.domain} --app fleet-${key}.` }] : []),
+      checkIt(file, d.domain ? `https://${d.domain}` : `https://fleet-${key}.fly.dev`),
+    ];
+    default: return [
+      database,
+      { title: 'Make the project and its volume', text: 'In Railway: a new project with an empty service, and a volume on it mounted at /data, for uploaded files. Then link this folder to it.', commands: ['railway login', 'railway link'], link: { href: 'https://railway.com/new', label: 'New Railway project' } },
+      fillIn(file),
+      { title: 'Deploy', text: `${built.replace('It builds', "Railway builds")} The script sets the variables and deploys. ${untested}`, commands: run('railway') },
+      { title: `Point ${d.domain} at it`, text: 'Add the domain in Railway, and the record it shows where the domain is managed.', commands: [`railway domain ${d.domain}`] },
+      checkIt(file, `https://${d.domain}`),
+    ];
   }
 }
 
