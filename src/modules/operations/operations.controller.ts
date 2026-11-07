@@ -106,7 +106,7 @@ export const markRead = asyncHandler(async (req, res) => ApiResponse.success(res
 export const listActivity = asyncHandler(async (req, res) => ApiResponse.success(res, await Messages.listActivity(query(req))));
 export const ownerDashboard = asyncHandler(async (_req, res) => ApiResponse.success(res, await Dashboards.ownerDashboard()));
 export const financeDashboard = asyncHandler(async (_req, res) => ApiResponse.success(res, await Dashboards.financeDashboard()));
-export const sync = asyncHandler(async (req, res) => ApiResponse.success(res, await Dashboards.sync(query<{ since?: Date }>(req).since, viewer(req))));
+export const sync = asyncHandler(async (req, res) => ApiResponse.success(res, await Dashboards.sync(query<{ since?: Date; from?: Date }>(req).since, viewer(req), query<{ from?: Date }>(req).from)));
 export const simulate = asyncHandler(async (req, res) => ApiResponse.created(res, await WhatsApp.simulate(req.body, opsContext(req)), 'Sent from the driver\'s phone'));
 export const inbound = asyncHandler(async (req, res) => ApiResponse.success(res, await WhatsApp.inbound(req.get('x-webhook-secret'), req.body)));
 

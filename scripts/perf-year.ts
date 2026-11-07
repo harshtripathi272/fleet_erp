@@ -84,6 +84,26 @@ async function seed() {
     process.stdout.write(`\r${Math.min(TRIPS, start + BATCH)} trips`);
   }
   process.stdout.write('\n');
+  // As a real year would be: everything older than a month is settled, a statement per driver per month.
+  const settlements = db.collection('settlements');
+  const currency = await db.collection('currencies').findOne({});
+  const old = await trips.find({ settlementId: { $exists: false }, endedAt: { $lt: new Date(Date.now() - 30 * DAY) } }).project({ driverId: 1, endedAt: 1 }).toArray();
+  const statements = new Map<string, { driverId: unknown; postedAt: Date; ids: unknown[] }>();
+  for (const t of old) {
+    const key = `${String(t.driverId)} ${(t.endedAt as Date).toISOString().slice(0, 7)}`;
+    const at = statements.get(key) ?? { driverId: t.driverId, postedAt: t.endedAt as Date, ids: [] };
+    at.ids.push(t._id);
+    if (t.endedAt > at.postedAt) at.postedAt = t.endedAt as Date;
+    statements.set(key, at);
+  }
+  let n = 0;
+  for (const { driverId, postedAt, ids } of statements.values()) {
+    const _id = new Types.ObjectId();
+    n += 1;
+    await settlements.insertOne({ _id, number: `STL-P${n}`, driverId, tripIds: ids, from: postedAt, to: postedAt, currencyId: currency?._id, openingMinor: 0, advancesMinor: 0, expensesMinor: 0, shortagesMinor: 0, writeOffsMinor: 0, cashMinor: 0, closingMinor: 0, postedAt, createdAt: postedAt, updatedAt: postedAt });
+    await trips.updateMany({ _id: { $in: ids as Types.ObjectId[] } }, { $set: { settlementId: _id } });
+  }
+  console.log(`${String(n)} statements`);
 }
 
 if (process.argv.includes('--seed')) await seed();
@@ -97,6 +117,10 @@ const calls = [
   '/api/v1/settlements?limit=50', '/api/v1/driver-accounts', '/api/v1/activity?limit=50', '/api/v1/messages/threads',
   '/api/v1/vehicles?limit=25', '/api/v1/drivers?limit=25&search=Mwansa', '/api/v1/vehicle-states', '/api/v1/meta/stats', '/api/v1/maintenance/services',
 ];
+// What each desk does every few seconds once it has loaded: asks for what changed, within the window it loaded.
+const first = (await api.get('/api/v1/operations/sync').set('Authorization', `Bearer ${token}`).maxResponseSize(2_000_000_000)).body.data as { serverTime: string; history?: { from: string; older: boolean } };
+console.log('history', JSON.stringify({ from: first.history?.from, older: first.history?.older }));
+calls.splice(1, 0, `/api/v1/operations/sync?since=${encodeURIComponent(first.serverTime)}&from=${encodeURIComponent(first.history?.from ?? '')}`);
 console.log('call'.padEnd(48), 'ms'.padStart(7), 'KB'.padStart(9), 'status');
 for (const path of calls) {
   const runs: number[] = [];
@@ -104,12 +128,12 @@ for (const path of calls) {
   let status = 0;
   for (let i = 0; i < 3; i += 1) {
     const t0 = performance.now();
-    const res = await api.get(path).set('Authorization', `Bearer ${token}`);
+    const res = await api.get(path).set('Authorization', `Bearer ${token}`).maxResponseSize(2_000_000_000);
     runs.push(performance.now() - t0);
     size = (res.text ?? '').length;
     status = res.status;
   }
-  console.log(path.padEnd(48), Math.round(Math.min(...runs)).toString().padStart(7), Math.round(size / 1024).toString().padStart(9), status);
+  console.log(path.slice(0, 48).padEnd(48), Math.round(Math.min(...runs)).toString().padStart(7), Math.round(size / 1024).toString().padStart(9), status);
 }
 await disconnectMongo();
 process.exit(0);

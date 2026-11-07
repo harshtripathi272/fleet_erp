@@ -83,6 +83,7 @@ Owners: LD = lakshya-desktop, LT = lakshya-t3, HD = harsh-desktop, HT = harsh-t3
 | A loaded trip that can't deliver: return, transfer or write off, as the company allows | Built | #64 |  |
 | Cargo in any unit: weighed (weighbridge), counted, volume-corrected | Built | #75 | PR #85 |
 | Every trip edge case tested in the browser | Built | #16 |  |
+| Long histories: desks load open work plus the last 30 days, balances stay exact, older records load on request | Built | #125 | Timed at 500 trucks and 50,000 trips |
 | Multi-drop and multi-pickup trips | Proposed | — | Stops support it; desks show one load and one delivery |
 | Hired (subcontracted) transporters: their trucks, rates and settlement | Proposed | — | The "hired transporter" party role exists |
 | Containers: numbers, seals, return of empties | Proposed | — | |

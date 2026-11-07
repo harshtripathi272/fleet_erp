@@ -16,8 +16,44 @@ export const round = (value: number, digits = 2) => {
   return Math.round((value + Number.EPSILON) * f) / f;
 };
 
+/**
+ * Lists are looked through by trip and by driver for every row of every desk, so on a company with thousands of trips
+ * they are indexed the first time they're asked, once per load of the data (a new load makes new lists). Short lists
+ * aren't worth it. The size check catches a list that has grown since.
+ */
+const INDEXED_FROM = 64;
+const ID_INDEX = new WeakMap<object, { size: number; map: Map<string, unknown> }>();
 export function byId<T extends { id: string }>(list: T[], id?: string): T | undefined {
-  return id ? list.find((item) => item.id === id) : undefined;
+  if (!id) return undefined;
+  if (list.length < INDEXED_FROM) return list.find((item) => item.id === id);
+  let index = ID_INDEX.get(list);
+  if (index?.size !== list.length) {
+    const map = new Map<string, unknown>();
+    for (const item of list) if (!map.has(item.id)) map.set(item.id, item);
+    index = { size: list.length, map };
+    ID_INDEX.set(list, index);
+  }
+  return index.map.get(id) as T | undefined;
+}
+
+const GROUP_INDEX = new WeakMap<object, Map<string, { size: number; map: Map<unknown, unknown[]> }>>();
+/** The items of a list with this value in this field, in the list's order: one trip's requests, one driver's trips. */
+export function whereIs<T extends object, K extends keyof T & string>(list: readonly T[], field: K, value: T[K] | undefined): readonly T[] {
+  if (list.length < INDEXED_FROM) return list.filter((item) => item[field] === value);
+  const byField = GROUP_INDEX.get(list) ?? new Map<string, { size: number; map: Map<unknown, unknown[]> }>();
+  GROUP_INDEX.set(list, byField);
+  let index = byField.get(field);
+  if (index?.size !== list.length) {
+    const map = new Map<unknown, unknown[]>();
+    for (const item of list) {
+      const at = map.get(item[field]);
+      if (at) at.push(item);
+      else map.set(item[field], [item]);
+    }
+    index = { size: list.length, map };
+    byField.set(field, index);
+  }
+  return (index.map.get(value) ?? []) as T[];
 }
 
 /* ---------- Geography ---------- */
@@ -303,7 +339,8 @@ export interface LedgerEntry {
  */
 export function driverLedger(data: AppData, driverId: string): LedgerEntry[] {
   const driver = byId(data.drivers, driverId);
-  const trips = new Map(data.trips.filter((t) => t.driverId === driverId).map((t) => [t.id, t]));
+  const trips = new Map(whereIs(data.trips, "driverId", driverId).map((t) => [t.id, t]));
+  const onTrips = <T extends { tripId: string }>(list: readonly T[]) => [...trips.keys()].flatMap((id) => whereIs(list, "tripId", id));
   const entries: LedgerEntry[] = [];
   if (driver?.openingBalanceBase)
     entries.push({
@@ -314,7 +351,16 @@ export function driverLedger(data: AppData, driverId: string): LedgerEntry[] {
       amountBase: driver.openingBalanceBase,
       settlementId: "opening",
     });
-  for (const request of data.requests) {
+  if (driver?.carriedBase)
+    entries.push({
+      id: `older-${driverId}`,
+      at: "2000-01-02T00:00:00.000Z",
+      kind: "opening",
+      label: "From older records",
+      amountBase: driver.carriedBase,
+      settlementId: "opening",
+    });
+  for (const request of onTrips(data.requests)) {
     const trip = trips.get(request.tripId);
     if (!trip || request.kind !== "cash" || request.status !== "issued") continue;
     entries.push({
@@ -327,7 +373,7 @@ export function driverLedger(data: AppData, driverId: string): LedgerEntry[] {
       amountBase: round(toBase(data, request.amount, request.currency, request.fxAtIssue)),
     });
   }
-  for (const expense of data.expenses) {
+  for (const expense of whereIs(data.expenses, "driverId", driverId)) {
     if (expense.driverId !== driverId || expense.status !== "approved") continue;
     const trip = expense.tripId ? trips.get(expense.tripId) : undefined;
     entries.push({
@@ -340,7 +386,7 @@ export function driverLedger(data: AppData, driverId: string): LedgerEntry[] {
       amountBase: -expense.amountBase,
     });
   }
-  for (const item of data.consignments) {
+  for (const item of onTrips(data.consignments)) {
     const trip = trips.get(item.tripId);
     if (!trip || item.shortage?.status !== "charged") continue;
     entries.push({
@@ -354,12 +400,12 @@ export function driverLedger(data: AppData, driverId: string): LedgerEntry[] {
     });
   }
   // A load written off and carried by the driver is recovered through their account (#64).
-  for (const item of data.consignments) {
+  for (const item of onTrips(data.consignments)) {
     const trip = trips.get(item.tripId);
     if (!trip || item.writeOff?.status !== "approved" || item.writeOff.carrier !== "driver") continue;
     entries.push({ id: `writeoff-${item.id}`, at: item.writeOff.decidedAt!, tripId: trip.id, settlementId: trip.settlementId, kind: "write_off", label: `Load written off ${item.no}`, amountBase: item.writeOff.amountBase });
   }
-  for (const s of data.settlements) {
+  for (const s of whereIs(data.settlements, "driverId", driverId)) {
     if (s.driverId !== driverId || !s.cashBase) continue;
     entries.push({
       id: `cash-${s.id}`,
@@ -389,7 +435,7 @@ export function carriedIn(data: AppData, trip: Trip) {
 
 export function funding(data: AppData, trip: Trip) {
   const truck = byId(data.trucks, trip.truckId)!;
-  const requests = data.requests.filter((item) => item.tripId === trip.id);
+  const requests = whereIs(data.requests, "tripId", trip.id);
   const sum = (kind: "fuel" | "cash", statuses: string[]) =>
     round(
       requests

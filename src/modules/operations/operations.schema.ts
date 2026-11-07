@@ -289,7 +289,7 @@ export const readSchema = z.strictObject({ thread });
 export type ReadInput = z.infer<typeof readSchema>;
 export const activityListQuery = z.strictObject({ tripId: objectId.optional(), since: sinceQuery, limit: z.coerce.number().int().min(1).max(500).default(100) });
 export type ActivityListQuery = z.infer<typeof activityListQuery>;
-export const syncQuery = z.strictObject({ since: sinceQuery });
+export const syncQuery = z.strictObject({ since: sinceQuery, from: sinceQuery });
 
 /** The simulated driver phone: a sample picture with generated figures, or a real upload, sent as if on WhatsApp. */
 export const simulateSchema = z.strictObject({

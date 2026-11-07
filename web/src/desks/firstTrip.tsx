@@ -4,7 +4,7 @@ import { ArrowRight, Plus } from "lucide-react";
 import { api } from "../api/client";
 import type { Rec } from "../api/adapter";
 import { can } from "../api/session";
-import { useApp } from "../store";
+import { loadOlderRecords, useApp } from "../store";
 import { Button } from "../ui/kit";
 
 /**
@@ -65,5 +65,17 @@ export function AddNew({ master, what, initial, onCreated }: { master: string; w
         </Suspense>
       )}
     </>
+  );
+}
+
+/** At the end of a list that may go further back than the desks have loaded (#125). */
+export function OlderRecords({ what }: { what: string }) {
+  const { data } = useApp();
+  if (!data.history?.older) return null;
+  const from = new Date(data.history.from).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
+  return (
+    <p className="older-records muted">
+      Showing {what} since {from}. <button type="button" className="link-btn" onClick={loadOlderRecords}>Load three months further back</button>
+    </p>
   );
 }

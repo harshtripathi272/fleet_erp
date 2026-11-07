@@ -1,5 +1,5 @@
 import { baseCurrencyCode, num } from "../ui/format";
-import { byId, driverBalance, funding, volume20 } from "./calc";
+import { byId, driverBalance, funding, volume20, whereIs } from "./calc";
 import { closedAt, firstName, litres, money, placeName, toSettle, inBase } from "./helpers";
 import type { AppData, Desk, Role, Trip } from "./types";
 import { stageName, stageOn } from "./words";
@@ -80,9 +80,9 @@ function workedStep(data: AppData, trip: Trip): NextStep {
   const who = firstName(driver?.name) || "The driver";
   const load = trip.stops.find((s) => s.kind === "load");
   const offload = trip.stops.find((s) => s.kind === "offload");
-  const requests = data.requests.filter((r) => r.tripId === trip.id);
-  const consignments = data.consignments.filter((c) => c.tripId === trip.id);
-  const docs = data.docs.filter((d) => d.tripId === trip.id && d.status === "new");
+  const requests = whereIs(data.requests, "tripId", trip.id);
+  const consignments = whereIs(data.consignments, "tripId", trip.id);
+  const docs = whereIs(data.docs, "tripId", trip.id).filter((d) => d.status === "new");
 
   if (trip.cancelledAt)
     return { actor: "done", stage: "plan", move: "none", title: "Cancelled", waiting: "Cancelled", since: trip.cancelledAt };
@@ -268,8 +268,8 @@ function workedStep(data: AppData, trip: Trip): NextStep {
       since: shortage.delivered?.at,
       refId: shortage.id,
     };
-  const pendingExpenses = data.expenses.filter((e) => e.tripId === trip.id && e.status === "pending");
-  const receipts = data.docs.filter((d) => d.tripId === trip.id && d.status === "new" && (d.kind === "expense" || d.kind === "fuel"));
+  const pendingExpenses = whereIs(data.expenses, "tripId", trip.id).filter((e) => e.status === "pending");
+  const receipts = whereIs(data.docs, "tripId", trip.id).filter((d) => d.status === "new" && (d.kind === "expense" || d.kind === "fuel"));
   if (pendingExpenses.length || receipts.length)
     return {
       actor: "finance",
@@ -299,7 +299,7 @@ export function stageIndex(stage: StageId, data?: AppData) {
 /** When each stage finished, for the stepper. */
 export function stageTimes(data: AppData, trip: Trip): Partial<Record<StageId, string>> {
   const out: Partial<Record<StageId, string>> = {};
-  const consignments = data.consignments.filter((c) => c.tripId === trip.id);
+  const consignments = whereIs(data.consignments, "tripId", trip.id);
   if (trip.driverId && trip.stops.length) out.plan = trip.createdAt;
   if (trip.dispatchedAt) out.funding = trip.dispatchedAt;
   if (consignments.length) out.loading = consignments[0].loadedAt;
@@ -383,7 +383,7 @@ export function queueFor(data: AppData, desk: Desk): QueueItem[] {
         });
       }
       for (const driver of data.drivers) {
-        const trips = data.trips.filter((t) => t.driverId === driver.id && toSettle(t));
+        const trips = whereIs(data.trips, "driverId", driver.id).filter(toSettle);
         if (!trips.length) continue;
         items.push({
           key: `${driver.id}-settle`,

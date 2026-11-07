@@ -59,6 +59,8 @@ export interface Operations {
   messages: Rec[];
   activity: Rec[];
   reads: { thread: string; at: string }[];
+  /** What the first load left out: how far back it reaches, and each driver's balance from older records. */
+  history?: { from: string; older: boolean; carried: Record<string, number> };
 }
 
 const index = (rows: Rec[]) => new Map(rows.map((r) => [String(r.id), r]));
@@ -135,6 +137,7 @@ export function toAppData(ref: Reference, ops: Operations): AppData {
     return {
       id: d.id, name: d.name, phone: d.whatsapp ?? d.phone ?? "", licence: d.licence?.number ?? "",
       openingBalanceBase: inBase(d.openingBalance),
+      carriedBase: baseMajor(ops.history?.carried?.[d.id]),
       settleRequestedAt: account?.settleRequestedAt, settleRequestedBy: account?.settleRequestedByDesk,
     };
   });
@@ -291,6 +294,7 @@ export function toAppData(ref: Reference, ops: Operations): AppData {
   const named = (desk: string, fallback: string) => (desks.includes(desk) || (desk === "owner" && desks.includes("admin")) ? ref.me.name : fallback);
   return {
     version: 4,
+    history: ops.history ? { from: ops.history.from, older: ops.history.older } : undefined,
     settings: {
       company: ref.company?.brand?.productName ?? ref.company?.tradingName ?? ref.company?.legalName ?? "",
       office: hq?.name ?? "",
