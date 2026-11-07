@@ -84,7 +84,7 @@ function useAct() {
 
 function ToInvoice({ onOpen }: { onOpen: (id: string) => void }) {
   const { me } = useApp();
-  const trips = useQuery({ queryKey: ["billing", "unbilled"], queryFn: () => request<Rec[]>("/invoices/unbilled-trips", { query: { limit: 100 } }) });
+  const trips = useQuery({ queryKey: ["billing", "unbilled"], queryFn: () => api<{ data: Rec[]; total: number }>("/invoices/unbilled-trips", { query: { limit: 100 } }) });
   const { busy, act } = useAct();
   const writable = can(me, "invoices", "create");
   const [skipped, setSkipped] = useState<Rec[]>([]);
@@ -125,9 +125,9 @@ function Invoices({ onOpen }: { onOpen: (id: string) => void }) {
   const [filter, setFilter] = useState<"open" | "draft" | "all">("open");
   const [page, setPage] = useState(1);
   const query = filter === "open" ? { open: "true" } : filter === "draft" ? { status: "draft" } : {};
-  const list = useQuery({ queryKey: ["billing", "invoices", filter, page], queryFn: () => request<Rec[]>("/invoices", { query: { ...query, page, limit: PAGE } }) });
+  const list = useQuery({ queryKey: ["billing", "invoices", filter, page], queryFn: () => api<{ data: Rec[]; total: number }>("/invoices", { query: { ...query, page, limit: PAGE } }) });
   const rows = list.data?.data ?? [];
-  const total = list.data?.meta?.total ?? 0;
+  const total = list.data?.total ?? 0;
   return (
     <Card title="Invoices and credit notes" aside={<Segmented label="Show" value={filter} onChange={(v) => { setFilter(v); setPage(1); }} options={[{ value: "open", label: "Owed" }, { value: "draft", label: "Drafts" }, { value: "all", label: "All" }]} />}>
       {list.isLoading && <p className="muted">Loading…</p>}
@@ -270,9 +270,9 @@ function Payments({ onOpen }: { onOpen: (id: string) => void }) {
   const { me } = useApp();
   const [page, setPage] = useState(1);
   const [recording, setRecording] = useState(false);
-  const list = useQuery({ queryKey: ["billing", "payments", page], queryFn: () => request<Rec[]>("/payments-received", { query: { page, limit: PAGE } }) });
+  const list = useQuery({ queryKey: ["billing", "payments", page], queryFn: () => api<{ data: Rec[]; total: number }>("/payments-received", { query: { page, limit: PAGE } }) });
   const rows = list.data?.data ?? [];
-  const total = list.data?.meta?.total ?? 0;
+  const total = list.data?.total ?? 0;
   return (
     <Card title="Payments received" aside={can(me, "payments-received", "create") && <Button size="sm" tone="primary" onClick={() => setRecording(true)}>Record a payment</Button>}>
       {list.isLoading && <p className="muted">Loading…</p>}
@@ -312,18 +312,21 @@ function Payments({ onOpen }: { onOpen: (id: string) => void }) {
 }
 
 function RecordPayment({ onClose }: { onClose: () => void }) {
+  const { data } = useApp();
   const { busy, act } = useAct();
   const customers = useQuery({ queryKey: ["billing", "customers"], queryFn: () => api<Rec[]>("/parties", { query: { role: "customer", status: "active", limit: 100 } }) });
   const currencies = useQuery({ queryKey: ["money-currencies"], queryFn: () => api<Rec[]>("/currencies", { query: { status: "active", limit: 100 } }) });
   const methods = useQuery({ queryKey: ["billing", "methods"], queryFn: () => api<Rec[]>("/payment-methods", { query: { status: "active", limit: 100 } }) });
   const [form, setForm] = useState({ customerId: "", date: new Date().toISOString().slice(0, 10), amount: "", currencyId: "", paymentMethodId: "", reference: "" });
   const set = (patch: Partial<typeof form>) => setForm({ ...form, ...patch });
-  const currency = (currencies.data ?? []).find((c) => c.id === form.currencyId);
+  // Most payments come in the company's own currency, so it starts there.
+  const currencyId = form.currencyId || String((currencies.data ?? []).find((c) => c.code === data.baseCurrency?.code)?.id ?? "");
+  const currency = (currencies.data ?? []).find((c) => c.id === currencyId);
   const units = Number(currency?.minorUnits ?? 2);
-  const ready = form.customerId && form.currencyId && Number(form.amount) > 0;
+  const ready = form.customerId && currencyId && Number(form.amount) > 0;
   const submit = () => act("pay", async () => {
     const res = await request("/payments-received", { method: "POST", body: {
-      customerId: form.customerId, date: form.date, amount: { amountMinor: Math.round(Number(form.amount) * 10 ** units), currencyId: form.currencyId },
+      customerId: form.customerId, date: form.date, amount: { amountMinor: Math.round(Number(form.amount) * 10 ** units), currencyId },
       ...(form.paymentMethodId ? { paymentMethodId: form.paymentMethodId } : {}), ...(form.reference ? { reference: form.reference } : {}),
     } });
     return res;
@@ -340,7 +343,7 @@ function RecordPayment({ onClose }: { onClose: () => void }) {
       <FieldGroup label="Amount" hint="Set against the customer's oldest invoices first. Each part records its exchange gain or loss.">
         <span className="range-inputs">
           <input className="input" inputMode="decimal" aria-label="Amount" value={form.amount} onChange={(e) => set({ amount: e.target.value })} />
-          <select className="input" aria-label="Currency" value={form.currencyId} onChange={(e) => set({ currencyId: e.target.value })}>
+          <select className="input" aria-label="Currency" value={currencyId} onChange={(e) => set({ currencyId: e.target.value })}>
             <option value="">Currency</option>
             {(currencies.data ?? []).map((c) => <option key={String(c.id)} value={String(c.id)}>{String(c.code)}</option>)}
           </select>

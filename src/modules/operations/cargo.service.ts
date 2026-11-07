@@ -379,7 +379,7 @@ export async function recordDelivery(id: string, input: S.DeliveryInput, ctx: Op
     const delivered = shortage ? `${amountOf(shortage.delivered20L, shortage.unit)}${volumeCorrected ? ' at 20 °C' : ''}` : `${amountOf(measured.qty, unit)} delivered`;
     const text = shortage
       ? shortage.netShortL > 0
-        ? `${delivered}. ${amountOf(shortage.lossL, shortage.unit)} less than loaded; finance will review the ${amountOf(shortage.netShortL, shortage.unit)} above the allowance.`
+        ? `${delivered}. ${amountOf(shortage.lossL, shortage.unit)} less than loaded${shortage.status === 'pending' ? `; finance will review the ${amountOf(shortage.netShortL, shortage.unit)} above the allowance` : ''}.`
         : `${delivered}, within the allowance. Well done.`
       : `${delivered}.`;
     await post(driverThread(driverId), at, { title: 'Delivery confirmed', text, rows: [['Delivery note', input.podNo]], wa: { template: 'delivery_confirmed', values: [number, `${text.replace(/\.$/, '')}, delivery note ${input.podNo}`] } }, ctx);
@@ -399,6 +399,13 @@ export async function recordDelivery(id: string, input: S.DeliveryInput, ctx: Op
         { label: 'Waive', action: { type: 'shortage.decide', consignmentId: id, charge: false, note: 'Waived on WhatsApp', via: 'whatsapp' } },
         { label: 'Open trip', nav: { tripId: String(trip._id), view: 'offloading' } },
       ],
+      refId: `${id}-shortage`,
+    }, ctx);
+  } else if (shortage && shortage.netShortL > 0) {
+    // With no price there's nothing to charge or waive, but goods missing beyond the allowance shouldn't pass unnoticed.
+    await post(queue('shortage-decisions'), at, {
+      title: `Shortage on ${number}`,
+      text: `${amountOf(shortage.netShortL, shortage.unit)} beyond the ${shortage.allowancePercent}% allowance. This product has no shortage price, so nothing was charged. Set one under Products to charge or waive shortages.`,
       refId: `${id}-shortage`,
     }, ctx);
   }

@@ -548,7 +548,7 @@ function FundCard({
   const inBase = kind === "cash" ? toBase(data, value, currency) : value;
   // A currency with no exchange rate can't be compared with the budget or approved: say so instead of guessing.
   const noRate = kind === "cash" && value > 0 && !Number.isFinite(inBase);
-  const over = inBase > suggested + 0.001;
+  const over = budget > 0 && inBase > suggested + 0.001;
   const submit = async () => {
     if (await run({ type: "request.create", custom: company.custom, tripId: trip.id, kind, amount: value, currency: kind === "fuel" ? data.baseCurrency?.code ?? "" : currency, reason }, "Sent for approval.")) setReason("");
   };
