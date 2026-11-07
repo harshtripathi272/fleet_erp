@@ -262,6 +262,63 @@ elif [ "$DOMAIN_MODE" = mapping ]; then
   dns="Add the DNS records listed by: gcloud beta run domain-mappings describe --domain $DOMAIN --region $REGION --project $PROJECT_ID"
 fi
 
+say "Watching it (#104): e-mails to $ALERT_EMAIL when it's down, failing, or spending more than planned"
+run gcloud services enable monitoring.googleapis.com logging.googleapis.com billingbudgets.googleapis.com cloudbilling.googleapis.com --project "$PROJECT_ID"
+# One e-mail channel for this company's alerts.
+CHANNEL="$(capture '<channel>' gcloud beta monitoring channels list --project "$PROJECT_ID" --filter "displayName='Fleet $COMPANY alerts'" --format 'value(name)' | head -n1)"
+if [ -z "$CHANNEL" ]; then
+  run gcloud beta monitoring channels create --project "$PROJECT_ID" --display-name "Fleet $COMPANY alerts" --type email --channel-labels "email_address=$ALERT_EMAIL"
+  CHANNEL="$(capture '<channel>' gcloud beta monitoring channels list --project "$PROJECT_ID" --filter "displayName='Fleet $COMPANY alerts'" --format 'value(name)' | head -n1)"
+fi
+policy_file="$(mktemp)"
+# Down: the address is checked every 5 minutes from several places; two failed minutes in a row send an e-mail.
+UPTIME_HOST="${APP_URL#https://}"
+if ! exists gcloud monitoring uptime list-configs --project "$PROJECT_ID" --filter "displayName=$SERVICE-ready" --format 'value(name)' --limit 1; then
+  run gcloud monitoring uptime create "$SERVICE-ready" --project "$PROJECT_ID" --resource-type uptime-url \
+    --resource-labels "host=$UPTIME_HOST,project_id=$PROJECT_ID" --protocol https --path /api/v1/health/ready \
+    --period 5 --timeout 10 --matcher-type contains-string --matcher-content '"mongo":"connected"'
+fi
+CHECK_ID="$(capture '<check id>' gcloud monitoring uptime list-configs --project "$PROJECT_ID" --filter "displayName=$SERVICE-ready" --format 'value(name.basename())' --limit 1)"
+if ! exists gcloud beta monitoring policies list --project "$PROJECT_ID" --filter "displayName='$SERVICE is down'" --format 'value(name)' --limit 1; then
+  cat > "$policy_file" <<JSON
+{ "displayName": "$SERVICE is down", "combiner": "OR", "notificationChannels": ["$CHANNEL"],
+  "documentation": { "content": "The health check of $APP_URL fails. Read the log: gcloud run services logs read $SERVICE --region $REGION --project $PROJECT_ID --limit 100", "mimeType": "text/markdown" },
+  "conditions": [{ "displayName": "Health check failing", "conditionThreshold": {
+    "filter": "metric.type=\"monitoring.googleapis.com/uptime_check/check_passed\" AND metric.label.check_id=\"$CHECK_ID\" AND resource.type=\"uptime_url\"",
+    "aggregations": [{ "alignmentPeriod": "300s", "perSeriesAligner": "ALIGN_NEXT_OLDER", "crossSeriesReducer": "REDUCE_COUNT_FALSE", "groupByFields": ["resource.label.*"] }],
+    "comparison": "COMPARISON_GT", "thresholdValue": 1, "duration": "120s" } }] }
+JSON
+  run gcloud beta monitoring policies create --project "$PROJECT_ID" --policy-from-file "$policy_file"
+fi
+# Failing: errors in the service's log, more than ERROR_ALERT_COUNT in 10 minutes.
+if ! exists gcloud logging metrics describe "$SERVICE-errors" --project "$PROJECT_ID"; then
+  run gcloud logging metrics create "$SERVICE-errors" --project "$PROJECT_ID" --description "Errors logged by $SERVICE" \
+    --log-filter "resource.type=\"cloud_run_revision\" AND resource.labels.service_name=\"$SERVICE\" AND severity>=ERROR"
+fi
+if ! exists gcloud beta monitoring policies list --project "$PROJECT_ID" --filter "displayName='$SERVICE is logging errors'" --format 'value(name)' --limit 1; then
+  cat > "$policy_file" <<JSON
+{ "displayName": "$SERVICE is logging errors", "combiner": "OR", "notificationChannels": ["$CHANNEL"],
+  "documentation": { "content": "More than $ERROR_ALERT_COUNT errors in 10 minutes. Read them: gcloud logging read 'resource.type=cloud_run_revision AND resource.labels.service_name=$SERVICE AND severity>=ERROR' --project $PROJECT_ID --limit 50", "mimeType": "text/markdown" },
+  "conditions": [{ "displayName": "Errors in the log", "conditionThreshold": {
+    "filter": "metric.type=\"logging.googleapis.com/user/$SERVICE-errors\" AND resource.type=\"cloud_run_revision\"",
+    "aggregations": [{ "alignmentPeriod": "600s", "perSeriesAligner": "ALIGN_SUM", "crossSeriesReducer": "REDUCE_SUM" }],
+    "comparison": "COMPARISON_GT", "thresholdValue": $ERROR_ALERT_COUNT, "duration": "0s" } }] }
+JSON
+  run gcloud beta monitoring policies create --project "$PROJECT_ID" --policy-from-file "$policy_file"
+fi
+rm -f "$policy_file"
+# Spending: a monthly budget on this project, with e-mails at half, 90% and all of it. Amounts are in the billing
+# account's own currency. Needs the right to manage budgets on the billing account; without it, this step says so.
+BILLING="$(capture 'billingAccounts/<account>' gcloud billing projects describe "$PROJECT_ID" --format 'value(billingAccountName)')"
+if [ -z "$BILLING" ]; then
+  printf 'No billing account is linked to %s: link one, then run this again for the budget alert.\n' "$PROJECT_ID"
+elif ! exists gcloud billing budgets list --billing-account "${BILLING#billingAccounts/}" --filter "displayName='Fleet $COMPANY'" --format 'value(name)'; then
+  run gcloud billing budgets create --billing-account "${BILLING#billingAccounts/}" --display-name "Fleet $COMPANY" \
+    --budget-amount "$BUDGET_MONTHLY" --filter-projects "projects/$PROJECT_ID" \
+    --threshold-rule percent=0.5 --threshold-rule percent=0.9 --threshold-rule percent=1.0 \
+    --notifications-rule-monitoring-notification-channels "$CHANNEL" || printf 'The budget could not be made (it needs Billing Account Administrator or Costs Manager). Make it in the console: Billing → Budgets & alerts.\n'
+fi
+
 say "Done: $COMPANY"
 printf 'Address: %s\n' "$APP_URL"
 [ -z "$dns" ] || printf '%s\n' "$dns"

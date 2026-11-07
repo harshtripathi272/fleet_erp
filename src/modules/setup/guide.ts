@@ -18,7 +18,10 @@ const GCP_REGIONS: [string, string][] = [
 const choices = (list: [string, string][]) => list.map(([value, label]) => ({ value, label: `${label} (${value})` }));
 
 const DOMAIN: TargetField = { key: 'domain', label: "The company's address", hint: 'The web address people will use, without https://. You point it at the platform at the end.', type: 'text', placeholder: 'fleet.acme.example' };
-const IMAGE: TargetField = { key: 'image', label: 'App image', hint: 'Where the shared image lives, without its version. deploy/build-image.sh in the repository makes one.', type: 'text', required: true, placeholder: 'ghcr.io/acme/fleet-erp' };
+// With the app's source in the package, the image is built from it (#103) and none is named.
+const IMAGE: TargetField = appSource()
+  ? { key: 'image', label: 'App image (optional)', hint: "Leave empty: the package carries the app's source, and the image is built from it. Name one only to run an image already built elsewhere.", type: 'text', placeholder: 'ghcr.io/acme/fleet-erp' }
+  : { key: 'image', label: 'App image', hint: 'Where the shared image lives, without its version. deploy/build-image.sh in the repository makes one.', type: 'text', required: true, placeholder: 'ghcr.io/acme/fleet-erp' };
 
 export const TARGET_FIELDS: Record<Target, TargetField[]> = {
   gcp: [
@@ -29,6 +32,8 @@ export const TARGET_FIELDS: Record<Target, TargetField[]> = {
     { key: 'egress', label: 'Outgoing address', hint: 'A fixed address lets MongoDB Atlas allow only this app, and costs a little. Open needs Atlas to accept connections from anywhere.', type: 'choice', default: 'static', choices: [{ value: 'static', label: 'Fixed (recommended)' }, { value: 'open', label: 'Open' }] },
     { key: 'minInstances', label: 'Always running', hint: '0 sleeps when nobody is using it: cheapest, with a few seconds to wake up. 1 is always ready.', type: 'number', default: 0, min: 0, max: 10 },
     { key: 'maxInstances', label: 'At most', hint: 'Above 1 also needs Redis, so sign-in limits are shared. 1 is enough for a company of this size to start.', type: 'number', default: 1, min: 1, max: 10 },
+    { key: 'alertEmail', label: 'Alerts go to', hint: "E-mailed when it's down, logging errors, or near its budget. Empty: the owner.", type: 'text', placeholder: 'it@acme.example' },
+    { key: 'monthlyBudget', label: 'Monthly budget', hint: "In the billing account's own currency. An e-mail at half, 90% and all of it; nothing is stopped.", type: 'number', default: 50, min: 1, max: 1000000 },
   ],
   compose: [
     { ...DOMAIN, required: true, hint: 'The server must already answer on this address: the certificate is fetched from it on first start.' },
@@ -54,16 +59,18 @@ export const TARGET_FIELDS: Record<Target, TargetField[]> = {
     DOMAIN, IMAGE,
   ],
   railway: [{ ...DOMAIN, required: true }, IMAGE],
+  local: [{ key: 'port', label: 'Address on this computer', hint: 'It opens at http://localhost and this number. Pick another if something already uses it.', type: 'number', default: 8080, min: 1024, max: 65535 }],
 };
 
 export const TARGET_NEEDS: Record<Target, string[]> = {
   gcp: ['A Google account, and a project with billing switched on', 'A MongoDB Atlas database (free to start)', 'Nothing to install: it runs in Google Cloud Shell'],
-  compose: ['A server with Docker, reachable from the internet', 'A domain pointing at it'],
-  aws: ['An AWS account, and the aws tool signed in', 'A MongoDB Atlas database', 'An S3 bucket for files'],
-  azure: ['An Azure subscription, and the az tool signed in', 'A MongoDB Atlas database'],
-  render: ['A Render account', 'A MongoDB Atlas database'],
-  fly: ['A Fly.io account, and the fly tool signed in', 'A MongoDB Atlas database'],
-  railway: ['A Railway account, and the railway tool signed in', 'A MongoDB Atlas database'],
+  compose: ['A Linux server with Docker and 2 GB of memory, reachable from the internet on ports 80 and 443', 'A domain pointing at it', 'Nothing else: the database, HTTPS and backups come in the package'],
+  local: ['Docker Desktop, installed and running (free for personal and small-business use)', 'Nothing else: no domain, no e-mail server, no database to make'],
+  aws: ['An AWS account, with the aws tool installed and signed in (aws configure)', 'Docker on the computer you deploy from, to build the image', 'A MongoDB Atlas database', 'An S3 bucket and a storage connection for files (App Runner keeps no disk)'],
+  azure: ['An Azure subscription, with the az tool installed and signed in (az login)', 'Docker on the computer you deploy from, to build the image', 'A MongoDB Atlas database'],
+  render: ['A Render account on a paid plan (a disk for files needs one)', 'A private Git repository to hold this package', 'A MongoDB Atlas database'],
+  fly: ['A Fly.io account, with the fly tool installed and signed in (fly auth login)', 'A MongoDB Atlas database'],
+  railway: ['A Railway account and a project, with the railway tool installed and linked (railway link)', 'A MongoDB Atlas database'],
 };
 
 export interface EnvVar { name: string; value?: string; secret: boolean; why: string; where?: string; generate?: string; automatic?: boolean }
@@ -126,6 +133,7 @@ export function setCommand(file: CompanyFile, name: string): string | undefined 
     case 'railway': return `railway variables --set ${name}='VALUE'`;
     case 'render': return undefined;
     case 'compose': return undefined;
+    case 'local': return undefined;
   }
 }
 
@@ -174,23 +182,117 @@ export function guideSteps(file: CompanyFile): GuideStep[] {
         ...(d.egress === 'static' ? [{ title: 'Let the database accept it', text: 'The script prints a fixed outgoing address. Add it in Atlas, under Network Access.', link: { href: 'https://cloud.mongodb.com/', label: 'Open MongoDB Atlas' } }] : [{ title: 'Let the database accept it', text: 'In Atlas, under Network Access, allow connections from anywhere (0.0.0.0/0), since this app has no fixed address.' }]),
         ...(d.domain && d.domainMode !== 'none' ? [{ title: `Point ${d.domain} at it`, text: d.domainMode === 'lb' ? 'The script prints an IP address. Add an A record for it where the domain is managed. The certificate follows within about an hour.' : 'The script prints the DNS records to add. The certificate follows once they are in place.' }] : []),
         checkIt(file, url),
+        ...runningOnGoogle(file),
       ];
     }
     case 'compose': return [
-      { title: 'Get a server ready', text: `Any server with Docker, 2 GB of memory, and ports 80 and 443 open. Point ${d.domain} at it, and copy this package over.`, commands: [`scp ${kitName(file)} you@${d.domain}:`] },
+      { title: 'Get a server ready', text: `Any Linux server with Docker, 2 GB of memory, and ports 80 and 443 open (DigitalOcean, Hetzner, your own). Point ${d.domain} at its address, and copy this package over.`, commands: [`scp ${kitName(file)} you@${d.domain}:`], link: { href: 'https://docs.docker.com/engine/install/', label: 'Install Docker on the server' } },
       fillIn(file),
-      { title: 'Start it', text: 'Also set FLEET_VERSION in .env to the image version to run. The database, HTTPS and nightly backups come with it.', commands: ['docker compose up -d'] },
+      { title: 'Start it', text: `${appSource() ? 'It builds the app from the source in this package, a few minutes the first time.' : 'Also set FLEET_VERSION in .env to the image version to run.'} The database, HTTPS and nightly backups come with it.`, commands: ['docker compose up -d --build'] },
       checkIt(file, `https://${d.domain}`),
     ];
-    default: {
-      const url = d.domain ? `https://${d.domain}` : d.target === 'fly' ? `https://fleet-${file.company.key}.fly.dev` : d.target === 'render' ? `https://fleet-${file.company.key}.onrender.com` : 'https://<the address it prints>';
-      return [
-        database,
-        fillIn(file),
-        { title: 'Deploy', text: 'Name the image version to run. This platform\'s script has been written but not yet run for real, so check each step as it goes.', commands: [`DRY_RUN=1 deploy/${d.target}.sh ${version}`, `deploy/${d.target}.sh ${version}`] },
-        checkIt(file, url),
-      ];
-    }
+    case 'local': return [
+      { title: 'Install Docker Desktop', text: "Free for personal use and small businesses. Start it once it's installed, and wait until it says it is running.", link: { href: 'https://www.docker.com/products/docker-desktop/', label: 'Get Docker Desktop' } },
+      { title: 'Unzip the package and start it', text: `On a Mac, double-click start.command (the first time: right-click it, Open, then Open). On Windows, double-click start.bat. Or in a terminal, the commands below. It builds the app from the source in the package, a few minutes the first time, with its own database and files: the copy you're in now is not touched.`, commands: [unpack(file), './start.sh'] },
+      { title: 'Sign in', text: `It opens http://localhost:${d.port}. Sign in as ${file.owner.email} with the password it shows the first time (it is also in .env as OWNER_PASSWORD), and change it under Your account.` },
+      { title: 'Stop or start it again', text: 'The data stays between starts. Run start.command, start.bat or ./start.sh again to start it.', commands: [`docker compose --project-name fleet-${file.company.key}-local down`] },
+    ];
+    default: return platformSteps(file, database);
+  }
+}
+
+/**
+ * Running it on Google Cloud, every day after deploying (#104), with this company's own names in the commands.
+ * Nothing here has been tried against a real Google Cloud project yet; the restore was done, in CI, on Compose.
+ */
+export function runningOnGoogle(file: CompanyFile): GuideStep[] {
+  const d = file.deploy;
+  if (d.target !== 'gcp') return [];
+  const service = `fleet-${file.company.key}`;
+  const at = `--region ${d.region} --project ${d.projectId}`;
+  const bucket = `${d.projectId}-${file.company.key}-files`;
+  return [
+    {
+      title: "Running it: knowing it's down or failing",
+      text: `The script set up two alerts, e-mailed to ${d.alertEmail ?? file.owner.email}: the address's health check failing for two minutes, and more than 5 errors in the log in 10 minutes. Each e-mail says what to read. To read the log yourself:`,
+      commands: [`gcloud run services logs read ${service} ${at} --limit 100`, `gcloud logging read 'resource.labels.service_name=${service} AND severity>=ERROR' --project ${d.projectId} --limit 50`],
+      link: { href: `https://console.cloud.google.com/run/detail/${d.region}/${service}/logs?project=${d.projectId}`, label: 'Open the log' },
+    },
+    {
+      title: 'Running it: what it costs',
+      text: `A budget of ${d.monthlyBudget} a month (in the billing account's currency) sends an e-mail at half, 90% and all of it; nothing is stopped. What costs money: Cloud Run while it runs (${d.minInstances > 0 ? `always, since ${d.minInstances} instance stays running` : 'only while someone uses it, since it sleeps when idle'}), ${d.domainMode === 'lb' ? 'the load balancer for the domain (a fixed monthly charge), ' : ''}${d.egress === 'static' ? 'the fixed outgoing address (Cloud NAT and a reserved address), ' : ''}Cloud Storage for files, Secret Manager, Cloud Scheduler, and the database, billed by MongoDB. No prices are given here: none were checked against Google's price list for this guide (7 November 2026), so use the calculator with these choices.`,
+      link: { href: 'https://cloud.google.com/products/calculator', label: 'Google Cloud pricing calculator' },
+    },
+    {
+      title: 'Running it: backups and restoring them',
+      list: [
+        "MongoDB Atlas keeps the database's backups. The free tier keeps none, so it is not for a company's real data. Flex takes a snapshot every day. M10 and above keep the snapshots you schedule and can restore to any minute with continuous backup, at extra cost. Check the tier's page before relying on it.",
+        'To restore a snapshot: Atlas → the cluster → Backup → Snapshots → Restore → this cluster. Everything written since that snapshot is lost, so take a fresh one first if you can.',
+        'A copy of your own, any time, from a computer with the MongoDB database tools (these exact commands are run on every CI run, against the Docker Compose package):',
+        `mongodump --uri "<MONGODB_URI>" --gzip --archive=${file.company.key}-$(date +%F).gz`,
+        `mongorestore --uri "<MONGODB_URI>" --gzip --archive=${file.company.key}-<date>.gz --drop`,
+        `Uploaded files keep every old version in gs://${bucket}. A deleted or overwritten file comes back from its older version:`,
+        `gcloud storage ls --all-versions gs://${bucket}/<path>   then   gcloud storage cp gs://${bucket}/<path>#<generation> gs://${bucket}/<path>`,
+      ],
+    },
+    {
+      title: 'Running it: upgrades and going back a version',
+      text: 'To upgrade, make a new package (Set up a company, or Package this company) and run ./deploy.sh from it, as the first time. It builds the new version and starts it; the old one stays, ready to go back to. On start, the server moves the database forward to the new version. Going back to an older version afterwards is safe unless the new one changed the database: then restore the snapshot taken before the upgrade. Take one before every upgrade.',
+      commands: [`gcloud run revisions list --service ${service} ${at}`, `gcloud run services update-traffic ${service} --to-revisions <revision>=100 ${at}`],
+    },
+    {
+      title: 'Running it: changing the company later',
+      text: "Running a new package again applies only what its company file changed since the last time. A setting someone has since changed in the app keeps its value, unless the file changes that same setting again. Nothing is deleted: a connection, role or person left out of the file stays, and a data row that's already there is left alone. To remove something, do it in the app.",
+    },
+  ];
+}
+
+/** AWS, Azure, Render, Fly and Railway: each one's own steps. Their scripts have been written, not yet run for real. */
+function platformSteps(file: CompanyFile, database: GuideStep): GuideStep[] {
+  const d = file.deploy;
+  const key = file.company.key;
+  const built = appSource() ? 'It builds the app from the source in this package.' : 'Name the image version to run.';
+  const run = (script: string) => (appSource() ? [`DRY_RUN=1 deploy/${script}.sh`, `deploy/${script}.sh`] : [`DRY_RUN=1 deploy/${script}.sh <version>`, `deploy/${script}.sh <version>`]);
+  const untested = "This script has been written from the platform's documentation but not yet run against a real account, so read each step as it goes.";
+  switch (d.target) {
+    case 'aws': return [
+      database,
+      { title: 'Make the bucket for files', text: `App Runner keeps no disk, so uploaded files go to S3. Make a bucket in ${d.region}, an IAM user that may use only it, and add a storage connection (Amazon S3) to the company file before building the package.`, link: { href: 'https://s3.console.aws.amazon.com/s3/bucket/create', label: 'Create an S3 bucket' } },
+      fillIn(file),
+      { title: 'Deploy', text: `${built} It pushes the image to ECR, keeps each secret in Secrets Manager as fleet/${key}/<NAME>, and creates the App Runner service. ${untested}`, commands: run('aws') },
+      { title: `Point ${d.domain} at it`, text: 'The script asks App Runner for the domain and prints the command that lists the DNS records to add.' },
+      checkIt(file, `https://${d.domain}`),
+    ];
+    case 'azure': return [
+      database,
+      fillIn(file),
+      { title: 'Deploy', text: `${built} It makes a resource group, a container registry, a Key Vault for the secrets, a file share for uploads, the container app and its two scheduled jobs. ${untested}`, commands: ['az login', ...run('azure')] },
+      { title: `Point ${d.domain} at it`, text: 'The script prints the CNAME and TXT records to add, then the command that binds the domain with a free certificate.' },
+      checkIt(file, `https://${d.domain}`),
+    ];
+    case 'render': return [
+      database,
+      fillIn(file),
+      { title: 'Write the blueprint', text: `It writes render.yaml: a web service built from this package's Dockerfile, with a disk for uploaded files and the hourly rates job. ${untested}`, commands: run('render') },
+      { title: 'Put the package in a private repository', text: 'Without .env: it stays on your computer.', commands: ['git init && git add -A && git commit -m "Fleet package"', 'git remote add origin <your private repository>', 'git push -u origin main'] },
+      { title: 'Create the Blueprint', text: 'In Render: New → Blueprint → that repository. Render asks for each secret: paste them from .env.', link: { href: 'https://dashboard.render.com/select-repo?type=blueprint', label: 'New Blueprint' } },
+      checkIt(file, d.domain ? `https://${d.domain}` : `https://fleet-${key}.onrender.com`),
+    ];
+    case 'fly': return [
+      database,
+      fillIn(file),
+      { title: 'Deploy', text: `${built.replace('It builds', "Fly's builder builds")} It creates the app and a volume for files, sets the secrets from .env, and deploys. ${untested}`, commands: ['fly auth login', ...run('fly')] },
+      ...(d.domain ? [{ title: `Point ${d.domain} at it`, text: `The script asks Fly for a certificate and prints the DNS records: fly certs show ${d.domain} --app fleet-${key}.` }] : []),
+      checkIt(file, d.domain ? `https://${d.domain}` : `https://fleet-${key}.fly.dev`),
+    ];
+    default: return [
+      database,
+      { title: 'Make the project and its volume', text: 'In Railway: a new project with an empty service, and a volume on it mounted at /data, for uploaded files. Then link this folder to it.', commands: ['railway login', 'railway link'], link: { href: 'https://railway.com/new', label: 'New Railway project' } },
+      fillIn(file),
+      { title: 'Deploy', text: `${built.replace('It builds', "Railway builds")} The script sets the variables and deploys. ${untested}`, commands: run('railway') },
+      { title: `Point ${d.domain} at it`, text: 'Add the domain in Railway, and the record it shows where the domain is managed.', commands: [`railway domain ${d.domain}`] },
+      checkIt(file, `https://${d.domain}`),
+    ];
   }
 }
 

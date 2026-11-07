@@ -9,9 +9,12 @@ import { permissionChecker } from '../../middleware/authorize.js';
 import { Driver } from '../drivers/models/driver.model.js';
 import { Currency } from '../finance/models/currency.model.js';
 import { Role } from '../roles/role.model.js';
-import { onInbound } from '../connections/connections.service.js';
+import { onInbound, openConnection } from '../connections/connections.service.js';
+import type { MessageSender } from '../../core/connections/index.js';
+import { upload } from '../files/files.service.js';
+import { noteReply } from '../messaging/whatsapp/service.js';
 import { User } from '../users/user.model.js';
-import { redeem } from './actionTokens.js';
+import { redeem, redeemByLabel } from './actionTokens.js';
 import { decideShortage, markDone, recordDelivery, recordLoading, returnDocument, sendDocument } from './cargo.service.js';
 import { decideExpense, recordExpense } from './expenses.service.js';
 import { decideRequest, issueRequest } from './funding.service.js';
@@ -37,23 +40,62 @@ export async function simulate(input: S.SimulateInput, ctx: OpsContext) {
 /** A driver's WhatsApp message, filed on the trip they are on (or the one waiting to be settled). */
 async function fileDriverMessage(driver: { _id: unknown; name?: unknown }, message: { kind: S.InboundInput['kind'] | 'other'; text?: string; file?: S.InboundInput['media'] }) {
   const tripId = await openTripOf(driver._id);
-  return sendDocument({ driverId: String(driver._id), tripId, kind: message.kind ?? 'other', note: message.text, file: message.file, channel: 'whatsapp' }, driverContext(String(driver.name)));
+  // As the driver, so a photo stored for them can be attached.
+  return sendDocument({ driverId: String(driver._id), tripId, kind: message.kind ?? 'other', note: message.text, file: message.file, channel: 'whatsapp' }, { ...driverContext(String(driver.name)), driverId: String(driver._id) });
 }
 
 /**
  * Replies through a WhatsApp connection (#98: Meta's Cloud API, Twilio) reach the app the same way: a
  * driver's message is filed on their trip. Messages from numbers that are not a driver are only logged.
  */
-onInbound(async (kind, _connection, result) => {
+onInbound(async (kind, connection, result) => {
   if (kind !== 'whatsapp') return;
   for (const m of result.messages ?? []) {
+    // Any message opens the sender's 24 hours again (#112).
+    await noteReply(m.from, m.at);
     const phones = phoneVariants(m.from);
     const driver = await Driver.findOne({ status: 'active', $or: [{ whatsapp: { $in: phones } }, { phone: { $in: phones } }] }).select('_id name').lean();
-    if (!driver) { logger.info({ from: m.from }, 'WhatsApp reply from a number that is not a driver'); continue; }
-    const text = m.text ?? (m.kind === 'photo' ? 'Sent a photo on WhatsApp (open WhatsApp to see it)' : 'Sent a message on WhatsApp');
-    await fileDriverMessage(driver, { kind: 'other', text });
+    if (!driver) {
+      // An approver's quick reply ("Approve", "Reject") runs the command its button was sent with, as that person.
+      const offered = m.kind === 'button' && m.text ? await redeemByLabel(m.text, phones) : null;
+      const ctx = offered ? await staffContext(offered.userId) : null;
+      if (offered && ctx) await executeCommand(offered.command, ctx);
+      else logger.info({ from: m.from }, 'WhatsApp reply from a number that is not a driver');
+      continue;
+    }
+    if (m.media) {
+      // A photo is fetched with the connection's key and filed on the trip, its caption as the note (#112).
+      try {
+        const file = await keepPhoto(connection, driver._id, m.media);
+        await fileDriverMessage(driver, { kind: 'other', text: m.media.caption ?? m.text, file: { fileId: file.id } as never });
+        continue;
+      } catch (err) {
+        logger.warn({ err, from: m.from }, 'A photo sent on WhatsApp could not be fetched');
+        await fileDriverMessage(driver, { kind: 'other', text: `${m.text ?? 'Sent a photo on WhatsApp'} (the photo could not be fetched: ${(err as Error).message})` });
+        continue;
+      }
+    }
+    await fileDriverMessage(driver, { kind: 'other', text: m.text ?? 'Sent a message on WhatsApp' });
   }
 });
+
+/** Fetches a photo from the WhatsApp service and stores it like any upload, for the driver, in the owner's name. */
+async function keepPhoto(connection: Plain, driverId: unknown, media: { ref: string; mime?: string; filename?: string }) {
+  const opened = openConnection<'whatsapp'>(connection);
+  const sender = opened?.capability as MessageSender | undefined;
+  if (!sender?.media) throw new Error('this WhatsApp service gives no photos');
+  const { body, mime } = await sender.media(media.ref);
+  const owner = await ownerId();
+  if (!owner) throw new Error('no owner to store it for');
+  const ext = (media.mime ?? mime).split('/')[1]?.replace('jpeg', 'jpg') ?? 'jpg';
+  return upload(body, media.filename ?? `whatsapp-photo.${ext}`, { userId: owner, driverId: String(driverId), can: () => true });
+}
+
+async function ownerId() {
+  const role = await Role.findOne({ key: 'owner' }).select('_id').lean();
+  const user = role ? await User.findOne({ roleIds: role._id, status: 'active' } as Record<string, unknown>).sort({ createdAt: 1 }).select('_id').lean() : null;
+  return user ? String(user._id) : undefined;
+}
 
 /** A system context for a driver's own WhatsApp message: it may only file the driver's documents. */
 const driverContext = (name: string): OpsContext => ({ name, desk: 'driver', asDriver: true, roles: [], can: (resource, action) => resource === 'driver-documents' && action === 'create' });

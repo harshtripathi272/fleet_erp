@@ -1,0 +1,37 @@
+# This company as a separate copy on this computer (#103): its own database and files, in Docker volumes of
+# its own, so the copy you made it from is not touched. Start it with start.command (Mac), start.bat (Windows)
+# or ./start.sh, which fill in .env the first time. It runs at http://localhost:${PORT}.
+#
+#   docker compose up -d --build     start, or apply a changed company.json
+#   docker compose logs -f app       the log, with "Company file applied" on start
+#   docker compose down              stop (the volumes, and so the data, stay)
+
+services:
+  app:
+    # Built here from the app's source in this package: nothing to download but the base images.
+    build: .
+    image: fleet-local-app
+    env_file: .env
+    restart: unless-stopped
+    depends_on:
+      mongo:
+        condition: service_healthy
+    volumes:
+      - files:/data/files
+    ports:
+      - "127.0.0.1:${PORT:-8080}:3000"
+
+  mongo:
+    image: mongo:8.2.6
+    restart: unless-stopped
+    volumes:
+      - db:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.runCommand({ ping: 1 }).ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+volumes:
+  db:
+  files:

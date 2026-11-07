@@ -86,7 +86,10 @@ export async function recordExpense(input: S.ExpenseInput, ctx: OpsContext) {
   }
   const amount = formatMoney(input.amount.amountMinor, currency);
   if (approved) {
-    await post(driverThread(driver._id), at, { title: 'Expense approved', text: `${category.name} ${amount}${trip ? ` on ${trip.number}` : ''}. It's off your balance.` }, ctx);
+    await post(driverThread(driver._id), at, {
+      title: 'Expense approved', text: `${category.name} ${amount}${trip ? ` on ${trip.number}` : ''}. It's off your balance.`,
+      wa: { template: 'expense_decided', values: [`${category.name} ${amount}${trip ? ` on ${trip.number}` : ''}`, 'approved', "it's off your balance"] },
+    }, ctx);
   } else {
     await askExpenseLevel(expense.toObject() as Plain, `${ctx.name} recorded this for ${driver.name}.`, ctx, at);
   }
@@ -125,6 +128,7 @@ export async function decideExpense(id: string, input: S.ExpenseDecisionInput, c
   await post(driverThread(expense.get('driverId')), at, {
     title: input.approve ? 'Expense approved' : 'Expense not accepted',
     text: input.approve ? `${category} ${amount}. It's off your balance.` : `${category} ${amount}: ${input.reason}`,
+    wa: { template: 'expense_decided', values: [`${category} ${amount}`, input.approve ? 'approved' : 'not accepted', input.approve ? "it's off your balance" : String(input.reason ?? 'ask the office why')] },
   }, ctx);
   await log(ctx, at, `${input.approve ? 'Approved' : 'Rejected'} ${expense.get('number')}`, { tripId: expense.get('tripId'), entity: 'expenses', entityId: expense._id });
   const trip = expense.get('tripId') ? ((await Trip.findById(expense.get('tripId')).lean()) as Plain | null) : null;

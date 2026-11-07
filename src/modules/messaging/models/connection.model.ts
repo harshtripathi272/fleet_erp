@@ -20,6 +20,8 @@ export interface OutboundRecord {
   nextAttemptAt?: Date;
   leaseUntil?: Date;
   providerRef?: string;
+  /** WhatsApp only (#112): the template that carries it after the 24 hours, and its values. */
+  whatsapp?: { template: string; values: string[] };
   sentAt?: Date;
   connectionId?: Types.ObjectId;
   ruleId?: Types.ObjectId;
@@ -48,6 +50,7 @@ const outboundSchema = new Schema<OutboundRecord>({
   nextAttemptAt: Date,
   leaseUntil: Date,
   providerRef: String,
+  whatsapp: { type: new Schema({ template: String, values: [String] }, { _id: false }), default: undefined },
   sentAt: Date,
   connectionId: { type: Schema.Types.ObjectId, ref: 'Connection' },
   ruleId: { type: Schema.Types.ObjectId, ref: 'NotificationRule' },

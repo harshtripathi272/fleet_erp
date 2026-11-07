@@ -91,7 +91,7 @@ function nowUsing(k: KindState) {
   return <Status tone="info">Simulated</Status>;
 }
 
-export default function ConnectionsSettings() {
+export default function ConnectionsSettings({ onOpenTemplates }: { onOpenTemplates?: () => void } = {}) {
   const { me } = useApp();
   const writable = can(me, "connections", "update");
   const creatable = can(me, "connections", "create");
@@ -120,8 +120,11 @@ export default function ConnectionsSettings() {
                 <p className="muted">{k.description}</p>
                 {soon && <p className="muted">{soon.description}</p>}
               </div>
-              {creatable && !k.locked && <Button onClick={() => setEditing({ kind: k, connection: null })}>Add a connection</Button>}
-              {k.locked && <span className="setting-fixed">Set up for this company</span>}
+              <div className="kind-actions">
+                {k.kind === "whatsapp" && onOpenTemplates && <Button onClick={onOpenTemplates}>WhatsApp templates</Button>}
+                {creatable && !k.locked && <Button onClick={() => setEditing({ kind: k, connection: null })}>Add a connection</Button>}
+                {k.locked && <span className="setting-fixed">Set up for this company</span>}
+              </div>
             </div>
             <div className="card-body">
               <dl className="connection-facts">

@@ -15,18 +15,19 @@ capture() { local placeholder="$1"; shift; if [ "$DRY_RUN" = 1 ]; then printf '+
 exists() { if [ "$DRY_RUN" = 1 ]; then return 1; fi; "$@" >/dev/null 2>&1; }
 need_tool() { command -v "$1" >/dev/null 2>&1 || [ "$DRY_RUN" = 1 ] || fail "$1 is not installed. $2"; }
 
-# Loads the kit's settings and checks the version: deploy/<target>.sh <version>, never "latest".
+# Loads the kit's settings and the version: deploy/<target>.sh [version], never "latest". A package with the app's
+# source (#103) builds that, and its version (APP_VERSION) is the default.
 load_kit() {
-  VERSION="${1:-}"
-  [ -n "$VERSION" ] || fail "Give the version to deploy (the shared image's tag), e.g. deploy/$(basename "$0") 1a2b3c4"
-  [ "$VERSION" != latest ] || fail "Name a version, not latest"
   set -a
   # shellcheck disable=SC1091
   . "$kit/deploy/kit.env"
   # shellcheck disable=SC1091
   if [ -f "$kit/.env" ]; then . "$kit/.env"; fi
   set +a
-  # Google Cloud's script has its own default (the project's registry); every other target names the image.
+  VERSION="${1:-${APP_VERSION:-}}"
+  [ -n "$VERSION" ] || fail "Give the version to deploy (the shared image's tag), e.g. deploy/$(basename "$0") 1a2b3c4"
+  [ "$VERSION" != latest ] || fail "Name a version, not latest"
+  # Google Cloud's script has its own default (the project's registry); with the source, nothing is pulled.
   SHARED_IMAGE="${IMAGE_REPO:-}:$VERSION"
 }
 

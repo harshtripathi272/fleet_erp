@@ -258,12 +258,16 @@ export async function forgotPassword(emailAddress: string) {
 
 /** What the sign-in screen may offer before anyone signs in: the company's name and whether sign-up is open. */
 export async function signInOptions() {
-  const [claimed, company] = await Promise.all([
+  const [claimed, company, sample, companyFile] = await Promise.all([
     SystemState.exists({ key: 'owner-claimed' }),
     Company.findOne().select('tradingName legalName allowSelfRegistration').lean<{ tradingName?: string; legalName?: string; allowSelfRegistration?: boolean }>(),
+    SystemState.exists({ key: 'sample-data' }),
+    SystemState.findOne({ key: 'company-file' }).select('value.file.purpose').lean<{ value?: { file?: { purpose?: string } } }>(),
   ]);
   const firstOwner = !env.OWNER_EMAIL && !claimed;
-  return { company: company?.tradingName || company?.legalName || null, firstOwner, signUp: firstOwner || company?.allowSelfRegistration === true };
+  // A copy with the sample operation, or set up as a demonstration, says so before anyone signs in (#103).
+  const demo = Boolean(sample) || companyFile?.value?.file?.purpose === 'demo';
+  return { company: company?.tradingName || company?.legalName || null, firstOwner, signUp: firstOwner || company?.allowSelfRegistration === true, demo };
 }
 
 export async function resetPassword(token: string, password: string) {

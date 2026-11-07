@@ -111,6 +111,7 @@ export async function sendDocument(input: DocumentInput, ctx: OpsContext) {
     const amount = reading?.amount ? ` for ${Fmt.number(reading.amount, { max: 2 })} ${reading.currencyCode ?? ''}`.trimEnd() : '';
     await post(driverThread(driver._id), at, {
       text: input.kind === 'expense' || input.kind === 'fuel' ? `Got your ${label}${amount}. Finance will check it.` : `Got your ${label}${reading?.docNo ? ` ${reading.docNo}` : ''}. Operations will confirm it.`,
+      wa: { template: 'document_received', values: input.kind === 'expense' || input.kind === 'fuel' ? [`${label}${amount}`, 'Finance'] : [`${label}${reading?.docNo ? ` ${reading.docNo}` : ''}`, 'Operations'] },
     }, ctx);
   }
   // Say where the figures came from: a simulator invents them; otherwise the sender typed them, or nobody has yet.
@@ -186,6 +187,7 @@ export async function returnDocument(id: string, input: S.ReasonInput, ctx: OpsC
   await post(driverThread(doc.get('driverId')), at, {
     title: 'Please send it again', text: input.reason,
     buttons: [{ label: 'Send again', tone: 'primary', attach: doc.get('kind') }],
+    wa: { template: 'document_returned', values: [LABEL[String(doc.get('kind'))] ?? 'document', input.reason] },
     refId: `${doc.get('tripId')}-${doc.get('kind')}`,
   }, ctx);
   await log(ctx, at, `Returned the driver's document: ${input.reason}`, { tripId: doc.get('tripId'), entity: 'driver-documents', entityId: doc._id });
@@ -285,7 +287,11 @@ export async function recordLoading(input: S.LoadingInput, ctx: OpsContext) {
   const qty = volumeCorrected ? `${litres(load.qty)} ${String(product.name).toLowerCase()} · ${litres(volume20(load) ?? load.qty)} at 20 °C` : `${amountOf(load.qty, unit)} ${String(product.name).toLowerCase()}`;
   if (trip.get('driverId')) {
     const offload = stops.find((s) => s.kind === 'offload') as { placeId?: unknown } | undefined;
-    await post(driverThread(trip.get('driverId')), at, { title: 'Loading confirmed', text: `${qty}. Drive safe to ${await placeName(offload?.placeId)}.`, rows: [['Consignment', consignment.get('number')], ['Invoice', input.invoiceNo]] }, ctx);
+    const to = await placeName(offload?.placeId);
+    await post(driverThread(trip.get('driverId')), at, {
+      title: 'Loading confirmed', text: `${qty}. Drive safe to ${to}.`, rows: [['Consignment', consignment.get('number')], ['Invoice', input.invoiceNo]],
+      wa: { template: 'loading_confirmed', values: [String(trip.get('number')), qty, to] },
+    }, ctx);
   }
   await log(ctx, at, `Loaded ${qty} · ${consignment.get('number')}`, { tripId: trip._id });
   await announce('trip.loaded', trip.toObject() as Plain, ctx, {
@@ -376,7 +382,7 @@ export async function recordDelivery(id: string, input: S.DeliveryInput, ctx: Op
         ? `${delivered}. ${amountOf(shortage.lossL, shortage.unit)} less than loaded; finance will review the ${amountOf(shortage.netShortL, shortage.unit)} above the allowance.`
         : `${delivered}, within the allowance. Well done.`
       : `${delivered}.`;
-    await post(driverThread(driverId), at, { title: 'Delivery confirmed', text, rows: [['Delivery note', input.podNo]] }, ctx);
+    await post(driverThread(driverId), at, { title: 'Delivery confirmed', text, rows: [['Delivery note', input.podNo]], wa: { template: 'delivery_confirmed', values: [number, `${text.replace(/\.$/, '')}, delivery note ${input.podNo}`] } }, ctx);
   }
   if (shortage?.status === 'pending') {
     const charge = formatMoney(shortage.baseAmountMinor, await baseCurrency());
@@ -431,6 +437,7 @@ export async function decideShortage(id: string, input: S.ShortageDecisionInput,
     await post(driverThread(trip.driverId), at, {
       title: `${shortage.unit && shortage.unit !== 'L' ? 'Shortage' : 'Fuel shortage'} ${input.charge ? 'charged' : 'waived'}`,
       text: input.charge ? `${amountOf(Number(shortage.netShortL), shortage.unit ?? 'L')} beyond the allowance on ${trip.number}: ${charge} added to your account.` : `No charge for the shortage on ${trip.number}.`,
+      wa: { template: 'shortage_decided', values: [String(trip.number), input.charge ? `${amountOf(Number(shortage.netShortL), shortage.unit ?? 'L')} beyond the allowance, ${charge} added to your account` : 'no charge'] },
     }, ctx);
   }
   await log(ctx, at, input.charge ? `Shortage charged: ${charge}` : `Shortage waived: ${input.note}`, { tripId: trip._id });

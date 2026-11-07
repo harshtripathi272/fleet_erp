@@ -149,6 +149,7 @@ export async function postSettlement(input: S.SettlementInput, ctx: OpsContext) 
       ...(Number(s.writeOffsMinor) ? [['Load written off', money(Number(s.writeOffsMinor))] as [string, string]] : []),
     ],
     buttons: [{ label: 'View statement', nav: { view: 'statement', driverId: String(driver._id) } }],
+    wa: { template: 'settlement_posted', values: [String(s.number), (cash > 0 ? `you returned ${money(cash)}. ${carry}` : cash < 0 ? `${money(-cash)} paid to you. ${carry}` : `${money(Math.abs(closing))} carries forward${closing < 0 ? ' in your favour' : ''}`).replace(/\.\s*$/, '')] },
   }, ctx);
   await post(queue('trips'), at, { title: `${driver.name} settled`, text: `${s.number} covers ${trips.length} trip${trips.length === 1 ? '' : 's'}. Trip sheets are final.` }, ctx);
   await log(ctx, at, `Settled ${driver.name}: ${s.number}, ${trips.length} trips, carry forward ${money(closing)}`, { entity: 'settlements', entityId: settlement._id });

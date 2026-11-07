@@ -36,7 +36,23 @@ export async function sendButtons(userId: string, phone: string, message: Post, 
     await ActionToken.create({ hash: hashOf(token), userId, phone, label: button.label, command: button.action, expiresAt: new Date(Date.now() + TOKEN_DAYS * 86400000) });
     offered.push({ label: button.label, token });
   }
-  await sendWhatsApp({ to: phone, title: message.title, text: message.text ?? '', buttons: offered.map((b) => b.label), tokens: offered.map((b) => b.token!) });
+  await sendWhatsApp({
+    to: phone, title: message.title, text: message.text ?? '', buttons: offered.map((b) => b.label), tokens: offered.map((b) => b.token!),
+    use: { template: 'approval_request', values: [message.title ?? 'A request', message.text || 'Open the app for the details.'] },
+  });
+}
+
+/**
+ * A tapped quick reply over a WhatsApp connection (#112) comes back as the button's text, not its token: the
+ * newest unused button with that text sent to this number is used, once.
+ */
+export async function redeemByLabel(label: string, phones: string[]): Promise<{ userId: string; command: Plain } | null> {
+  const used = await ActionToken.findOneAndUpdate(
+    { label, usedAt: { $exists: false }, expiresAt: { $gt: new Date() }, phone: { $in: phones } },
+    { $set: { usedAt: new Date() } },
+    { sort: { createdAt: -1 }, returnDocument: 'after' },
+  ).lean();
+  return used ? { userId: String(used.userId), command: used.command as Plain } : null;
 }
 
 /** Uses a token once: it must be unused, unexpired and sent to this number. Returns the person and the command. */

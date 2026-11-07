@@ -12,6 +12,7 @@ import { convertMoney } from '../finance/finance.service.js';
 import { nextCodeFor } from '../organisation/organisation.service.js';
 import { Party } from '../parties/models/party.model.js';
 import { sendWhatsApp } from './marichiTalks.js';
+import type { WaUse } from '../messaging/whatsapp/templates.js';
 import { Activity, Message, OpsCounter } from './models/message.model.js';
 
 /* ---------- Who is acting ---------- */
@@ -185,6 +186,8 @@ export interface Post {
   attachment?: unknown;
   buttons?: MessageButton[];
   refId?: string;
+  /** Messages that go out on WhatsApp name their template and its values (#112), for after the 24 hours. */
+  wa?: WaUse;
 }
 
 /**
@@ -204,9 +207,10 @@ export async function post(thread: string, at: Date, message: Post, ctx?: OpsCon
   const outbound = thread.startsWith('driver:') ? from === 'bot' : thread.startsWith('customer:') && from !== 'contact';
   if (outbound) {
     const to = await whatsAppNumberOf(thread);
-    if (to) delivery = { ...(await sendWhatsApp({ to, text: message.text ?? '', title: message.title, buttons: message.buttons?.map((b) => b.label) })) };
+    if (to) delivery = { ...(await sendWhatsApp({ to, text: message.text ?? '', title: message.title, buttons: message.buttons?.map((b) => b.label), use: message.wa })) };
   }
-  await Message.create({ ...message, thread, from, text: message.text ?? '', at, userId: ctx?.actorId, ...(delivery ? { delivery } : {}) });
+  const { wa: _wa, ...stored } = message;
+  await Message.create({ ...stored, thread, from, text: message.text ?? '', at, userId: ctx?.actorId, ...(delivery ? { delivery } : {}) });
 }
 
 async function whatsAppNumberOf(thread: string): Promise<string | undefined> {

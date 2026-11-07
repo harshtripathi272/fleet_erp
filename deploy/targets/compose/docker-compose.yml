@@ -7,12 +7,13 @@
 
 services:
   app:
-    # This company's image: the shared one with company.json, files/ and data/ (see Dockerfile).
+    # This company's image (see Dockerfile): built from the app's source in this package (#103), or the shared
+    # image named by FLEET_IMAGE and FLEET_VERSION plus company.json, files/ and data/.
     build:
       context: .
       args:
-        IMAGE: ${FLEET_IMAGE:?Set FLEET_IMAGE in .env}:${FLEET_VERSION:?Set FLEET_VERSION in .env}
-    image: fleet-company:${FLEET_VERSION}
+        IMAGE: ${FLEET_IMAGE:-source}:${FLEET_VERSION:-local}
+    image: fleet-company:${FLEET_VERSION:-local}
     env_file: .env
     restart: unless-stopped
     depends_on:
@@ -54,7 +55,7 @@ services:
 
   # Every hour, the exchange-rate fetch: it fetches once a day, after the time set in the app, when a feed is on.
   jobs:
-    image: fleet-company:${FLEET_VERSION}
+    image: fleet-company:${FLEET_VERSION:-local}
     env_file: .env
     restart: unless-stopped
     depends_on:

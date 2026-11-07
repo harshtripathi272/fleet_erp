@@ -168,10 +168,8 @@ jobs:
           cache: npm
       - run: npm ci --no-audit --no-fund
         working-directory: .
-      - name: Build the shared image
-        run: docker build -t fleet-erp:ci .
-        working-directory: .
       - name: Build and unzip the example company's kit
+        # It carries the app's source, and Docker Compose builds the image from it (#103).
         working-directory: .
         run: |
           npm run kit -- tests/fixtures/kit/company.json --out /tmp
@@ -183,7 +181,6 @@ jobs:
           sed -i "s#^JWT_SECRET=.*#JWT_SECRET=$(openssl rand -hex 32)#" .env
           sed -i 's#^SMTP_HOST=.*#SMTP_HOST=127.0.0.1#; s#^SMTP_PORT=.*#SMTP_PORT=2525#; s#^SMTP_PASS=.*#SMTP_PASS=ci-only#' .env
           sed -i 's#^CONNECTION_AT_KEY=.*#CONNECTION_AT_KEY=ci-only#' .env
-          sed -i 's#^FLEET_IMAGE=.*#FLEET_IMAGE=fleet-erp#; s#^FLEET_VERSION=.*#FLEET_VERSION=ci#' .env
           if grep -nE '^[A-Z_]+=$' .env; then echo "A setting is still empty"; exit 1; fi
       - name: Start the app and its database
         run: docker compose up -d --build app mongo
@@ -215,6 +212,30 @@ jobs:
           [ "$(q 'String(db.vehicles.countDocuments())')" = 2 ] || { echo "Vehicles duplicated"; exit 1; }
           [ "$(q 'String(db.users.countDocuments())')" = 2 ] || { echo "People duplicated"; exit 1; }
           [ "$(docker compose logs app | grep -c 'Company file applied')" = 1 ] || { echo "Applied again with nothing changed"; exit 1; }
+      - name: A backup and a restore, with the commands the guide gives (#104)
+        run: |
+          q() { docker compose exec -T mongo mongosh fleet --quiet --eval "$1"; }
+          docker compose exec -T mongo mongodump --uri mongodb://localhost:27017/fleet --gzip --archive=/tmp/fleet.gz
+          q 'db.vehicles.deleteMany({})' >/dev/null
+          [ "$(q 'String(db.vehicles.countDocuments())')" = 0 ] || { echo "The vehicles were not deleted"; exit 1; }
+          docker compose exec -T mongo mongorestore --uri mongodb://localhost:27017/fleet --gzip --archive=/tmp/fleet.gz --drop
+          [ "$(q 'String(db.vehicles.countDocuments())')" = 2 ] || { echo "The restore did not bring the vehicles back"; exit 1; }
+      - name: This computer (#103), started as someone would, with one command and no image built before
+        working-directory: .
+        run: |
+          node -e "const f=require('./tests/fixtures/kit/company.json'); f.deploy={target:'local',port:8090}; delete f.deploy.smtp; f.company.key='acme-local'; require('fs').mkdirSync('/tmp/local/files',{recursive:true}); require('fs').mkdirSync('/tmp/local/data',{recursive:true}); require('fs').writeFileSync('/tmp/local/company.json', JSON.stringify(f))"
+          cp tests/fixtures/kit/files/* /tmp/local/files/ && cp tests/fixtures/kit/data/* /tmp/local/data/
+          npm run kit -- /tmp/local/company.json --out /tmp/local
+          cd /tmp/local && unzip -q acme-local-kit.zip && cd acme-local-kit
+          ./start.sh --no-open | tee start.log
+          password="$(grep -E '^OWNER_PASSWORD=' .env | cut -d= -f2-)"
+          [ -n "$password" ] || { echo "start.sh made no owner password"; exit 1; }
+          curl -fsS http://localhost:8090/api/v1/brand | grep -q '"productName":"Acme Fleet"' || { echo "The brand is not served"; exit 1; }
+          code="$(curl -s -o /dev/null -w '%{http_code}' -H 'content-type: application/json' -d "{\"email\":\"grace@acme-haulage.example\",\"password\":\"$password\"}" http://localhost:8090/api/v1/auth/login)"
+          [ "$code" = 200 ] || { echo "The owner can't sign in with OWNER_PASSWORD (HTTP $code)"; exit 1; }
+          [ "$(docker compose --project-name fleet-acme-local-local exec -T mongo mongosh fleet --quiet --eval 'String(db.vehicles.countDocuments())')" = 2 ] || { echo "No data in this copy"; exit 1; }
       - name: Container log
         if: always()
-        run: docker compose logs app 2>&1 | tail -80 || true
+        run: |
+          docker compose logs app 2>&1 | tail -60 || true
+          docker compose --project-name fleet-acme-local-local logs app 2>&1 | tail -40 || true

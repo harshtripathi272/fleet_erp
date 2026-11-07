@@ -99,6 +99,7 @@ export async function sendNomination(id: string, ctx: OpsContext) {
     from: 'me', title: `Nomination ${n.number}`,
     text: `${count(rows.length, 'truck')} for loading at ${await placeName(n.loadingPlaceId)} on ${shortDate(n.requiredDate as Date)}. Tracking links go live at dispatch.`,
     rows, refId: String(n._id),
+    wa: { template: 'nomination_sent', values: [String(n.number), count(rows.length, 'truck'), await placeName(n.loadingPlaceId), shortDate(n.requiredDate as Date)] },
   }, ctx);
   await log(ctx, at, `${n.number} sent to ${customer.name}`, { entity: 'nominations', entityId: n._id });
   await announce('nomination.sent', null, ctx, {

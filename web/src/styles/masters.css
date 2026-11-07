@@ -52,6 +52,8 @@ details.form-group summary { cursor: pointer; }
 .signin-actions { display: flex; gap: 10px; flex-wrap: wrap; }
 .signin-error { color: var(--rust); margin: 0; }
 .signin-notice { color: var(--pine-700); margin: 0; }
+/* A demonstration copy says so before anyone signs in (#103). */
+.signin-demo { margin: 0 0 16px; padding: 10px 12px; border: 1px solid var(--brass-2); border-radius: var(--radius-sm); background: var(--brass-50); color: var(--ink); max-width: 44ch; }
 .account { display: grid; gap: 16px; }
 .account-who { display: grid; gap: 2px; margin: 0; }
 .picker-signout { margin-top: 28px; }

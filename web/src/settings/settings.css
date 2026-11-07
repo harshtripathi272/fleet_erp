@@ -59,3 +59,19 @@
 @media (max-width: 560px) {
   .connection-guide a { display: inline-block; padding: 11px 4px; margin: -11px 0; }
 }
+
+/* WhatsApp templates (#112). The message bubble imitates WhatsApp's own, so a business sees what the person reads. */
+.wa-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.wa-standing { margin: 0 0 16px; color: var(--ink-2); max-width: 70ch; }
+.wa-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 380px), 1fr)); gap: 12px; }
+.wa-template { display: grid; gap: 8px; align-content: start; border: 1px solid var(--line); border-radius: var(--radius); padding: 12px 14px; background: var(--surface); min-width: 0; }
+.wa-template > header { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
+.wa-template > header > div { min-width: 0; overflow-wrap: anywhere; }
+.wa-trigger { margin: 0; color: var(--ink-2); font-size: 13.5px; }
+.wa-bubble { display: grid; gap: 4px; padding: 10px 12px; border-radius: var(--radius-sm); background: var(--pine-50); border: 1px solid var(--pine-100); font-size: 14px; line-height: 1.45; overflow-wrap: anywhere; }
+.wa-bubble p { margin: 0; }
+.wa-bubble small { color: var(--ink-3); }
+.wa-buttons { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+.wa-buttons span { padding: 4px 10px; border: 1px solid var(--pine-200); border-radius: 8px; color: var(--pine-700); font-size: 13px; background: var(--surface); }
+.wa-template > footer { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.kind-actions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
