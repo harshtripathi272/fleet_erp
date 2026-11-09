@@ -56,6 +56,12 @@ export async function saveCompany(input: Plain, actorId?: string, requestId?: st
   for (const [key, value] of Object.entries(changes)) {
     // Operations and Maintenance settings merge, so saving one setting doesn't reset the others.
     if ((key === 'operations' || key === 'maintenance') && value) existing.set(key, { ...((before[key] as Plain | undefined) ?? {}), ...(value as Plain) });
+    // Freight settings merge, and a null puts one back to its default (#135).
+    else if (key === 'freight' && value) {
+      const merged: Plain = { ...((before.freight as Plain | undefined) ?? {}) };
+      for (const [k, v] of Object.entries(value as Plain)) { if (v === null) delete merged[k]; else merged[k] = v; }
+      existing.set(key, merged);
+    }
     else if (key === 'regional' && value) {
       const merged = { ...((before.regional as Plain | undefined) ?? {}), ...(value as Plain) };
       existing.set(key, Object.fromEntries(Object.entries(merged).filter(([, v]) => v !== null && v !== undefined)));

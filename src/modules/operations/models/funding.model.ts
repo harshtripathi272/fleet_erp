@@ -67,6 +67,8 @@ const fundRequestSchema = new Schema<any>({
   issuedAt: Date,
   baseAmountMinor: Number,
   rate: Number,
+  /** Fuel: what a litre cost, as typed when it was issued, for trip profit (#135). */
+  unitPrice: { type: moneySchema, default: undefined },
   createdBy: { type: ObjectId, ref: 'User' },
   updatedBy: { type: ObjectId, ref: 'User' },
 }, schemaOptions);

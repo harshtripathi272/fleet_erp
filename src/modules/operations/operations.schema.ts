@@ -128,6 +128,8 @@ export const issueSchema = z.strictObject({
   medium: text(60).optional(),
   reference: text(60).optional(),
   station: text(120).optional(),
+  /** Fuel: what a litre cost, for trip profit. */
+  unitPrice: money.optional(),
   via,
   custom,
 }).refine((v) => v.paymentMethodId || v.medium, 'Choose the payment method');

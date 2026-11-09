@@ -240,7 +240,7 @@ export async function issueRequest(id: string, input: S.IssueInput, ctx: OpsCont
     request.set({ baseAmountMinor: baseMinor, rate });
   }
   request.set('custom', await stepCustom('fund-requests', 'pay', input.custom, (request.toObject() as Plain).custom as Plain | undefined));
-  request.set({ status: 'issued', paymentMethodId: input.paymentMethodId, medium, reference: input.reference, station: input.station, issuedAt: at, updatedBy: ctx.actorId });
+  request.set({ status: 'issued', paymentMethodId: input.paymentMethodId, medium, reference: input.reference, station: input.station, issuedAt: at, updatedBy: ctx.actorId, ...(kind === 'fuel' && input.unitPrice ? { unitPrice: input.unitPrice } : {}) });
   request.get('trail').push(trailEntry(ctx, 'issued', at, input.via ?? 'app', [medium, input.reference].filter(Boolean).join(' ')));
   await save(request);
   if (kind === 'fuel') await setVehicleState(trip.vehicleId, { fuelL: truck.fuelL + Number(request.get('litres')) }, ctx.actorId);

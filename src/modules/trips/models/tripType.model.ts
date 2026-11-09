@@ -6,6 +6,8 @@ const tripTypeSchema = masterSchema({
   ...codeNameFields,
   cargoKind: { type: String, enum: CARGO_KINDS, required: true },
   loadTypeId: { type: ObjectId, ref: 'LoadType' },
+  /** The type a new consignment on a trip of this type starts as (#135). */
+  defaultConsignmentTypeId: { type: ObjectId, ref: 'ConsignmentType' },
   requiredDocumentTypeIds: { type: [{ type: ObjectId, ref: 'DocumentType' }], default: undefined },
   printLayoutId: { type: ObjectId, ref: 'PrintLayout' },
   isDefault: { type: Boolean, default: false },
