@@ -3,7 +3,7 @@ import { env } from './config/env.js';
 import { connectRedis, disconnectRedis } from './core/cache/redis.js';
 import { connectMongo, disconnectMongo, syncIndexes } from './core/db/mongo.js';
 import { logger } from './core/logger/index.js';
-import { ensureFirstOwner } from './modules/auth/auth.service.js';
+import { applyOwnerPasswordReset, ensureFirstOwner } from './modules/auth/auth.service.js';
 import { startMaintenanceWorker, stopMaintenanceWorker } from './modules/maintenance/maintenance.service.js';
 import { startExpiryWorker, stopExpiryWorker } from './modules/compliance/expiryReminders.js';
 import { ensureBillingMessages, ensureDefaultMessages } from './modules/messaging/defaults.js';
@@ -28,6 +28,7 @@ await refreshRegional();
 // With several instances, a change saved on one reaches the others within a minute.
 setInterval(() => { refreshRegional().catch((err) => logger.error({ err }, 'Could not refresh the regional settings')); }, 60_000).unref();
 await ensureFirstOwner();
+await applyOwnerPasswordReset();
 // A new installation starts with the default message templates and rules, once (#43).
 await ensureDefaultMessages();
 await ensureBillingMessages();

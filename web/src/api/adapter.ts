@@ -68,6 +68,8 @@ const index = (rows: Rec[]) => new Map(rows.map((r) => [String(r.id), r]));
 /** The same rule as the API: the waiting level or any later one in the policy, or the fallback permission without a policy. */
 function mayDecide(me: Reference["me"], approval?: Rec) {
   if (!approval?.levels?.length) return undefined;
+  // As on the server (approvals.ts): the Owner can always decide.
+  if (me.roles.includes("owner")) return true;
   const can = (resource: string) => me.permissions.some((p) => (p.resource === "*" || p.resource === resource) && (p.actions.includes("*") || p.actions.includes("create")));
   return (approval.levels as Rec[]).slice(approval.current ?? 0).some((l) =>
     l.fallbackResource ? can(l.fallbackResource) : l.approverUserId ? l.approverUserId === me.id : me.roles.includes(l.approverRoleKey));

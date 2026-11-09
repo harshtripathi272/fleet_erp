@@ -54,7 +54,7 @@ export const correctVehicleState = asyncHandler(async (req, res) => ApiResponse.
 /* Money requests */
 export const listRequests = asyncHandler(async (req, res) => paged(res, await Funding.listRequests(query(req))));
 export const getRequest = asyncHandler(async (req, res) => ApiResponse.success(res, await Funding.getRequest(param(req))));
-export const createRequest = asyncHandler(async (req, res) => ApiResponse.created(res, await Funding.createRequest(req.body, opsContext(req)), 'Sent to Finance'));
+export const createRequest = asyncHandler(async (req, res) => ApiResponse.created(res, await Funding.createRequest(req.body, opsContext(req)), 'Sent for approval'));
 export const decideRequest = asyncHandler(async (req, res) => ApiResponse.success(res, await Funding.decideRequest(param(req), req.body, opsContext(req))));
 export const issueRequest = asyncHandler(async (req, res) => ApiResponse.success(res, await Funding.issueRequest(param(req), req.body, opsContext(req)), 'Paid'));
 export const cancelRequest = asyncHandler(async (req, res) => ApiResponse.success(res, await Funding.cancelRequest(param(req), opsContext(req)), 'Request cancelled'));

@@ -7,7 +7,7 @@ import { isFileType } from '../../core/masters/fileFields.js';
 import { env } from '../../config/env.js';
 import { GROUPS } from '../../core/masters/groups.js';
 import { getMaster, getRefTarget, listMasters, registerMaster } from '../../core/masters/registry.js';
-import { setExtraUsage, type Usage } from '../../core/masters/references.js';
+import { addUsageSource, type Usage } from '../../core/masters/references.js';
 import * as MasterService from '../../core/masters/service.js';
 import { setCustomFieldLoader, type ListQuery, type ServiceContext } from '../../core/masters/service.js';
 import type { MasterDefinition, Plain } from '../../core/masters/types.js';
@@ -256,7 +256,7 @@ setCustomFieldLoader(async (entity) => {
   return resolveOptions(defs as Plain[]);
 });
 
-setExtraUsage(async (targetKey, id, activeOnly) => {
+addUsageSource(async (targetKey, id, activeOnly) => {
   const usage: Usage[] = [];
   const statusFilter = activeOnly ? { status: { $ne: 'archived' } } : {};
   for (const field of await FieldDefinition.find({ type: 'reference', referenceMaster: targetKey }).lean()) {

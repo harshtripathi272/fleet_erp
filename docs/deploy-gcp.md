@@ -94,6 +94,7 @@ At the end the script prints:
 2. **Atlas:** allow the printed egress address (`/32`) under Network Access.
 3. **Check:** `curl -fsS https://<domain>/api/v1/health/ready` answers `{"success":true,…}` once the database is reachable.
 4. **First Owner:** on first start the account for `OWNER_EMAIL` is created and sent a link to choose a password. If the e-mail doesn't arrive, use "Forgot password" on the sign-in page with that address. Nobody else can become the first Owner by signing up, and self sign-up stays off unless the company turns it on.
+   If the only Owner forgets their password and there's no e-mail server, set `OWNER_PASSWORD_RESET` to a new password and restart. The `OWNER_EMAIL` account takes it once and must change it at sign-in; a later restart can't undo that. Remove the variable afterwards.
 5. **Company settings:** the Owner signs in and fills in Masters → Company (name, country, base currency, modules). Then come the masters, or the first data from a migration. Sample data is never loaded in production; its route is off there.
 
 ## Updating

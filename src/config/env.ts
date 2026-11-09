@@ -36,6 +36,11 @@ export const envSchema = z.object({
    * never again: it can't change an existing account. Without it, the Owner gets an e-mail to choose one.
    */
   OWNER_PASSWORD: z.string().min(8, 'OWNER_PASSWORD must be at least 8 characters').max(128).regex(/[A-Za-z]/, 'OWNER_PASSWORD needs a letter').regex(/\d/, 'OWNER_PASSWORD needs a digit').optional(),
+  /**
+   * The way back in when the only Owner has forgotten their password and there's no e-mail to reset it by. Whoever runs
+   * this copy sets it and restarts: the OWNER_EMAIL account takes this password once, and must change it at sign-in.
+   */
+  OWNER_PASSWORD_RESET: z.string().min(8, 'OWNER_PASSWORD_RESET must be at least 8 characters').max(128).regex(/[A-Za-z]/, 'OWNER_PASSWORD_RESET needs a letter').regex(/\d/, 'OWNER_PASSWORD_RESET needs a digit').optional(),
   CONSOLE_ENABLED: flag('true'),
   /** Timers inside the server for what a scheduled job does where one runs. Cloud Run turns this off: it scales to zero. */
   IN_PROCESS_JOBS: flag('true'),
