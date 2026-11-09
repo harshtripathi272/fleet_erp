@@ -35,6 +35,7 @@ import organisationRouter from './modules/organisation/organisation.router.js';
 import partiesRouter from './modules/parties/parties.router.js';
 import rolesRouter from './modules/roles/roles.router.js';
 import setupKitRouter from './modules/setup/setup.router.js';
+import installationRouter from './modules/setup/installation.router.js';
 import tripsRouter from './modules/trips/trips.router.js';
 import usersRouter from './modules/users/users.router.js';
 
@@ -50,6 +51,8 @@ app.use('/api', compressJson);
 app.use('/api/v1/hooks', hooksRouter);
 // The Company kit carries logos and spreadsheets, so it has its own, larger body limit (#76).
 app.use('/api/v1/setup-kit', express.json({ limit: '40mb' }), rejectOperators, authenticate, setupKitRouter);
+// This installation: its kind, its configuration as a file, a preview of a new one, a demo's reset (#95).
+app.use('/api/v1/installation', express.json({ limit: '40mb' }), rejectOperators, installationRouter);
 app.use(express.json({ limit: '1mb' }));
 app.use(rejectOperators);
 

@@ -47,6 +47,7 @@ describe('Set up a company', () => {
     owner = await signUp('First Owner');
     env.NODE_ENV = 'test';
     env.SETUP_PACKAGES = true;
+    env.COPY_PURPOSE = 'demo';
   });
 
   test('the draft keeps the answers and each file, until it is thrown away', async () => {
@@ -141,7 +142,7 @@ describe('Set up a company', () => {
     assert.equal(await User.countDocuments({ email: 'operations@acme-haulage.test' }), 0);
   });
 
-  test('clearing asks for the company\'s name, keeps the person doing it, and is refused on a real company in production', async () => {
+  test('clearing asks for the company\'s name, keeps the person doing it, and is refused on a trial or production copy', async () => {
     await apply(owner, { file: file({ purpose: 'demo', data: { sample: 'small', files: [] }, regional: { country: 'ZM', baseCurrency: 'ZMW' } }) });
     assert.ok((await count('vehicles')) > 0);
     const wrong = endOf(await apply(owner, { file: file(), clear: { confirm: 'something else' } }));
@@ -156,10 +157,11 @@ describe('Set up a company', () => {
     assert.equal(await User.countDocuments({ email: 'operations@acme-haulage.test' }), 0);
     assert.equal((await Company.findOne().lean<Record<string, any>>())!.legalName, 'Second Company');
 
-    env.NODE_ENV = 'production';
+    // What kind of copy it is comes from its environment (#95), not from the file last applied.
+    env.COPY_PURPOSE = 'production';
     const refused = endOf(await apply(owner, { file: file({ company: { key: 'second-co', legalName: 'Second Company' } }), clear: { confirm: 'Second Company' } }));
     assert.equal(refused.type, 'error');
-    assert.match(refused.message, /real company/);
+    assert.match(refused.message, /only a demonstration copy can be cleared/);
     assert.equal((await api().get('/api/v1/setup-kit').set(bearer(owner)).expect(200)).body.data.canClear, false);
   });
 
@@ -393,14 +395,14 @@ describe('Set up a company', () => {
     assert.ok(bad.some((p: { path: string }) => p.path.startsWith('connectionRules')), JSON.stringify(bad));
   });
 
-  test('only an owner can apply or package, and a real company in production can\'t become a demonstration', async () => {
+  test('only an owner can apply or package, and a trial or production copy can\'t become a demonstration', async () => {
     const admin = await userWithRole(owner, 'admin');
     await api().post('/api/v1/setup-kit/apply').set(bearer(admin)).send({ file: file() }).expect(403);
     await api().post('/api/v1/setup-kit/package').set(bearer(admin)).send({ file: file() }).expect(403);
     await apply(owner, { file: file() });
-    env.NODE_ENV = 'production';
+    env.COPY_PURPOSE = 'trial';
     const refused = endOf(await apply(owner, { file: file({ purpose: 'demo' }) }));
-    assert.match(refused.message, /can't become a demonstration/);
+    assert.match(refused.message, /trial copy, so it can't be set up as a demonstration/);
   });
 
   test('Google Cloud scales from the screen: CPU and memory reach the package, a bad pair is refused, and more than one instance asks for Redis', async () => {

@@ -63,6 +63,11 @@ export async function readCompanyFile(path: string): Promise<{ file: CompanyFile
 }
 
 /** What was last applied, for the set-up screen. */
+/** The whole company file this copy last applied, for resetting a demonstration and previewing a new file. */
+export async function lastAppliedFile(): Promise<CompanyFile | undefined> {
+  return (await SystemState.findOne({ key: STATE_KEY }).lean<{ value?: Applied }>())?.value?.file;
+}
+
 export async function lastApplied() {
   const state = await SystemState.findOne({ key: STATE_KEY }).lean<{ value?: Applied }>();
   return state?.value ? { at: state.value.at, hash: state.value.hash, company: state.value.file.company.key, purpose: state.value.file.purpose ?? 'real', results: state.value.results } : null;
