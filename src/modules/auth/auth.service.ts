@@ -295,7 +295,9 @@ export async function signInOptions() {
   const firstOwner = !env.OWNER_EMAIL && !claimed;
   // A copy with the sample operation, or set up as a demonstration, says so before anyone signs in (#103).
   const demo = Boolean(sample) || companyFile?.value?.file?.purpose === 'demo';
-  return { company: company?.tradingName || company?.legalName || null, firstOwner, signUp: firstOwner || company?.allowSelfRegistration === true, demo, mail: Boolean(mailer.send && !mailer.simulated) };
+  // A trial copy says how long it has left, from three days before the end (#95); nothing is enforced.
+  const trialEnds = env.COPY_PURPOSE === 'trial' ? env.TRIAL_ENDS ?? null : null;
+  return { company: company?.tradingName || company?.legalName || null, firstOwner, signUp: firstOwner || company?.allowSelfRegistration === true, demo: demo && env.COPY_PURPOSE === 'demo', trialEnds, mail: Boolean(mailer.send && !mailer.simulated) };
 }
 
 export async function resetPassword(token: string, password: string) {

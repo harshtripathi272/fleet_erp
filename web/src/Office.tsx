@@ -23,8 +23,6 @@ import {
   Receipt,
   Users,
   Map as MapIcon,
-  Building2,
-  Package as PackageIcon,
 } from "lucide-react";
 import { AppProvider, useApp, useSharedData } from "./store";
 import type { Overlay, Toast } from "./store";
@@ -390,7 +388,6 @@ function Shell({
   onSignOut: () => void;
   children: ReactNode;
 }) {
-  const mayChangeCompany = can(useApp().me, "company", "update");
   const [more, setMore] = useState(false);
   const [account, setAccount] = useState(false);
   const areaOn = useAreas();
@@ -422,16 +419,6 @@ function Shell({
           {canSwitch && (
             <button className="side-reset" onClick={onSwitch}>
               <ArrowRightLeft size={14} /> Switch desk
-            </button>
-          )}
-          {mayChangeCompany && (
-            <button className="side-reset" onClick={() => { location.hash = "#set-up"; }}>
-              <Building2 size={14} /> Set up a company
-            </button>
-          )}
-          {mayChangeCompany && (
-            <button className="side-reset" onClick={() => { location.hash = "#package"; }}>
-              <PackageIcon size={14} /> Package this company
             </button>
           )}
           <button className="side-reset" onClick={() => setAccount(true)}>
@@ -488,16 +475,6 @@ function Shell({
           {canSwitch && (
             <button onClick={onSwitch}>
               <BookUser size={18} /> Switch desk
-            </button>
-          )}
-          {mayChangeCompany && (
-            <button onClick={() => { location.hash = "#set-up"; }}>
-              <Building2 size={18} /> Set up a company
-            </button>
-          )}
-          {mayChangeCompany && (
-            <button onClick={() => { location.hash = "#package"; }}>
-              <PackageIcon size={18} /> Package this company
             </button>
           )}
           <button onClick={() => { setMore(false); setAccount(true); }}>

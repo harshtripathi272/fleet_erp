@@ -310,3 +310,11 @@ details.form-group summary { cursor: pointer; }
 .su-wait p { margin: 0; }
 .file-expiry label { display: inline-flex; gap: 8px; align-items: center; }
 .file-chip .status { flex: none; }
+
+/* This installation (#95): the preview of a configuration file, and the confirm-then-reset row. */
+.install-preview { display: grid; gap: 10px; padding: 14px 20px; border-top: 1px solid var(--line); }
+.install-preview h4 { margin: 0; font-size: 14.5px; font-weight: 620; }
+.install-preview ul { margin: 0; padding-left: 18px; color: var(--ink-2); }
+.install-problems { color: var(--rust); }
+.install-reset { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
+.install-reset .input { width: 200px; }

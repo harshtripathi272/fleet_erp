@@ -148,7 +148,7 @@ export async function signOut() {
 /** Drivers sign in with their phone number; everyone else with their e-mail. */
 const looksLikePhone = (value: string) => /^\+?[\d\s-]{7,}$/.test(value.trim());
 
-interface SignInOptions { company: string | null; firstOwner: boolean; signUp: boolean; demo?: boolean; mail?: boolean }
+interface SignInOptions { company: string | null; firstOwner: boolean; signUp: boolean; demo?: boolean; trialEnds?: string | null; mail?: boolean }
 
 /** A "#reset=…" link from an invitation or reset e-mail opens the "choose your password" form. */
 const resetTokenInLink = () => (location.hash.startsWith("#reset=") ? decodeURIComponent(location.hash.slice(7)) : "");
@@ -211,6 +211,12 @@ export function SignIn({ company, onSignedIn }: { company?: string; onSignedIn: 
       <main className="picker-main">
         <h1>{heading}</h1>
         {options.data?.demo && <p className="signin-demo" role="note">This copy holds made-up data, for showing and trying the app.</p>}
+        {(() => {
+          // A trial says how long it has left from three days before its last day (#95); nothing is enforced.
+          const ends = options.data?.trialEnds;
+          const days = ends ? Math.ceil((Date.parse(`${ends}T23:59:59Z`) - Date.now()) / 86_400_000) : null;
+          return days !== null && days <= 3 ? <p className="signin-demo" role="note">{days > 0 ? `This trial ends on ${ends}: ${days} ${days === 1 ? "day" : "days"} left.` : `This trial ended on ${ends}.`}</p> : null;
+        })()}
         <form className="signin" onSubmit={submit}>
           {mode === "up" && (
             <Field label="Name">
