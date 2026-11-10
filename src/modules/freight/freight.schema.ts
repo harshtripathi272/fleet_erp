@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { baseShape, code, money, name, objectId, percent, text, toUpdateSchema } from '../../core/masters/zod.js';
 import {
   CARGO_KINDS, CHARGE_DIRECTIONS, CHARGE_KINDS, CHARGE_ON, DISTANCE_SOURCES, DOCUMENT_REQUIRED_BY, DOCUMENT_STEPS, DRIVER_KINDS,
-  PRICE_ON, RATE_BASES, READ_FIELDS, SHORTAGE_DEDUCTIONS,
+  PRICE_ON, RATE_BASES, READ_FIELDS, SHORTAGE_DEDUCTIONS, SLAB_MODES,
 } from './models/freight.model.js';
 
 /** Request bodies for the freight masters (#135, consignments design 3.4). */
@@ -40,6 +40,8 @@ export const chargeTypeShape = {
   direction: z.enum(CHARGE_DIRECTIONS).optional(),
   defaultBasis: z.enum(RATE_BASES).optional(),
   defaultPrice: money.optional(),
+  defaultPercent: z.number().min(-100).max(1000).optional(),
+  autoApply: z.boolean().optional(),
   taxable: z.boolean().optional(),
   printLabel: text(120).optional(),
   ...baseShape,
@@ -52,6 +54,12 @@ const tariffLine = z.strictObject({
   description: text(200).optional(),
   basis: z.enum(RATE_BASES),
   price: money.optional(),
+  slabs: z.array(z.strictObject({ upTo: z.number().min(0).max(1e9).nullable().optional(), price: money })).max(20).optional(),
+  slabMode: z.enum(SLAB_MODES).optional(),
+  percent: z.number().min(-100).max(1000).optional(),
+  when: text(500).optional(),
+  formula: text(500).optional(),
+  perLine: z.boolean().optional(),
   freeQty: z.number().min(0).max(1000).optional(),
   minimum: money.optional(),
   maximum: money.optional(),
@@ -79,6 +87,9 @@ export const tariffShape = {
   shortageDeduction: z.enum(SHORTAGE_DEDUCTIONS).optional(),
   shortageAllowancePercent: percent.optional(),
   taxRatePercent: percent.optional(),
+  volumetricDivisorKgPerM3: z.number().min(1).max(10_000).optional(),
+  minimumChargeableKg: z.number().min(0).max(1e6).optional(),
+  roundQtyUpTo: z.number().min(0).max(10_000).optional(),
   lines: z.array(tariffLine).min(1, 'Add at least one charge line').max(50),
   minimumCharge: money.optional(),
   priority: z.number().int().min(-1000).max(1000).optional(),
