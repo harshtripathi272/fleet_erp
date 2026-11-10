@@ -122,11 +122,17 @@ export async function correctVehicleState(vehicleId: string, input: S.VehicleSta
  * Road kilometres from route masters where a route has the leg; otherwise straight-line × the company's
  * road distance factor. Driving hours use its average speed; border posts add their usual wait.
  */
-export async function buildStops(plan: StopPlan[]): Promise<Array<StopLeg & { _id: Types.ObjectId }>> {
-  const { roadDistanceFactor, averageSpeedKmh } = await operationsSettings();
-  const problem = validateStops(plan);
+export async function buildStops(plan: StopPlan[], options: { tripsWithoutCargo?: boolean } = {}): Promise<Array<StopLeg & { _id: Types.ObjectId }>> {
+  const problem = validateStops(plan, options);
   if (problem) throw refuse(problem);
-  const ids = [...new Set(plan.map((s) => s.placeId))];
+  const legs = await legFigures(plan);
+  return plan.map((stop, index) => ({ _id: new Types.ObjectId(), placeId: stop.placeId, kind: stop.kind, ...legs[index]! }));
+}
+
+/** Each stop's leg: road kilometres from the stop before it and the hours to drive them, waiting at a border included. */
+export async function legFigures(plan: Array<{ placeId: unknown }>): Promise<Array<{ legKm: number; legHours: number }>> {
+  const { roadDistanceFactor, averageSpeedKmh } = await operationsSettings();
+  const ids = [...new Set(plan.map((s) => String(s.placeId)))];
   const places = await Place.find({ _id: { $in: ids } }).select('name type location status').lean();
   const byId = new Map(places.map((p) => [String(p._id), p]));
   for (const id of ids) if (byId.get(id)?.status !== 'active') throw refuse('A stop uses a place that was not found or is archived.');
@@ -142,15 +148,26 @@ export async function buildStops(plan: StopPlan[]): Promise<Array<StopLeg & { _i
   const waits = new Map((await BorderPost.find({ placeId: { $in: ids }, status: 'active' }).select('placeId typicalWaitHours').lean()).map((b) => [String(b.placeId), Number(b.typicalWaitHours ?? 0)]));
   return plan.map((stop, index) => {
     const prev = plan[index - 1];
+    const here = String(stop.placeId);
     let km = 0;
-    if (prev && prev.placeId !== stop.placeId) {
-      const a = byId.get(prev.placeId)?.location as { lat: number; lng: number } | undefined;
-      const b = byId.get(stop.placeId)?.location as { lat: number; lng: number } | undefined;
-      km = known.get(`${prev.placeId}-${stop.placeId}`) ?? (a && b ? Math.round(haversineKm(a, b) * roadDistanceFactor) : 0);
+    if (prev && String(prev.placeId) !== here) {
+      const a = byId.get(String(prev.placeId))?.location as { lat: number; lng: number } | undefined;
+      const b = byId.get(here)?.location as { lat: number; lng: number } | undefined;
+      km = known.get(`${String(prev.placeId)}-${here}`) ?? (a && b ? Math.round(haversineKm(a, b) * roadDistanceFactor) : 0);
     }
-    const wait = byId.get(stop.placeId)?.type === 'border' ? waits.get(stop.placeId) ?? 0 : 0;
-    return { _id: new Types.ObjectId(), placeId: stop.placeId, kind: stop.kind, legKm: km, legHours: round(km / averageSpeedKmh + (index ? wait : 0), 1) };
+    const wait = byId.get(here)?.type === 'border' ? waits.get(here) ?? 0 : 0;
+    return { legKm: km, legHours: round(km / averageSpeedKmh + (index ? wait : 0), 1) };
   });
+}
+
+/**
+ * A trip's stops after a stop was added, moved or removed (#135): the legs the truck has already driven keep their
+ * figures; every leg after the last stop it reached is worked out again. Ids, arrivals and everything else are kept.
+ */
+export async function refigureStops<T extends { placeId: unknown; legKm: number; legHours?: number; arrivedAt?: Date }>(stops: T[]): Promise<T[]> {
+  const reached = stops.reduce((found, s, i) => (s.arrivedAt ? i : found), -1);
+  const legs = await legFigures(stops);
+  return stops.map((stop, i) => (i <= reached ? stop : Object.assign(stop, legs[i]!)));
 }
 
 /** A route's stops, starting where the truck is now. */

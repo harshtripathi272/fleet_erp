@@ -21,24 +21,28 @@ export function haversineKm(a: LatLng, b: LatLng) {
   return 2 * r * Math.asin(Math.sqrt(h));
 }
 
-export function validateStops(stops: StopPlan[]): string | null {
+/**
+ * What any trip's stops must be: a start first and an end last, one of each, a place for every stop, and somewhere to
+ * load (unless the company runs trips without cargo). Which stop each consignment loads and drops at is checked on
+ * the consignment (#135); the old rule of exactly one loading and one offloading point is gone.
+ */
+export function validateStops(stops: StopPlan[], options: { tripsWithoutCargo?: boolean } = {}): string | null {
   if (stops.length < 2) return 'Add the stops for this trip.';
   if (stops[0]!.kind !== 'start') return 'The first stop is the start.';
   if (stops.at(-1)!.kind !== 'end') return 'The last stop is the end.';
-  const load = stops.findIndex((s) => s.kind === 'load');
-  const offload = stops.findIndex((s) => s.kind === 'offload');
-  if (load < 0) return 'Add a loading point.';
-  if (offload < 0) return 'Add an offloading point.';
-  if (offload < load) return 'Offloading comes after loading.';
   if (stops.filter((s) => s.kind === 'start' || s.kind === 'end').length !== 2) return 'A trip has one start and one end.';
   if (stops.some((s) => !s.placeId)) return 'Choose a place for every stop.';
+  const load = stops.findIndex((s) => s.kind === 'load');
+  if (load < 0 && !options.tripsWithoutCargo) return 'Add a loading point.';
+  const offload = stops.findIndex((s) => s.kind === 'offload');
+  if (offload >= 0 && load >= 0 && offload < load) return 'Offloading comes after loading.';
   return null;
 }
 
 /** Whether the leg arriving at stop `index` is driven loaded. */
 export function legLoaded(stops: { kind: string }[], index: number) {
   const load = stops.findIndex((s) => s.kind === 'load');
-  const offload = stops.findIndex((s) => s.kind === 'offload');
+  const offload = stops.map((s) => s.kind).lastIndexOf('offload');
   return load >= 0 && index > load && (offload < 0 || index <= offload);
 }
 

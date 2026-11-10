@@ -228,8 +228,9 @@ const legSchema = new Schema({
   sequence: { type: Number, required: true },
   /** Empty while the place is still to be confirmed (a split decided late). */
   placeId: { type: ObjectId, ref: 'Place' },
-  /** The trip's stop it happens at, once attached. */
+  /** The trip's stop it happens at, once attached, and that trip (a moved consignment keeps the legs another truck did). */
   stopId: { type: ObjectId },
+  tripId: { type: ObjectId, ref: 'Trip' },
   status: { type: String, enum: LEG_STATUSES, default: 'planned' },
   plannedAt: Date,
   /** What is planned here, per line: a split delivery puts 9,500 L of line 1 here. */
@@ -247,7 +248,9 @@ const legSchema = new Schema({
 
 /** A paper that goes with the consignment: a loading invoice, a weighbridge ticket, a delivery note, the POD. */
 const consignmentDocumentSchema = new Schema({
-  documentTypeId: { type: ObjectId, ref: 'ConsignmentDocumentType', required: true },
+  documentTypeId: { type: ObjectId, ref: 'ConsignmentDocumentType' },
+  /** The type's name when it was filed, so the paper still reads right if the type is renamed or switched off. */
+  label: String,
   number: String,
   date: Date,
   /** The pickup or drop it belongs to, when it does. */
