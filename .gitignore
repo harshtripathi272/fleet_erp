@@ -8,3 +8,5 @@ tmp/
 *.log
 .DS_Store
 data/
+.mongo-studio/
+web/dist-studio/

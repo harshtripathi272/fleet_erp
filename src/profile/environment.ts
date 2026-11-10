@@ -113,4 +113,5 @@ export function deployOf(environment: Environment | EnvironmentInput): Deploy {
 }
 
 /** A new demonstration on this computer, at the port given (each running copy needs its own). */
-export const demoLocal = (port = 8080): Environment => environmentSchema.parse({ format: ENVIRONMENT_FORMAT, name: 'demo-local', purpose: 'demo', target: 'local', port });
+export type LocalEnvironment = Extract<Environment, { target: 'local' }>;
+export const demoLocal = (port = 8080) => environmentSchema.parse({ format: ENVIRONMENT_FORMAT, name: 'demo-local', purpose: 'demo', target: 'local', port }) as LocalEnvironment;
