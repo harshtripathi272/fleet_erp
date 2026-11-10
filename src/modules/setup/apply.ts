@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
@@ -31,8 +32,7 @@ import { createRoleSchema, updateRoleSchema } from '../roles/roles.schema.js';
 import { User } from '../users/user.model.js';
 import { createUser, userDefinition } from '../users/users.service.js';
 import { createUserSchema, updateUserSchema } from '../users/users.schema.js';
-import { BRAND_FILES, type BrandFile, type CompanyFile, companyFileSchema } from './companyFile.js';
-import { readCsv } from './csv.js';
+import { BRAND_FILES, type BrandFile, type CompanyFile, PROFILE_FORMAT, type Problem, companyFileOf, readAny, readCsv, thisCopy } from '../../profile/index.js';
 
 /**
  * Applies a company file on start-up (#76): COMPANY_CONFIG names it, and the files it lists sit next to it.
@@ -52,14 +52,39 @@ export interface Result { step: string; outcome: 'created' | 'updated' | 'unchan
 const sha = (b: Buffer | string) => createHash('sha256').update(b).digest('hex');
 const system = { actorId: undefined, canSeeSensitive: true };
 
-/** Reads and checks a company file; the error names each problem with its place in the file. */
+/**
+ * Reads and checks a company file; the error names each problem with its place in the file. Either format
+ * (#133): a format-1 company file as before, or a format-2 profile with an environment.json beside it if there
+ * is one. A profile and its environment are joined in memory into the one file the apply has always worked on,
+ * so a copy's stored state keeps its shape. Without an environment file, what kind of copy this is comes from
+ * its own settings (COPY_PURPOSE).
+ */
 export async function readCompanyFile(path: string): Promise<{ file: CompanyFile; raw: string }> {
   const raw = await readFile(path, 'utf8');
   let json: unknown;
   try { json = JSON.parse(raw); } catch (err) { throw new Error(`${path} is not valid JSON: ${(err as Error).message}`); }
-  const parsed = companyFileSchema.safeParse(json);
-  if (!parsed.success) throw new Error(`${path} is not a valid company file:\n${parsed.error.issues.map((i) => `  ${i.path.join('.') || '(file)'}: ${i.message}`).join('\n')}`);
-  return { file: parsed.data, raw };
+  const besidePath = join(dirname(path), 'environment.json');
+  const isProfile = (json as { format?: unknown })?.format === PROFILE_FORMAT;
+  const beside = isProfile && existsSync(besidePath) ? await readFile(besidePath, 'utf8') : undefined;
+  let environment: unknown;
+  if (beside !== undefined) {
+    try { environment = JSON.parse(beside); } catch (err) { throw new Error(`${besidePath} is not valid JSON: ${(err as Error).message}`); }
+  }
+  const file = toCompanyFile(json, environment);
+  if (!file.ok) throw new Error(`${path} is not a valid ${isProfile ? 'profile' : 'company file'}:\n${file.problems.map((p) => `  ${p.path}: ${p.message}`).join('\n')}`);
+  // The environment counts towards "changed" too, so a copy re-applies when it moves from trial to production.
+  return { file: file.file, raw: beside === undefined ? raw : `${raw}\n${beside}` };
+}
+
+/**
+ * A company file in either format as the joined file the apply works on, or its problems. A profile without an
+ * environment is this copy's own: its purpose from COPY_PURPOSE.
+ */
+export function toCompanyFile(json: unknown, environment?: unknown): { ok: true; file: CompanyFile } | { ok: false; problems: Problem[] } {
+  const read = readAny(json, environment);
+  if (!read.ok) return read;
+  if (read.format === 1) return { ok: true, file: read.file! };
+  return { ok: true, file: companyFileOf(read.profile, read.environment ?? thisCopy(env.COPY_PURPOSE)) };
 }
 
 /** What was last applied, for the set-up screen. */

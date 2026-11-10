@@ -33,6 +33,10 @@ router.get('/export', authorize('company', 'update'), ownerOnly, asyncHandler(as
 router.post('/apply/preview', authorize('company', 'update'), ownerOnly, validate({ body: z.strictObject({ file: z.unknown() }) }), asyncHandler(async (req, res) => {
   ApiResponse.success(res, await Setup.previewApply(req.body as { file: unknown }));
 }));
+/** A demonstration's sign-ins not made yet, one per desk and a driver: shown once, to whoever asked (#133). */
+router.post('/demo-logins', authorize('company', 'update'), ownerOnly, asyncHandler(async (req, res) => {
+  ApiResponse.success(res, await Setup.makeDemoLogins({ userId: req.auth!.userId }));
+}));
 router.post('/reset', authorize('company', 'update'), ownerOnly, validate({ body: z.strictObject({ confirm: z.string().max(200).optional() }) }), asyncHandler(async (req, res) => {
   ApiResponse.success(res, await Setup.resetDemo((req.body as { confirm?: string }).confirm, { userId: req.auth!.userId }));
 }));

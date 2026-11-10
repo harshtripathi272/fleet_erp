@@ -22,7 +22,7 @@ import * as DriverAccess from '../users/driverAccess.service.js';
 import { User } from '../users/user.model.js';
 import { createUser } from '../users/users.service.js';
 import { isDeepStrictEqual } from 'node:util';
-import { type Result, applyCompanyFile, applyFile, lastApplied, lastAppliedFile } from './apply.js';
+import { type Result, applyCompanyFile, applyFile, lastApplied, lastAppliedFile, toCompanyFile } from './apply.js';
 import { type SampleSize, loadSampleData } from '../meta/sampleData.js';
 import { TARGET_FIELDS, TARGET_NEEDS, deployGuide } from './guide.js';
 import { type RecordsLevel, buildSnapshot, snapshotSummary } from './snapshot.js';
@@ -144,8 +144,9 @@ export interface KitRequest { file: unknown; attachments?: Attachment[] }
 
 /** Checks a company file and its files: the problems, each with where it is, or the file as it will be written. */
 export function check(input: KitRequest & { finish?: Finish }): { ok: boolean; problems: { path: string; message: string }[]; file?: CompanyFile } {
-  const parsed = companyFileSchema.safeParse(input.file);
-  if (!parsed.success) return { ok: false, problems: parsed.error.issues.map((i) => ({ path: i.path.join('.'), message: i.message })) };
+  const read = toCompanyFile(input.file);
+  if (!read.ok) return { ok: false, problems: read.problems };
+  const parsed = { data: read.file };
   // The guided set-up asks for what the money screens can't work without; a file for a deployment may bring them as data.
   const guided = input.finish ? [
     ...(parsed.data.regional.country ? [] : [{ path: 'regional.country', message: 'Choose the country the company works in.' }]),
@@ -257,8 +258,10 @@ export async function clearCopy(confirm: string | undefined, keepUserId: string)
 
 /** Sets up this copy from the draft's company file, telling `onResult` of each step as it finishes. */
 export async function applyHere(input: { file: unknown; clear?: { confirm?: string } }, actor: { userId: string }, onResult: (r: Result) => void) {
-  const parsed = companyFileSchema.safeParse(input.file);
-  if (!parsed.success) throw new ValidationError('The company file has problems', { problems: parsed.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`) });
+  // Either format (#133): a profile made in Fleet Studio applies here as this copy's own.
+  const given = toCompanyFile(input.file);
+  if (!given.ok) throw new ValidationError('The company file has problems', { problems: given.problems.map((p) => `${p.path}: ${p.message}`) });
+  const parsed = { data: given.file };
   // A file can't turn a trial or production copy into a demonstration: what a copy is comes from its environment.
   if (parsed.data.purpose === 'demo' && env.COPY_PURPOSE !== 'demo') throw new ForbiddenError(`This is a ${env.COPY_PURPOSE} copy, so it can't be set up as a demonstration. Demonstrations run on a demo copy (COPY_PURPOSE=demo).`);
   if (input.clear) {
@@ -310,6 +313,18 @@ export async function resetDemo(confirm: string | undefined, actor: { userId: st
   return { results, logins };
 }
 
+/**
+ * A demonstration's sign-ins, one per desk and one for a driver, for those not made yet (#133). Fleet Studio asks
+ * for them once a demonstration it started is up; each password is shown once and kept nowhere readable here.
+ * Only on a demonstration copy, and only once it has been set up from a company file.
+ */
+export async function makeDemoLogins(actor: { userId: string }) {
+  if (env.COPY_PURPOSE !== 'demo') throw new ForbiddenError(`This is a ${env.COPY_PURPOSE} copy: only a demonstration has sign-ins for showing it around.`);
+  const file = await lastAppliedFile();
+  if (!file) throw new ValidationError('This copy has not been set up from a company file yet, so it has no demonstration to sign in to.');
+  return { logins: await demoLogins(file, actor.userId, () => undefined) };
+}
+
 /** The sections of a company file, in the order the screen lists them, with what each covers. */
 const SECTIONS: { key: keyof CompanyFile; label: string }[] = [
   { key: 'company', label: 'Company details' }, { key: 'regional', label: 'Region: currency, time zone, formats' }, { key: 'brand', label: 'Brand' },
@@ -324,8 +339,9 @@ const SECTIONS: { key: keyof CompanyFile; label: string }[] = [
  * Applying changes only what the file changed; nothing is ever deleted.
  */
 export async function previewApply(input: { file: unknown }) {
-  const parsed = companyFileSchema.safeParse(input.file);
-  if (!parsed.success) return { ok: false, problems: parsed.error.issues.map((i) => ({ path: i.path.join('.'), message: i.message })), sections: [] };
+  const read = toCompanyFile(input.file);
+  if (!read.ok) return { ok: false, problems: read.problems, sections: [] };
+  const parsed = { data: read.file };
   const last = await lastAppliedFile();
   const refused = parsed.data.purpose === 'demo' && env.COPY_PURPOSE !== 'demo' ? `This is a ${env.COPY_PURPOSE} copy, so a demonstration file can't be applied here.` : null;
   const sections = SECTIONS.filter((s) => s.key in parsed.data).map((s) => ({
