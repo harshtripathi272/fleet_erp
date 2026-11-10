@@ -143,3 +143,13 @@
 @media (max-width: 1100px) {
   .profit-tables { grid-template-columns: minmax(0, 1fr); }
 }
+
+/* The Consignments list and the report (design 3.11.6). */
+.consignments-screen { display: grid; gap: 14px; min-width: 0; }
+.cn-report { display: grid; gap: 12px; min-width: 0; }
+.cn-report-actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+.cn-report-pod { display: inline-flex; align-items: center; gap: 8px; color: var(--ink-2); white-space: nowrap; }
+.cn-report tfoot td { border-top: 1px solid var(--line-2); position: sticky; bottom: 0; background: var(--surface); }
+.column-list { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 4px; }
+.column-list li { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 10px; padding: 4px 0; border-bottom: 1px solid var(--line); }
+.column-move { display: inline-flex; gap: 4px; }

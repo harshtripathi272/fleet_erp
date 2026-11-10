@@ -23,6 +23,7 @@ import {
   Receipt,
   Users,
   Map as MapIcon,
+  Package,
 } from "lucide-react";
 import { AppProvider, useApp, useSharedData } from "./store";
 import type { Overlay, Toast } from "./store";
@@ -47,6 +48,7 @@ const TripsPage = lazy(() => import("./desks/Trips").then((m) => ({ default: m.T
 const FinanceToday = lazy(() => import("./desks/Finance").then((m) => ({ default: m.FinanceToday })));
 const Billing = lazy(() => import("./billing/Billing").then((m) => ({ default: m.Billing })));
 const Accounts = lazy(() => import("./desks/Accounts").then((m) => ({ default: m.Accounts })));
+const ConsignmentsScreen = lazy(() => import("./consignments/ConsignmentsScreen"));
 const Nominations = lazy(() => import("./desks/Nominations").then((m) => ({ default: m.Nominations })));
 const Maintenance = lazy(() => import("./desks/Maintenance").then((m) => ({ default: m.Maintenance })));
 const MastersScreen = lazy(() => import("./masters/MastersScreen").then((m) => ({ default: m.MastersScreen })));
@@ -54,7 +56,7 @@ const Overview = lazy(() => import("./desks/Overview").then((m) => ({ default: m
 const DriverDesk = lazy(() => import("./desks/DriverDesk").then((m) => ({ default: m.DriverDesk })));
 const Tracking = lazy(() => import("./tracking/Tracking"));
 
-type View = "overview" | "today" | "trips" | "nominations" | "accounts" | "billing" | "maintenance" | "masters" | "driver";
+type View = "overview" | "today" | "trips" | "consignments" | "nominations" | "accounts" | "billing" | "maintenance" | "masters" | "driver";
 interface Session {
   /** The company desk (#73) by key; `role` is the built-in desk it acts as, or "driver". */
   desk?: string;
@@ -98,6 +100,7 @@ function viewItem(data: AppData, desk: WorkspaceDesk, id: string): NavItem | und
     case "overview": return { id, label: "Overview", icon: Gauge };
     case "today": return { id, label: "Approvals", icon: Inbox };
     case "trips": return { id, label: w(data, "trip", true), icon: Truck };
+    case "consignments": return { id, label: w(data, "consignment", true), icon: Package };
     case "nominations": return { id, label: w(data, "nomination", true), icon: ClipboardList };
     case "accounts":
       return desk.actsAs === "finance"
@@ -109,7 +112,9 @@ function viewItem(data: AppData, desk: WorkspaceDesk, id: string): NavItem | und
     default: return undefined;
   }
 }
-const deskItems = (data: AppData, desk: WorkspaceDesk) => desk.views.map((v) => viewItem(data, desk, v)).filter((i): i is NavItem => Boolean(i));
+/** A desk's views. Consignments sit after Trips (#135); until the server's desks list it, it is put there for every desk that has Trips. */
+const withConsignments = (views: string[]) => (views.includes("consignments") || !views.includes("trips") ? views : views.flatMap((v) => (v === "trips" ? ["trips", "consignments"] : [v])));
+const deskItems = (data: AppData, desk: WorkspaceDesk) => withConsignments(desk.views).map((v) => viewItem(data, desk, v)).filter((i): i is NavItem => Boolean(i));
 const DRIVER_NAV: NavItem[] = [{ id: "driver", label: "My trip", icon: Truck }];
 
 /** The office desks the person's permissions allow. Loaded after sign-in, so drivers and the sign-in screen never download it. */
@@ -256,6 +261,7 @@ export default function Desks({ me }: { me: Me }) {
             )}
             {view === "today" && <FinanceToday />}
             {view === "overview" && <Overview />}
+            {view === "consignments" && <ConsignmentsScreen />}
             {view === "nominations" && <Nominations />}
             {view === "accounts" && (
               <Accounts driverId={session.accountDriverId} onDriver={(id) => setSession({ accountDriverId: id })} />
