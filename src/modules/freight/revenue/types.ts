@@ -12,6 +12,8 @@ export type Id = string;
 export const RATE_BASES = [
   'per_consignment', 'per_trip', 'per_tonne', 'per_kg', 'per_litre', 'per_litre_20', 'per_m3', 'per_piece', 'per_km', 'per_tonne_km',
   'per_drop_beyond', 'shortage_beyond_allowance',
+  // The full rate engine (design 3.5.2, phase 3).
+  'percent_of_freight', 'percent_of_value', 'formula',
 ] as const;
 export type RateBasis = (typeof RATE_BASES)[number];
 export const CHARGE_ON = ['loaded', 'delivered', 'planned', 'greater_of', 'lesser_of'] as const;
@@ -27,6 +29,11 @@ export type RevenueLineKind = (typeof REVENUE_LINE_KINDS)[number];
 export type LineSource = 'tariff' | 'auto' | 'manual';
 
 export interface Money { amountMinor: number; currencyId: Id }
+
+/** One band of a slab rate: up to `upTo` units (empty: everything above the bands before it) at `price` per unit. */
+export interface Slab { upTo?: number | null; price: Money }
+export const SLAB_MODES = ['progressive', 'whole'] as const;
+export type SlabMode = (typeof SLAB_MODES)[number];
 export interface CurrencyUnits { id: Id; code: string; minorUnits: number }
 
 /* ---------- The tariff (freight.model.ts `Tariff`, already matched) ---------- */
@@ -38,6 +45,18 @@ export interface TariffLineInput {
   basis: RateBasis;
   /** Per unit of the basis, or the flat amount, in the tariff's currency. */
   price?: Money;
+  /**
+   * Bands instead of one price: `progressive` prices each band's units at its own price (500 × 12 + 499 × 10);
+   * `whole` prices every unit at the band the quantity falls in.
+   */
+  slabs?: Slab[];
+  slabMode?: SlabMode;
+  /** For the percent bases: 5 is 5 %. */
+  percent?: number;
+  /** A condition in the formula language: the line applies only when it holds (`packaging = "CONT20"`). */
+  when?: string;
+  /** basis `formula`: the amount, in the tariff's currency (major units: 1.8 is USD 1.80). */
+  formula?: string;
   /** Free drops before an extra-drop charge starts (default 1). */
   freeQty?: number;
   minimum?: Money;
@@ -57,6 +76,10 @@ export interface TariffInput {
   distanceSource?: DistanceSource;
   shortageDeduction?: ShortageDeduction;
   shortageAllowancePercent?: number;
+  /** Chargeable weight (3.5.4): kg per m³ for volumetric weight, the least kg charged, and the step kg round up to. */
+  volumetricDivisorKgPerM3?: number;
+  minimumChargeableKg?: number;
+  roundQtyUpTo?: number;
   taxRatePercent?: number;
   lines: TariffLineInput[];
   minimumCharge?: Money;
@@ -126,6 +149,8 @@ export interface FactLine {
   pieces?: number;
   grossKg?: number;
   volumeM3?: number;
+  /** Already in the tariff's currency (minor units). */
+  declaredValueMinor?: number;
   product: {
     /** Fuel: compared and charged at 20 °C. */
     volumeCorrected?: boolean;
@@ -159,13 +184,28 @@ export interface PricingFacts {
   base?: CurrencyUnits & { rate?: number | null };
   lines: FactLine[];
   legs: FactLeg[];
-  distance: { leadKm?: number; tripLoadedKm?: number; manualKm?: number };
+  /** Lead distance; the trip's loaded km (first loading to last offloading); a typed one; the whole trip. */
+  distance: { leadKm?: number; tripLoadedKm?: number; manualKm?: number; tripKm?: number };
   /** A per-trip price is carried by the customer's first consignment on the trip; the others say where it is. */
   perTrip?: { carries: boolean; carrierNumber?: string };
   /** The company's driver-side allowance, the customer-side one when the tariff names none. */
   shortageAllowancePercent?: number;
+  /**
+   * Codes a formula's condition may compare, as text: product, productGroup, packaging, type, route, vehicleType,
+   * fromPlace, toPlace, fromCountry, toCountry, paymentTerms.
+   */
+  codes?: Partial<Record<CodeName, string>>;
+  /** The company's own fields on the consignment, read as `custom.<key>`. */
+  custom?: Record<string, number | string | boolean | null | undefined>;
+  /** The fuel price per litre on the pricing day, for fuel-linked surcharges (major units, as the adapter states). */
+  fuelPrice?: number;
+  /** Days from the first pickup to the last drop, when both are known. */
+  days?: number;
   previous?: PreviousRevenue;
 }
+
+export const CODE_NAMES = ['product', 'productGroup', 'packaging', 'type', 'route', 'vehicleType', 'fromPlace', 'toPlace', 'fromCountry', 'toCountry', 'paymentTerms'] as const;
+export type CodeName = (typeof CODE_NAMES)[number];
 
 /* ---------- The output (cargo.model.ts `revenueSchema`) ---------- */
 
@@ -183,6 +223,9 @@ export interface RevenueLine {
   source: LineSource;
   tariffLineId?: Id;
   legId?: Id;
+  /** A formula line keeps what it computed and what it saw, so the figure can be explained years later (3.5.6). */
+  formula?: string;
+  variables?: Record<string, number | string | boolean>;
   accepted: boolean;
   note?: string;
   by?: Id;

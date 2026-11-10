@@ -4,5 +4,7 @@
  * only computes, so every rule is tested as a table of facts in and lines out (`tests/revenue-engine.test.ts`).
  */
 export { priceConsignment, roundMinor } from './engine.js';
-export { amountsOf, chargedQuantity, losses, progress } from './quantities.js';
+export { checkTariff } from './checkTariff.js';
+export { amountsOf, chargeableKg, chargedQuantity, losses, progress } from './quantities.js';
+export { FORMULA_VARIABLES, formulaNames, sampleVariables, variablesFor } from './variables.js';
 export * from './types.js';

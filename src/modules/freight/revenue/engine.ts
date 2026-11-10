@@ -1,5 +1,7 @@
+import { evaluate, FormulaError, type Result } from '../../../core/formula/index.js';
 import * as Fmt from '../../../core/format/regional.js';
-import { chargedQuantity, losses, progress, QUANTITY_BASES, round3, roundTo, UNIT_LABEL } from './quantities.js';
+import { chargeableKg, chargedBy, chargedQuantity, losses, measureFor, progress, QUANTITY_BASES, round3, roundTo, UNIT_LABEL } from './quantities.js';
+import { variablesFor } from './variables.js';
 import type {
   ChargeTypeInput, EngineSettings, PricingFacts, RevenueBasis, RevenueLine, RevenueResult, TariffInput, TariffLineInput,
 } from './types.js';
@@ -53,16 +55,68 @@ export function priceConsignment(facts: PricingFacts, tariff: TariffInput | null
     : distanceSource === 'trip_loaded_km' ? `${facts.number}'s trip has no loaded km to charge.`
     : `${facts.number} has no lead distance yet: it needs a pickup and a drop on the trip's stops.`);
 
-  /** One tariff line as a revenue line, or nothing when it comes to nothing (no extra drops). */
+  const weightRules = { volumetricDivisorKgPerM3: tariff?.volumetricDivisorKgPerM3, minimumChargeableKg: tariff?.minimumChargeableKg, roundQtyUpTo: tariff?.roundQtyUpTo };
+  /** Freight priced so far (and a manual freight), in minor units: what percentages and `freight` in a formula read. */
+  const freightSoFar = () => [...(manual ? keptFreight : []), ...lines].filter((l) => l.kind === 'freight' || l.kind === 'minimum').reduce((s, l) => s + l.amountMinor, 0);
+  function runFormula(label: string, source: string, expect: 'boolean'): Result<boolean> | undefined;
+  function runFormula(label: string, source: string, expect: 'number'): Result<number> | undefined;
+  function runFormula(label: string, source: string, expect: 'number' | 'boolean') {
+    try {
+      return evaluate(source, variablesFor(facts, { chargeOn, distanceSource, freightMinor: freightSoFar(), rules: weightRules }), expect);
+    } catch (err) {
+      if (err instanceof FormulaError) { fail(`${label}: ${err.message}`); return undefined; }
+      throw err;
+    }
+  }
+  const seen = (used: Record<string, unknown>) => Object.entries(used).map(([k, v]) => `${k} = ${typeof v === 'number' ? qtyText(v) : String(v)}`).join(', ');
+
+  /** Slab bands priced (design 3.4.5): each band's units at its price, or every unit at the band the quantity reaches. */
+  const slabbed = (label: string, qty: number, slabs: NonNullable<TariffLineInput['slabs']>, mode: TariffLineInput['slabMode']): { amountMinor: number; text: string } | undefined => {
+    let from = 0;
+    for (const [i, slab] of slabs.entries()) {
+      const top = slab.upTo ?? Infinity;
+      if (top <= from || (slab.upTo == null && i < slabs.length - 1)) { fail(`The tariff's line "${label}" has slabs that don't go up one after another.`); return undefined; }
+      from = top;
+    }
+    if (qty > from) { fail(`${facts.number}'s ${qtyText(qty)} is above the last slab of "${label}" (${qtyText(from)}): add a slab with no upper limit.`); return undefined; }
+    if (mode === 'whole') {
+      const band = slabs.find((sl) => (sl.upTo ?? Infinity) >= qty)!;
+      return { amountMinor: roundMinor(qty * band.price.amountMinor), text: `${qtyText(qty)} × ${each(band.price.amountMinor)} (the band up to ${band.upTo == null ? 'any amount' : qtyText(band.upTo)})` };
+    }
+    let amount = 0;
+    const parts: string[] = [];
+    from = 0;
+    for (const slab of slabs) {
+      const top = slab.upTo ?? Infinity;
+      const units = round3(Math.max(0, Math.min(qty, top) - from));
+      if (units > 0) { amount += units * slab.price.amountMinor; parts.push(`${qtyText(units)} × ${each(slab.price.amountMinor)}`); }
+      from = top;
+      if (qty <= top) break;
+    }
+    return { amountMinor: roundMinor(amount), text: parts.join(' + ') || '0' };
+  };
+
+  /** One tariff line as a revenue line, or nothing when it comes to nothing (no extra drops, a condition that doesn't hold). */
   const priceLine = (tl: TariffLineInput, type: ChargeTypeInput): RevenueLine | undefined => {
     const label = labelOf(tl, type);
-    if (!tl.price) { fail(`The tariff's line "${label}" has no price.`); return undefined; }
-    if (tl.price.currencyId !== currency.id) { fail(`The tariff's line "${label}" is priced in another currency than the tariff.`); return undefined; }
-    const price = Number(tl.price.amountMinor);
+    if (tl.when) {
+      const holds = runFormula(label, tl.when, 'boolean');
+      if (!holds) return undefined;
+      if (!holds.value) { say.push(`${label}: left out, as ${tl.when} does not hold here (${seen(holds.used)}).`); return undefined; }
+    }
+    const slabs = tl.slabs?.length ? tl.slabs : undefined;
+    const priced = !slabs && !['formula', 'percent_of_freight', 'percent_of_value', 'shortage_beyond_allowance'].includes(tl.basis);
+    if (priced && !tl.price) { fail(`The tariff's line "${label}" has no price.`); return undefined; }
+    if ((tl.price && tl.price.currencyId !== currency.id) || slabs?.some((sl) => sl.price.currencyId !== currency.id)) {
+      fail(`The tariff's line "${label}" is priced in another currency than the tariff.`);
+      return undefined;
+    }
+    let price = Number(tl.price?.amountMinor ?? 0);
     let qty: number;
     let description = label;
     let unit = UNIT_LABEL[tl.basis];
     let sentence: string | undefined;
+    let extra: Partial<RevenueLine> = {};
     switch (tl.basis) {
       case 'per_consignment':
         qty = 1;
@@ -91,9 +145,39 @@ export function priceConsignment(facts: PricingFacts, tariff: TariffInput | null
       }
       case 'shortage_beyond_allowance':
         return undefined; // the shortage step prices it
+      case 'percent_of_freight':
+      case 'percent_of_value': {
+        if (tl.percent === undefined) { fail(`The tariff's line "${label}" has no percentage.`); return undefined; }
+        const of = tl.basis === 'percent_of_freight' ? freightSoFar()
+          : facts.lines.length && facts.lines.every((l) => l.declaredValueMinor !== undefined) ? facts.lines.reduce((s, l) => s + l.declaredValueMinor!, 0) : undefined;
+        if (of === undefined) { fail(`${facts.number} has no declared value, so "${label}" can't be worked out.`); return undefined; }
+        qty = tl.percent;
+        price = of / 100;
+        sentence = `${label}: ${qtyText(tl.percent)} % of ${tl.basis === 'percent_of_freight' ? 'freight' : 'the declared value'} ${money(of)}`;
+        break;
+      }
+      case 'formula': {
+        if (!tl.formula) { fail(`The tariff's line "${label}" has no formula.`); return undefined; }
+        const r = runFormula(label, tl.formula, 'number');
+        if (!r) return undefined;
+        qty = 1;
+        price = roundMinor(r.value * 10 ** currency.minorUnits);
+        unit = '';
+        extra = { formula: tl.formula, variables: r.used };
+        sentence = `${label}: ${tl.formula}${Object.keys(r.used).length ? `, with ${seen(r.used)}` : ''}`;
+        break;
+      }
       default: {
         if (!QUANTITY_BASES.includes(tl.basis)) { fail(`The tariff's line "${label}" uses a rate basis this version can't price yet.`); return undefined; }
-        const charged = chargedQuantity(tl.basis, chargeOn, facts);
+        // Charged on chargeable weight per kg, and per tonne when the tariff sets a volumetric divisor (3.5.4).
+        const byWeight = tl.basis === 'per_kg' || (tl.basis === 'per_tonne' && !!tariff?.volumetricDivisorKgPerM3);
+        const charged = byWeight
+          ? chargedBy(chargeOn, facts, (a) => {
+            if (a.kg === undefined) return measureFor(tl.basis, a, facts.number) as { problem: string };
+            const w = chargeableKg(a, weightRules, facts);
+            return 'problem' in w ? w : { ...w, qty: tl.basis === 'per_kg' ? w.kg : round3(w.kg / 1000) };
+          })
+          : chargedQuantity(tl.basis, chargeOn, facts);
         if ('problem' in charged) { fail(charged.problem); return undefined; }
         qty = charged.qty;
         if (tl.basis === 'per_tonne_km') {
@@ -106,10 +190,25 @@ export function priceConsignment(facts: PricingFacts, tariff: TariffInput | null
         if (type.kind === 'freight' && basis.qty === undefined) Object.assign(basis, { qty, unit });
         description = `${label}, ${charged.from}`;
         say.push(`Charged on ${charged.from}${charged.estimated && charged.note ? `, as an estimate: ${charged.note}` : ''}: ${qtyText(qty)} ${unit}.`);
+        if ('kg' in charged && typeof charged.kg === 'number') {
+          const w = charged as unknown as { kg: number; actualKg: number; volumetricKg?: number; m3?: number };
+          if (w.kg !== w.actualKg) {
+            say.push(`Chargeable weight ${qtyText(w.kg)} kg: actual ${qtyText(w.actualKg)} kg${w.volumetricKg !== undefined ? `, volumetric ${qtyText(w.m3!)} m³ × ${qtyText(tariff!.volumetricDivisorKgPerM3!)} = ${qtyText(w.volumetricKg)} kg` : ''}${tariff?.minimumChargeableKg ? `, least charged ${qtyText(tariff.minimumChargeableKg)} kg` : ''}${tariff?.roundQtyUpTo ? `, rounded up to the next ${qtyText(tariff.roundQtyUpTo)} kg` : ''}.`);
+          }
+        }
         break;
       }
     }
-    let amountMinor = roundMinor(qty * price);
+    let amountMinor: number;
+    if (slabs && tl.basis !== 'formula' && !tl.basis.startsWith('percent_')) {
+      const s2 = slabbed(label, qty, slabs, tl.slabMode);
+      if (!s2) return undefined;
+      amountMinor = s2.amountMinor;
+      price = qty ? amountMinor / qty : amountMinor;
+      sentence = `${label}: ${s2.text}`;
+    } else {
+      amountMinor = roundMinor(qty * price);
+    }
     let unitPriceMinor = price;
     let note: string | undefined;
     const min = tl.minimum?.currencyId === currency.id ? tl.minimum.amountMinor : undefined;
@@ -118,7 +217,10 @@ export function priceConsignment(facts: PricingFacts, tariff: TariffInput | null
     if (max !== undefined && amountMinor > max) { note = `Capped at the line's maximum of ${money(max)}.`; amountMinor = max; }
     if (note) unitPriceMinor = qty ? amountMinor / qty : amountMinor;
     say.push(`${sentence ?? `${label}: ${qtyText(qty)} ${unit} × ${each(price)}`} = ${money(amountMinor)}.${note ? ` ${note}` : ''}`);
-    return { chargeTypeId: type.id, kind: type.kind, description, qty, unit, unitPriceMinor, amountMinor, source: 'tariff', tariffLineId: tl.id, accepted: true, ...(note ? { note } : {}) };
+    return {
+      chargeTypeId: type.id, kind: type.kind, description, qty, ...(unit ? { unit } : {}), unitPriceMinor, amountMinor, source: 'tariff', tariffLineId: tl.id, accepted: true,
+      ...extra, ...(note ? { note } : {}),
+    };
   };
 
   if (manual?.whole) {
