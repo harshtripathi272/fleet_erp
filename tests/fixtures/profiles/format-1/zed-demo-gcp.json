@@ -1,0 +1,11 @@
+{
+  "format": 1,
+  "purpose": "demo",
+  "company": { "key": "zed-fuel", "legalName": "Zed Fuel Carriers Ltd", "tradingName": "Zed Fuel" },
+  "regional": { "country": "ZM", "baseCurrency": "ZMW", "timezone": "Africa/Lusaka" },
+  "brand": { "productName": "Zed Fleet", "accent": "#1d4a7a" },
+  "areas": ["masters", "trips", "finance", "tracking", "driver-app"],
+  "owner": { "name": "Mary Mwale", "email": "mary@zed-fuel.example" },
+  "data": { "sample": "full" },
+  "deploy": { "target": "gcp", "projectId": "zed-fleet-demo", "region": "africa-south1", "domainMode": "none", "minInstances": 0, "cpu": "2", "memory": "1Gi" }
+}

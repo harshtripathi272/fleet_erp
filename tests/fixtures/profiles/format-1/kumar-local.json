@@ -1,0 +1,12 @@
+{
+  "format": 1,
+  "purpose": "demo",
+  "company": { "key": "kumar-parcels", "legalName": "Kumar Parcel Lines Pvt Ltd" },
+  "regional": { "country": "IN", "baseCurrency": "INR", "timezone": "Asia/Kolkata", "dateFormat": "DD/MM/YYYY", "fiscalYearStartMonth": 4 },
+  "workspace": { "vocabulary": { "trip": { "singular": "Run", "plural": "Runs" } } },
+  "roles": [{ "key": "hub-lead", "name": "Hub lead", "permissions": [{ "resource": "trips", "actions": ["read", "update"] }] }],
+  "owner": { "email": "owner@kumar-parcels.example" },
+  "staff": [{ "name": "Ravi Iyer", "email": "ravi@kumar-parcels.example", "roles": ["hub-lead"] }],
+  "data": { "sample": "small" },
+  "deploy": { "target": "local", "port": 8091 }
+}
