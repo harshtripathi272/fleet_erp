@@ -64,6 +64,19 @@ export function sum(parts: Amounts[]): Amounts | undefined {
 
 const live = (legs: FactLeg[], kind: FactLeg['kind']) => legs.filter((l) => l.kind === kind && l.status !== 'skipped');
 
+/** The facts of one goods line alone, for a tariff line worked out per goods line. */
+export function onlyLine(facts: PricingFacts, line: FactLine): PricingFacts {
+  return {
+    ...facts,
+    lines: [line],
+    legs: facts.legs.map((l) => ({
+      ...l,
+      ...(l.planned ? { planned: l.planned.filter((p) => p.lineId === line.id) } : {}),
+      ...(l.actual ? { actual: l.actual.filter((m) => m.lineId === line.id) } : {}),
+    })),
+  };
+}
+
 /** Where the consignment stands: what is done, and what is still to come. */
 export function progress(facts: PricingFacts) {
   const pickups = live(facts.legs, 'pickup');
@@ -96,7 +109,7 @@ export function perLine(facts: PricingFacts) {
 
 export const UNIT_LABEL: Record<RateBasis, string> = {
   per_consignment: 'consignment', per_trip: 'trip', per_tonne: 't', per_kg: 'kg', per_litre: 'L', per_litre_20: 'L at 20 °C', per_m3: 'm³',
-  per_piece: 'pieces', per_km: 'km', per_tonne_km: 't·km', per_drop_beyond: 'drops', shortage_beyond_allowance: '',
+  per_piece: 'pieces', per_km: 'km', per_tonne_km: 't·km', per_drop_beyond: 'drops', shortage_beyond_allowance: '', percent_of_freight: '%', percent_of_value: '%', formula: '', per_pickup_beyond: 'pickups', damage_value: '',
 };
 
 /** The measure a basis charges in, from amounts, or why it can't. */
@@ -127,23 +140,21 @@ export interface Charged {
 const total = (parts: Array<Amounts | undefined>) => (parts.some((p) => p === undefined) ? undefined : sum(parts as Amounts[]));
 
 /**
- * The quantity charged for a basis by `chargeOn` (3.5.4). Before anything is loaded the planned quantity stands in;
- * while drops are still open, the loaded quantity stands in for the delivered one. Both are estimates.
+ * The quantity charged by `chargeOn` (3.5.4), read through `measure`. Before anything is loaded the planned quantity
+ * stands in; while drops are still open, the loaded quantity stands in for the delivered one. Both are estimates.
+ * `greater_of` and `lesser_of` compare what `measure` gives.
  */
-export function chargedQuantity(basis: RateBasis, chargeOn: ChargeOn, facts: PricingFacts): Charged | { problem: string } {
+export function chargedBy<T extends { qty: number }>(chargeOn: ChargeOn, facts: PricingFacts, measure: (a: Amounts) => T | { problem: string }):
+  (T & Omit<Charged, 'qty'>) | { problem: string } {
   const lines = perLine(facts);
   const state = progress(facts);
-  const measureBasis = basis === 'per_tonne_km' ? 'per_tonne' : basis;
-  const read = (which: 'planned' | 'loaded' | 'delivered') => {
+  const use = (which: Charged['from'], estimated: boolean, note?: string): (T & Omit<Charged, 'qty'>) | { problem: string } => {
     const a = total(lines.map((l) => l[which]));
-    return a === undefined ? undefined : measureFor(measureBasis, a, facts.number);
-  };
-  const use = (which: Charged['from'], estimated: boolean, note?: string): Charged | { problem: string } => {
-    const m = read(which);
-    if (!m) {
+    if (!a) {
       return { problem: which === 'planned' ? `${facts.number} has no planned or loaded quantity yet, so it can't be priced.` : `${facts.number} has a goods line with nothing ${which} on it.` };
     }
-    return 'problem' in m ? m : { qty: m.qty, from: which, estimated, ...(note ? { note } : {}) };
+    const m = measure(a);
+    return 'problem' in m ? m : { ...m, from: which, estimated, ...(note ? { note } : {}) };
   };
   if (!state.pickedUp) {
     if (chargeOn === 'planned' || lines.every((l) => l.planned) || !state.anyPickupDone) return use('planned', true, state.anyPickupDone ? 'some pickups are still to come' : 'nothing is loaded yet');
@@ -158,6 +169,44 @@ export function chargedQuantity(basis: RateBasis, chargeOn: ChargeOn, facts: Pri
   if ('problem' in loaded) return loaded;
   if ('problem' in delivered) return delivered;
   return (chargeOn === 'greater_of') === loaded.qty >= delivered.qty ? loaded : delivered;
+}
+
+/** The quantity a basis charges, by `chargeOn`. */
+export function chargedQuantity(basis: RateBasis, chargeOn: ChargeOn, facts: PricingFacts): Charged | { problem: string } {
+  const measureBasis = basis === 'per_tonne_km' ? 'per_tonne' : basis;
+  return chargedBy(chargeOn, facts, (a) => measureFor(measureBasis, a, facts.number));
+}
+
+/** The whole charged quantity in every measure, for a formula's variables. */
+export function chargedAmounts(chargeOn: ChargeOn, facts: PricingFacts) {
+  return chargedBy(chargeOn, facts, (a) => ({ ...a }));
+}
+
+export interface WeightRules {
+  volumetricDivisorKgPerM3?: number;
+  minimumChargeableKg?: number;
+  roundQtyUpTo?: number;
+}
+
+/** The booked volume of every goods line, when each has one. */
+export function bookedM3(facts: PricingFacts): number | undefined {
+  return facts.lines.every((l) => l.volumeM3 !== undefined) && facts.lines.length ? facts.lines.reduce((s, l) => s + l.volumeM3!, 0) : undefined;
+}
+
+/**
+ * Chargeable weight (3.5.4): the greatest of the actual kg, the volumetric kg (m³ × the divisor) and the least
+ * chargeable kg, then rounded up to the next `roundQtyUpTo`.
+ */
+export function chargeableKg(a: Amounts, rules: WeightRules, facts: PricingFacts):
+  { kg: number; actualKg: number; volumetricKg?: number; m3?: number } | { problem: string } {
+  if (a.kg === undefined) return { problem: `${facts.number} has no weight or density, so its chargeable weight can't be worked out.` };
+  const m3 = a.litres !== undefined ? a.litres / 1000 : bookedM3(facts);
+  const divisor = rules.volumetricDivisorKgPerM3;
+  const volumetricKg = divisor && m3 !== undefined ? m3 * divisor : undefined;
+  let kg = Math.max(a.kg, volumetricKg ?? 0, rules.minimumChargeableKg ?? 0);
+  const step = rules.roundQtyUpTo;
+  if (step && step > 0) kg = Math.ceil(round3(kg / step)) * step;
+  return { kg: round3(kg), actualKg: round3(a.kg), ...(volumetricKg !== undefined ? { volumetricKg: round3(volumetricKg), m3: round3(m3!) } : {}) };
 }
 
 /** Customer-side transit loss per goods line, once the last drop is recorded (3.5.5): fuel at 20 °C, else in its own unit. */

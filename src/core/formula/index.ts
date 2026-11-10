@@ -116,7 +116,8 @@ export function check(source: string, options: CheckOptions): string[] {
   const problems = f.names
     .filter((n) => !exact.has(n) && !prefixes.some((p) => n.startsWith(p) && n.length > p.length))
     .map((n) => `${unknown(n, exact)}.`.replace('?.', '?'));
-  if (problems.length || !options.sample) return problems;
+  // A dry run needs a value for every name; one admitted by a prefix ("custom.") may not have a sample, so skip it.
+  if (problems.length || !options.sample || f.names.some((n) => !Object.hasOwn(options.sample!, n))) return problems;
   try {
     evaluate(f, options.sample, options.expect);
   } catch (err) {
