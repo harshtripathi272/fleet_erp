@@ -138,8 +138,8 @@ const SECTIONS: { title: string; description: string; settings: Setting[] }[] = 
       },
       {
         key: "chargeOnDefault", title: "Quantity charged",
-        description: "Which quantity a rate per litre, tonne or piece is charged on. Until the last drop, the loaded quantity stands in for the delivered one as an estimate.",
-        control: { kind: "choice", options: [{ value: "loaded", label: "Loaded" }, { value: "delivered", label: "Delivered" }, { value: "planned", label: "Planned" }, { value: "greater_of", label: "The greater" }, { value: "lesser_of", label: "The lesser" }] },
+        description: "Which quantity a rate per litre, tonne or piece is charged on. Greater and Lesser compare the loaded and the delivered quantity. Until the last drop, the loaded quantity stands in for the delivered one as an estimate.",
+        control: { kind: "choice", options: [{ value: "loaded", label: "Loaded" }, { value: "delivered", label: "Delivered" }, { value: "planned", label: "Planned" }, { value: "greater_of", label: "Greater" }, { value: "lesser_of", label: "Lesser" }] },
       },
       {
         key: "priceOnDefault", title: "Priced on the day of",
@@ -178,8 +178,8 @@ const SECTIONS: { title: string; description: string; settings: Setting[] }[] = 
       },
       {
         key: "freezeOn", title: "A price stops changing",
-        description: "Until then it is worked out again whenever a quantity, a stop or the tariff changes. After it, changing it needs “Reopen pricing”.",
-        control: { kind: "choice", options: [{ value: "invoice_or_settlement", label: "When invoiced or the trip is settled" }, { value: "delivery", label: "When delivered" }, { value: "manual", label: "Only when someone freezes it" }] },
+        description: "When the consignment is invoiced or its trip is settled, when it is delivered, or only when someone presses Freeze. Until then it is worked out again whenever a quantity, a stop or the tariff changes. After it, changing it needs “Reopen pricing”.",
+        control: { kind: "choice", options: [{ value: "invoice_or_settlement", label: "Invoiced or settled" }, { value: "delivery", label: "Delivered" }, { value: "manual", label: "By hand" }] },
       },
       {
         key: "invoiceWithoutPod", title: "Invoice before the proof of delivery is in",
@@ -220,7 +220,7 @@ const SECTIONS: { title: string; description: string; settings: Setting[] }[] = 
       {
         key: "transferRevenueSplit", title: "A consignment moved to another truck earns for",
         description: "Which trip counts its revenue: the one that delivers it, the one it started on, or each by the distance it carried it.",
-        control: { kind: "choice", options: [{ value: "delivering_trip", label: "The delivering trip" }, { value: "first_trip", label: "The first trip" }, { value: "by_km", label: "Each by distance" }] },
+        control: { kind: "choice", options: [{ value: "delivering_trip", label: "Delivering trip" }, { value: "first_trip", label: "First trip" }, { value: "by_km", label: "By distance" }] },
       },
       {
         key: "showProfitOnTripList", title: "Revenue and profit on the trips list",
@@ -314,9 +314,9 @@ export function FreightSettings() {
         return <ChoiceChips label={s.title} disabled={!writable} options={c.options.map((o) => ({ value: o.value, label: optionLabel(s.key, o) }))} value={value} onChange={(v) => set(s.key, v)} />;
       }
       case "number":
-        return <UnitInput label={s.title} unit={c.unit} step={c.step} value={String(form[s.key] ?? "")} disabled={!writable} onChange={(v) => set(s.key, v)} />;
+        return <span className="unit-wide"><UnitInput label={s.title} unit={c.unit} step={c.step} value={String(form[s.key] ?? "")} disabled={!writable} onChange={(v) => set(s.key, v)} /></span>;
       case "money":
-        return <UnitInput label={s.title} unit={`${base?.code ?? ""} per ${c.per}`.trim()} step={1 / 10 ** minorUnits} value={String(form[s.key] ?? "")} disabled={!writable} onChange={(v) => set(s.key, v)} />;
+        return <span className="unit-wide"><UnitInput label={s.title} unit={`${base?.code ?? ""} per ${c.per}`.trim()} step={1 / 10 ** minorUnits} value={String(form[s.key] ?? "")} disabled={!writable} onChange={(v) => set(s.key, v)} /></span>;
       case "consignment-type":
         return (
           <select id={id} className="input" value={String(form[s.key] ?? "")} disabled={!writable} onChange={(e) => set(s.key, e.target.value)}>
