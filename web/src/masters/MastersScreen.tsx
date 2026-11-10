@@ -11,6 +11,7 @@ import { Button, ChoiceChips, Drawer, Empty, Field, FieldGroup, Status, Switch, 
 import { WorkspacePanel } from "./WorkspacePanel";
 import { InstallationPanel } from "./Installation";
 import { CompanyPanel } from "./CompanyPanel";
+import { FreightSettings } from "./FreightSettings";
 import { DriverAccess } from "./DriverAccess";
 import { UserAccess } from "./UserAccess";
 import { PermissionMatrix } from "./PermissionMatrix";
@@ -128,6 +129,7 @@ export function MastersScreen({ initialEntity, initialId }: { initialEntity?: st
           const pages = [
             { key: "setup", label: "Ready for a first trip", badge: readiness.data?.missing.length ?? 0, show: can(me, "company", "read") },
             { key: "company", label: "Company", show: can(me, "company", "read") },
+            { key: "freight", label: "Freight", show: can(me, "company", "read") },
             { key: "workspace", label: "Words, stages and desks", show: can(me, "company", "read") },
             { key: "installation", label: "This installation", show: can(me, "company", "read") },
             { key: "messaging", label: "Sending messages", show: can(me, "connections", "read") },
@@ -165,6 +167,7 @@ export function MastersScreen({ initialEntity, initialId }: { initialEntity?: st
         <button className="masters-back link-btn" onClick={() => { setBrowsing(true); window.scrollTo({ top: 0 }); }}><ChevronLeft size={16} /> All masters</button>
         {selected === "setup" ? <CompanySetup defs={defs} onOpen={(key) => setSelected(key)} />
           : selected === "company" ? <CompanyPanel />
+          : selected === "freight" ? <FreightSettings />
           : selected === "workspace" ? <WorkspacePanel />
           : selected === "installation" ? <InstallationPanel />
           : selected === "messaging" ? <MessagingSettings onOpenConnections={() => setSelected("connections")} />
