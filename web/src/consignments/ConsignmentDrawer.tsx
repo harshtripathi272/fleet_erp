@@ -9,7 +9,7 @@ import { byId } from "../domain/calc";
 import { w, wl } from "../domain/words";
 import { Button, Drawer, Empty, Field, Segmented, Status, SwitchField, UnitInput } from "../ui/kit";
 import { calendarDate, clockTime, day, num, phonePlaceholder } from "../ui/format";
-import { cnFrom, CN_STATUS_LABEL, cnStatusTone, type Cn, type CnLeg } from "./model";
+import { cnFrom, CN_STATUS_LABEL, cnStatusTone, maySplit, type Cn, type CnLeg } from "./model";
 import { moneyText, qtyText } from "./TripConsignments";
 import { RevenuePanel } from "./RevenuePanel";
 import { SplitDelivery } from "./SplitDelivery";
@@ -234,7 +234,7 @@ export function ConsignmentDrawer({ id, tripId, onClose }: { id?: string; tripId
             </fieldset>
           )}
 
-          {tab === "legs" && c && <Legs data={data} c={c} onSplit={() => setSplitting(true)} />}
+          {tab === "legs" && c && <Legs data={data} c={c} splittable={maySplit(c, types.data)} onSplit={() => setSplitting(true)} />}
           {tab === "documents" && c && <Papers data={data} c={c} />}
           {tab === "revenue" && c?.revenue && <RevenuePanel c={c} onChanged={() => after("Revenue updated.")} />}
           {tab === "history" && c && <History data={data} c={c} />}
@@ -286,7 +286,7 @@ function legQty(c: Cn, l: CnLeg) {
 }
 
 /** Loads and drops (design 3.11.3): pickups, then drops, each a numbered card; "Split delivery" when it may have several drops. */
-function Legs({ data, c, onSplit }: { data: ReturnType<typeof useApp>["data"]; c: Cn; onSplit: () => void }) {
+function Legs({ data, c, splittable, onSplit }: { data: ReturnType<typeof useApp>["data"]; c: Cn; splittable: boolean; onSplit: () => void }) {
   const open = c.legs.some((l) => l.kind === "drop" && l.status === "planned");
   const card = (l: CnLeg, n: number) => (
     <div key={l.id} className="item-card">
@@ -313,7 +313,8 @@ function Legs({ data, c, onSplit }: { data: ReturnType<typeof useApp>["data"]; c
       {pickups.map((l, i) => card(l, i + 1))}
       <h4>Drops</h4>
       {drops.map((l, i) => card(l, i + 1))}
-      {open && <div><Button onClick={onSplit}>Split delivery</Button></div>}
+      {open && splittable && <div><Button onClick={onSplit}>Split delivery</Button></div>}
+      {open && !splittable && <p className="muted">This {w(data, "consignment").toLowerCase()}'s type is dropped at one place. To split it between places, give it a type that allows several drops under Details.</p>}
     </div>
   );
 }

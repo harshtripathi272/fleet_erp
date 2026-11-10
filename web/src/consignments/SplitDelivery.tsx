@@ -23,10 +23,13 @@ const row = (patch: Partial<Row> = {}): Row => ({ key: `d${++keys}`, placeId: ""
 export function SplitDelivery({ c, onClose, onSaved }: { c: Cn; onClose: () => void; onSaved: () => void }) {
   const { data } = useApp();
   const line = c.lines[0];
-  const unit = line?.unit ?? "";
+  // Fuel is placed in litres at 20 °C, as the server counts what is on board; other goods in their own unit.
+  const corrected = c.legs.some((l) => l.kind === "pickup" && l.actual?.some((m) => m.lineId === line?.id && (m.certStd20L ?? m.std20L) !== undefined));
+  const unit = corrected ? "L at 20 °C" : line?.unit ?? "";
+  const measured = (m: { qty: number; std20L?: number; certStd20L?: number }) => (corrected ? m.certStd20L ?? m.std20L ?? m.qty : m.qty);
   const doneDrops = c.legs.filter((l) => l.kind === "drop" && l.status === "done");
-  const loaded = c.legs.filter((l) => l.kind === "pickup" && l.status === "done").flatMap((l) => l.actual ?? []).filter((m) => m.lineId === line?.id).reduce((s, m) => s + m.qty, 0);
-  const dropped = doneDrops.flatMap((l) => l.actual ?? []).filter((m) => m.lineId === line?.id).reduce((s, m) => s + m.qty, 0);
+  const loaded = c.legs.filter((l) => l.kind === "pickup" && l.status === "done").flatMap((l) => l.actual ?? []).filter((m) => m.lineId === line?.id).reduce((s, m) => s + measured(m), 0);
+  const dropped = doneDrops.flatMap((l) => l.actual ?? []).filter((m) => m.lineId === line?.id).reduce((s, m) => s + measured(m), 0);
   const toPlace = Math.max(0, (loaded || line?.plannedQty || 0) - dropped);
   const [rows, setRows] = useState<Row[]>(() => {
     const open = c.legs.filter((l) => l.kind === "drop" && l.status === "planned");
@@ -91,20 +94,20 @@ export function SplitDelivery({ c, onClose, onSaved }: { c: Cn; onClose: () => v
             {doneDrops.map((l, i) => (
               <tr key={l.id} className="muted">
                 <td>{i + 1}</td><td>{l.placeId ? placeName(data, l.placeId) : "—"}</td><td>{l.pod?.receivedBy ?? l.contact?.name ?? ""}</td><td>{l.contact?.phone ?? ""}</td>
-                <td className="num">{num(l.actual?.reduce((s, m) => s + m.qty, 0) ?? 0, 0, 3)}&nbsp;{unit}</td><td>Done</td>
+                <td className="num">{num(l.actual?.reduce((s, m) => s + measured(m), 0) ?? 0, 0, 3)}&nbsp;{unit}</td><td>Done</td>
               </tr>
             ))}
             {rows.map((r, i) => (
               <tr key={r.key}>
                 <td>{doneDrops.length + i + 1}</td>
                 <td>
-                  <select aria-label={`Drop ${doneDrops.length + i + 1} place`} value={r.placeId} onChange={(e) => set(r.key, { placeId: e.target.value })}>
+                  <select className="input" aria-label={`Drop ${doneDrops.length + i + 1} place`} value={r.placeId} onChange={(e) => set(r.key, { placeId: e.target.value })}>
                     <option value="">To be confirmed</option>
                     {places.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
                   </select>
                 </td>
-                <td><input aria-label={`Drop ${doneDrops.length + i + 1} received by`} value={r.name} placeholder={c.consigneeName} onChange={(e) => set(r.key, { name: e.target.value })} /></td>
-                <td><input aria-label={`Drop ${doneDrops.length + i + 1} phone`} type="tel" value={r.phone} placeholder={phonePlaceholder()} onChange={(e) => set(r.key, { phone: e.target.value })} /></td>
+                <td><input className="input" aria-label={`Drop ${doneDrops.length + i + 1} received by`} value={r.name} placeholder={c.consigneeName} onChange={(e) => set(r.key, { name: e.target.value })} /></td>
+                <td><input className="input" aria-label={`Drop ${doneDrops.length + i + 1} phone`} type="tel" value={r.phone} placeholder={phonePlaceholder()} onChange={(e) => set(r.key, { phone: e.target.value })} /></td>
                 <td><UnitInput label={`Drop ${doneDrops.length + i + 1} quantity`} unit={unit} value={r.qty} onChange={(v) => set(r.key, { qty: v })} /></td>
                 <td>{rows.length > 1 && <Button size="sm" tone="quiet" onClick={() => setRows(rows.filter((x) => x.key !== r.key))}>Remove</Button>}</td>
               </tr>

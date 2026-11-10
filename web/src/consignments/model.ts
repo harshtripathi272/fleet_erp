@@ -189,3 +189,9 @@ export function cnTotals(c: Cn) {
   const delivered = measured("drop").reduce((s, m) => s + (m.accepted ?? m.qty), 0);
   return { unit, planned, loaded: measured("pickup").length ? loaded : undefined, delivered: measured("drop").length ? delivered : undefined };
 }
+
+/** Whether a consignment's type lets it be dropped at several places (a split), from the type's own record. */
+export function maySplit(c: Cn, types: Record<string, unknown>[] | undefined): boolean {
+  const t = types?.find((x) => x.id === c.consignmentTypeId);
+  return Boolean(t?.multiDrop);
+}

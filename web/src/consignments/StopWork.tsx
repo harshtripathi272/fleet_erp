@@ -11,7 +11,7 @@ import type { DriverDoc, Product, Stop, Trip } from "../domain/types";
 import { Button, Empty, Field, Status, UnitInput } from "../ui/kit";
 import { clockTime, day, hoursText, num } from "../ui/format";
 import { DocHeader, DocPhoto, ReturnDoc, UploadDoc } from "../desks/stages";
-import { CN_STATUS_LABEL, cnStatusTone, type Cn, type CnLeg } from "./model";
+import { CN_STATUS_LABEL, cnStatusTone, maySplit, type Cn, type CnLeg } from "./model";
 import { ConsignmentDrawer } from "./ConsignmentDrawer";
 import { SplitDelivery } from "./SplitDelivery";
 
@@ -64,6 +64,7 @@ function StopBlock({ trip, stop, kind, cns, openByDefault }: { trip: Trip; stop:
   const [working, setWorking] = useState<string | null>(null);
   const [splitting, setSplitting] = useState<Cn | null>(null);
   const here = cns.flatMap((c) => c.legs.filter((l) => l.kind === kind && l.stopId === stop.id).map((l) => ({ c, l })));
+  const types = useQuery({ queryKey: ["consignment-types-active"], queryFn: () => api<Rec[]>("/consignment-types", { query: { limit: 100, status: "active" } }).catch(() => []) });
   const since = stop.arrivedAt && !stop.leftAt ? (Date.now() + data.settings.clockOffsetMs - new Date(stop.arrivedAt).getTime()) / 36e5 : undefined;
   const verb = kind === "pickup" ? "loading" : "delivery";
   return (
@@ -108,7 +109,7 @@ function StopBlock({ trip, stop, kind, cns, openByDefault }: { trip: Trip; stop:
                             {photo || stop.arrivedAt ? `Record ${verb}` : "Type it without a photo"}
                           </Button>
                         )}
-                        {kind === "drop" && l.status === "planned" && <Button size="sm" tone="quiet" onClick={() => setSplitting(c)}>Split delivery</Button>}
+                        {kind === "drop" && l.status === "planned" && maySplit(c, types.data) && <Button size="sm" tone="quiet" onClick={() => setSplitting(c)}>Split delivery</Button>}
                       </td>
                     </tr>
                   );
