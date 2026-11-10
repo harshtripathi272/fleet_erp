@@ -1,5 +1,6 @@
 import type { Plain } from '../../core/masters/types.js';
 import * as Cargo from '../operations/cargo.service.js';
+import * as Consignments from '../operations/consignments.service.js';
 import * as Expenses from '../operations/expenses.service.js';
 import * as Funding from '../operations/funding.service.js';
 import * as Nominations from '../operations/nominations.service.js';
@@ -82,7 +83,7 @@ export async function loadSampleHistory(ids: Ids, names: Record<string, string>,
     const fuel = plan.load.density !== undefined;
     const loaded = { qty: plan.load.qty, ...(fuel ? { ambientL: plan.load.qty, tempC: plan.load.tempC, density: plan.load.density } : {}) };
     const loadDoc = await sendDoc(plan.driver, tripId, 'loading', { docNo: plan.load.invoiceNo, productId: ids[plan.product], consignor: plan.load.consignor, ...loaded });
-    const consignment = await Cargo.recordLoading(S.loadingSchema.parse({ tripId, productId: ids[plan.product], invoiceNo: plan.load.invoiceNo, consignor: plan.load.consignor, docId: loadDoc, ...loaded }), ops);
+    const consignment = await Consignments.recordLoading(S.loadingSchema.parse({ tripId, productId: ids[plan.product], invoiceNo: plan.load.invoiceNo, consignor: plan.load.consignor, docId: loadDoc, ...loaded }), ops);
     created += 1;
     const onRoad = await Trips.getTrip(tripId) as { stops: Array<{ id: string; kind: string }> };
     for (const stop of onRoad.stops.filter((s) => s.kind === 'border')) await Trips.arriveAtStop(tripId, stop.id, ops);
@@ -99,7 +100,7 @@ export async function loadSampleHistory(ids: Ids, names: Record<string, string>,
       ? { qty: plan.load.qty, ambientL: plan.load.qty, tempC: plan.delivered.tempC ?? 22, density: plan.load.density, certStd20L: Math.round(load.std20L! * (plan.delivered.share ?? 1)) }
       : { qty: plan.delivered.qty ?? load.qty };
     const podDoc = await sendDoc(plan.driver, tripId, 'delivery', { docNo: plan.delivered.podNo, ...delivered });
-    const result = await Cargo.recordDelivery(String(consignment.id), S.deliverySchema.parse({ podNo: plan.delivered.podNo, docId: podDoc, ...delivered }), ops) as { shortage?: { status: string } };
+    const result = await Consignments.recordDelivery(String(consignment.id), S.deliverySchema.parse({ podNo: plan.delivered.podNo, docId: podDoc, ...delivered }), ops) as { shortage?: { status: string } };
     if (result.shortage?.status === 'pending' && plan.shortage) {
       await Cargo.decideShortage(String(consignment.id), plan.shortage === 'charge' ? { charge: true } : { charge: false, note: plan.shortage.waive }, fin);
     }

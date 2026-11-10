@@ -4,6 +4,7 @@ import type { Request, Response } from 'express';
 import { ApiResponse, buildPaginationMeta } from '../../core/response/index.js';
 import { asyncHandler } from '../../utils/asyncHandler.js';
 import * as Cargo from './cargo.service.js';
+import * as Consignments from './consignments.service.js';
 import * as Dashboards from './dashboards.service.js';
 import * as DriverApp from './driverApp.service.js';
 import * as Expenses from './expenses.service.js';
@@ -31,8 +32,11 @@ function sendPdf(res: Response, pdf: { name: string; body: Buffer }) {
 }
 
 /* Trips */
-export const listTrips = asyncHandler(async (req, res) => paged(res, await Trips.listTrips(query(req))));
-export const getTrip = asyncHandler(async (req, res) => ApiResponse.success(res, await Trips.getTrip(param(req))));
+export const listTrips = asyncHandler(async (req, res) => {
+  const page = await Trips.listTrips(query(req));
+  return paged(res, { ...page, data: page.data.map((t) => Dashboards.withoutProfit(t, req.auth!.can)) });
+});
+export const getTrip = asyncHandler(async (req, res) => ApiResponse.success(res, Dashboards.withoutProfit(await Trips.getTrip(param(req)), req.auth!.can)));
 export const createTrip = asyncHandler(async (req, res) => ApiResponse.created(res, await Trips.createTrip(req.body, opsContext(req)), 'Trip created'));
 export const updateTrip = asyncHandler(async (req, res) => ApiResponse.success(res, await Trips.updateTrip(param(req), req.body, opsContext(req)), 'Plan updated'));
 export const cancelTrip = asyncHandler(async (req, res) => ApiResponse.success(res, await Trips.cancelTrip(param(req), req.body, opsContext(req)), 'Trip cancelled'));
@@ -65,10 +69,10 @@ export const getDocument = asyncHandler(async (req, res) => ApiResponse.success(
 export const sendDocument = asyncHandler(async (req, res) => ApiResponse.created(res, await Cargo.sendDocument(req.body, opsContext(req)), 'Document received'));
 export const markDocumentDone = asyncHandler(async (req, res) => ApiResponse.success(res, await Cargo.markDone(param(req), opsContext(req)), 'Done'));
 export const returnDocument = asyncHandler(async (req, res) => ApiResponse.success(res, await Cargo.returnDocument(param(req), req.body, opsContext(req)), 'Returned to the driver'));
-export const listConsignments = asyncHandler(async (req, res) => paged(res, await Cargo.listConsignments(query(req))));
-export const getConsignment = asyncHandler(async (req, res) => ApiResponse.success(res, await Cargo.getConsignment(param(req))));
-export const recordLoading = asyncHandler(async (req, res) => ApiResponse.created(res, await Cargo.recordLoading(req.body, opsContext(req)), 'Loading recorded'));
-export const recordDelivery = asyncHandler(async (req, res) => ApiResponse.success(res, await Cargo.recordDelivery(param(req), req.body, opsContext(req)), 'Delivery recorded'));
+export const listConsignments = asyncHandler(async (req, res) => paged(res, await Consignments.listConsignments(query(req), opsContext(req))));
+export const getConsignment = asyncHandler(async (req, res) => ApiResponse.success(res, await Consignments.getConsignment(param(req), opsContext(req))));
+export const recordLoading = asyncHandler(async (req, res) => ApiResponse.created(res, await Consignments.recordLoading(req.body, opsContext(req)), 'Loading recorded'));
+export const recordDelivery = asyncHandler(async (req, res) => ApiResponse.success(res, await Consignments.recordDelivery(param(req), req.body, opsContext(req)), 'Delivery recorded'));
 export const decideShortage = asyncHandler(async (req, res) => ApiResponse.success(res, await Cargo.decideShortage(param(req), req.body, opsContext(req))));
 
 /* Expenses */

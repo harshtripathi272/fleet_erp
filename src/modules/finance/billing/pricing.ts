@@ -3,6 +3,7 @@ import { NotFoundError } from '../../../core/errors/index.js';
 import type { Plain } from '../../../core/masters/types.js';
 import { Product } from '../../cargo/models/product.model.js';
 import { Consignment } from '../../operations/models/cargo.model.js';
+import { presentConsignment } from '../../operations/consignments.service.js';
 import { refuse } from '../../operations/support.js';
 import { routeLabel } from '../../operations/trips.service.js';
 import { applyRate, rateBetween } from '../finance.service.js';
@@ -140,7 +141,8 @@ export async function priceTrip(trip: Plain, currencyId: string, date: Date, set
   const route = await routeLabel(trip as never);
   const taxPercent = taxPercentFor(settings, rate);
   const lines: PricedLine[] = [];
-  const consignments = await Consignment.find({ tripId: trip._id }).sort({ loadedAt: 1 }).lean() as Plain[];
+  // Each consignment's loaded and delivered totals, in the shape this pricing reads (#135).
+  const consignments = (await Consignment.find({ tripId: trip._id, status: { $nin: ['cancelled', 'draft'] } }).sort({ loadedAt: 1 }).lean() as Plain[]).map((c) => presentConsignment(c));
   const basis = String(rate.basis);
   // The unit price is converted with more precision than a minor unit allows, so 37,850 L × 0.0123 USD stays right.
   const unitPrice = Number(price.amountMinor) * (from.id === to.id ? 1 : await rateOrRefuse(from.id, to.id, date)) * 10 ** (to.minorUnits - from.minorUnits);
@@ -155,7 +157,7 @@ export async function priceTrip(trip: Plain, currencyId: string, date: Date, set
     for (const c of consignments) {
       const measure = (settings.billOn === 'loaded' ? c.load : c.delivered ?? undefined) as Plain | undefined;
       const qty = await quantity(basis, measure, c.productId, `Consignment ${c.number}`);
-      lines.push({ ...base, consignmentId: c._id, description: `${trip.number} · ${route} · ${settings.billOn === 'loaded' ? 'loaded' : 'delivered'}`, qty, unitPriceMinor: unitPrice });
+      lines.push({ ...base, consignmentId: c.id, description: `${trip.number} · ${route} · ${settings.billOn === 'loaded' ? 'loaded' : 'delivered'}`, qty, unitPriceMinor: unitPrice });
       freightMinor += Math.round(qty * Number(price.amountMinor));
     }
     if (!lines.length) throw refuse(`Nothing was loaded on ${trip.number}.`);
@@ -170,7 +172,7 @@ export async function priceTrip(trip: Plain, currencyId: string, date: Date, set
       if (!s?.netShortL || s.netShortL <= 0 || !s.pricePerL) continue;
       const per = await currencyUnits(s.pricePerL.currencyId);
       const unit = Number(s.pricePerL.amountMinor) * (per.id === to.id ? 1 : await rateOrRefuse(per.id, to.id, date)) * 10 ** (to.minorUnits - per.minorUnits);
-      lines.push({ kind: 'shortage', tripId: trip._id, consignmentId: c._id, description: `${trip.number} · shortage beyond the allowance`, qty: round3(s.netShortL), unit: 'L', unitPriceMinor: -unit, taxPercent });
+      lines.push({ kind: 'shortage', tripId: trip._id, consignmentId: c.id, description: `${trip.number} · shortage beyond the allowance`, qty: round3(s.netShortL), unit: 'L', unitPriceMinor: -unit, taxPercent });
     }
   }
   return lines;
