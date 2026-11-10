@@ -103,6 +103,9 @@ export interface ExpenseCategory {
   name: string;
 }
 /** The Company → Freight settings the screens act on (the server's `effectiveFreight`). */
+export type { Cn } from "../consignments/model";
+import type { Cn } from "../consignments/model";
+
 export interface FreightRules {
   consignmentBy: "loading" | "dispatch";
   /** 0: no limit. */
@@ -447,6 +450,8 @@ export interface AppData {
   requests: FundRequest[];
   docs: DriverDoc[];
   consignments: Consignment[];
+  /** Every consignment in the shape of #135, for the consignment screens. */
+  cns: Cn[];
   expenses: Expense[];
   settlements: Settlement[];
   messages: Message[];

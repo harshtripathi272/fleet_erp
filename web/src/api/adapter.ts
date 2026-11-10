@@ -5,6 +5,7 @@ import type {
 } from "../domain/types";
 import { setBaseCurrencyCode, setRegional, type Regional } from "../ui/format";
 import { DEFAULT_DESKS, DEFAULT_STAGES, DEFAULT_WORDS } from "../domain/words";
+import { cnFrom, type Cn } from "../consignments/model";
 
 /**
  * Maps API records onto the shape the desks were built against (`AppData` from the trip-flow mock), so
@@ -239,8 +240,16 @@ export function toAppData(ref: Reference, ops: Operations): AppData {
     status: d.status, recordRef: d.recordRef, returnReason: d.returnReason, at: d.at,
   })).sort((a, b) => a.at.localeCompare(b.at));
 
-  const consignments: Consignment[] = ops.consignments.map((c) => ({
-    id: c.id, no: c.number, tripId: c.tripId, productId: c.productId, invoiceNo: c.invoiceNo, consignor: c.consignor ?? "—", consignee: c.consignee ?? "",
+  // Consignments come in the shape of #135 (lines, legs, papers, revenue). `cns` is that shape for the consignment
+  // screens; `consignments` keeps the one-load shape the stage panels read, for the ones loaded so far.
+  const partyById = new Map(ref.parties.map((p) => [String(p.id), p] as const));
+  const partyName = (id: unknown) => (id ? (partyById.get(String(id))?.name as string | undefined) : undefined);
+  const partyPhone = (id: unknown) => (id ? ((partyById.get(String(id))?.phone ?? partyById.get(String(id))?.contacts?.[0]?.phone) as string | undefined) : undefined);
+  const cns: Cn[] = ops.consignments.map((c) => cnFrom(c, partyName, partyPhone));
+  const contactName = (v: unknown, partyId: unknown) => (typeof v === "string" ? v : (v as Rec | null)?.name ?? partyName(partyId));
+  const consignments: Consignment[] = ops.consignments.filter((c) => c.load).map((c) => ({
+    id: c.id, no: c.number, tripId: c.tripId, productId: c.productId, invoiceNo: c.invoiceNo ?? "",
+    consignor: contactName(c.consignor, c.consignorPartyId ?? c.customerId) ?? "—", consignee: contactName(c.consignee, c.consigneePartyId) ?? "",
     custom: c.custom,
     loadedAt: c.loadedAt, loadDocId: c.loadDocId, load: c.load,
     delivered: c.delivered ? { ...c.delivered, at: c.delivered.at, podNo: c.delivered.podNo, docId: c.delivered.docId } : undefined,
@@ -256,7 +265,7 @@ export function toAppData(ref: Reference, ops: Operations): AppData {
       status: c.writeOff.status, carrier: c.writeOff.carrier, amountBase: baseMajor(c.writeOff.baseAmountMinor), reason: c.writeOff.reason,
       requestedByName: c.writeOff.requestedByName, decidedAt: c.writeOff.decidedAt, note: c.writeOff.note,
     } : undefined,
-  })).sort((a, b) => a.loadedAt.localeCompare(b.loadedAt));
+  })).sort((a, b) => String(a.loadedAt ?? "").localeCompare(String(b.loadedAt ?? "")));
 
   const expenses: Expense[] = ops.expenses.map((e) => ({
     custom: e.custom,
@@ -323,7 +332,7 @@ export function toAppData(ref: Reference, ops: Operations): AppData {
       people: { owner: named("owner", "Owner"), operations: named("operations", "Operations"), finance: named("finance", "Finance") },
     },
     places, customers, drivers, trucks, trailers, pairings, routes, products, categories,
-    nominations, trips, requests, docs, consignments, expenses, settlements, messages, events,
+    nominations, trips, requests, docs, consignments, cns, expenses, settlements, messages, events,
     reads: Object.fromEntries(ops.reads.map((r) => [r.thread, r.at])),
     paymentMethods: ref.paymentMethods.filter((m) => m.status === "active").map((m) => ({ id: m.id, name: m.name, kind: m.kind, forFuel: Boolean(m.forFuel), forCash: m.forCash !== false, referenceRequired: m.referenceRequired !== false })),
     orderSources: ref.orderSources.filter((o) => o.status === "active").map((o) => ({ id: o.id, name: o.name, referenceRequired: Boolean(o.referenceRequired) })),

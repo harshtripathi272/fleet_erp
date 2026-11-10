@@ -23,7 +23,7 @@ type Line = {
   _id?: string; key: string; chargeTypeId: string; description?: string; basis: string; price?: Money; slabs?: Slab[]; slabMode?: string;
   percent?: number; when?: string; formula?: string; perLine?: boolean; freeQty?: number; minimum?: Money; maximum?: Money; taxRatePercent?: number;
 };
-type Basis = { value: string; label: string; sentence?: string; price: "price" | "percent" | "formula" | "none"; free: boolean };
+type Basis = { value: string; label: string; sentence?: string; price: "price" | "percent" | "formula" | "none"; priceOptional?: boolean; free: boolean };
 type Variable = { name: string; meaning?: string; help?: string; kind: string };
 
 const CONDITIONS: { key: string; label: string; target: string }[] = [
@@ -346,7 +346,7 @@ function LineCard({ n, line, bases, variables, chargeTypes, code, units, disable
           <Field label="Percent"><UnitInput label="Percent" unit="%" step={0.01} value={line.percent ?? ""} onChange={(v) => up({ percent: v === "" ? undefined : Number(v) })} disabled={disabled} /></Field>
         )}
         {(priceKind === "price" || priceKind === "none") && !line.slabs?.length && (
-          <Field label={`${priceLabel(basis)}${priceKind === "none" || ["shortage_beyond_allowance", "damage_value"].includes(line.basis) ? " (optional)" : ""}`}>
+          <Field label={`${priceLabel(basis)}${priceKind === "none" || basis?.priceOptional ? " (optional)" : ""}`} hint={basis?.priceOptional ? "Empty: the product's shortage price, or the goods' declared value." : undefined}>
             <MoneyBox label={priceLabel(basis)} code={code} units={units} value={line.price?.amountMinor} onChange={(m) => up({ price: money(m) })} disabled={disabled} />
           </Field>
         )}
@@ -450,16 +450,17 @@ function Reference({ variables }: { variables: Variable[] }) {
   );
 }
 
-const SAMPLE_FIELDS: { key: string; label: string; unit: string }[] = [
-  { key: "qty", label: "Quantity, in the goods' unit", unit: "" }, { key: "km", label: "Distance", unit: "km" }, { key: "drops", label: "Drops", unit: "drops" },
-  { key: "pickups", label: "Pickups", unit: "pickups" }, { key: "kg", label: "Weight", unit: "kg" }, { key: "litres20", label: "Litres at 20 °C", unit: "L" },
+const SAMPLE_FIELDS: { key: string; label: string; unit: string; text?: boolean }[] = [
+  { key: "unit", label: "Goods measured in", unit: "", text: true }, { key: "loadedQty", label: "Loaded", unit: "" }, { key: "deliveredQty", label: "Delivered", unit: "" },
+  { key: "km", label: "Distance", unit: "km" }, { key: "drops", label: "Drops", unit: "drops" }, { key: "pickups", label: "Pickups", unit: "pickups" },
+  { key: "grossKg", label: "Weight", unit: "kg" }, { key: "volumeM3", label: "Volume", unit: "m³" }, { key: "litres20", label: "Litres at 20 °C", unit: "L" },
   { key: "pieces", label: "Pieces", unit: "pieces" }, { key: "declaredValue", label: "Declared value", unit: "" },
 ];
 
 /** "Try it" (design 3.11.9, step 5): price sample figures or a real consignment against the tariff as it is on screen. */
 function TryIt({ body, ready, code, units }: { body: Rec; ready: boolean; code: string; units: number }) {
   const [mode, setMode] = useState<"sample" | "consignment">("sample");
-  const [sample, setSample] = useState<Record<string, string>>({ qty: "38000", km: "1840", drops: "1" });
+  const [sample, setSample] = useState<Record<string, string>>({ unit: "t", loadedQty: "30", deliveredQty: "29.8", km: "1840", drops: "1" });
   const [search, setSearch] = useState("");
   const [consignmentId, setConsignmentId] = useState("");
   const [busy, setBusy] = useState(false);
@@ -474,7 +475,7 @@ function TryIt({ body, ready, code, units }: { body: Rec; ready: boolean; code: 
     setBusy(true);
     setError("");
     try {
-      const figures = Object.fromEntries(Object.entries(sample).filter(([, v]) => v.trim() !== "").map(([k, v]) => [k, Number(v)]));
+      const figures = Object.fromEntries(Object.entries(sample).filter(([, v]) => v.trim() !== "").map(([k, v]) => [k, k === "unit" ? v.trim() : Number(v)]));
       setAnswer(await api<Rec>("/tariffs/try", { method: "POST", body: { tariff: body, ...(mode === "consignment" && consignmentId ? { consignmentId } : { sample: figures }) } }));
     } catch (err) {
       setAnswer(null);
@@ -493,7 +494,10 @@ function TryIt({ body, ready, code, units }: { body: Rec; ready: boolean; code: 
       {mode === "sample" ? (
         <div className="tariff-sample">
           {SAMPLE_FIELDS.map((f) => (
-            <Field key={f.key} label={f.label}><UnitInput label={f.label} unit={f.key === "declaredValue" ? code : f.unit} value={sample[f.key] ?? ""} onChange={(v) => setSample((s) => ({ ...s, [f.key]: v }))} /></Field>
+            <Field key={f.key} label={f.label}>
+              {f.text ? <input className="input" value={sample[f.key] ?? ""} placeholder="L, t, kg, bags" onChange={(e) => setSample((s) => ({ ...s, [f.key]: e.target.value }))} />
+                : <UnitInput label={f.label} unit={f.key === "declaredValue" ? code : f.key === "loadedQty" || f.key === "deliveredQty" ? sample.unit ?? "" : f.unit} value={sample[f.key] ?? ""} onChange={(v) => setSample((s) => ({ ...s, [f.key]: v }))} />}
+            </Field>
           ))}
         </div>
       ) : (
