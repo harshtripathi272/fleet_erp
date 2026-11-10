@@ -32,7 +32,7 @@ export function checkTariff(tariff: Pick<TariffInput, 'lines' | 'currencyId'>): 
         from = top;
         if (slab.price.currencyId !== tariff.currencyId) add(`slab ${j + 1} is priced in another currency than the tariff.`);
       });
-    } else if (!['formula', 'percent_of_freight', 'percent_of_value', 'shortage_beyond_allowance'].includes(line.basis) && !line.price) add('it needs a price.');
+    } else if (!['formula', 'percent_of_freight', 'percent_of_value', 'shortage_beyond_allowance', 'damage_value'].includes(line.basis) && !line.price) add('it needs a price.');
     if (line.price && line.price.currencyId !== tariff.currencyId) add('it is priced in another currency than the tariff.');
   });
   return problems;

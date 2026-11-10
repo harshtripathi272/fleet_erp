@@ -41,6 +41,12 @@ export const FORMULA_VARIABLES = [
   { name: 'fromCountry', kind: 'text', help: 'The first pickup\'s country code' },
   { name: 'toCountry', kind: 'text', help: 'The last drop\'s country code' },
   { name: 'paymentTerms', kind: 'text', help: 'to_be_billed, paid or to_pay' },
+  { name: 'line.qty', kind: 'number', help: 'On a line worked out per goods line: that line\'s quantity charged' },
+  { name: 'line.kg', kind: 'number', help: 'That goods line\'s weight' },
+  { name: 'line.litres', kind: 'number', help: 'That goods line\'s litres as measured' },
+  { name: 'line.litres20', kind: 'number', help: 'That goods line\'s litres at 20 °C' },
+  { name: 'line.pieces', kind: 'number', help: 'That goods line\'s pieces' },
+  { name: 'line.product', kind: 'text', help: 'That goods line\'s product code' },
 ] as const;
 
 /** Names a tariff formula may use, for `check()` in the tariff master's `prepare`: the list, and any `custom.` field. */
@@ -91,6 +97,12 @@ export function variablesFor(facts: PricingFacts, ctx: VariableContext): Variabl
     fuelPrice: n(facts.fuelPrice),
   };
   for (const code of CODE_NAMES) vars[code] = facts.codes?.[code] ?? null;
+  // On a tariff line worked out per goods line the facts hold that one line; otherwise `line.*` has no value.
+  const single = facts.lines.length === 1 ? facts.lines[0]! : undefined;
+  Object.assign(vars, {
+    'line.qty': single ? vars.qty : null, 'line.kg': single ? vars.kg : null, 'line.litres': single ? vars.litres : null,
+    'line.litres20': single ? vars.litres20 : null, 'line.pieces': single ? vars.pieces : null, 'line.product': single?.productCode ?? null,
+  });
   for (const [key, value] of Object.entries(facts.custom ?? {})) vars[`custom.${key}`] = value ?? null;
   return vars;
 }

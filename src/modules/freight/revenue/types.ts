@@ -13,7 +13,7 @@ export const RATE_BASES = [
   'per_consignment', 'per_trip', 'per_tonne', 'per_kg', 'per_litre', 'per_litre_20', 'per_m3', 'per_piece', 'per_km', 'per_tonne_km',
   'per_drop_beyond', 'shortage_beyond_allowance',
   // The full rate engine (design 3.5.2, phase 3).
-  'percent_of_freight', 'percent_of_value', 'formula',
+  'percent_of_freight', 'percent_of_value', 'formula', 'per_pickup_beyond', 'damage_value',
 ] as const;
 export type RateBasis = (typeof RATE_BASES)[number];
 export const CHARGE_ON = ['loaded', 'delivered', 'planned', 'greater_of', 'lesser_of'] as const;
@@ -57,8 +57,10 @@ export interface TariffLineInput {
   when?: string;
   /** basis `formula`: the amount, in the tariff's currency (major units: 1.8 is USD 1.80). */
   formula?: string;
-  /** Free drops before an extra-drop charge starts (default 1). */
+  /** Free drops (or pickups) before an extra-drop (or extra-pickup) charge starts (default 1). */
   freeQty?: number;
+  /** Worked out once per goods line, each with its own quantity, for mixed goods at different rates. */
+  perLine?: boolean;
   minimum?: Money;
   maximum?: Money;
   taxRatePercent?: number;
@@ -96,6 +98,14 @@ export interface ChargeTypeInput {
   direction?: 'revenue' | 'cost';
   taxable?: boolean;
   printLabel?: string;
+  /**
+   * The engine adds it by itself, from its default basis and price, when the facts for it exist and the tariff has
+   * no line of this type (an extra pickup, damaged goods). Finance can switch it off before invoicing.
+   */
+  autoApply?: boolean;
+  defaultBasis?: RateBasis;
+  defaultPrice?: Money;
+  defaultPercent?: number;
 }
 
 /** Company → Freight and the Money settings the engine reads (`freightSettings()`, `billingSettings()`). */
@@ -144,6 +154,8 @@ export interface FactLine {
   id: Id;
   productId: Id;
   productName?: string;
+  /** For conditions: `line.product = "AGO"`. */
+  productCode?: string;
   plannedQty?: number;
   unit: string;
   pieces?: number;
@@ -223,6 +235,8 @@ export interface RevenueLine {
   source: LineSource;
   tariffLineId?: Id;
   legId?: Id;
+  /** The goods line it prices, for a tariff line worked out per goods line. */
+  lineId?: Id;
   /** A formula line keeps what it computed and what it saw, so the figure can be explained years later (3.5.6). */
   formula?: string;
   variables?: Record<string, number | string | boolean>;

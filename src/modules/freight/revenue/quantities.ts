@@ -64,6 +64,19 @@ export function sum(parts: Amounts[]): Amounts | undefined {
 
 const live = (legs: FactLeg[], kind: FactLeg['kind']) => legs.filter((l) => l.kind === kind && l.status !== 'skipped');
 
+/** The facts of one goods line alone, for a tariff line worked out per goods line. */
+export function onlyLine(facts: PricingFacts, line: FactLine): PricingFacts {
+  return {
+    ...facts,
+    lines: [line],
+    legs: facts.legs.map((l) => ({
+      ...l,
+      ...(l.planned ? { planned: l.planned.filter((p) => p.lineId === line.id) } : {}),
+      ...(l.actual ? { actual: l.actual.filter((m) => m.lineId === line.id) } : {}),
+    })),
+  };
+}
+
 /** Where the consignment stands: what is done, and what is still to come. */
 export function progress(facts: PricingFacts) {
   const pickups = live(facts.legs, 'pickup');
@@ -96,7 +109,7 @@ export function perLine(facts: PricingFacts) {
 
 export const UNIT_LABEL: Record<RateBasis, string> = {
   per_consignment: 'consignment', per_trip: 'trip', per_tonne: 't', per_kg: 'kg', per_litre: 'L', per_litre_20: 'L at 20 °C', per_m3: 'm³',
-  per_piece: 'pieces', per_km: 'km', per_tonne_km: 't·km', per_drop_beyond: 'drops', shortage_beyond_allowance: '', percent_of_freight: '%', percent_of_value: '%', formula: '',
+  per_piece: 'pieces', per_km: 'km', per_tonne_km: 't·km', per_drop_beyond: 'drops', shortage_beyond_allowance: '', percent_of_freight: '%', percent_of_value: '%', formula: '', per_pickup_beyond: 'pickups', damage_value: '',
 };
 
 /** The measure a basis charges in, from amounts, or why it can't. */

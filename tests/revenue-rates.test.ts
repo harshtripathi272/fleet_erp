@@ -242,3 +242,82 @@ describe('rates: the check before a tariff is saved', () => {
     ]);
   });
 });
+
+describe('rates: mixed goods, extra pickups, damaged goods and charges that add themselves', () => {
+  const cement: FactLine = { id: 'C', productId: 'cem', productCode: 'CEM', productName: 'Cement', plannedQty: 20, unit: 't', product: {} };
+  const lime: FactLine = { id: 'L', productId: 'lime', productCode: 'LIME', productName: 'Lime', plannedQty: 10, unit: 't', product: {} };
+  const mixed = { lines: [cement, lime], legs: [leg('pickup', [m('C', 20, 't'), m('L', 10, 't')]), leg('drop', [m('C', 20, 't'), m('L', 10, 't')])] };
+
+  test('a tariff line worked out per goods line, each at its own rate', () => {
+    const r = price(mixed, tariff([
+      { basis: 'per_tonne', price: usd(4500), perLine: true, when: 'line.product = "CEM"' },
+      { basis: 'per_tonne', price: usd(6000), perLine: true, when: 'line.product = "LIME"' },
+    ]));
+    assert.equal(r.status, 'priced');
+    assert.deepEqual(r.lines.map((l) => [l.description, l.qty, l.amountMinor, l.lineId]), [
+      ['Freight, delivered · Cement', 20, 90000, 'C'],
+      ['Freight, delivered · Lime', 10, 60000, 'L'],
+    ]);
+    assert.match(words(r), /Freight · Lime: left out, as line\.product = "CEM" does not hold here/);
+  });
+  test('a per-line formula reads that line', () => {
+    const r = price(mixed, tariff([{ basis: 'formula', perLine: true, formula: 'line.qty * if(line.product = "CEM", 45, 60)' }]));
+    assert.deepEqual(r.lines.map((l) => [l.amountMinor, l.variables]), [[90000, { 'line.qty': 20, 'line.product': 'CEM' }], [60000, { 'line.qty': 10, 'line.product': 'LIME' }]]);
+  });
+  test('without perLine, line.* has no value, and saying so is the reason', () => {
+    assert.equal(price(mixed, tariff([{ basis: 'formula', formula: 'line.qty * 45' }])).problem, 'Freight: "line.qty" has no value here at column 1.');
+  });
+  test('extra pickups beyond the free ones', () => {
+    const r = price({ ...mixed, legs: [leg('pickup', [m('C', 20, 't')]), leg('pickup', [m('L', 10, 't')]), leg('drop', [m('C', 20, 't'), m('L', 10, 't')])] },
+      tariff([{ basis: 'per_consignment', price: usd(100000) }, { basis: 'per_pickup_beyond', chargeTypeId: T.HANDLING.id, price: usd(7500) }]));
+    assert.deepEqual(amounts(r.lines), [[T.FREIGHT.id, 100000], [T.HANDLING.id, 7500]]);
+    assert.match(words(r), /Container handling: 2 pickups, 1 free: 1 × 75 USD = 75 USD\./);
+  });
+  const pallets: FactLine = { id: 'X', productId: 'tv', productName: 'Televisions', plannedQty: 10, unit: 'pallets', declaredValueMinor: 5_000_000, product: { shortagePricePerUnitMinor: 30000 } };
+  const delivery = (extra: Partial<FactMeasure>) => ({ lines: [pallets], legs: [leg('pickup', [m('X', 10, 'pallets')]), { ...leg('drop', [m('X', 10, 'pallets', extra)]), outcome: 'partial' as const }] });
+  test('situation 44: 2 of 10 pallets damaged are deducted at the declared value per pallet', () => {
+    const r = price(delivery({ accepted: 8, damaged: 2 }), tariff([{ basis: 'per_consignment', price: usd(200000) }, { basis: 'damage_value', chargeTypeId: T.HANDLING.id, description: 'Damaged goods' }]));
+    assert.deepEqual(r.lines.map((l) => [l.kind, l.qty, l.unitPriceMinor, l.amountMinor]), [['freight', 1, 200000, 200000], ['deduction', 2, -500000, -1000000]]);
+    assert.match(words(r), /Damaged goods: 2 pallets damaged × 5,000 USD = -10,000 USD\./);
+  });
+  test('damage at the tariff line\'s price, else the product\'s shortage price; nothing to price says so', () => {
+    const t = (price2?: number) => tariff([{ basis: 'per_consignment', price: usd(200000) }, { basis: 'damage_value', chargeTypeId: T.HANDLING.id, ...(price2 ? { price: usd(price2) } : {}) }]);
+    assert.equal(price(delivery({ damaged: 2 }), t(10000)).lines[1]!.amountMinor, -20000);
+    const noValue = { ...delivery({ damaged: 2 }), lines: [{ ...pallets, declaredValueMinor: undefined }] };
+    assert.equal(price(noValue, t()).lines[1]!.amountMinor, -60000);
+    const nothing = { ...delivery({ damaged: 2 }), lines: [{ ...pallets, declaredValueMinor: undefined, product: {} }] };
+    const r = price(nothing, t());
+    assert.equal(r.lines.length, 1);
+    assert.match(words(r), /2 pallets damaged, not deducted: there is no declared value or shortage price/);
+    assert.equal(price(delivery({}), t()).lines.length, 1); // nothing damaged, nothing deducted
+  });
+
+  const autoTypes = (over: Partial<ChargeTypeInput>) => ({ ...settings, chargeTypes: [...Object.values(T), { id: 'ct-pick', code: 'EXTRA_PICKUP', name: 'Extra pickup', kind: 'charge' as const, autoApply: true, defaultBasis: 'per_pickup_beyond' as const, defaultPrice: usd(7500), ...over }] });
+  const twoPickups = { ...mixed, legs: [leg('pickup', [m('C', 20, 't')]), leg('pickup', [m('L', 10, 't')]), leg('drop', [m('C', 20, 't'), m('L', 10, 't')])] };
+  const flat = tariff([{ basis: 'per_consignment', price: usd(100000) }]);
+  test('a charge type set to add itself does, from its default basis and price', () => {
+    const r = priceConsignment(facts(twoPickups), flat, autoTypes({}));
+    assert.deepEqual(r.lines.map((l) => [l.chargeTypeId, l.source, l.amountMinor, l.tariffLineId]), [[T.FREIGHT.id, 'tariff', 100000, 'tl-1'], ['ct-pick', 'auto', 7500, undefined]]);
+    assert.equal(r.subtotalMinor, 107500);
+    // One pickup: nothing extra.
+    assert.equal(priceConsignment(facts(mixed), flat, autoTypes({})).lines.length, 1);
+  });
+  test('switched off by Finance, it stays off when repriced', () => {
+    const first = priceConsignment(facts(twoPickups), flat, autoTypes({}));
+    const off = first.lines.map((l) => (l.source === 'auto' ? { ...l, accepted: false, note: 'Same yard' } : l));
+    const again = priceConsignment(facts({ ...twoPickups, previous: { status: 'priced', lines: off } }), flat, autoTypes({}));
+    assert.deepEqual(again.lines.map((l) => [l.source, l.accepted]), [['tariff', true], ['auto', false]]);
+    assert.equal(again.subtotalMinor, 100000);
+  });
+  test('the tariff\'s own line of that type wins; another currency, or missing facts, leave it out with the reason', () => {
+    const own = tariff([{ basis: 'per_consignment', price: usd(100000) }, { basis: 'per_pickup_beyond', chargeTypeId: 'ct-pick', price: usd(9000) }]);
+    assert.deepEqual(amounts(priceConsignment(facts(twoPickups), own, autoTypes({})).lines), [[T.FREIGHT.id, 100000], ['ct-pick', 9000]]);
+    const zmw = priceConsignment(facts(twoPickups), flat, autoTypes({ defaultPrice: { amountMinor: 7500, currencyId: 'zmw' } }));
+    assert.equal(zmw.lines.length, 1);
+    assert.match(words(zmw), /Extra pickup adds itself, but its default price is in another currency: add it to tariff RATES to charge it\./);
+    const noFacts = priceConsignment(facts({ distance: {} }), flat, autoTypes({ defaultBasis: 'per_km', defaultPrice: usd(10) }));
+    assert.equal(noFacts.status, 'priced');
+    assert.equal(noFacts.lines.length, 1);
+    assert.match(words(noFacts), /Extra pickup adds itself, but was left out\. CN-0412 has no lead distance yet/);
+  });
+});
