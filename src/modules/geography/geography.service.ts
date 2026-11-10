@@ -56,6 +56,8 @@ export const placeDefinition = defineMaster({
   key: 'places', label: 'Places', singular: 'Place', group: GROUPS.geography, lockedChoices: ['kind'],
   description: 'Any point a truck starts, stops or ends at: depots, terminals, mines, ports, customer sites, borders.',
   model: Place, createSchema: S.createPlaceSchema, updateSchema: S.updatePlaceSchema,
+  labels: { geofenceRadiusM: 'Geofence radius (m)', geofencePolygon: 'Geofence shape' },
+  hints: { geofencePolygon: 'Optional: the corners of the yard, in order. Without them the geofence is the circle of the radius around the location.' },
   refs: [{ path: 'cityId', target: 'cities' }, { path: 'address.cityId', target: 'cities' }, { path: 'ownerPartyId', target: 'parties' }],
   filters: {
     type: { schema: z.enum(PLACE_TYPES), apply: (v: string) => ({ type: v }), description: 'Place type' },

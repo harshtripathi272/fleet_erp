@@ -22,6 +22,7 @@ import maintenanceRouter from './modules/maintenance/maintenance.router.js';
 import complianceRouter from './modules/compliance/compliance.router.js';
 import configurationRouter from './modules/configuration/configuration.router.js';
 import connectionsRouter, { hooksRouter } from './modules/connections/connections.router.js';
+import exchangeRouter from './modules/fleet-exchange/exchange.router.js';
 import driversRouter from './modules/drivers/drivers.router.js';
 import financeRouter from './modules/finance/finance.router.js';
 import fleetRouter from './modules/fleet/fleet.router.js';
@@ -87,6 +88,7 @@ app.use('/api/v1', authenticate, cargoRouter);
 app.use('/api/v1', authenticate, tripsRouter);
 app.use('/api/v1', authenticate, messagingRouter);
 app.use('/api/v1', authenticate, connectionsRouter);
+app.use('/api/v1', authenticate, exchangeRouter);
 app.use('/api/v1', authenticate, configurationRouter);
 
 // The web app (web/dist), when built: hashed assets cached for a year, the page itself never,

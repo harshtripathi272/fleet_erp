@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { env } from '../../config/env.js';
 import {
-  type Capabilities, contextFor, describeFields, describeSecrets, type InboundResult, isKind, type Kind, KIND_INFO, KINDS,
+  type Capabilities, contextFor, describeFields, describeSecrets, type InboundCounts, type InboundResult, isKind, type Kind, KIND_INFO, KINDS,
   type MessageSender, type Provider, providerFor, providersOf, scrub, SECRET_ENV, SECRET_ENV_HINT, secretEnvName, secretSetup,
   type SecretTarget, simulatedProvider, verifySignature,
 } from '../../core/connections/index.js';
@@ -333,9 +333,10 @@ export async function kindsStatus() {
 
 /* Inbound calls */
 
-type InboundListener = (kind: Kind, connection: Plain, result: InboundResult) => Promise<void>;
+/** A listener may answer what it did with the call (#136): its counts are added to the webhook's answer. */
+type InboundListener = (kind: Kind, connection: Plain, result: InboundResult) => Promise<void | InboundCounts>;
 const listeners: InboundListener[] = [];
-/** Lets a feature act on what a service pushes, e.g. #60 matching tracker positions to trucks. */
+/** Lets a feature act on what a service pushes, e.g. #136 keeping tracker positions on their trucks. */
 export function onInbound(listener: InboundListener) { listeners.push(listener); }
 
 /**
@@ -397,6 +398,15 @@ async function deliverInbound(connection: Plain, provider: Provider, raw: Buffer
   }
   const result = await provider.inbound!(contextFor(provider, connection as never), body);
   await recordUse(connection._id);
-  for (const listener of listeners) await listener(connection.kind as Kind, connection, result);
-  return { accepted: result.accepted, ...(result.note ? { note: result.note } : {}) };
+  const counts: Required<Omit<InboundCounts, 'notes'>> = { stored: 0, duplicate: 0, unmatched: 0, rejected: 0 };
+  const notes = result.note ? [result.note] : [];
+  let counted = false;
+  for (const listener of listeners) {
+    const heard = await listener(connection.kind as Kind, connection, result);
+    if (!heard) continue;
+    counted = true;
+    for (const k of ['stored', 'duplicate', 'unmatched', 'rejected'] as const) counts[k] += heard[k] ?? 0;
+    notes.push(...(heard.notes ?? []));
+  }
+  return { accepted: result.accepted, ...(counted ? counts : {}), ...(notes.length ? { note: notes.join('. ') } : {}) };
 }

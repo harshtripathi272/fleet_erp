@@ -14,6 +14,7 @@ import { startEscalationWorker, stopEscalationWorker } from './modules/operation
 import { ensureSystemRoles } from './modules/roles/roles.service.js';
 import { startTemplateRefresh, stopTemplateRefresh } from './modules/messaging/whatsapp/service.js';
 import { refreshRegional } from './modules/company/regional.js';
+import { startTrackerPoller, stopTrackerPoller } from './modules/fleet-exchange/positions.service.js';
 
 await connectMongo();
 await syncIndexes();
@@ -41,6 +42,8 @@ if (env.IN_PROCESS_JOBS) {
   startTemplateRefresh();
   startMaintenanceWorker();
   startExpiryWorker();
+  // Positions from a tracker service that is asked rather than calling us (Traccar), #136.
+  startTrackerPoller();
 }
 
 const server = app.listen(env.PORT, env.HOST, () => {
@@ -68,6 +71,7 @@ function shutdown(reason: string, exitCode: number) {
     stopTemplateRefresh();
     stopMaintenanceWorker();
     stopExpiryWorker();
+    stopTrackerPoller();
     await settleSends();
     await Promise.allSettled([disconnectMongo(), disconnectRedis()]);
     logger.info({}, 'Server stopped');

@@ -12,6 +12,8 @@ const placeSchema = masterSchema({
   /** GeoJSON copy of `location` for distance queries. */
   geo: subdoc({ type: { type: String, enum: ['Point'], required: true }, coordinates: { type: [Number], required: true } }),
   geofenceRadiusM: { type: Number, default: 300, min: 25, max: 50000 },
+  /** A geofence drawn as a shape, corner by corner (#136); without one, the circle of geofenceRadiusM around the location. */
+  geofencePolygon: { type: [locationSchema], default: undefined },
   openingHours: String,
   contactName: String,
   contactPhone: String,

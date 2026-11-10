@@ -33,6 +33,7 @@ export const placeShape = {
   address: address.optional(),
   location: location.optional(),
   geofenceRadiusM: integer(25, 50000).optional(),
+  geofencePolygon: z.array(location).min(3, 'A shape needs at least three corners').max(200).optional(),
   openingHours: text(200).optional(),
   contactName: text(120).optional(),
   contactPhone: phone.optional(),

@@ -123,6 +123,8 @@ const companySchema = new Schema<any>({
   modules: { type: [String], default: () => [...DEFAULT_AREAS] },
   operations: { type: operationsSchema, default: () => ({}) },
   maintenance: { type: maintenanceSchema, default: () => ({}) },
+  /** Truck statuses, their thresholds and position rules (#136): only what the company changed; checked and filled with defaults in fleet-status/policy.ts. */
+  fleetPolicy: { type: Schema.Types.Mixed, default: undefined },
   rateFeed: { type: rateFeedSchema, default: () => ({}) },
   regional: { type: regionalSchema, default: () => ({}) },
   address: { line1: String, line2: String, city: String, postalCode: String },
