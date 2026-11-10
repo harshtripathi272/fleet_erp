@@ -13,6 +13,15 @@ export const OPERATIONS_RESOURCES = [
   'payments',
   'driver-documents',
   'consignments',
+  /**
+   * A consignment's rates and revenue, and a trip's profit (#135). Seeing them is the area's sensitive switch, so a
+   * role that sees everything else (Operations, Viewer) does not see money until the owner allows it.
+   */
+  'consignment-revenue',
+  'trip-profit',
+  /** Recording a pickup that puts the truck over its capacity, and letting a truck pass a stop that holds it. */
+  'capacity-override',
+  'stop-gate-override',
   'shortage-decisions',
   'expenses',
   'expense-approvals',
@@ -29,5 +38,5 @@ export const OPERATIONS_DESK: OperationsResource[] = [
   'nominations', 'trips', 'vehicle-states', 'fund-requests', 'driver-documents', 'consignments', 'expenses', 'settlement-requests', 'messages',
 ];
 export const FINANCE_DESK: OperationsResource[] = [
-  'fund-approvals', 'payments', 'driver-documents', 'shortage-decisions', 'expenses', 'expense-approvals', 'settlements', 'messages',
+  'consignment-revenue', 'trip-profit', 'fund-approvals', 'payments', 'driver-documents', 'shortage-decisions', 'expenses', 'expense-approvals', 'settlements', 'messages',
 ];

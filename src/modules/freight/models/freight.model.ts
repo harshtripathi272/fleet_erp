@@ -40,6 +40,8 @@ export const DOCUMENT_STEPS = ['booking', 'pickup', 'transit', 'drop', 'close'] 
 export const DOCUMENT_REQUIRED_BY = ['none', 'to_leave_stop', 'to_close_trip', 'to_invoice'] as const;
 /** What a driver's photo of this paper is filed as (DriverDocument.kind). */
 export const DRIVER_KINDS = ['loading', 'delivery', 'pod', 'weighbridge', 'permit', 'eway', 'other'] as const;
+/** The figures a driver is asked to type when sending this paper from the phone. */
+export const READ_FIELDS = ['docNo', 'qty', 'ambientL', 'tempC', 'density', 'certStd20L'] as const;
 
 const consignmentDocumentTypeSchema = masterSchema({
   ...codeNameFields,
@@ -52,6 +54,7 @@ const consignmentDocumentTypeSchema = masterSchema({
   hasAmount: { type: Boolean, default: false },
   hasValidity: { type: Boolean, default: false },
   driverKind: { type: String, enum: DRIVER_KINDS, default: 'other' },
+  readFields: { type: [{ type: String, enum: READ_FIELDS }], default: undefined },
 });
 uniqueIndex(consignmentDocumentTypeSchema, { code: 1 });
 export const ConsignmentDocumentType = masterModel('ConsignmentDocumentType', consignmentDocumentTypeSchema);
@@ -79,7 +82,6 @@ const chargeTypeSchema = masterSchema({
   defaultBasis: { type: String, enum: RATE_BASES },
   defaultPrice: { type: moneySchema, default: undefined },
   taxable: { type: Boolean, default: true },
-  accountCodeId: { type: ObjectId, ref: 'AccountCode' },
   /** The words on the invoice; the name when empty. */
   printLabel: String,
 });

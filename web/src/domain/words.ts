@@ -17,6 +17,8 @@ export const DEFAULT_WORDS: Settings["words"] = {
   settlement: { singular: "Settlement", plural: "Settlements" },
   statement: { singular: "Statement", plural: "Statements" },
   tripSheet: { singular: "Trip sheet", plural: "Trip sheets" },
+  consignment: { singular: "Consignment", plural: "Consignments" },
+  consignmentNote: { singular: "Consignment note", plural: "Consignment notes" },
 };
 
 export const DEFAULT_STAGES: Settings["stages"] = [

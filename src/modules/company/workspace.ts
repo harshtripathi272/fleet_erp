@@ -22,6 +22,10 @@ export const TERMS = {
   settlement: ['Settlement', 'Settlements'],
   statement: ['Statement', 'Statements'],
   tripSheet: ['Trip sheet', 'Trip sheets'],
+  /** One customer's goods on a trip (#135); a company in India may say "LR", another "Job" or "Shipment". */
+  consignment: ['Consignment', 'Consignments'],
+  /** The printed note that goes with a consignment; "LR" or "Bilty" in India, "CMR" in Europe. */
+  consignmentNote: ['Consignment note', 'Consignment notes'],
 } as const satisfies Record<string, readonly [string, string]>;
 export type Term = keyof typeof TERMS;
 export const TERM_KEYS = Object.keys(TERMS) as [Term, ...Term[]];

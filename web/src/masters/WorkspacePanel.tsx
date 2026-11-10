@@ -40,6 +40,8 @@ const TERM_NOTE: Record<string, string> = {
   settlement: "Squaring up with a driver after trips.",
   statement: "The driver's printed account of a settlement.",
   tripSheet: "The printed record of one trip.",
+  consignment: "One customer's goods on a trip, with its own papers and proof of delivery.",
+  consignmentNote: "The note that goes with a consignment (an LR in India).",
 };
 
 function draftFrom(ws: Workspace | undefined): Draft {
