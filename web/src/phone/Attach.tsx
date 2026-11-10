@@ -9,6 +9,10 @@ import { galleryFor } from "./samples";
 import type { Sample } from "./samples";
 
 const KIND_LABEL: Record<DocKind, string> = {
+  pod: "Proof of delivery",
+  weighbridge: "Weighbridge ticket",
+  permit: "Permit",
+  eway: "E-way bill",
   loading: "Loading invoice",
   delivery: "Delivery note",
   expense: "Receipt",

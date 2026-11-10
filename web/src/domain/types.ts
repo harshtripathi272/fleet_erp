@@ -253,7 +253,7 @@ export interface Attachment {
   sampleId?: string;
   dataUrl?: string;
 }
-export type DocKind = "loading" | "delivery" | "expense" | "fuel" | "other";
+export type DocKind = "loading" | "delivery" | "expense" | "fuel" | "pod" | "weighbridge" | "permit" | "eway" | "other";
 export interface Extracted {
   docNo?: string;
   productId?: string;
@@ -284,6 +284,10 @@ export interface DriverDoc {
   recordRef?: string;
   returnReason?: string;
   at: string;
+  /** The consignment, pickup or drop and paper it was filed as (#135). */
+  consignmentId?: string;
+  legId?: string;
+  documentTypeId?: string;
 }
 
 export interface Measure {

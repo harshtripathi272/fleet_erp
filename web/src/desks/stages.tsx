@@ -1,3 +1,4 @@
+import { StopWork } from "../consignments/StopWork";
 import { usePlacement } from "./usePlacement";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useAreas } from "../api/areas";
@@ -753,7 +754,7 @@ export function DocPhoto({ doc, size = "md" }: { doc: DriverDoc; size?: "sm" | "
   );
 }
 
-function DocHeader({ doc }: { doc: DriverDoc }) {
+export function DocHeader({ doc }: { doc: DriverDoc }) {
   const { data } = useApp();
   const driver = byId(data.drivers, doc.driverId);
   return (
@@ -803,7 +804,7 @@ export function DriverMessages({ trip }: { trip: Trip }) {
   );
 }
 
-function ReturnDoc({ doc }: { doc: DriverDoc }) {
+export function ReturnDoc({ doc }: { doc: DriverDoc }) {
   const { run } = useApp();
   const may = useMay();
   const [open, setOpen] = useState(false);
@@ -826,7 +827,7 @@ function ReturnDoc({ doc }: { doc: DriverDoc }) {
 }
 
 /** The office uploads the real document (a photo or PDF) for the driver; a person then types the figures from it. */
-function UploadDoc({ trip, kind, label }: { trip: Trip; kind: DocKind; label: string }) {
+export function UploadDoc({ trip, kind, label }: { trip: Trip; kind: DocKind; label: string }) {
   const { run, toast } = useApp();
   const may = useMay();
   const input = useRef<HTMLInputElement>(null);
@@ -1119,6 +1120,14 @@ function Ticket({ consignment, part }: { consignment: Consignment; part: "load" 
 
 function LoadingPanel({ trip }: { trip: Trip }) {
   const { data } = useApp();
+  // A trip whose consignments have their pickups on its stops is loaded stop by stop (#135, design 3.11.4).
+  if (data.cns.some((c) => c.tripId === trip.id && c.legs.some((l) => l.kind === "pickup" && l.stopId))) return <StopWork trip={trip} kind="pickup" />;
+  return <OneLoad trip={trip} />;
+}
+
+/** One load with no consignment yet: today's form, which makes the consignment as it records the loading. */
+function OneLoad({ trip }: { trip: Trip }) {
+  const { data } = useApp();
   const may = useMay();
   const [manual, setManual] = useState(false);
   const load = trip.stops.find((s) => s.kind === "load");
@@ -1308,6 +1317,20 @@ function ReceiptStatus({ doc }: { doc: DriverDoc }) {
 /* ================= Offloading ================= */
 
 function OffloadingPanel({ trip }: { trip: Trip }) {
+  const { data } = useApp();
+  // Drops on the trip's stops are recorded stop by stop (#135, design 3.11.5); the shortage card follows each consignment.
+  if (data.cns.some((c) => c.tripId === trip.id && c.legs.some((l) => l.kind === "drop" && l.stopId))) {
+    return (
+      <div className="stack">
+        <StopWork trip={trip} kind="drop" />
+        {data.consignments.filter((c) => c.tripId === trip.id && c.shortage).map((c) => <ShortageCard key={c.id} consignment={c} />)}
+      </div>
+    );
+  }
+  return <OneDrop trip={trip} />;
+}
+
+function OneDrop({ trip }: { trip: Trip }) {
   const { data } = useApp();
   const may = useMay();
   const [manual, setManual] = useState(false);

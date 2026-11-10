@@ -238,6 +238,7 @@ export function toAppData(ref: Reference, ops: Operations): AppData {
     read: d.reading ? { ...d.reading, currency: d.reading.currencyCode } : undefined,
     simulated: Boolean(d.simulated),
     status: d.status, recordRef: d.recordRef, returnReason: d.returnReason, at: d.at,
+    consignmentId: d.consignmentId ?? undefined, legId: d.legId ?? undefined, documentTypeId: d.documentTypeId ?? undefined,
   })).sort((a, b) => a.at.localeCompare(b.at));
 
   // Consignments come in the shape of #135 (lines, legs, papers, revenue). `cns` is that shape for the consignment
