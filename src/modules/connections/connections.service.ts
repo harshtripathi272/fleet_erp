@@ -331,6 +331,27 @@ export async function kindsStatus() {
   }));
 }
 
+/**
+ * The same list for Fleet Studio (#133), which has no database and no keys: every kind with the services it
+ * may use and their forms, each working simulated, as a new company's copy starts.
+ */
+export function kindsFromCode() {
+  return KINDS.map((kind) => {
+    const simulated = simulatedProvider(kind);
+    return {
+      kind, ...KIND_INFO[kind], locked: false, allowed: null,
+      via: kind === 'rates' ? 'none' : 'simulated',
+      provider: kind === 'rates' || !simulated ? undefined : { key: simulated.key, label: simulated.label, simulated: true },
+      connections: 0,
+      providers: providersOf(kind).map((p) => ({
+        key: p.key, label: p.label, description: p.description, simulated: Boolean(p.simulated),
+        fields: describeFields(p), secrets: describeSecrets(p), inbound: Boolean(p.inbound),
+        ownSignature: Boolean(p.verifyInbound), guide: p.guide ?? [], ...(p.comingSoon ? { comingSoon: p.comingSoon } : {}),
+      })),
+    };
+  });
+}
+
 /* Inbound calls */
 
 type InboundListener = (kind: Kind, connection: Plain, result: InboundResult) => Promise<void>;

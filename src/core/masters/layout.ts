@@ -63,6 +63,8 @@ export const layoutInputSchema = z.strictObject({
 });
 export type LayoutInput = z.infer<typeof layoutInputSchema>;
 
+/** A master as the code defines it, with no company changes: what Fleet Studio starts a new company from. */
+export const blankLayout = (entity: string): Layout => ({ entity, master: {}, sections: [], fields: [], choices: [], revision: 0 });
 const empty = (entity: string): Layout => ({ entity, master: {}, sections: [], fields: [], choices: [], revision: 0 });
 
 /* ---------- Reading, cached briefly so every request doesn't hit the database ---------- */

@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { ConflictError, NotFoundError } from '../errors/index.js';
 import { fullLabel } from './labels.js';
-import { getLayout, systemRequired } from './layout.js';
+import { type Layout, getLayout, systemRequired } from './layout.js';
 import { getMaster, getRefTarget, refsOf } from './registry.js';
 import { companyFieldsOf, create, type ServiceContext } from './service.js';
 import { isFileType } from './fileFields.js';
@@ -116,14 +116,20 @@ function companyColumn(f: DynamicField): ImportColumn | undefined {
 }
 
 /** Company fields a spreadsheet can't hold: files are added on each record. The template and the dialog name them. */
-export async function leftOutOfImport(def: MasterDefinition) {
+/**
+ * Where a company's own shape of a master comes from: its database, or, for Fleet Studio (#133), which has
+ * none, the layout and fields of the profile being written.
+ */
+export interface ShapeSource { layout: Layout; fields: DynamicField[] }
+
+export async function leftOutOfImport(def: MasterDefinition, source?: ShapeSource) {
   if (def.customFields === false) return [];
-  return (await companyFieldsOf(def.key)).filter((f) => isFileType(f.type)).map((f) => ({ label: f.label, reason: 'Files are added on the record, not by import' }));
+  return (source?.fields ?? await companyFieldsOf(def.key)).filter((f) => isFileType(f.type)).map((f) => ({ label: f.label, reason: 'Files are added on the record, not by import' }));
 }
 
-export async function companyColumns(def: MasterDefinition): Promise<(ImportColumn & { aliases: string[] })[]> {
-  const layout = await getLayout(def.key);
-  const own = def.customFields === false ? [] : (await companyFieldsOf(def.key)).map(companyColumn).filter((c): c is ImportColumn => Boolean(c));
+export async function companyColumns(def: MasterDefinition, source?: ShapeSource): Promise<(ImportColumn & { aliases: string[] })[]> {
+  const layout = source?.layout ?? await getLayout(def.key);
+  const own = def.customFields === false ? [] : (source?.fields ?? await companyFieldsOf(def.key)).map(companyColumn).filter((c): c is ImportColumn => Boolean(c));
   const byPath = new Map(layout.fields.map((f) => [f.path, f]));
   const choices = new Map(layout.choices.map((c) => [c.path, c.values]));
   const fixed = systemRequired(def);
@@ -150,11 +156,11 @@ export function importableMaster(key: string): MasterDefinition {
 }
 
 /** A CSV header line for the master: the columns' labels, quoted where needed. */
-export async function templateCsv(def: MasterDefinition) {
+export async function templateCsv(def: MasterDefinition, source?: ShapeSource) {
   const cell = (v: string) => (/[",;\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v);
   // A file field gets a column that says where it goes instead; the import leaves any column it doesn't know.
-  const notes = (await leftOutOfImport(def)).map((f) => cell(`${f.label} (add on the record)`));
-  return `${[...(await companyColumns(def)).map((c) => cell(`${c.label}${c.required ? ' *' : ''}`)), ...notes].join(',')}\r\n`;
+  const notes = (await leftOutOfImport(def, source)).map((f) => cell(`${f.label} (add on the record)`));
+  return `${[...(await companyColumns(def, source)).map((c) => cell(`${c.label}${c.required ? ' *' : ''}`)), ...notes].join(',')}\r\n`;
 }
 
 const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');

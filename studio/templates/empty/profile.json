@@ -1,0 +1,7 @@
+{
+  "format": 2,
+  "revision": 1,
+  "company": { "key": "template", "legalName": "Template" },
+  "owner": { "email": "owner@template.test" },
+  "data": { "sample": "starter" }
+}

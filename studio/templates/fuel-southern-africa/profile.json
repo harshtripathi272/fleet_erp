@@ -1,0 +1,11 @@
+{
+  "format": 2,
+  "revision": 1,
+  "company": { "key": "template", "legalName": "Template" },
+  "regional": { "country": "ZM", "baseCurrency": "ZMW", "timezone": "Africa/Lusaka", "dateFormat": "DD/MM/YYYY", "fiscalYearStartMonth": 1, "currencies": ["USD", "TZS", "CDF"] },
+  "brand": { "accent": "#1f5a4a" },
+  "areas": ["masters", "trips", "finance", "tracking", "driver-app"],
+  "owner": { "name": "Demo owner", "email": "owner@template.test" },
+  "data": { "sample": "full" },
+  "vendor": { "notes": "Demonstration: made-up company and data." }
+}

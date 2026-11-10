@@ -7,7 +7,7 @@ import { mongoState } from '../../core/db/mongo.js';
 import { recentMail } from '../../core/mail/mailer.js';
 import { fileOptions } from '../../core/masters/fileFields.js';
 import { GROUPS } from '../../core/masters/groups.js';
-import { fieldPaths, getLayout, systemRequired, type Layout } from '../../core/masters/layout.js';
+import { blankLayout, fieldPaths, getLayout, systemRequired, type Layout } from '../../core/masters/layout.js';
 import { AREAS, areasOn } from '../company/areas.js';
 import { pathLabel } from '../../core/masters/labels.js';
 import { listMasters as registered, refsOf } from '../../core/masters/registry.js';
@@ -150,15 +150,17 @@ function withoutFieldsOff(def: MasterDefinition, schema: unknown, on: Set<string
   return { ...(schema as Plain), properties: Object.fromEntries(Object.entries(properties).filter(([field]) => !off.includes(field))) };
 }
 
-export async function describeMasters(auth?: AuthContext, options: { allAreas?: boolean } = {}) {
+export async function describeMasters(auth?: AuthContext, options: { allAreas?: boolean; fromCode?: boolean } = {}) {
   const keys = modelKeyMap();
-  const customFields = await withChoices(await FieldDefinition.find({ status: 'active' }).sort({ order: 1 }).lean() as Plain[]);
+  // `fromCode`: each master as the code defines it, with no company's changes and every area on. Fleet Studio
+  // (#133) has no database and shapes a new company from there.
+  const customFields = options.fromCode ? [] : await withChoices(await FieldDefinition.find({ status: 'active' }).sort({ order: 1 }).lean() as Plain[]);
   // Masters of an area the company has switched off are not offered (#56).
-  const on = await areasOn();
+  const on = options.fromCode ? new Set<string>(AREAS.map((a) => a.key)) : await areasOn();
   // The set-up shapes masters before their areas are on, so it asks for all of them.
   const offered = listMasters().filter((def) => options.allAreas || !def.module || on.has(def.module));
   // Each master as this company has shaped it: the code's definition with the company layer on top (#65).
-  const layouts = new Map((await Promise.all(offered.map(async (d) => [d.key, await getLayout(d.key)] as const))));
+  const layouts = new Map((await Promise.all(offered.map(async (d) => [d.key, options.fromCode ? blankLayout(d.key) : await getLayout(d.key)] as const))));
   return offered.map((def) => {
     const layout = layouts.get(def.key)!;
     const fixed = systemRequired(def);

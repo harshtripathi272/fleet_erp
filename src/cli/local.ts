@@ -147,7 +147,8 @@ async function upNode(copy: LocalCopy, log: (line: string) => void): Promise<num
   const kit = kitDir(copy);
   const settings = readFileSync(join(kit, '.env'), 'utf8');
   // The app's screens, built once: the server serves web/dist when it is there.
-  if (!existsSync(join(ROOT, 'web', 'dist', 'index.html'))) {
+  if (!existsSync(join(ROOT, 'web', 'dist', 'index.html')) && process.env.FLEET_SKIP_WEB_BUILD === '1') log("The app's screens aren't built (web/dist), so this copy answers its API only.");
+  else if (!existsSync(join(ROOT, 'web', 'dist', 'index.html'))) {
     log("Building the app's screens first (once, about a minute).");
     const code = await stream(process.platform === 'win32' ? 'npm.cmd' : 'npm', ['run', 'build', '--prefix', 'web'], { cwd: ROOT, env: process.env }, log);
     if (code !== 0) throw new Error("The app's screens didn't build. The lines above say why.");
@@ -182,7 +183,7 @@ async function upNode(copy: LocalCopy, log: (line: string) => void): Promise<num
 /* ---------- the copy ---------- */
 
 /** What the run file remembers: how it was started, so another program (Studio, a terminal) can see and stop it. */
-interface RunRecord { engine: Engine; pid?: number; port: number; startedAt: string }
+interface RunRecord { engine: Engine; pid?: number; port: number; startedAt: string; stoppedAt?: string }
 
 /** Builds the kit and starts the copy; resolves once it answers, or throws with the reason. */
 export async function up(copy: LocalCopy, engine: Engine, log: (line: string) => void): Promise<{ url: string; signIns?: SignIns }> {
@@ -213,7 +214,8 @@ export async function down(copy: LocalCopy, options: { remove?: boolean } = {}, 
   const record = readJson<RunRecord>(runFile(copy));
   const engine = record?.engine ?? 'docker';
   if (engine === 'docker') {
-    if (existsSync(kitDir(copy))) {
+    // Already stopped, there is nothing to stop; removing still takes its volumes away.
+    if (existsSync(kitDir(copy)) && (!record?.stoppedAt || options.remove)) {
       const code = await stream('docker', compose(copy, ['down', ...(options.remove ? ['-v'] : [])]), { cwd: kitDir(copy), env: dockerEnv(copy) }, log);
       if (code !== 0) throw new Error(code === 127 ? 'Docker is not installed.' : `docker compose down stopped (exit ${code}).`);
     }
@@ -223,7 +225,8 @@ export async function down(copy: LocalCopy, options: { remove?: boolean } = {}, 
     if (alive(record.pid)) process.kill(record.pid, 'SIGKILL');
     log('Stopped.');
   }
-  rmSync(runFile(copy), { force: true });
+  // Remembered after stopping, so a later remove knows which way it ran.
+  if (record) writeFileSync(runFile(copy), json({ ...record, pid: undefined, stoppedAt: new Date().toISOString() }));
   if (options.remove) {
     if (engine === 'node') await dropDatabase(copy, log);
     rmSync(buildDir(copy), { recursive: true, force: true });
@@ -242,7 +245,7 @@ async function dropDatabase(copy: LocalCopy, log: (line: string) => void) {
 export async function status(copy: LocalCopy): Promise<RunState> {
   const record = readJson<RunRecord>(runFile(copy));
   const url = urlOf(copy);
-  if (!record) return { state: 'stopped' };
+  if (!record || record.stoppedAt) return { state: 'stopped', ...(record ? { engine: record.engine } : {}) };
   if (record.engine === 'node' && !alive(record.pid)) return { state: 'stopped', detail: 'It stopped on its own; its log says why.' };
   if (record.engine === 'docker') {
     const ps = await run('docker', compose(copy, ['ps', '--format', 'json']), { cwd: existsSync(kitDir(copy)) ? kitDir(copy) : undefined, env: dockerEnv(copy), timeoutMs: 15_000 });
@@ -281,20 +284,37 @@ function readable(line: string): string {
 /* ---------- sign-ins ---------- */
 
 const ownerOnly = (copy: LocalCopy): SignIns => ({ owner: { email: copy.profile.owner.email, password: ownerPassword(copy) }, logins: [], at: new Date().toISOString() });
-const ownerPassword = (copy: LocalCopy) => (existsSync(join(kitDir(copy), '.env')) ? envValue(readFileSync(join(kitDir(copy), '.env'), 'utf8'), 'OWNER_PASSWORD') : undefined);
+/** The owner's password now: the one Studio chose at the first sign-in, else the first one in .env. */
+const ownerPassword = (copy: LocalCopy) => readJson<SignIns>(signInsFile(copy))?.owner.password
+  ?? (existsSync(join(kitDir(copy), '.env')) ? envValue(readFileSync(join(kitDir(copy), '.env'), 'utf8'), 'OWNER_PASSWORD') : undefined);
 export const readSignIns = (copy: LocalCopy): SignIns | undefined => readJson<SignIns>(signInsFile(copy)) ?? (existsSync(join(kitDir(copy), '.env')) ? ownerOnly(copy) : undefined);
 
-/** Signs in to the running copy as its owner, with the first password this run gave it. */
+const post = (copy: LocalCopy, path: string, body: unknown, token?: string) => fetch(`${urlOf(copy)}/api/v1${path}`, {
+  method: 'POST', headers: { 'content-type': 'application/json', ...(token ? { authorization: `Bearer ${token}` } : {}) }, body: JSON.stringify(body),
+});
+
+/**
+ * Signs in to the running copy as its owner. An owner made from OWNER_PASSWORD must choose a new password at
+ * the first sign-in, so the first time Studio does it for them, on this made-up copy, and keeps the new one
+ * with the sign-ins (it is shown on Studio's screen and printed by fleet up).
+ */
 async function ownerToken(copy: LocalCopy): Promise<string> {
   const password = ownerPassword(copy);
-  const res = await fetch(`${urlOf(copy)}/api/v1/auth/login`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email: copy.profile.owner.email, password }) });
-  if (!res.ok) throw new Error(`Couldn't sign in to the copy as ${copy.profile.owner.email} with its first password (HTTP ${res.status}). If it was changed in the app, reset the demonstration there.`);
-  return ((await res.json()) as { data: { accessToken: string } }).data.accessToken;
+  const res = await post(copy, '/auth/login', { email: copy.profile.owner.email, password });
+  if (!res.ok) throw new Error(`Couldn't sign in to the copy as ${copy.profile.owner.email} with its password (HTTP ${res.status}). If it was changed in the app, reset the demonstration there.`);
+  const token = ((await res.json()) as { data: { accessToken: string } }).data.accessToken;
+  const me = (await (await fetch(`${urlOf(copy)}/api/v1/auth/me`, { headers: { authorization: `Bearer ${token}` } })).json()) as { data?: { user?: { mustChangePassword?: boolean } } };
+  if (!me.data?.user?.mustChangePassword) return token;
+  const chosen = `Owner${random(10)}4`;
+  const changed = await post(copy, '/auth/change-password', { currentPassword: password, newPassword: chosen }, token);
+  if (!changed.ok) throw new Error(`Couldn't choose the owner's password on the copy (HTTP ${changed.status}).`);
+  const before = readJson<SignIns>(signInsFile(copy));
+  writeFileSync(signInsFile(copy), json({ logins: [], ...before, owner: { email: copy.profile.owner.email, password: chosen }, at: new Date().toISOString() }), { mode: 0o600 });
+  return ((await changed.json()) as { data: { accessToken: string } }).data.accessToken;
 }
 
 async function call<T>(copy: LocalCopy, path: string, body: unknown): Promise<T> {
-  const token = await ownerToken(copy);
-  const res = await fetch(`${urlOf(copy)}/api/v1${path}`, { method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` }, body: JSON.stringify(body) });
+  const res = await post(copy, path, body, await ownerToken(copy));
   const answer = (await res.json().catch(() => ({}))) as { data?: T; error?: { message?: string } };
   if (!res.ok) throw new Error(answer.error?.message ?? `The copy answered HTTP ${res.status}`);
   return answer.data as T;

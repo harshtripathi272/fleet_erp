@@ -82,9 +82,10 @@ export const workspaceInput = {
 type Stored = { vocabulary?: Record<string, { singular: string; plural: string }>; stages?: Record<string, { name?: string; off?: boolean }>; desks?: Array<Record<string, unknown>> };
 
 /** The words, stages and desks this company uses: its changes over the defaults, with areas that are off taken out. */
-export async function workspace() {
-  const company = await Company.findOne().select('vocabulary stages desks').lean<Stored>();
-  const on = await areasOn();
+export async function workspace(source?: { company: Stored | null; on: Set<string> }) {
+  // Fleet Studio (#133) passes the profile being written and its areas: it has no database.
+  const company = source ? source.company : await Company.findOne().select('vocabulary stages desks').lean<Stored>();
+  const on = source ? source.on : await areasOn();
   const words = Object.fromEntries(TERM_KEYS.map((k) => {
     const own = company?.vocabulary?.[k];
     return [k, { singular: own?.singular ?? TERMS[k][0], plural: own?.plural ?? TERMS[k][1] }];
