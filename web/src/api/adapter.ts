@@ -1,4 +1,5 @@
 import type {
+  FreightRules,
   ActivityEvent, AppData, Consignment, Customer, Decision, Driver, DriverDoc, Expense, ExpenseCategory, FundRequest, Message, MsgButton,
   Nomination, Pairing, Place, Product, RouteTemplate, Settings, Settlement, Trailer, Trip, Truck, Unit,
 } from "../domain/types";
@@ -313,6 +314,7 @@ export function toAppData(ref: Reference, ops: Operations): AppData {
       writeOffDefaultCarrier: ref.company?.operations?.writeOffDefaultCarrier ?? "company",
       loadedTripRoles: ref.company?.operations?.loadedTripRoles ?? ["operations"],
       writeOffNeedsOwner: ref.company?.operations?.writeOffNeedsOwner !== false,
+      freight: freightRules((ref.company?.effectiveFreight ?? ref.company?.freight ?? {}) as Rec),
       words: (ref.workspace?.words as Settings["words"] | undefined) ?? DEFAULT_WORDS,
       stages: (ref.workspace?.stages as Settings["stages"] | undefined)?.map((s) => ({ key: s.key, name: s.name, on: s.on })) ?? DEFAULT_STAGES,
       desks: (ref.workspace?.desks as Settings["desks"] | undefined) ?? DEFAULT_DESKS,
@@ -342,5 +344,21 @@ export function forDesk(data: AppData, desk: string): AppData {
     ...data,
     messages: data.messages.map((m) => (WORK.test(m.thread) ? { ...m, thread: desk, realThread: m.thread } : m)),
     reads: { ...data.reads, [desk]: workReads.sort().at(-1) ?? "" },
+  };
+}
+
+/** Company → Freight as the screens read it. The server sends every key (`effectiveFreight`); an older one sends only what was changed. */
+export function freightRules(f: Rec): FreightRules {
+  return {
+    consignmentBy: f.consignmentBy === "dispatch" ? "dispatch" : "loading",
+    maxConsignmentsPerTrip: Number(f.maxConsignmentsPerTrip ?? 0),
+    consigneeMustBeParty: Boolean(f.consigneeMustBeParty),
+    consigneePhoneRequired: Boolean(f.consigneePhoneRequired),
+    capacityCheck: f.capacityCheck === "warn" || f.capacityCheck === "off" ? f.capacityCheck : "refuse",
+    capacityTolerancePercent: Number(f.capacityTolerancePercent ?? 0),
+    lateSplit: f.lateSplit === "always" || f.lateSplit === "never" ? f.lateSplit : "by_type",
+    stopsEditableOnRoad: f.stopsEditableOnRoad !== false,
+    manualPriceNeedsReason: f.manualPriceNeedsReason !== false,
+    showProfitOnTripList: Boolean(f.showProfitOnTripList),
   };
 }

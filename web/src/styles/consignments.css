@@ -1,0 +1,27 @@
+/* Consignments (#135, design 3.11): the rows on a new trip, and the consignment screens. */
+
+/* A figure line divided by rules, framed once ("On board at most: 28.4 t of 30 t · 0 L of 38,000 L"). */
+.framed-line { margin: 0; padding: 8px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); color: var(--ink-2); }
+
+.consignment-rows { display: grid; gap: 10px; min-width: 0; }
+.consignment-rows > h3 { margin: 0; font-size: 15px; font-weight: 600; }
+.consignment-rows > p { margin: 0; max-width: 70ch; }
+.consignment-row {
+  display: grid;
+  grid-template-columns: 28px repeat(2, minmax(0, 1fr)) auto;
+  gap: 10px 12px;
+  align-items: start;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface-2);
+}
+.consignment-row > * { min-width: 0; }
+.consignment-row-n { grid-row: span 2; padding-top: 30px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+.consignment-row > .btn { grid-column: 4; grid-row: 1; margin-top: 26px; }
+@media (max-width: 560px) {
+  .consignment-row { grid-template-columns: minmax(0, 1fr); }
+  .consignment-row-n { grid-row: auto; padding-top: 0; }
+  .consignment-row > .btn { grid-column: auto; grid-row: auto; margin-top: 0; justify-self: start; }
+}
+.framed-line { font-variant-numeric: tabular-nums; }

@@ -102,6 +102,20 @@ export interface ExpenseCategory {
   id: string;
   name: string;
 }
+/** The Company → Freight settings the screens act on (the server's `effectiveFreight`). */
+export interface FreightRules {
+  consignmentBy: "loading" | "dispatch";
+  /** 0: no limit. */
+  maxConsignmentsPerTrip: number;
+  consigneeMustBeParty: boolean;
+  consigneePhoneRequired: boolean;
+  capacityCheck: "refuse" | "warn" | "off";
+  capacityTolerancePercent: number;
+  lateSplit: "by_type" | "always" | "never";
+  stopsEditableOnRoad: boolean;
+  manualPriceNeedsReason: boolean;
+  showProfitOnTripList: boolean;
+}
 export interface Settings {
   company: string;
   office: string;
@@ -123,6 +137,8 @@ export interface Settings {
   writeOffDefaultCarrier: string;
   loadedTripRoles: string[];
   writeOffNeedsOwner: boolean;
+  /** Company → Freight as it applies now (#135): what the consignment screens follow. */
+  freight: FreightRules;
   /** The company's words for the app's core terms (#73): `words.trip.plural` and so on. */
   words: Record<string, { singular: string; plural: string }>;
   /** The desks' stages as the company names them, and which are on. */
@@ -486,6 +502,8 @@ export type Action =
       plannedStart: string;
       productId?: string;
       plannedQty?: number;
+      /** The trip's consignments (#135): `POST /trips` puts each on the route's loading and offloading stops. */
+      consignments?: Record<string, unknown>[];
     }
   | {
       type: "trip.update";

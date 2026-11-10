@@ -13,6 +13,7 @@ import { StopEditor } from "./stages";
 import { MiniRoute } from "../tracking/MiniRoute";
 import { wl } from "../domain/words";
 import { AddNew, FirstTripSteps } from "./firstTrip";
+import { capacityLine, ConsignmentRows, consignmentBody, draftConsignment, draftProblem, isEmptyDraft, type DraftConsignment } from "../consignments/ConsignmentRows";
 
 /** Truck first: pick the truck, its driver and trailer follow, the route starts where it stands. */
 export function NewTrip({ open, onClose, onCreated }: { open: boolean; onClose: () => void; onCreated: (id: string) => void }) {
@@ -28,13 +29,14 @@ export function NewTrip({ open, onClose, onCreated }: { open: boolean; onClose: 
   const [customerId, setCustomerId] = useState(data.customers[0]?.id ?? "");
   const [routeId, setRouteId] = useState("");
   const [stops, setStops] = useState<RouteStop[]>([]);
-  const [productId, setProductId] = useState("");
+  const [drafts, setDrafts] = useState<DraftConsignment[]>(() => [draftConsignment()]);
   const [start, setStart] = useState(() => localInput(new Date(Date.now() + data.settings.clockOffsetMs + 36e5 * 2).toISOString()));
   useEffect(() => {
     if (!open) return;
     setTruckId("");
     setRouteId("");
     setStops([]);
+    setDrafts([draftConsignment()]);
     setStart(localInput(new Date(Date.now() + data.settings.clockOffsetMs + 36e5 * 2).toISOString()));
   }, [open, data.settings.clockOffsetMs]);
   const pickTruck = (id: string) => {
@@ -54,6 +56,8 @@ export function NewTrip({ open, onClose, onCreated }: { open: boolean; onClose: 
     }
   };
   const problem = validateStops(stops);
+  const cargoProblem = drafts.map((d, i) => draftProblem(data, d, i + 1)).find(Boolean);
+  const onBoard = capacityLine(data, drafts, truck, byId(data.trailers, trailerId));
   const preview = useMemo(() => {
     if (problem || !truck) return undefined;
     const s = stops.map((x, i) => ({ ...x, id: String(i), legKm: i ? leg(data, stops[i - 1].placeId, x.placeId).km : 0, legHours: 0 }));
@@ -73,7 +77,7 @@ export function NewTrip({ open, onClose, onCreated }: { open: boolean; onClose: 
           routeId: routeId || undefined,
           stops,
           plannedStart: fromLocalInput(start),
-          productId: productId || undefined,
+          consignments: drafts.filter((d) => !isEmptyDraft(d)).map(consignmentBody),
         },
         "Trip created. The driver has it on WhatsApp.",
       )
@@ -89,13 +93,13 @@ export function NewTrip({ open, onClose, onCreated }: { open: boolean; onClose: 
       open={open}
       title={`New ${wl(data, "trip")}`}
       onClose={onClose}
-      width={620}
+      width={760}
       footer={
         <>
           <Button tone="quiet" onClick={onClose}>
             Cancel
           </Button>
-          <Button tone="primary" disabled={!truck || !driverId || !customerId || Boolean(problem) || !company.ready} onClick={create}>
+          <Button tone="primary" disabled={!truck || !driverId || !customerId || Boolean(problem) || Boolean(cargoProblem) || (onBoard.refuse && onBoard.over.length > 0) || !company.ready} onClick={create}>
             <Check /> Create trip
           </Button>
         </>
@@ -175,17 +179,11 @@ export function NewTrip({ open, onClose, onCreated }: { open: boolean; onClose: 
                   ))}
                 </select>
               </Field>
-              <Field label="Cargo">
-                <select value={productId} onChange={(e) => setProductId(e.target.value)}>
-                  <option value="">From the invoice</option>
-                  {data.products.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.name}
-                    </option>
-                  ))}
-                </select>
-              </Field>
             </div>
+            <ConsignmentRows data={data} value={drafts} onChange={setDrafts} />
+            {onBoard.text && <p className="framed-line">{onBoard.text}</p>}
+            {onBoard.over.map((o) => <p key={o} className="form-problem">{o}{onBoard.refuse ? " Lower a quantity, or choose a bigger truck." : ""}</p>)}
+            {cargoProblem && <p className="form-problem">{cargoProblem}</p>}
             <StopEditor stops={stops} onChange={setStops} startLocked={truck.placeId || undefined} />
             <AddNew master="places" what="place" />
             {preview && stops.find((x) => x.kind === "load")?.placeId === stops.find((x) => x.kind === "offload")?.placeId && (
