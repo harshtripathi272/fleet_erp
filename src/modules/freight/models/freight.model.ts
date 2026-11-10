@@ -71,7 +71,10 @@ export const CHARGE_DIRECTIONS = ['revenue', 'cost'] as const;
 export const RATE_BASES = [
   'per_consignment', 'per_trip', 'per_tonne', 'per_kg', 'per_litre', 'per_litre_20', 'per_m3', 'per_piece', 'per_km', 'per_tonne_km',
   'per_drop_beyond', 'shortage_beyond_allowance',
+  // The full rate engine (design 3.5.2): percentages, formulas, extra pickups and damaged goods.
+  'percent_of_freight', 'percent_of_value', 'formula', 'per_pickup_beyond', 'damage_value',
 ] as const;
+export const SLAB_MODES = ['progressive', 'whole'] as const;
 export type RateBasis = (typeof RATE_BASES)[number];
 
 const chargeTypeSchema = masterSchema({
@@ -81,6 +84,10 @@ const chargeTypeSchema = masterSchema({
   direction: { type: String, enum: CHARGE_DIRECTIONS, default: 'revenue' },
   defaultBasis: { type: String, enum: RATE_BASES },
   defaultPrice: { type: moneySchema, default: undefined },
+  /** For a percent basis: 5 is 5 %. */
+  defaultPercent: Number,
+  /** Added by the engine by itself when the facts for it exist and the tariff has no line of this type. */
+  autoApply: { type: Boolean, default: false },
   taxable: { type: Boolean, default: true },
   /** The words on the invoice; the name when empty. */
   printLabel: String,
@@ -101,7 +108,18 @@ const tariffLineSchema = new Schema({
   basis: { type: String, enum: RATE_BASES, required: true },
   /** Per unit of the basis, or the flat amount. In the tariff's currency. */
   price: { type: moneySchema, default: undefined },
-  /** Free drops before an extra-drop charge starts. */
+  /** Bands instead of one price: each band's units at its price (progressive), or all at the band reached (whole). */
+  slabs: { type: [new Schema({ upTo: Number, price: { type: moneySchema, required: true } }, { _id: false, strict: 'throw' })], default: undefined },
+  slabMode: { type: String, enum: SLAB_MODES },
+  /** For the percent bases: 5 is 5 %. */
+  percent: Number,
+  /** A condition in the formula language: the line applies only when it holds. */
+  when: String,
+  /** Basis `formula`: the amount in the tariff's currency, major units. */
+  formula: String,
+  /** Worked out once per goods line. */
+  perLine: Boolean,
+  /** Free drops (or pickups) before an extra-drop (or extra-pickup) charge starts. */
   freeQty: Number,
   minimum: { type: moneySchema, default: undefined },
   maximum: { type: moneySchema, default: undefined },
@@ -131,6 +149,10 @@ const tariffSchema = masterSchema({
   shortageDeduction: { type: String, enum: SHORTAGE_DEDUCTIONS },
   shortageAllowancePercent: { type: Number, min: 0, max: 100 },
   taxRatePercent: { type: Number, min: 0, max: 100 },
+  /** Chargeable weight: kg per m³ for volumetric weight, the least kg charged, and the step kg round up to. */
+  volumetricDivisorKgPerM3: Number,
+  minimumChargeableKg: Number,
+  roundQtyUpTo: Number,
   lines: { type: [tariffLineSchema], required: true },
   /** The least the consignment's freight comes to, in the tariff's currency. */
   minimumCharge: { type: moneySchema, default: undefined },

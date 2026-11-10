@@ -7,6 +7,7 @@ import { idQuery } from '../../core/masters/query.js';
 import type { Plain } from '../../core/masters/types.js';
 import { ChargeType, ConsignmentDocumentType, ConsignmentType, FuelPrice, RATE_BASES, Tariff } from './models/freight.model.js';
 import * as S from './freight.schema.js';
+import { checkTariff } from './revenue/index.js';
 
 /**
  * The freight masters (#135, consignments design 3.4). They belong to Trips, not Billing: a consignment is priced
@@ -20,6 +21,7 @@ export const BASIS_LABELS: Record<(typeof RATE_BASES)[number], string> = {
   per_consignment: 'Fixed, per consignment', per_trip: 'Fixed, per trip', per_tonne: 'Per tonne', per_kg: 'Per kg',
   per_litre: 'Per litre (as measured)', per_litre_20: 'Per litre at 20 °C', per_m3: 'Per cubic metre', per_piece: 'Per piece',
   per_km: 'Per km', per_tonne_km: 'Per tonne-km', per_drop_beyond: 'Per drop after the free ones', shortage_beyond_allowance: 'Shortage beyond the allowance',
+  percent_of_freight: 'Percent of freight', percent_of_value: 'Percent of declared value', formula: 'Formula', per_pickup_beyond: 'Per pickup after the free ones', damage_value: 'Damaged goods',
 };
 export const BASIS_SENTENCES: Record<(typeof RATE_BASES)[number], string> = {
   per_consignment: 'The price, once for the consignment.',
@@ -29,6 +31,9 @@ export const BASIS_SENTENCES: Record<(typeof RATE_BASES)[number], string> = {
   per_km: 'Price × the distance the tariff charges on.', per_tonne_km: 'Price × tonnes × km.',
   per_drop_beyond: 'Price × drops after the free ones (one free unless the line says).',
   shortage_beyond_allowance: "Less the loss beyond the allowance × the price (or the product's shortage price).",
+  percent_of_freight: 'The percent × the freight lines before it.', percent_of_value: "The percent × the goods' declared value.",
+  formula: "The formula's result, in the tariff's currency.", per_pickup_beyond: 'Price × pickups after the free ones (one free unless the line says).',
+  damage_value: "Less the damaged quantity × the goods' value per unit.",
 };
 
 const CHARGE_ON_LABELS = { loaded: 'Loaded quantity', delivered: 'Delivered quantity', planned: 'Planned quantity', greater_of: 'The greater of loaded and delivered', lesser_of: 'The lesser of loaded and delivered' };
@@ -77,7 +82,7 @@ export const chargeTypeDefinition = defineMaster({
   model: ChargeType, createSchema: S.createChargeTypeSchema, updateSchema: S.updateChargeTypeSchema,
   refs: [{ path: 'defaultPrice.currencyId', target: 'currencies' }],
   columns: ['kind', 'direction', 'defaultBasis', 'taxable'],
-  labels: { kind: 'What it is', direction: 'Who pays', defaultBasis: 'Usually worked out', defaultPrice: 'Usual price', taxable: 'Taxed', printLabel: 'Words on the invoice' },
+  labels: { kind: 'What it is', direction: 'Who pays', defaultBasis: 'Usually worked out', defaultPrice: 'Usual price', defaultPercent: 'Usual percent', autoApply: 'Added by itself', taxable: 'Taxed', printLabel: 'Words on the invoice' },
   choiceLabels: {
     kind: { freight: 'Freight', minimum: 'Minimum charge top-up', charge: 'Extra charge', deduction: 'Deduction' },
     direction: { revenue: 'Billed to the customer', cost: 'A cost the company pays' },
@@ -86,6 +91,7 @@ export const chargeTypeDefinition = defineMaster({
   hints: {
     direction: 'A cost (a broker\'s commission, a hired truck) lowers the trip\'s profit and is never put on the customer\'s invoice.',
     printLabel: 'Leave empty to print the name.',
+    autoApply: 'Added to every consignment whose trip has the facts for it, when its tariff has no line of this type; Finance can switch it off on any consignment.',
   },
 });
 
@@ -107,10 +113,10 @@ export const tariffDefinition = defineMaster({
     customerId: 'Customer', consignorPartyId: 'Consignor', consignmentTypeId: 'Consignment type', routeId: 'Route', fromPlaceId: 'From place', toPlaceId: 'To place',
     fromCountryId: 'From country', toCountryId: 'To country', productId: 'Product', productGroupId: 'Product group', vehicleTypeId: 'Vehicle type', currencyId: 'Currency',
     priceOn: 'Priced on', chargeOn: 'Charged on', distanceSource: 'Distance from', shortageDeduction: 'Shortage', shortageAllowancePercent: 'Allowance %', taxRatePercent: 'VAT %',
-    lines: 'Charge lines', 'lines.chargeTypeId': 'Charge', 'lines.basis': 'Worked out', 'lines.price': 'Price', 'lines.freeQty': 'Free drops', 'lines.minimum': 'At least', 'lines.maximum': 'At most',
+    lines: 'Charge lines', 'lines.chargeTypeId': 'Charge', 'lines.basis': 'Worked out', 'lines.price': 'Price', 'lines.freeQty': 'Free drops', 'lines.percent': 'Percent', 'lines.when': 'Only when', 'lines.formula': 'Formula', 'lines.perLine': 'Per goods line', 'lines.slabs': 'Slabs', 'lines.slabMode': 'Slabs count', volumetricDivisorKgPerM3: 'Volumetric kg per m³', minimumChargeableKg: 'Least kg charged', roundQtyUpTo: 'Round kg up to', 'lines.minimum': 'At least', 'lines.maximum': 'At most',
     minimumCharge: 'Minimum charge', priority: 'Priority', validFrom: 'From', validTo: 'Until',
   },
-  choiceLabels: { chargeOn: CHARGE_ON_LABELS, priceOn: PRICE_ON_LABELS, distanceSource: DISTANCE_LABELS, shortageDeduction: SHORTAGE_LABELS, 'lines.basis': BASIS_LABELS },
+  choiceLabels: { chargeOn: CHARGE_ON_LABELS, priceOn: PRICE_ON_LABELS, distanceSource: DISTANCE_LABELS, shortageDeduction: SHORTAGE_LABELS, 'lines.basis': BASIS_LABELS, 'lines.slabMode': { progressive: 'Each band at its price', whole: 'All at the band reached' } },
   hints: {
     customerId: 'Leave empty for a rate card that applies to every customer.',
     routeId: "Leave empty for any route. A tariff for the trip's route wins over one without.",
@@ -135,8 +141,11 @@ export const tariffDefinition = defineMaster({
     lines.forEach((line, i) => {
       const at = `lines.${i}`;
       for (const key of ['price', 'minimum', 'maximum']) if (!sameCurrency(line[key])) errors[`${at}.${key}`] = ["Use the tariff's currency"];
-      if (!line.price && line.basis !== 'shortage_beyond_allowance') errors[`${at}.price`] = ['Enter the price'];
-      if (line.freeQty !== undefined && line.basis !== 'per_drop_beyond') errors[`${at}.freeQty`] = ['Only an extra-drop line has free drops'];
+      const needsPrice = !['shortage_beyond_allowance', 'damage_value', 'formula', 'percent_of_freight', 'percent_of_value'].includes(String(line.basis));
+      if (needsPrice && !line.price && !(line.slabs as unknown[] | undefined)?.length) errors[`${at}.price`] = ['Enter the price'];
+      if (String(line.basis).startsWith('percent_') && line.percent === undefined) errors[`${at}.percent`] = ['Enter the percent'];
+      if (line.freeQty !== undefined && !['per_drop_beyond', 'per_pickup_beyond'].includes(String(line.basis))) errors[`${at}.freeQty`] = ['Only an extra-drop or extra-pickup line has free ones'];
+      for (const [j, slab] of ((line.slabs ?? []) as Plain[]).entries()) if (!sameCurrency(slab.price)) errors[`${at}.slabs.${j}.price`] = ["Use the tariff's currency"];
       const min = (line.minimum as Plain | undefined)?.amountMinor, max = (line.maximum as Plain | undefined)?.amountMinor;
       if (min !== undefined && max !== undefined && Number(min) > Number(max)) errors[`${at}.maximum`] = ['At most must be more than at least'];
     });
@@ -146,6 +155,9 @@ export const tariffDefinition = defineMaster({
       if (line.basis === 'shortage_beyond_allowance' && kind && kind !== 'deduction') errors[`lines.${i}.chargeTypeId`] = ['A shortage line uses a deduction charge type'];
     });
     if (data.routeId && (data.fromPlaceId || data.toPlaceId)) errors.routeId = ['Choose a route or the places, not both'];
+    // Formulas and conditions must parse and name only known values, before the tariff can be saved (design 3.5.6).
+    const problems = checkTariff({ currencyId: currency, lines: lines.map((l, i) => ({ ...l, id: String(l._id ?? i), chargeTypeId: String(l.chargeTypeId) })) as never });
+    if (problems.length) errors.lines = problems;
     if (Object.keys(errors).length) throw new ValidationError('The tariff is not valid', errors);
     return data;
   },

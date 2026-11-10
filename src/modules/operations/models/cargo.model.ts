@@ -296,6 +296,11 @@ const revenueLineSchema = new Schema({
   source: { type: String, enum: ['tariff', 'auto', 'manual'], required: true },
   tariffLineId: { type: ObjectId },
   legId: { type: ObjectId },
+  /** The goods line it prices, for a tariff line worked out per goods line. */
+  lineId: { type: ObjectId },
+  /** A formula line keeps what it computed and what it saw (design 3.5.6). */
+  formula: String,
+  variables: { type: Schema.Types.Mixed, default: undefined },
   accepted: { type: Boolean, default: true },
   note: String,
   by: { type: ObjectId, ref: 'User' },
