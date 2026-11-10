@@ -153,3 +153,12 @@
 .column-list { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 4px; }
 .column-list li { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 10px; padding: 4px 0; border-bottom: 1px solid var(--line); }
 .column-move { display: inline-flex; gap: 4px; }
+.unpriced-why { max-width: 48ch; overflow: hidden; text-overflow: ellipsis; }
+
+/* The driver phone (design 3.11.13): each consignment at the current stop, who to call, and the paper due. */
+.drv-stops > li { flex-wrap: wrap; }
+.drv-legs { order: 3; flex-basis: 100%; display: grid; gap: 10px; margin: 4px 0 0 22px; padding: 0; list-style: none; }
+.drv-stops .drv-legs li { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
+.drv-leg-who { display: grid; flex: 1 1 100%; min-width: 0; }
+.drv-legs .btn { min-height: 40px; }
+.drv-gate { margin: 0; padding: 8px 10px; border: 1px solid var(--brass-2); border-radius: 10px; background: var(--brass-50); }

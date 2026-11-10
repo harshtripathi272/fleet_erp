@@ -27,6 +27,10 @@ export interface OutboxItem {
   fileName?: string;
   /** Set once the photo is stored, so a retry sends only the small part that is left. */
   fileId?: string;
+  /** The consignment, pickup or drop and paper the driver chose it for (#135). */
+  consignmentId?: string;
+  legId?: string;
+  documentTypeId?: string;
 }
 
 export interface OutboxState {
@@ -102,7 +106,10 @@ async function deliver(item: OutboxItem) {
     fileId = stored.id;
     await tx("readwrite", (s) => s.put({ ...item, fileId }));
   }
-  await api("/driver-app/send", { method: "POST", headers, body: { kind: item.kind, fileId, note: item.note } });
+  await api("/driver-app/send", {
+    method: "POST", headers,
+    body: { kind: item.kind, fileId, note: item.note, ...(item.consignmentId ? { consignmentId: item.consignmentId } : {}), ...(item.legId ? { legId: item.legId } : {}), ...(item.documentTypeId ? { documentTypeId: item.documentTypeId } : {}) },
+  });
 }
 
 /** Sends what is waiting, oldest first; stops at the first item that can't go yet, to keep the order. */
