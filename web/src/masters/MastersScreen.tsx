@@ -9,6 +9,7 @@ import { can } from "../api/session";
 import { useApp } from "../store";
 import { Button, ChoiceChips, Drawer, Empty, Field, FieldGroup, Status, Switch, SwitchField, UnitInput } from "../ui/kit";
 import { WorkspacePanel } from "./WorkspacePanel";
+import { InstallationPanel } from "./Installation";
 import { CompanyPanel } from "./CompanyPanel";
 import { DriverAccess } from "./DriverAccess";
 import { UserAccess } from "./UserAccess";
@@ -128,6 +129,7 @@ export function MastersScreen({ initialEntity, initialId }: { initialEntity?: st
             { key: "setup", label: "Ready for a first trip", badge: readiness.data?.missing.length ?? 0, show: can(me, "company", "read") },
             { key: "company", label: "Company", show: can(me, "company", "read") },
             { key: "workspace", label: "Words, stages and desks", show: can(me, "company", "read") },
+            { key: "installation", label: "This installation", show: can(me, "company", "read") },
             { key: "messaging", label: "Sending messages", show: can(me, "connections", "read") },
             { key: AUDIT_VIEW, label: "Audit log", show: can(me, "audit-logs", "read") },
           ].filter((p) => p.show && (!filter || p.label.toLowerCase().includes(filter.toLowerCase())));
@@ -164,6 +166,7 @@ export function MastersScreen({ initialEntity, initialId }: { initialEntity?: st
         {selected === "setup" ? <CompanySetup defs={defs} onOpen={(key) => setSelected(key)} />
           : selected === "company" ? <CompanyPanel />
           : selected === "workspace" ? <WorkspacePanel />
+          : selected === "installation" ? <InstallationPanel />
           : selected === "messaging" ? <MessagingSettings onOpenConnections={() => setSelected("connections")} />
           : selected === "connections" && can(me, "connections", "read") ? <ConnectionsSettings onOpenTemplates={() => setSelected("whatsapp-templates")} />
           : selected === "whatsapp-templates" && can(me, "connections", "read") ? <WhatsAppTemplates onBack={() => setSelected("connections")} />

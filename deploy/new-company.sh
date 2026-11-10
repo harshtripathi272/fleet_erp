@@ -150,6 +150,11 @@ env_vars="APP_URL=$APP_URL,OWNER_EMAIL=$OWNER_EMAIL,TRUST_PROXY=$TRUST_PROXY,FIL
 env_vars="$env_vars,CONSOLE_ENABLED=$CONSOLE_ENABLED,IN_PROCESS_JOBS=false,UPLOAD_MAX_MB=$UPLOAD_MAX_MB"
 [ -z "$SMTP_USER" ] || env_vars="$env_vars,SMTP_USER=$SMTP_USER"
 [ -z "${KIT_DIR:-}" ] || env_vars="$env_vars,COMPANY_CONFIG=/mnt/bucket/kit/company.json"
+# What kind of copy this is: demo, trial or production (#95). A demonstration on Cloud Run must say so twice.
+env_vars="$env_vars,COPY_PURPOSE=${COPY_PURPOSE:-production}"
+[ "${COPY_PURPOSE:-production}" != demo ] || env_vars="$env_vars,DEMO_IN_PRODUCTION=true"
+[ -z "${TRIAL_ENDS:-}" ] || env_vars="$env_vars,TRIAL_ENDS=$TRIAL_ENDS"
+[ -z "${APP_VERSION:-}" ] || env_vars="$env_vars,APP_VERSION=$APP_VERSION"
 # The settings go in a YAML file, since values such as SMTP_FROM hold spaces and angle brackets.
 env_file="$(mktemp)"
 trap 'rm -f "$env_file"' EXIT

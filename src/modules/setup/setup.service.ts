@@ -21,7 +21,9 @@ import { Role } from '../roles/role.model.js';
 import * as DriverAccess from '../users/driverAccess.service.js';
 import { User } from '../users/user.model.js';
 import { createUser } from '../users/users.service.js';
-import { type Result, applyFile, lastApplied } from './apply.js';
+import { isDeepStrictEqual } from 'node:util';
+import { type Result, applyCompanyFile, applyFile, lastApplied, lastAppliedFile } from './apply.js';
+import { type SampleSize, loadSampleData } from '../meta/sampleData.js';
 import { TARGET_FIELDS, TARGET_NEEDS, deployGuide } from './guide.js';
 import { type RecordsLevel, buildSnapshot, snapshotSummary } from './snapshot.js';
 import { BRAND_FILES, COMPANY_FILE_FORMAT, type CompanyFile, type CompanyFileInput, TARGETS, companyFileSchema } from './companyFile.js';
@@ -210,13 +212,25 @@ export async function setupStatus() {
   const [company, state, last] = await Promise.all([
     Company.exists({}), SystemState.findOne({ key: DRAFT }).select('value.finishedAt value.step').lean<{ value?: Draft }>(), lastApplied(),
   ]);
-  return { hasCompany: Boolean(company), applied: Boolean(last), started: Boolean(state?.value), finished: Boolean(state?.value?.finishedAt || last) };
+  return {
+    hasCompany: Boolean(company), applied: Boolean(last), started: Boolean(state?.value), finished: Boolean(state?.value?.finishedAt || last),
+    ...installationFacts(),
+    appliedAt: last?.at ?? null,
+  };
 }
 
-/** Clearing is for development and demonstration copies. A real company's data can't be cleared from a screen. */
+/**
+ * What kind of copy this is comes from the environment it was deployed with (COPY_PURPOSE), not from a file
+ * applied inside it: a demonstration, a trial or production. Only a demonstration can be cleared or reset.
+ */
+export function installationFacts() {
+  const trialEnds = env.COPY_PURPOSE === 'trial' ? env.TRIAL_ENDS ?? null : null;
+  const daysLeft = trialEnds ? Math.ceil((Date.parse(`${trialEnds}T23:59:59Z`) - Date.now()) / 86_400_000) : null;
+  return { purpose: env.COPY_PURPOSE, trialEnds, trialDaysLeft: daysLeft, version: env.APP_VERSION ?? null };
+}
+
 async function mayClear() {
-  if (env.NODE_ENV !== 'production') return true;
-  return (await lastApplied())?.purpose === 'demo';
+  return env.COPY_PURPOSE === 'demo';
 }
 const companyName = async () => {
   const c = await Company.findOne().select('tradingName legalName').lean<{ tradingName?: string; legalName?: string }>();
@@ -228,7 +242,7 @@ const companyName = async () => {
  * already in storage stay there, unreferenced. Allowed only by mayClear, confirmed by typing the company's name.
  */
 export async function clearCopy(confirm: string | undefined, keepUserId: string) {
-  if (!(await mayClear())) throw new ForbiddenError("A real company's copy can't be cleared from here.");
+  if (!(await mayClear())) throw new ForbiddenError(`This is a ${env.COPY_PURPOSE} copy: only a demonstration copy can be cleared.`);
   const name = await companyName();
   if (name && (confirm ?? '').trim().toLowerCase() !== name.toLowerCase()) throw new ValidationError(`Type the company's name, ${name}, to clear this copy`, { confirm: ['Does not match'] });
   const models = mongoose.models as Record<string, mongoose.Model<unknown>>;
@@ -245,9 +259,8 @@ export async function clearCopy(confirm: string | undefined, keepUserId: string)
 export async function applyHere(input: { file: unknown; clear?: { confirm?: string } }, actor: { userId: string }, onResult: (r: Result) => void) {
   const parsed = companyFileSchema.safeParse(input.file);
   if (!parsed.success) throw new ValidationError('The company file has problems', { problems: parsed.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`) });
-  // Once real, always real: re-labelling a real company's copy as a demonstration must not open the way to clearing it.
-  const before = await lastApplied();
-  if (before?.purpose === 'real' && parsed.data.purpose === 'demo' && env.NODE_ENV === 'production') throw new ForbiddenError("A real company's copy can't become a demonstration.");
+  // A file can't turn a trial or production copy into a demonstration: what a copy is comes from its environment.
+  if (parsed.data.purpose === 'demo' && env.COPY_PURPOSE !== 'demo') throw new ForbiddenError(`This is a ${env.COPY_PURPOSE} copy, so it can't be set up as a demonstration. Demonstrations run on a demo copy (COPY_PURPOSE=demo).`);
   if (input.clear) {
     await clearCopy(input.clear.confirm, actor.userId);
     onResult({ step: 'clear', outcome: 'updated', detail: 'Everything on this copy was removed, except your account.' });
@@ -262,6 +275,64 @@ export async function applyHere(input: { file: unknown; clear?: { confirm?: stri
   if (state?.value) await saveDraft({ ...state.value, finishedAt: new Date().toISOString() });
   const logins = parsed.data.purpose === 'demo' ? await demoLogins(parsed.data, actor.userId, onResult) : [];
   return { ...result, logins };
+}
+
+/**
+ * Resets a demonstration copy (#95): removes everything except the person doing it, then sets it up again the
+ * way it was, from the company file last applied (or the one in COMPANY_CONFIG), or else the sample at the size
+ * last loaded. Works every time, because clearing also forgets what was applied. Never on a trial or production copy.
+ */
+export async function resetDemo(confirm: string | undefined, actor: { userId: string }) {
+  if (env.COPY_PURPOSE !== 'demo') throw new ForbiddenError(`This is a ${env.COPY_PURPOSE} copy: only a demonstration copy can be reset.`);
+  const last = await lastAppliedFile();
+  const sample = await SystemState.findOne({ key: 'sample-data' }).select('value.size').lean<{ value?: { size?: SampleSize } }>();
+  const files = new Map((await draftFiles()).map((a) => [a.path, Buffer.from(a.data, 'base64')]));
+  await clearCopy(confirm, actor.userId);
+  const results: Result[] = [{ step: 'clear', outcome: 'updated', detail: 'Everything on this copy was removed, except your account.' }];
+  if (env.COMPANY_CONFIG) {
+    const out = await applyCompanyFile(env.COMPANY_CONFIG);
+    results.push(...out.results);
+  } else if (last) {
+    // Files the last set-up named but this copy no longer has are left out, rather than stopping the reset.
+    const file: CompanyFile = {
+      ...last,
+      brand: { ...last.brand, files: Object.fromEntries(Object.entries(last.brand.files).filter(([, n]) => !n || files.has(n))) as CompanyFile['brand']['files'] },
+      data: { ...last.data, files: last.data.files.filter((f) => files.has(f.file)), snapshot: last.data.snapshot && files.has(last.data.snapshot) ? last.data.snapshot : undefined },
+    };
+    const out = await applyFile(file, JSON.stringify(file), async (n) => files.get(n)!, { onResult: () => undefined, inviteOwner: false });
+    results.push(...out.results);
+  } else {
+    const { created } = await loadSampleData(actor.userId, sample?.value?.size ?? 'full');
+    results.push({ step: 'sample', outcome: 'created', detail: `${created} sample records` });
+  }
+  const applied = await lastAppliedFile();
+  const logins = applied ? await demoLogins(applied, actor.userId, () => undefined) : [];
+  return { results, logins };
+}
+
+/** The sections of a company file, in the order the screen lists them, with what each covers. */
+const SECTIONS: { key: keyof CompanyFile; label: string }[] = [
+  { key: 'company', label: 'Company details' }, { key: 'regional', label: 'Region: currency, time zone, formats' }, { key: 'brand', label: 'Brand' },
+  { key: 'areas', label: 'Areas switched on' }, { key: 'operations', label: 'Trip settings' }, { key: 'workspace', label: 'Words, stages and desks' },
+  { key: 'masters', label: 'Masters: fields, lists, custom masters' }, { key: 'roles', label: 'Roles' }, { key: 'owner', label: 'Owner' }, { key: 'staff', label: 'Staff' },
+  { key: 'connections', label: 'Connections' }, { key: 'connectionRules', label: 'Locked settings' }, { key: 'data', label: 'Data: sample and spreadsheets' },
+];
+
+/**
+ * What applying a company file here would change, section by section, without changing anything: new on a
+ * copy never set up from a file, changed where the file differs from the one last applied, unchanged otherwise.
+ * Applying changes only what the file changed; nothing is ever deleted.
+ */
+export async function previewApply(input: { file: unknown }) {
+  const parsed = companyFileSchema.safeParse(input.file);
+  if (!parsed.success) return { ok: false, problems: parsed.error.issues.map((i) => ({ path: i.path.join('.'), message: i.message })), sections: [] };
+  const last = await lastAppliedFile();
+  const refused = parsed.data.purpose === 'demo' && env.COPY_PURPOSE !== 'demo' ? `This is a ${env.COPY_PURPOSE} copy, so a demonstration file can't be applied here.` : null;
+  const sections = SECTIONS.filter((s) => s.key in parsed.data).map((s) => ({
+    key: s.key, label: s.label,
+    change: !last ? 'new' as const : isDeepStrictEqual(parsed.data[s.key], last[s.key as keyof typeof last]) ? 'unchanged' as const : 'changed' as const,
+  }));
+  return { ok: !refused, problems: refused ? [{ path: 'purpose', message: refused }] : [], sections, company: parsed.data.company.legalName, lastAppliedAt: last ? true : false };
 }
 
 export interface DemoLogin { role: string; login: string; password: string }

@@ -128,6 +128,12 @@ export function envTemplate(file: CompanyFile): string {
     set('CONSOLE_ENABLED', false),
     // A real company's copy makes no packages for other companies; a demonstration copy can.
     set('SETUP_PACKAGES', file.purpose === 'demo'),
+    // What kind of copy this is (#95): a demonstration can be reset; a real company's copy starts as production.
+    // For a trial, change it to trial and add TRIAL_ENDS=YYYY-MM-DD.
+    set('COPY_PURPOSE', file.purpose === 'demo' ? 'demo' : 'production'),
+    file.purpose === 'demo' && target !== 'local' ? set('DEMO_IN_PRODUCTION', true) : '# DEMO_IN_PRODUCTION=false: true only for a demonstration copy deployed in production',
+    '# TRIAL_ENDS=YYYY-MM-DD: a trial\'s last day; the app shows a notice from three days before',
+    '# APP_VERSION= is set by the deploy scripts to the version being deployed',
     // A copy on this computer keeps the simulated driver phones, to try the driver's side.
     set('DRIVER_PHONE_SIMULATOR', target === 'local'),
     // Cloud Run and Container Apps scale to nothing and run the timed work as scheduled jobs instead.
@@ -185,7 +191,9 @@ export function envTemplate(file: CompanyFile): string {
 function kitEnv(file: CompanyFile): string {
   const d = file.deploy;
   const smtp = smtpOf(file);
-  const pairs: [string, string | number | boolean | undefined][] = [['COMPANY', file.company.key], ['OWNER_EMAIL', file.owner.email], ['IMAGE_REPO', d.image], ['DOMAIN', d.domain]];
+  const pairs: [string, string | number | boolean | undefined][] = [['COMPANY', file.company.key], ['OWNER_EMAIL', file.owner.email], ['IMAGE_REPO', d.image], ['DOMAIN', d.domain],
+    // What kind of copy this is (#95). For a trial: COPY_PURPOSE=trial and TRIAL_ENDS=YYYY-MM-DD.
+    ['COPY_PURPOSE', file.purpose === 'demo' ? 'demo' : 'production']];
   if (d.target === 'gcp') {
     pairs.push(['PROJECT_ID', d.projectId], ['REGION', d.region], ['DOMAIN_MODE', d.domain ? d.domainMode : 'none'], ['EGRESS', d.egress],
       ['MIN_INSTANCES', d.minInstances], ['MAX_INSTANCES', d.maxInstances], ['CPU', d.cpu], ['MEMORY', d.memory], ['SCHEDULER_REGION', d.schedulerRegion],

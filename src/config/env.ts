@@ -61,6 +61,18 @@ export const envSchema = z.object({
 
   /** A company kit's company.json (#76), applied on every start: the first time in full, then only what it changed. */
   COMPANY_CONFIG: optionalText,
+  /**
+   * What kind of copy this is (#95, platform design): a demonstration with made-up data that can be reset, a
+   * company's trial, or a company's production copy. Set by whoever deploys it, never from a screen. Defaults:
+   * production in production, demo elsewhere.
+   */
+  COPY_PURPOSE: z.enum(['demo', 'trial', 'production']).optional(),
+  /** A trial's last day (YYYY-MM-DD). The app shows a notice from three days before; nothing is enforced. */
+  TRIAL_ENDS: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Use YYYY-MM-DD').optional(),
+  /** Allows COPY_PURPOSE=demo in production: a demonstration copy on Cloud Run for sales, made-up data only. */
+  DEMO_IN_PRODUCTION: flag('false'),
+  /** The version this copy runs, shown under This installation; deploy scripts set it to the image's git commit. */
+  APP_VERSION: optionalText,
   /** Whether "Set up a company" may download packages for other companies. Off on a real company's own copy. */
   SETUP_PACKAGES: z.enum(['true', 'false']).default('true').transform((v) => v === 'true'),
 
@@ -91,6 +103,9 @@ export const envSchema = z.object({
   if (value.EXPOSE_RESET_TOKEN) {
     ctx.addIssue({ code: 'custom', path: ['EXPOSE_RESET_TOKEN'], message: 'Reset tokens can never be exposed in production' });
   }
+  if (value.COPY_PURPOSE === 'demo' && !value.DEMO_IN_PRODUCTION) {
+    ctx.addIssue({ code: 'custom', path: ['COPY_PURPOSE'], message: 'A demonstration copy in production needs DEMO_IN_PRODUCTION=true: it can be reset, which removes every record' });
+  }
   if (value.DRIVER_PHONE_SIMULATOR === 'true') {
     ctx.addIssue({ code: 'custom', path: ['DRIVER_PHONE_SIMULATOR'], message: 'The simulated driver phone cannot run in production' });
   }
@@ -110,7 +125,11 @@ export const envSchema = z.object({
   if (!value.SMTP_HOST && !(value.OWNER_EMAIL && value.OWNER_PASSWORD)) {
     ctx.addIssue({ code: 'custom', path: ['SMTP_HOST'], message: 'Production needs SMTP_HOST for invitations and password resets, or OWNER_EMAIL and OWNER_PASSWORD for the first Owner' });
   }
-}).transform((value) => ({ ...value, DRIVER_PHONE_SIMULATOR: (value.DRIVER_PHONE_SIMULATOR ?? (value.NODE_ENV === 'production' ? 'false' : 'true')) === 'true' }));
+}).transform((value) => ({
+  ...value,
+  DRIVER_PHONE_SIMULATOR: (value.DRIVER_PHONE_SIMULATOR ?? (value.NODE_ENV === 'production' ? 'false' : 'true')) === 'true',
+  COPY_PURPOSE: value.COPY_PURPOSE ?? (value.NODE_ENV === 'production' ? 'production' : 'demo'),
+}));
 
 export const env = envSchema.parse(process.env);
 export type Env = typeof env;
