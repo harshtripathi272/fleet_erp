@@ -95,6 +95,7 @@ export const recordAtStop = asyncHandler(async (req, res) => ApiResponse.success
 export const attachDocument = asyncHandler(async (req, res) => ApiResponse.success(res, await Consignments.attachDocument(param(req), req.body, opsContext(req)), 'Paper attached'));
 export const detachDocument = asyncHandler(async (req, res) => ApiResponse.success(res, await Consignments.detachDocument(param(req), param(req, 'docId'), opsContext(req)), 'Paper removed'));
 export const fileDriverDocument = asyncHandler(async (req, res) => ApiResponse.success(res, await Consignments.fileDriverDocument(param(req), req.body, opsContext(req)), 'Filed'));
+export const tripCapacity = asyncHandler(async (req, res) => ApiResponse.success(res, await Consignments.tripCapacity(param(req))));
 export const tripGate = asyncHandler(async (req, res) => {
   const trip = await TripModel.findById(param(req)).lean();
   if (!trip) throw new NotFoundError('Trip not found');

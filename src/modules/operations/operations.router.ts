@@ -80,7 +80,7 @@ router.get('/driver-documents/:id', authorize('driver-documents', 'read'), valid
 router.post('/driver-documents/:id/done', authorize('driver-documents', 'update'), validate(id), C.markDocumentDone);
 router.post('/driver-documents/:id/return', authorize('driver-documents', 'update'), validate({ ...id, body: S.reasonSchema }), C.returnDocument);
 
-router.get('/consignments', authorize('consignments', 'read'), validate({ query: S.consignmentListQuery }), C.listConsignments);
+router.get('/consignments', authorize('consignments', 'read'), validate({ query: S.consignmentsQuery }), C.listConsignments);
 // The new body or, for one release, today's loading body: the handler validates whichever it is (contract 2.5).
 router.post('/consignments', authorize('consignments', 'create'), C.createOrLoad);
 router.patch('/consignments/:id', authorize('consignments', 'update'), validate({ ...id, body: S.updateConsignmentSchema }), C.updateConsignment);
@@ -91,6 +91,7 @@ router.post('/consignments/:id/documents', authorize('consignments', 'update'), 
 router.delete('/consignments/:id/documents/:docId', authorize('consignments', 'update'), validate({ params: docParams }), C.detachDocument);
 router.post('/trips/:id/stops/:stopId/record', authorize('consignments', 'update'), validate({ params: stopParams, body: S.stopRecordSchema }), C.recordAtStop);
 router.get('/trips/:id/gate', authorize('trips', 'read'), validate(id), C.tripGate);
+router.get('/trips/:id/capacity', authorize('trips', 'read'), validate(id), C.tripCapacity);
 router.post('/driver-documents/:id/file', authorize('driver-documents', 'update'), validate({ ...id, body: S.fileDocumentSchema }), C.fileDriverDocument);
 router.get('/consignments/:id', authorize('consignments', 'read'), validate(id), C.getConsignment);
 router.post('/consignments/:id/delivery', authorize('consignments', 'update'), validate({ ...id, body: S.deliverySchema }), C.recordDelivery);

@@ -32,9 +32,9 @@ export const DEFAULT_STAGES: Settings["stages"] = [
 ];
 
 export const DEFAULT_DESKS: Settings["desks"] = [
-  { key: "owner", name: "Overview and approvals", icon: "gauge", views: ["overview", "trips", "nominations", "accounts", "maintenance", "billing", "masters"], kind: "owner", actsAs: "owner" },
-  { key: "operations", name: "Operations", icon: "grid", views: ["trips", "nominations", "accounts", "maintenance", "masters"], kind: "operations", actsAs: "operations" },
-  { key: "finance", name: "Finance", icon: "wallet", views: ["today", "trips", "accounts", "billing", "masters"], kind: "finance", actsAs: "finance" },
+  { key: "owner", name: "Overview and approvals", icon: "gauge", views: ["overview", "trips", "consignments", "nominations", "accounts", "maintenance", "billing", "masters"], kind: "owner", actsAs: "owner" },
+  { key: "operations", name: "Operations", icon: "grid", views: ["trips", "consignments", "nominations", "accounts", "maintenance", "masters"], kind: "operations", actsAs: "operations" },
+  { key: "finance", name: "Finance", icon: "wallet", views: ["today", "trips", "consignments", "accounts", "billing", "masters"], kind: "finance", actsAs: "finance" },
 ];
 
 /** A term as the company says it: `w(data, "trip")` → "Job", `w(data, "trip", true)` → "Jobs". */
