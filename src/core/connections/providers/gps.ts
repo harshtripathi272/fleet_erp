@@ -27,6 +27,10 @@ const mappingFields = z.strictObject({
   timeField: z.string().trim().min(1).max(100).default('time'),
   speedField: z.string().trim().max(100).optional(),
   headingField: z.string().trim().max(100).optional(),
+  /** The service's own id for each reading, so a repeat is dropped (#136). */
+  idField: z.string().trim().max(100).optional(),
+  /** The truck's plate, for services that know it: a truck is found by its plate when its device id isn't on it. */
+  plateField: z.string().trim().max(100).optional(),
 });
 type Mapping = z.infer<typeof mappingFields>;
 
@@ -45,7 +49,12 @@ export function readPositions(body: unknown, mapping: Partial<Mapping>): Positio
     if (deviceId === undefined || deviceId === null || !Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180 || Number.isNaN(at.getTime())) continue;
     const speed = m.speedField ? Number(pick(item, m.speedField)) : NaN;
     const heading = m.headingField ? Number(pick(item, m.headingField)) : NaN;
-    out.push({ deviceId: String(deviceId), lat, lng, at, ...(Number.isFinite(speed) ? { speedKmh: speed } : {}), ...(Number.isFinite(heading) ? { heading } : {}) });
+    const id = m.idField ? pick(item, m.idField) : undefined;
+    const plate = m.plateField ? pick(item, m.plateField) : undefined;
+    out.push({
+      deviceId: String(deviceId), lat, lng, at, source: 'device', ...(Number.isFinite(speed) ? { speedKmh: speed } : {}), ...(Number.isFinite(heading) ? { heading } : {}),
+      ...(typeof id === 'string' || typeof id === 'number' ? { id: String(id) } : {}), ...(typeof plate === 'string' && plate.trim() ? { registration: plate.trim() } : {}),
+    });
   }
   return out;
 }
@@ -54,8 +63,8 @@ registerProvider({
   kind: 'gps', key: 'webhook', label: 'Any tracker service (webhook)',
   description: "For a tracker service that can send each position as JSON to a web address. Map its field names below; the call must be signed with this connection's signing secret.",
   fields: mappingFields,
-  labels: { listPath: 'List of positions at', deviceField: 'Device ID field', latField: 'Latitude field', lngField: 'Longitude field', timeField: 'Time field', speedField: 'Speed field (km/h)', headingField: 'Heading field' },
-  hints: { listPath: 'Empty when each call carries one position; e.g. "positions" when it carries a list', timeField: 'An ISO date, or seconds or milliseconds since 1970', deviceField: 'Dots reach inside objects, e.g. "device.imei"' },
+  labels: { listPath: 'List of positions at', deviceField: 'Device ID field', latField: 'Latitude field', lngField: 'Longitude field', timeField: 'Time field', speedField: 'Speed field (km/h)', headingField: 'Heading field', idField: 'Event ID field', plateField: 'Plate field' },
+  hints: { listPath: 'Empty when each call carries one position; e.g. "positions" when it carries a list', timeField: 'An ISO date, or seconds or milliseconds since 1970', deviceField: 'Dots reach inside objects, e.g. "device.imei"', idField: 'Optional: a repeated id is counted once', plateField: "Optional: the truck's registration, used when the device ID isn't on the truck" },
   test: async () => ({ ok: true, message: 'Waiting for signed calls to the web address above.' }),
   open: () => ({ positions: async () => [] }),
   async inbound(ctx, body) {
@@ -78,9 +87,9 @@ registerProvider({
   },
   open: (ctx) => ({
     async positions(signal) {
-      const list = await callJson<Array<{ deviceId: number; latitude: number; longitude: number; fixTime: string; speed?: number; course?: number }>>('Traccar', `${url(ctx.settings)}/api/positions`, { headers: auth(ctx), signal });
+      const list = await callJson<Array<{ id?: number; deviceId: number; latitude: number; longitude: number; fixTime: string; speed?: number; course?: number }>>('Traccar', `${url(ctx.settings)}/api/positions`, { headers: auth(ctx), signal });
       // Traccar gives speed in knots.
-      return list.map((p) => ({ deviceId: String(p.deviceId), lat: p.latitude, lng: p.longitude, at: new Date(p.fixTime), ...(p.speed !== undefined ? { speedKmh: Math.round(p.speed * 1.852) } : {}), ...(p.course !== undefined ? { heading: p.course } : {}) }));
+      return list.map((p) => ({ deviceId: String(p.deviceId), lat: p.latitude, lng: p.longitude, at: new Date(p.fixTime), source: 'device' as const, ...(p.id !== undefined ? { id: String(p.id) } : {}), ...(p.speed !== undefined ? { speedKmh: Math.round(p.speed * 1.852) } : {}), ...(p.course !== undefined ? { heading: p.course } : {}) }));
     },
   }),
 });

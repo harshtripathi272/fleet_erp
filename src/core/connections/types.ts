@@ -5,7 +5,7 @@ import type { z } from 'zod';
  * Every outside service this installation can talk to, by kind (#55, pattern 2). A kind is what the system
  * needs (send an e-mail, fetch today's rates, store a file); a provider is one service that does it.
  */
-export const KINDS = ['email', 'sms', 'whatsapp', 'gps', 'rates', 'routing', 'storage', 'accounting', 'fuel-cards', 'payouts'] as const;
+export const KINDS = ['email', 'sms', 'whatsapp', 'gps', 'fleet-exchange', 'rates', 'routing', 'storage', 'accounting', 'fuel-cards', 'payouts'] as const;
 export type Kind = (typeof KINDS)[number];
 
 /** What each kind does, in words for the Connections screen, and what happens while nothing is connected. */
@@ -14,6 +14,7 @@ export const KIND_INFO: Record<Kind, { label: string; description: string; whenN
   sms: { label: 'SMS', description: 'Text messages to drivers and staff.', whenNone: 'Simulated: messages are kept in the outbox, not sent.' },
   whatsapp: { label: 'WhatsApp', description: 'WhatsApp messages and the replies to them.', whenNone: 'Simulated: messages show on the in-app phone, not sent.' },
   gps: { label: 'GPS trackers', description: "Trucks' positions from their trackers.", whenNone: 'Simulated: positions come from the drive simulator.' },
+  'fleet-exchange': { label: 'Fleet data exchange', description: 'Send trips, trucks and places to a GPS or fleet-analytics platform; take back positions and geofence events.', whenNone: 'Simulated: nothing leaves this server; the simulated partner keeps what would have been sent.' },
   rates: { label: 'Exchange rates', description: "The daily exchange-rate feed for the company's currencies.", whenNone: 'No feed: rates are typed in by hand.' },
   routing: { label: 'Map routing', description: 'Road distances, driving times and the lines drawn on maps.', whenNone: "Straight line × the company's road distance factor." },
   storage: { label: 'File storage', description: 'Where uploaded documents and printouts are kept.', whenNone: "The server's own storage setting (FILE_STORAGE)." },
@@ -72,7 +73,18 @@ export interface FileStore {
   remove(key: string): Promise<void>;
 }
 export interface StorageBackend { store(): Promise<FileStore> }
-export interface Position { deviceId: string; lat: number; lng: number; at: Date; speedKmh?: number; heading?: number }
+/**
+ * One reading from a tracker. `id` is the service's own event id, when it gives one (repeats are dropped by it);
+ * `registration` is the truck's plate, when the service knows it; `source` says what produced the reading.
+ */
+export interface Position {
+  deviceId: string; lat: number; lng: number; at: Date; speedKmh?: number; heading?: number;
+  id?: string; registration?: string; externalId?: string; odometerKm?: number; ignition?: boolean; accuracyM?: number;
+  source?: PositionOrigin;
+}
+/** What produced a position: the truck's tracker, the platform's own fusion, the driver's phone, or the simulator. */
+export const POSITION_SOURCES = ['device', 'partner', 'phone', 'simulator'] as const;
+export type PositionOrigin = (typeof POSITION_SOURCES)[number];
 export interface PositionSource { positions(signal?: AbortSignal): Promise<Position[]> }
 export interface ExportFile { name: string; mime: string; body: Buffer }
 export interface AccountingExport { export(input: { name: string; columns: string[]; rows: Array<Record<string, unknown>> }): Promise<ExportFile & { sent: boolean }> }
@@ -80,7 +92,56 @@ export interface FuelCardTransaction { cardNumber: string; at: Date; litres: num
 export interface FuelCardSource { transactions(since: Date, signal?: AbortSignal): Promise<FuelCardTransaction[]> }
 export interface PayoutSender { pay(input: { to: string; amountMinor: number; currency: string; reference: string }): Promise<{ providerRef: string; simulated: boolean }> }
 
+/* Fleet data exchange (#136): trips, trucks and places out to a GPS or fleet-analytics platform; its events back in. */
+
+/** The versioned canonical schema every fleet-exchange message is written in. */
+export const FLEET_SCHEMA = 'marichi.fleet-exchange/1';
+export const FLEET_OUT_TYPES = ['trip.upsert', 'trip.cancel', 'trip.close', 'place.upsert', 'place.delete', 'vehicle.upsert', 'vehicle.status', 'sync.snapshot'] as const;
+export type FleetOutType = (typeof FLEET_OUT_TYPES)[number];
+export const FLEET_IN_TYPES = ['position', 'geofence.enter', 'geofence.exit', 'ignition', 'odometer', 'halt', 'trip.metrics', 'device.status'] as const;
+export type FleetInType = (typeof FLEET_IN_TYPES)[number];
+
+/** What a platform can do with what we send, so the exchange sends only what it can use. */
+export interface FleetExchangeCapabilities {
+  /** It can hold geofences. */
+  places: boolean;
+  /** It stores a trip (job, order, route) natively, as notes, or not at all. */
+  trips: 'native' | 'as-notes' | 'none';
+  /** It accepts our truck status. */
+  vehicleStatus: boolean;
+  inbound: 'push' | 'pull' | 'both' | 'none';
+  /** It works out geofence entry and exit itself. */
+  geofenceEvents: boolean;
+  /** The most messages it takes in one call. */
+  maxBatch: number;
+}
+/** One canonical message, as the outbox hands it over: the envelope is already built. */
+export interface PushItem { key: string; type: FleetOutType; entityId: string; envelope: Record<string, unknown>; attempt: number }
+/** What happened to one item. `retryable` says a later attempt may work (a timeout, 429, 5xx). */
+export interface PushOutcome { key: string; ok: boolean; vendorRef?: string; retryable?: boolean; message?: string; simulated?: boolean; status?: number }
+/** One event from a platform, in the canonical shape (an adapter turns the platform's own shape into this). */
+export interface FleetInboundEvent {
+  id?: string;
+  type: FleetInType;
+  at: Date;
+  vehicle?: { registration?: string; deviceId?: string; externalId?: string };
+  place?: { code?: string; externalId?: string };
+  tripNumber?: string;
+  lat?: number; lng?: number; speedKmh?: number; heading?: number; odometerKm?: number; ignition?: boolean; accuracyM?: number;
+  source?: PositionOrigin;
+  /** Anything else the event carried (halt minutes, trip metrics, device state), kept as sent. */
+  extra?: Record<string, unknown>;
+}
+export interface FleetExchangeClient {
+  capabilities: FleetExchangeCapabilities;
+  /** Sends a batch; one outcome per item. Never throws for one item's refusal. */
+  push(items: PushItem[], signal?: AbortSignal): Promise<PushOutcome[]>;
+  /** Pull-style platforms: events since the cursor. */
+  poll?(cursor: string | undefined, signal?: AbortSignal): Promise<{ events: FleetInboundEvent[]; cursor: string }>;
+}
+
 export interface Capabilities {
+  'fleet-exchange': FleetExchangeClient;
   email: MessageSender;
   sms: MessageSender;
   whatsapp: MessageSender;
@@ -104,7 +165,12 @@ export interface InboundMessage {
 }
 
 /** What a call to a connection's webhook brought in, for whoever listens to that kind (#60 for trackers). */
-export interface InboundResult { accepted: number; positions?: Position[]; messages?: InboundMessage[]; note?: string }
+export interface InboundResult { accepted: number; positions?: Position[]; messages?: InboundMessage[]; events?: FleetInboundEvent[]; note?: string }
+/**
+ * What a feature listening to calls did with one (#136): counts added to the webhook's answer, so a sender
+ * sees how many were new, repeats, or for a truck nobody has matched yet.
+ */
+export interface InboundCounts { stored?: number; duplicate?: number; unmatched?: number; rejected?: number; notes?: string[] }
 
 /**
  * One step of a provider's guide (#98): how to get a value, with a link to the page that has it. `{webhookUrl}`
