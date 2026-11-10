@@ -54,6 +54,7 @@ export function run(tree: Node, lookup: (name: string, at: number) => Value): Va
           case '-': return finite(a - b, n.at);
           case '*': return finite(a * b, n.at);
           case '/': if (b === 0) throw new FormulaError('Divides by zero', n.at); return finite(a / b, n.at);
+          // The remainder keeps the sign of a, as in a spreadsheet's MOD only for positives: -7 % 3 is -1.
           case '%': if (b === 0) throw new FormulaError('Divides by zero', n.at); return finite(a % b, n.at);
         }
         break;
