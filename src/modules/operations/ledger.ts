@@ -44,7 +44,7 @@ export async function driverLedger(driverId: unknown): Promise<LedgerEntry[]> {
     Expense.find({ driverId: id, status: 'approved' }).lean(),
     Consignment.find({ tripId: { $in: tripIds }, 'shortage.status': 'charged' }).lean(),
     // A load written off and carried by the driver is recovered through their account (#64).
-    Consignment.find({ tripId: { $in: tripIds }, 'writeOff.status': 'approved', 'writeOff.carrier': 'driver' }).lean(),
+    Consignment.find({ tripId: { $in: tripIds }, 'outcome.writeOff.status': 'approved', 'outcome.writeOff.carrier': 'driver' }).lean(),
     Settlement.find({ driverId: id, cashMinor: { $ne: 0 } }).lean(),
   ]);
   const categories = new Map((await ExpenseCategory.find({ _id: { $in: expenses.map((e) => e.categoryId) } }).select('name').lean()).map((c) => [String(c._id), String(c.name)]));
@@ -69,7 +69,7 @@ export async function driverLedger(driverId: unknown): Promise<LedgerEntry[]> {
     });
   }
   for (const c of writeOffs) {
-    const w = c.writeOff as Plain;
+    const w = (c.outcome as Plain).writeOff as Plain;
     entries.push({ id: `writeoff-${c._id}`, at: (w.decidedAt as Date).toISOString(), tripId: String(c.tripId), settlementId: settlementOf(c.tripId), kind: 'write_off', label: `Load written off ${c.number}`, amountMinor: Number(w.baseAmountMinor) });
   }
   for (const s of settlements) {

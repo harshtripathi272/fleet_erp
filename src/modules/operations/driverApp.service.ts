@@ -11,6 +11,7 @@ import { ExpenseCategory } from '../trips/models/expense.model.js';
 import { sendDocument } from './cargo.service.js';
 import { driverLedger } from './ledger.js';
 import { Consignment, DriverDocument } from './models/cargo.model.js';
+import { isFinished, isLoaded } from './legs.js';
 import { FundRequest } from './models/funding.model.js';
 import { Message } from './models/message.model.js';
 import { Settlement } from './models/money.model.js';
@@ -55,8 +56,9 @@ function nextUpload(trip: Plain, consignments: Plain[], docs: Plain[]): 'loading
   const waiting = (kind: string) => docs.some((d) => d.kind === kind && d.status === 'new');
   const load = stops.find((s) => s.kind === 'load');
   const offload = stops.find((s) => s.kind === 'offload');
-  if (!consignments.length) return load?.arrivedAt && !waiting('loading') ? 'loading' : undefined;
-  if (consignments.some((c) => !c.delivered)) return offload?.arrivedAt && !waiting('delivery') ? 'delivery' : undefined;
+  const loaded = consignments.filter((c) => isLoaded(c as never));
+  if (!loaded.length) return load?.arrivedAt && !waiting('loading') ? 'loading' : undefined;
+  if (consignments.some((c) => !isFinished(c as never))) return offload?.arrivedAt && !waiting('delivery') ? 'delivery' : undefined;
   return undefined;
 }
 
@@ -88,7 +90,7 @@ export async function home(actor: DriverActor) {
       customer: await partyName(trip.customerId), product: product?.name ?? '',
       dispatchedAt: iso(trip.dispatchedAt), stops,
       next: nextUpload(trip, consignments, docs),
-      loaded: consignments.length > 0, delivered: consignments.length > 0 && consignments.every((c) => c.delivered),
+      loaded: consignments.some((c) => isLoaded(c as never)), delivered: consignments.some((c) => isLoaded(c as never)) && consignments.every((c) => isFinished(c as never) || !isLoaded(c as never)),
       issued,
       documents: docs.map((d) => ({
         id: String(d._id), kind: d.kind, status: d.status, at: iso(d.at), note: d.note, returnReason: d.returnReason,
@@ -151,7 +153,7 @@ export async function answerFields(actor: DriverActor, input: S.DriverFieldsInpu
   const plain = await ownTrip(actor.driverId);
   if (!plain) throw new NotFoundError('You have no trip on the road');
   const trip = await Trip.findById(plain._id);
-  const consignment = await Consignment.findOne({ tripId: plain._id, inTransit: true });
+  const consignment = await Consignment.findOne({ tripId: plain._id, status: { $in: ['loading', 'loaded', 'in_transit', 'delivering'] } }).sort({ bookedAt: 1 });
   await driverAnswers(trip!, consignment, input.values);
   await save(trip!);
   if (consignment) await save(consignment);

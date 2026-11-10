@@ -15,7 +15,7 @@ Paged lists add `meta: { total, page, limit, pages }`. Refusals are plain senten
 
 **Who sees money.** Rates, revenue and profit need the sensitive switch on the area: `consignment-revenue: sensitive` and `trip-profit: sensitive`. Owner and Finance have it by default; Operations and Viewer do not. Without it, `revenue` is left out of every consignment (lists, sync, the drawer), money columns are left out of the report, and the profit routes answer 403. Design 3.6.3 says "trip-profit (read)"; it is the sensitive switch instead because the built-in Operations role reads everything (`*: read`) and must not see money.
 
-Status: ✅ built and tested on `lakshya-desktop/135-consignments` · 🟡 route exists, behaviour landing · ⬜ not yet.
+Status: ✅ on origin and working · 🟡 on origin, part of it still landing (the row says what) · ⬜ not on origin yet.
 
 ## 1. The consignment
 
@@ -67,11 +67,11 @@ Status: ✅ built and tested on `lakshya-desktop/135-consignments` · 🟡 route
 | | Method and path | Permission | Body | Answers |
 |---|---|---|---|---|
 | ✅ | `GET /consignments` | `consignments: read` | query below | paged consignments |
-| ✅ | `POST /consignments` | `consignments: create` | `createConsignmentSchema` (1.1), or today's loading body (2.5) | 201, the consignment |
+| 🟡 | `POST /consignments` | `consignments: create` | `createConsignmentSchema` (1.1), or today's loading body (2.5) (the old body works now; the new one lands with the routes of section 1) | 201, the consignment |
 | ✅ | `GET /consignments/:id` | `consignments: read` | — | the consignment |
-| ✅ | `PATCH /consignments/:id` | `consignments: update` | `updateConsignmentSchema`: `version` and any field of 1.1 but `tripId` and `legs` | the consignment |
-| ✅ | `PUT /consignments/:id/legs` | `consignments: update` | `putLegsSchema` (1.2) | the consignment |
-| ✅ | `POST /consignments/:id/cancel` | `consignments: update` | `{ version, reason }` | the consignment |
+| ⬜ | `PATCH /consignments/:id` | `consignments: update` | `updateConsignmentSchema`: `version` and any field of 1.1 but `tripId` and `legs` | the consignment |
+| ⬜ | `PUT /consignments/:id/legs` | `consignments: update` | `putLegsSchema` (1.2) | the consignment |
+| ⬜ | `POST /consignments/:id/cancel` | `consignments: update` | `{ version, reason }` | the consignment |
 | ✅ | `POST /trips` | `trips: create` | today's body plus `consignments: [inlineConsignment]` (1.1 without `tripId`) | 201, the trip |
 
 Query of `GET /consignments`: `page`, `limit` (≤ 100), `tripId`, `status` (comma list), `customerId`, `consignorPartyId`, `consigneePartyId`, `productId`, `revenueStatus` (`unpriced|estimated|priced|frozen|invoiced`), `podMissing` (`true`), `from`, `to`, `dateField` (`booked|loaded|delivered`, default `booked`), `q` (number, references, document numbers, party names, trip number), `shortage` (`pending|charged|waived|none`, as today), `tab` (`all|to_load|on_road|to_deliver|waiting_pod|unpriced`, the list tabs of 3.11.6). With `tripId` the order is booking order; otherwise newest loaded first.
@@ -128,9 +128,9 @@ Refusals: `A pickup or drop that is done cannot move. Correct it instead.` · `9
 
 | | Method and path | Permission | Body | Answers |
 |---|---|---|---|---|
-| ✅ | `POST /consignments/:id/legs/:legId/record` | `consignments: update` | `legRecordSchema` | the consignment with `checks` |
+| ⬜ | `POST /consignments/:id/legs/:legId/record` | `consignments: update` | `legRecordSchema` | the consignment with `checks` |
 | ⬜ | `POST /consignments/:id/legs/:legId/correct` | `consignments: archive` (the area's Manage level) | `legRecordSchema` plus `reason` | the consignment |
-| ✅ | `POST /trips/:id/stops/:stopId/record` | `consignments: update` | `{ records: [legRecordSchema + consignmentId + legId] }` | `{ recorded, results: [{ consignmentId, legId, number, ok, status?, error? }] }` |
+| ⬜ | `POST /trips/:id/stops/:stopId/record` | `consignments: update` | `{ records: [legRecordSchema + consignmentId + legId] }` | `{ recorded, results: [{ consignmentId, legId, number, ok, status?, error? }] }` |
 
 ```json
 {
@@ -159,9 +159,9 @@ Refusals: `Dispatch the truck first.` (409) · `This trip is closed.` (409) · `
 
 | | Method and path | Permission | Body | Answers |
 |---|---|---|---|---|
-| ✅ | `POST /consignments/:id/documents` | `consignments: update` | `{ legId?, documentTypeId?, number?, date?, amount?, validUntil?, driverDocId?, fileId? }` | the consignment |
-| ✅ | `DELETE /consignments/:id/documents/:docId` | `consignments: update` | — | the consignment |
-| ✅ | `POST /driver-documents/:id/file` | `driver-documents: update` | `{ documentTypeId?, consignmentId?, legId? }` | the driver document |
+| ⬜ | `POST /consignments/:id/documents` | `consignments: update` | `{ legId?, documentTypeId?, number?, date?, amount?, validUntil?, driverDocId?, fileId? }` | the consignment |
+| ⬜ | `DELETE /consignments/:id/documents/:docId` | `consignments: update` | — | the consignment |
+| ⬜ | `POST /driver-documents/:id/file` | `driver-documents: update` | `{ documentTypeId?, consignmentId?, legId? }` | the driver document |
 
 `POST /driver-documents/:id/file` is "Change what this is" and "Move to another consignment": it sets the photo's `documentTypeId` (and its `kind` while it is still new), `consignmentId` and `legId`, and ends any WhatsApp question about it. Refusals: `That consignment is not on the trip this photo was sent for.` · `That pickup or drop is not on the consignment.` · `That photo belongs to another trip.` · `Enter the number, or attach the photo.`
 
@@ -173,8 +173,8 @@ A loading or offloading stop holds the truck (it cannot be arrived past, by the 
 
 | | Method and path | Permission | Body | Answers |
 |---|---|---|---|---|
-| ✅ | `GET /trips/:id/gate` | `trips: read` | — | `{ gate: { index, stopId, reason, driverReason, why } \| null }` (not in 3.12: the screens' "can leave TIPER when …" line and the driver app read it) |
-| ✅ | `POST /trips/:id/stops/:stopId/pass` | `stop-gate-override: create` | `{ reason }` | the trip (the stop gets `gatePassed: { at, by, byName, reason }`; logged on the trip) |
+| ⬜ | `GET /trips/:id/gate` | `trips: read` | — | `{ gate: { index, stopId, reason, driverReason, why } \| null }` (not in 3.12: the screens' "can leave TIPER when …" line and the driver app read it) |
+| ⬜ | `POST /trips/:id/stops/:stopId/pass` | `stop-gate-override: create` | `{ reason }` | the trip (the stop gets `gatePassed: { at, by, byName, reason }`; logged on the trip) |
 
 `why`: `no_consignment · pickup · drop · document · rate`. Sentences (office / driver): with one consignment on the trip they are today's: `Record the loading first.` / `Waiting for Operations to record the loading.` and `Record the delivery at Lusaka depot first.` / `Waiting for Operations to record the delivery at Lusaka depot.` With several: `Record the loading of CN/26/0012 and CN/26/0013 at TIPER first.`, `Record the delivery of CN/26/0012 at Puma Kabwe first.` Papers: `CN/26/0012 needs its loading invoice.` / `Waiting for Operations to record the loading invoice.` Rate: `CN/26/0012 has no rate yet.` / `Waiting for the office to agree the rate.`
 
@@ -184,7 +184,7 @@ On board after a pickup = everything recorded on the trip and not yet dropped, p
 
 | | Method and path | Permission | Answers |
 |---|---|---|---|
-| ✅ | `GET /trips/:id/capacity` | `trips: read` | `{ limits: { kg?, l?, kgFrom?, lFrom? }, onBoard: { kg, l }, planned: [{ stopId, place, kg, l, over: bool }], notes: [string] }` |
+| ⬜ | `GET /trips/:id/capacity` | `trips: read` | `{ limits: { kg?, l?, kgFrom?, lFrom? }, onBoard: { kg, l }, planned: [{ stopId, place, kg, l, over: bool }], notes: [string] }` |
 
 Refusal (422): `ABC 1234 carries 30 t; this would put 31.2 t on board.` · `TAC 7821 holds 38,000 L; this would put 39,000 L on board.` Holders of `capacity-override: create` get ` Give a reason to record it anyway.` added, and pass by sending `override: { reason }` (logged on the trip). With no figure on the truck, `checks.capacity.notes` says `No payload set for ABC 1234, so the weight was not checked.` With `warn`, `checks.capacity.warnings` has the sentence and the trip's activity logs it.
 
@@ -196,7 +196,7 @@ Refusal (422): `ABC 1234 carries 30 t; this would put 31.2 t on board.` · `TAC 
 
 | | Method and path | Permission | Body | Answers |
 |---|---|---|---|---|
-| ✅ | `PUT /trips/:id/stops` | `trips: update` | `{ version, stops: [{ id?, placeId, kind }] }` | the trip |
+| ⬜ | `PUT /trips/:id/stops` | `trips: update` | `{ version, stops: [{ id?, placeId, kind }] }` | the trip |
 
 Re-orders the stops the truck has not reached, or adds one (`via`, `border`, a `load` or `offload` with no consignment yet). Stops already reached must come back first and unchanged. After dispatch needs Company → Freight `stopsEditableOnRoad` (on by default). Refusals: `The stops the truck has reached can't move.` · `A stop with a planned pickup or drop can't be removed. Move the pickup or drop first.` · `Every pickup comes before its drops: CN/26/0012 would be dropped before it is loaded.` · the stop rules (`The first stop is the start.` …).
 
@@ -226,7 +226,7 @@ Refusals: `Say why the price is set by hand.` · `This price is frozen. Reopen i
 | ✅ | `POST /tariffs/try` | `tariffs: read` | `{ tariff: <tariff body>, consignmentId? , sample?: { … } }` | `{ problems: [string], result: RevenueResult \| null, facts }` |
 | ✅ | `POST /tariffs/:id/try` | `tariffs: read` | `{ consignmentId?, sample? }` | the same, for the saved tariff |
 | ✅ | `GET /tariffs/:id/match?consignmentId=` | `tariffs: read` | — | `{ matches: bool, tariff: { id, code, matchedOn } \| null, winner }` (not in 3.12: "why didn't this tariff apply") |
-| ✅ | `GET /freight/formula/variables` | signed in | — | `FORMULA_VARIABLES`: `[{ name, meaning, kind, … }]` |
+| ✅ | `GET /freight/formula/variables` | signed in | — | `{ variables: FORMULA_VARIABLES ([{ name, kind, help }]), bases: [{ value, label, sentence, price: 'price' \| 'percent' \| 'formula' \| 'none', priceOptional, free }] }`: `label` and `sentence` are BASIS_LABELS and BASIS_SENTENCES; `price` is the input a line of that basis shows (shortage and damage take an optional price, `priceOptional: true`); `free` is true for per_drop_beyond and per_pickup_beyond |
 
 Design 3.12 has only `/tariffs/:id/try`; `/tariffs/try` prices a tariff that is not saved yet (the editor's "Try it" before the first save). `sample` is plain figures: `{ qty?, unit?, loadedQty?, deliveredQty?, plannedQty?, km?, drops?, pickups?, kg?, litres20?, pieces?, declaredValue?, productId? }`. Saving a tariff runs `checkTariff`: each problem comes back under `details.lines` ("Line 3: the formula: There is no value called "kgs": did you mean "kg"?").
 
@@ -236,9 +236,9 @@ Matching (design 3.4.5): active tariffs valid on the pricing day whose every con
 
 | | Method and path | Permission | Body | Answers |
 |---|---|---|---|---|
-| ✅ | `GET /trips/:id/profit` | `trip-profit: sensitive` | — | design 3.6.3 (below) |
-| ✅ | `POST /trips/:id/costs` | `trip-profit: update` | `{ chargeTypeId?, label, amount: money, note? }` | the profit |
-| ✅ | `DELETE /trips/:id/costs/:lineId` | `trip-profit: update` | — | the profit |
+| ⬜ | `GET /trips/:id/profit` | `trip-profit: sensitive` | — | design 3.6.3 (below) |
+| ⬜ | `POST /trips/:id/costs` | `trip-profit: update` | `{ chargeTypeId?, label, amount: money, note? }` | the profit |
+| ⬜ | `DELETE /trips/:id/costs/:lineId` | `trip-profit: update` | — | the profit |
 
 ```json
 {
@@ -267,9 +267,9 @@ Matching (design 3.4.5): active tariffs valid on the pricing day whose every con
 
 | | Method and path | Permission | Answers |
 |---|---|---|---|
-| ✅ | `GET /consignments/report` | `consignments: read` | `{ columns: [{ key, label, money, unit? }], rows: [{ <key>: value }], totals: { count, quantities: [{ unit, qty }], km, money: [{ currency, amountMinor }] }, available: [{ key, label, money }] }`, paged with `page`, `limit` (≤ 500) |
-| ✅ | `GET /consignments/report.xlsx` · `/report.csv` | `consignments: read` | the file of exactly the columns and filters asked |
-| ✅ | `GET /consignments/report/columns` · `PUT` `{ columns: [key] }` | `consignments: read` | the person's remembered columns (not in 3.12: "remembered per person" needs a home on the server, so it follows the person across browsers) |
+| ⬜ | `GET /consignments/report` | `consignments: read` | `{ columns: [{ key, label, money, unit? }], rows: [{ <key>: value }], totals: { count, quantities: [{ unit, qty }], km, money: [{ currency, amountMinor }] }, available: [{ key, label, money }] }`, paged with `page`, `limit` (≤ 500) |
+| ⬜ | `GET /consignments/report.xlsx` · `/report.csv` | `consignments: read` | the file of exactly the columns and filters asked |
+| ⬜ | `GET /consignments/report/columns` · `PUT` `{ columns: [key] }` | `consignments: read` | the person's remembered columns (not in 3.12: "remembered per person" needs a home on the server, so it follows the person across browsers) |
 
 Query: the filters of `GET /consignments` plus `columns` (comma list of keys, in order; left out, the person's remembered columns, else the default view), `dateField` (`booked|loaded|delivered|invoiced`), `vehicleId`, `driverId`, `routeId`, `withPod`. Default view (the 8 Nov columns): `tripNo, vehicleNo, invoiceDate, lrNo, product, quantity, route, leadKm`. The rest: `number, customer, consignor, consignee, loadingInvoiceNo, loadedQty, deliveredQty, difference, loadedOn, deliveredOn, podNo, daysInTransit, rate, freight, charges, deductions, total, currency, invoiceNo, status`, and `custom.<key>` for each company field on consignments. Money columns (`rate, freight, charges, deductions, total, currency`) are left out without `consignment-revenue: sensitive`, even when asked for.
 
@@ -277,9 +277,9 @@ Query: the filters of `GET /consignments` plus `columns` (comma list of keys, in
 
 | | Method and path | Change |
 |---|---|---|
-| ✅ | `GET /driver-app/home` | `trip.stops[]` gain `legs: [{ consignmentId, legId, number, kind, party, phone, whatsapp, product, plannedQty, unit, status, send: [{ documentTypeId, label }] }]`; `trip.next` becomes a list `[{ consignmentId, legId, documentTypeId, label, stopId }]` (empty when nothing is due); `trip.gate: { stopId, driverReason } \| null`. `trip.loaded` / `trip.delivered` stay. Never: rates, revenue, profit |
-| ✅ | `POST /driver-app/send` | adds `consignmentId`, `legId`, `documentTypeId`, `allAtStop` (one sheet for every drop at the stop, with Company → Freight `podPerStopAllowed`). Several consignments open at the stop and none named: answered 201 with `pick: [{ consignmentId, legId, number, party, product, qty }]`, the photo filed on the trip |
-| ✅ | `POST /whatsapp/simulate` | adds `consignmentId`, `legId` (the simulated phone's picker) |
+| ⬜ | `GET /driver-app/home` | `trip.stops[]` gain `legs: [{ consignmentId, legId, number, kind, party, phone, whatsapp, product, plannedQty, unit, status, send: [{ documentTypeId, label }] }]`; `trip.next` becomes a list `[{ consignmentId, legId, documentTypeId, label, stopId }]` (empty when nothing is due); `trip.gate: { stopId, driverReason } \| null`. `trip.loaded` / `trip.delivered` stay. Never: rates, revenue, profit |
+| ⬜ | `POST /driver-app/send` | adds `consignmentId`, `legId`, `documentTypeId`, `allAtStop` (one sheet for every drop at the stop, with Company → Freight `podPerStopAllowed`). Several consignments open at the stop and none named: answered 201 with `pick: [{ consignmentId, legId, number, party, product, qty }]`, the photo filed on the trip |
+| ⬜ | `POST /whatsapp/simulate` | adds `consignmentId`, `legId` (the simulated phone's picker) |
 
 ## 9. Settings
 

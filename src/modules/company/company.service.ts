@@ -10,7 +10,14 @@ import { refreshRegional } from './regional.js';
 
 const presentDoc = (doc: Plain) => { const { _id, singleton, ...rest } = comparable(doc) as Plain; return { id: _id, ...rest }; };
 /** The record as saved, and the regional settings in effect (the company's, else its country's, else the defaults). */
-const present = async (doc: Plain) => ({ ...presentDoc(doc), effectiveRegional: await refreshRegional() });
+/**
+ * The company, with what applies now beside what it stored: regional formats, and Company → Freight with every
+ * default filled in and the settings a later phase acts on (#135), so the settings page can say "Not built yet".
+ */
+const present = async (doc: Plain) => {
+  const { freightSettings, NOT_BUILT, NOT_BUILT_VALUES } = await import('../freight/settings.js');
+  return { ...presentDoc(doc), effectiveRegional: await refreshRegional(), effectiveFreight: await freightSettings(), freightNotBuilt: NOT_BUILT, freightNotBuiltValues: NOT_BUILT_VALUES };
+};
 /** Audit-friendly copy without the internal singleton marker. */
 const auditable = (doc: Plain) => { const { singleton, ...rest } = doc; return rest; };
 

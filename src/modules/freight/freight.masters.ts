@@ -8,6 +8,7 @@ import type { Plain } from '../../core/masters/types.js';
 import { ChargeType, ConsignmentDocumentType, ConsignmentType, FuelPrice, RATE_BASES, Tariff } from './models/freight.model.js';
 import * as S from './freight.schema.js';
 import { checkTariff } from './revenue/index.js';
+import { tariffInput } from './pricing.js';
 
 /**
  * The freight masters (#135, consignments design 3.4). They belong to Trips, not Billing: a consignment is priced
@@ -156,7 +157,7 @@ export const tariffDefinition = defineMaster({
     });
     if (data.routeId && (data.fromPlaceId || data.toPlaceId)) errors.routeId = ['Choose a route or the places, not both'];
     // Formulas and conditions must parse and name only known values, before the tariff can be saved (design 3.5.6).
-    const problems = checkTariff({ currencyId: currency, lines: lines.map((l, i) => ({ ...l, id: String(l._id ?? i), chargeTypeId: String(l.chargeTypeId) })) as never });
+    const problems = checkTariff(tariffInput({ ...data, _id: data._id ?? 'new', lines: lines.map((l, i) => ({ ...l, _id: l._id ?? `line${i}` })) }));
     if (problems.length) errors.lines = problems;
     if (Object.keys(errors).length) throw new ValidationError('The tariff is not valid', errors);
     return data;

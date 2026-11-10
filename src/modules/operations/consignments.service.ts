@@ -225,18 +225,22 @@ function plannedLegs(input: S.InlineConsignmentInput['legs'], trip: Plain, lines
 }
 
 /** Puts a consignment's legs on the trip's stops, adding stops where needed, and works the legs' km out again. */
-async function attach(trip: Doc, consignment: Doc, ctx: OpsContext, others?: Plain[]) {
+export async function attach(trip: Doc, consignment: Doc, ctx: OpsContext, others?: Plain[]) {
   const settings = await freightSettings();
   const stops = (trip.toObject() as Plain).stops as StopP[];
-  const legs = (consignment.get('legs') as Plain[]).map((l) => l.toObject?.() ?? l) as Plain[];
+  // Legs done on another trip (before a transfer) stay where they were; only this trip's legs are placed.
+  const own = new Set(stops.map((s) => id(s._id)));
+  const legs = (((consignment.toObject() as Plain).legs ?? []) as Plain[]).filter((l) => l.status === 'planned' || (l.status === 'done' && own.has(id(l.stopId))));
   const places = new Map((await Place.find({ _id: { $in: legs.map((l) => l.placeId).filter(Boolean) as never[] } }).select('location').lean()).map((p) => [String(p._id), p as Plain]));
   for (const s of stops) if (!places.has(id(s.placeId))) places.set(id(s.placeId), (await Place.findById(s.placeId).select('location').lean()) as Plain ?? {});
   const placed = placeLegs(stops, legs.map((l) => ({ key: id(l._id), kind: l.kind as 'pickup' | 'drop', placeId: l.placeId, stopId: l.status === 'skipped' ? undefined : l.stopId, status: String(l.status) })), places as never, oid, new Date(), ctx.actorId);
   const added = placed.stops.length - stops.length;
   if (added > 0 && trip.get('dispatchedAt') && !settings.stopsEditableOnRoad) throw refuse('This company does not add stops once the truck has left. Plan this consignment at stops already on the route, or switch it on in Company → Freight.');
   for (const leg of consignment.get('legs') as Plain[]) {
+    if (leg.status !== 'planned') continue;
     const stopId = placed.assigned.get(id(leg._id));
-    if (leg.status !== 'skipped') { (leg as Plain).stopId = stopId; (leg as Plain).tripId = stopId ? trip._id : undefined; }
+    (leg as Plain).stopId = stopId;
+    (leg as Plain).tripId = stopId ? trip._id : undefined;
   }
   consignment.markModified('legs');
   const all = [...(others ?? (await Consignment.find({ tripId: trip._id, _id: { $ne: consignment._id } }).lean())), consignment.toObject()] as unknown as ConsignmentP[];
@@ -334,7 +338,7 @@ export async function updateConsignment(cid: string, input: S.UpdateConsignmentI
     const used = new Set((current.legs as Plain[]).filter((l) => l.status === 'done').flatMap((l) => ((l.actual ?? []) as Plain[]).map((m) => id(m.lineId))));
     for (const lineId of used) if (!lines.some((l) => l.id === lineId)) throw refuse('A goods line that was loaded cannot be removed.');
   }
-  const ready = await prepareConsignment({ ...(current as never), ...rest, lines: lines ?? (current.lines as Plain[]).map((l) => ({ ...l, id: id(l._id), _id: undefined, unit: undefined })) } as never, trip.toObject() as Plain, { ...ctx, can: (r, a) => ctx.can(r, a === 'create' ? 'update' : a) });
+  const ready = await prepareConsignment({ ...(current as Plain), ...rest, lines: lines ?? (current.lines as Plain[]).map((l) => ({ ...l, id: id(l._id), _id: undefined, unit: undefined })) } as never, trip.toObject() as Plain, { ...ctx, can: (r, a) => ctx.can(r, a === 'create' ? 'update' : a) });
   const keep: Plain = {};
   for (const key of Object.keys(rest)) keep[key] = ready.data[key];
   if (lines) keep.lines = ready.data.lines;
@@ -369,7 +373,7 @@ export async function putLegs(cid: string, input: S.PutLegsInput, ctx: OpsContex
   const type = current.consignmentTypeId ? await ConsignmentType.findById(current.consignmentTypeId).lean<Plain>() : null;
   const legs = plannedLegs([...done.map((d) => ({ id: id(d._id), kind: d.kind, placeId: id(d.placeId) || undefined })), ...planned] as never, trip.toObject() as Plain, current.lines as Plain[], type, settings.lateSplit);
   // Done legs come back exactly as they were.
-  const merged = legs.map((l) => done.find((d) => id(d._id) === id(l._id)) ?? l).map((l, i) => ({ ...l, sequence: i + 1 }));
+  const merged: Plain[] = legs.map((l) => done.find((d) => id(d._id) === id(l._id)) ?? l).map((l, i) => ({ ...l, sequence: i + 1 }));
   // Each line's planned drops must add up to what is on board, unless the rest is left to be confirmed.
   for (const line of current.lines as Plain[]) {
     const f = await productFacts(line.productId);
@@ -576,7 +580,7 @@ async function driverShortage(c: Plain) {
  * measured the way its product is (20 °C, weighbridge, count); capacity by the company's policy; the truck is at the
  * leg's stop; the leg is done with its papers; status, trip events and price follow; the driver and the office are told.
  */
-export async function recordLeg(cid: string, legId: string, input: S.LegRecordInput, ctx: OpsContext, extraDocs: Array<{ code: string; number?: string; driverDocId?: string }> = []) {
+export async function recordLeg(cid: string, legId: string, input: S.LegRecordInput, ctx: OpsContext, extraDocs: Array<{ code: string; number?: string; driverDocId?: string }> = []): Promise<Plain> {
   need(ctx, 'consignments', 'update');
   const at = new Date();
   const consignment = await loadOr404(Consignment, cid, 'Consignment');
@@ -620,7 +624,7 @@ export async function recordLeg(cid: string, legId: string, input: S.LegRecordIn
       }
     }
     measures.push(row);
-    extra.push({ productId: line.productId, m });
+    extra.push({ productId: line.productId, m: m as unknown as Plain });
   }
   const capacity = pickup ? await checkCapacity(trip, extra, input, ctx) : { notes: [] as string[] };
   const stops = trip.get('stops') as Array<Plain & { _id: unknown; kind: string; legKm: number }>;
@@ -631,7 +635,7 @@ export async function recordLeg(cid: string, legId: string, input: S.LegRecordIn
   const docs = await documentsFor(input, leg, ctx, extraDocs);
   Object.assign(leg, {
     status: 'done', actual: measures, recordedAt: at, recordedBy: ctx.actorId, note: input.note ?? leg.note,
-    ...(pickup ? {} : { outcome: input.outcome ?? (measures.some((m) => m.accepted != null && m.accepted < m.qty) ? 'partial' : 'delivered'), pod: { ...(leg.pod ?? {}), ...(input.pod ?? {}), docIds: input.docId ? [new Types.ObjectId(input.docId)] : leg.pod?.docIds } }),
+    ...(pickup ? {} : { outcome: input.outcome ?? (measures.some((m) => m.accepted != null && Number(m.accepted) < Number(m.qty)) ? 'partial' : 'delivered'), pod: { ...((leg.pod ?? {}) as Plain), ...(input.pod ?? {}), docIds: input.docId ? [new Types.ObjectId(input.docId)] : (leg.pod as Plain | undefined)?.docIds } }),
   });
   consignment.markModified('legs');
   consignment.set('documents', [...(consignment.get('documents') as Plain[]), ...docs]);
@@ -680,7 +684,7 @@ async function quantityText(c: Plain, measures: Plain[]) {
     const line = (c.lines as Plain[]).find((l) => id(l._id) === id(m.lineId))!;
     const f = await productFacts(line.productId);
     const name = String(f.product.name).toLowerCase();
-    parts.push(f.volumeCorrected ? `${litres(Number(m.qty))} ${name} · ${litres(volume20(m as Measure) ?? Number(m.qty))} at 20 °C` : `${amountOf(Number(m.qty), String(m.unit))} ${name}`);
+    parts.push(f.volumeCorrected ? `${litres(Number(m.qty))} ${name} · ${litres(volume20(m as unknown as Measure) ?? Number(m.qty))} at 20 °C` : `${amountOf(Number(m.qty), String(m.unit))} ${name}`);
   }
   return parts.join('; ');
 }
@@ -760,7 +764,7 @@ export async function recordAtStop(tripId: string, stopId: string, input: S.Stop
     if (!c || !leg) { results.push({ consignmentId, legId, ok: false, error: 'Not on this trip.' }); continue; }
     if (id(leg.stopId) !== stopId) { results.push({ consignmentId, legId, number: c.number, ok: false, error: `${c.number} is not loaded or dropped at this stop.` }); continue; }
     try {
-      const saved = await recordLeg(consignmentId, legId, record, ctx);
+      const saved = await recordLeg(consignmentId, legId, record, ctx) as Plain;
       results.push({ consignmentId, legId, number: c.number, ok: true, status: saved.status });
     } catch (err) {
       results.push({ consignmentId, legId, number: c.number, ok: false, error: (err as Error).message });
@@ -842,14 +846,12 @@ export async function recordLoading(input: S.LoadingInput, ctx: OpsContext) {
   if (!trip.get('active')) throw conflict('This trip is closed.');
   const onTrip = await Consignment.find({ tripId: trip._id, status: { $nin: ['cancelled', 'draft'] } }).sort({ bookedAt: 1 }).lean() as Plain[];
   const open = onTrip.map((c) => ({ c, leg: (c.legs as Plain[]).find((l) => l.kind === 'pickup' && l.status === 'planned') })).filter((x) => x.leg);
-  const match = open.find(({ c }) => (c.lines as Plain[]).some((l) => id(l.productId) === input.productId)) ?? (open.length === 1 ? open[0] : undefined);
+  const match = open.find(({ c }) => (c.lines as Plain[]).some((l) => id(l.productId) === input.productId));
   if (!match && onTrip.some((c) => isLoaded(c as never))) throw conflict('This truck is already loaded.');
   assertStageAllows(trip.toObject(), 'loaded');
   let consignment = match?.c;
   let leg = match?.leg;
   if (!consignment) {
-    const productFacts0 = await productFacts(input.productId);
-    void productFacts0;
     const blank = (v?: string) => (v && v.trim() && v.trim() !== '—' ? v.trim() : undefined);
     consignment = await createOnTrip(trip, {
       lines: [{ productId: input.productId, plannedQty: trip.get('plannedQty') ?? undefined }],
@@ -862,6 +864,15 @@ export async function recordLoading(input: S.LoadingInput, ctx: OpsContext) {
   }
   const line = (consignment.lines as Plain[]).find((l) => id(l.productId) === input.productId) ?? (consignment.lines as Plain[])[0]!;
   const { tripId: _t, productId: _p, invoiceNo, consignor: _c, consignee: _e, docId, custom, ...m } = input;
+  if (!match) {
+    // Made for this load: if the load is refused, the consignment goes too, as if nothing was sent.
+    try {
+      return await recordLeg(String(consignment._id), String(leg!._id), { measures: [{ lineId: String(line._id), ...m }], docId, custom }, { ...ctx, can: (r, a) => (r === 'consignments' && a === 'update') || ctx.can(r, a) }, [{ code: 'LOADING_INVOICE', number: invoiceNo, driverDocId: docId }]);
+    } catch (err) {
+      await Consignment.deleteOne({ _id: consignment._id, 'legs.status': { $ne: 'done' } });
+      throw err;
+    }
+  }
   return recordLeg(String(consignment._id), String(leg!._id), { measures: [{ lineId: String(line._id), ...m }], docId, custom }, { ...ctx, can: (r, a) => (r === 'consignments' && a === 'update') || ctx.can(r, a) }, [{ code: 'LOADING_INVOICE', number: invoiceNo, driverDocId: docId }]);
 }
 
@@ -900,7 +911,7 @@ export async function reattachAll(trip: Doc, ctx: OpsContext) {
   const consignments = await Consignment.find({ tripId: trip._id, status: { $nin: ['cancelled', 'draft'] } });
   const stops = (trip.toObject() as Plain).stops as StopP[];
   for (const c of consignments) {
-    for (const leg of c.get('legs') as Plain[]) if (leg.stopId && !stops.some((s) => id(s._id) === id(leg.stopId))) leg.stopId = undefined;
+    for (const leg of c.get('legs') as Plain[]) if (leg.status === 'planned' && leg.stopId && !stops.some((s) => id(s._id) === id(leg.stopId))) leg.stopId = undefined;
     c.markModified('legs');
     await attach(trip, c, ctx, consignments.filter((o) => o !== c).map((o) => o.toObject()) as Plain[]);
     await save(c);

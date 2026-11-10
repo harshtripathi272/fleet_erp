@@ -51,7 +51,8 @@ export async function companyFields() {
 export async function driverQuestions(trip: Plain, consignments: Plain[]) {
   const defs = await FieldDefinition.find({ askedOf: 'driver', status: 'active', entity: { $in: ['trips', 'consignments'] } }).sort({ order: 1, key: 1 }).lean() as Plain[];
   const resolved = await resolveOptions(defs) as Array<DynamicField & Plain>;
-  const open = consignments.find((c) => !c.delivered);
+  // The first consignment on the truck and not yet delivered (#135).
+  const open = consignments.find((c) => ['loading', 'loaded', 'in_transit', 'delivering'].includes(String(c.status)));
   // A field about the load can be answered only once something is on the truck.
   return resolved.filter((f) => {
     const on = f.entity === 'trips' ? trip : open;
