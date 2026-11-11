@@ -108,6 +108,58 @@ export async function loadSampleHistory(ids: Ids, names: Record<string, string>,
     return { tripId, unrecorded };
   }
 
+  async function sharedTrip() {
+    await Trips.correctVehicleState(ids.v1!, { placeId: ids.ndolaYard, fuelL: 600 }, ops);
+    const usd = (amountMinor: number, basis: 'per_consignment' | 'per_litre_20' = 'per_consignment') => ({ basis, price: { amountMinor, currencyId: ids.USD! } });
+    const trip = await Trips.createTrip(S.createTripSchema.parse({
+      customerId: ids.zambezi, vehicleId: ids.v1, driverId: ids.d1, trailerId: ids.t1, plannedStart: days(-7),
+      stops: [
+        { placeId: ids.ndolaYard, kind: 'start' }, { placeId: ids.darPort, kind: 'load' }, { placeId: ids.nakonde, kind: 'border' },
+        { placeId: ids.depot, kind: 'offload' }, { placeId: ids.ndolaYard, kind: 'offload' }, { placeId: ids.ndolaYard, kind: 'end' },
+      ],
+      consignments: [
+        { customerId: ids.zambezi, lines: [{ productId: ids.diesel50, plannedQty: 20000 }], consignor: { name: 'Kurasini Oil Jetty Terminal' }, legs: [{ kind: 'pickup', placeId: ids.darPort }, { kind: 'drop', placeId: ids.depot }], rate: usd(9, 'per_litre_20') },
+        { customerId: ids.lake, lines: [{ productId: ids.ulp95, plannedQty: 12000 }], consignor: { name: 'Kurasini Oil Jetty Terminal' }, consignee: { name: 'Lake Petroleum, Ndola', phone: '+260977450012' }, legs: [{ kind: 'pickup', placeId: ids.darPort }, { kind: 'drop', placeId: ids.ndolaYard }], rate: usd(1_150_00) },
+        { customerId: ids.lake, lines: [{ productId: ids.diesel50, plannedQty: 6000 }], consignor: { name: 'Lusaka fuel depot' }, consignee: { name: 'Lake Petroleum, Ndola', phone: '+260977450012' }, legs: [{ kind: 'pickup', placeId: ids.depot }, { kind: 'drop', placeId: ids.ndolaYard }], rate: usd(420_00) },
+      ],
+    }), ops);
+    const tripId = String(trip.id);
+    created += 4;
+    await Trips.dispatchTrip(tripId, ops);
+    const onTrip = async () => (await Consignments.listConsignments(S.consignmentsQuery.parse({ tripId, limit: 50 }), ops)).data as unknown as Array<{ id: string; version: number; lines: Array<{ id: string; productId: string }>; legs: Array<{ id: string; kind: string; status: string; stopId?: string; placeId?: string; planned?: Array<{ lineId: string; qty: number }> }> }>;
+    const record = async (stopId: string, qty: (c: Awaited<ReturnType<typeof onTrip>>[number], leg: { id: string; kind: string; planned?: Array<{ qty: number }> }) => number) => {
+      for (const c of await onTrip()) {
+        for (const leg of c.legs.filter((l) => l.stopId === stopId && l.status === 'planned')) {
+          const q = qty(c, leg);
+          const petrol = c.lines[0]!.productId === ids.ulp95;
+          await Consignments.recordLeg(c.id, leg.id, S.legRecordSchema.parse({
+            measures: [{ lineId: c.lines[0]!.id, qty: q, ambientL: q, tempC: leg.kind === 'pickup' ? 20 : 23, density: petrol ? 745 : 835 }],
+            ...(leg.kind === 'pickup' ? { documents: [{ number: `INV-S${c.id.slice(-4).toUpperCase()}` }] } : { pod: { number: `POD-S${leg.id.slice(-4).toUpperCase()}`, receivedBy: 'Depot storeman' } }),
+          }), ops);
+        }
+      }
+    };
+    const stops = (await Trips.getTrip(tripId) as { stops: Array<{ id: string; kind: string; placeId: string }> }).stops;
+    // Every stop in order: each pickup and drop recorded where it is planned; the split decided at the border.
+    for (const stop of stops) {
+      if (stop.kind === 'border') {
+        await Trips.arriveAtStop(tripId, stop.id, ops);
+        // After the border, Zambezi asks for 8,000 L of its diesel at Ndola: the delivery is split.
+        const diesel = (await onTrip()).find((c) => c.lines[0]!.productId === ids.diesel50 && c.legs.some((l) => l.kind === 'pickup' && l.placeId === ids.darPort))!;
+        const line = diesel.lines[0]!.id;
+        const pickup = diesel.legs.find((l) => l.kind === 'pickup')!;
+        await Consignments.putLegs(diesel.id, S.putLegsSchema.parse({
+          version: diesel.version,
+          legs: [{ id: pickup.id, kind: 'pickup', placeId: ids.darPort }, { kind: 'drop', placeId: ids.depot, planned: [{ lineId: line, qty: 12000 }] }, { kind: 'drop', placeId: ids.ndolaYard, planned: [{ lineId: line, qty: 8000 }] }],
+        }), ops);
+      }
+      // Loaded as planned; a few litres short at each drop, within the allowance.
+      if (stop.kind === 'load' || stop.kind === 'offload') await record(stop.id, (c, leg) => (leg.planned?.[0]?.qty ?? Number((c.lines[0] as { plannedQty?: number }).plannedQty)) - (leg.kind === 'drop' ? 12 : 0));
+    }
+    await Trips.endTrip(tripId, { closingFuelL: 180 }, ops);
+    created += 1;
+  }
+
   const settle = async (driver: string, tripIds: string[], keepMinor: number, note: string) => {
     const { balanceMinor } = await Settlements.getAccount(ids[driver]!);
     await Settlements.postSettlement(S.settlementSchema.parse({ driverId: ids[driver], tripIds, cashMinor: balanceMinor - keepMinor, note }), fin);
@@ -161,6 +213,10 @@ export async function loadSampleHistory(ids: Ids, names: Record<string, string>,
 
   // Planned, nothing asked for yet.
   await runTrip({ vehicle: 'v10', trailer: 't10', driver: 'd10', customer: 'mpika', route: 'routeCopper', product: 'cuCathodes', tripType: 'ttGeneral', startsInDays: 2, until: 'planned' });
+
+  // Several consignments on one truck (#135): two load at Dar es Salaam, one more at Lusaka; the diesel is split late
+  // between Lusaka and Ndola; each priced at the rate agreed with its customer; run to the end.
+  await sharedTrip();
 
   // Trucks ready at their yards, and a nomination sent to a customer, waiting for the reply.
   await Trips.correctVehicleState(ids.v1!, { placeId: ids.depot, fuelL: 320 }, ops);
