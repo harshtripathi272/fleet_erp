@@ -25,7 +25,7 @@ const KIND_LABEL = Object.fromEntries(KINDS) as Record<Kind, string>;
 const STOP_LABEL: Record<string, string> = { start: "Start", load: "Loading", via: "Stop", border: "Border", offload: "Offloading", end: "End" };
 
 /** What happens to each consignment at a stop (#135): who to call there, and the papers to send. */
-interface StopLeg { consignmentId: string; legId: string; number: string; kind: "pickup" | "drop"; party?: string; phone?: string; whatsapp?: string; product?: string; plannedQty?: number; unit?: string; status: string; send?: { documentTypeId: string; label: string }[] }
+interface StopLeg { consignmentId: string; legId: string; number: string; kind: "pickup" | "drop"; party?: string; phone?: string; whatsapp?: string; product?: string; plannedQty?: number; unit?: string; to?: string; status: string; send?: { documentTypeId: string; label: string }[] }
 interface Stop { id: string; kind: string; place: string; legKm?: number; arrivedAt?: string; arrivedVia?: string; legs?: StopLeg[] }
 /** The one thing due next, for a consignment (#135); an older server sends the document kind alone. */
 interface Due { consignmentId: string; legId: string; documentTypeId: string; label: string; stopId?: string }
@@ -244,7 +244,7 @@ export function DriverPortal({ me }: { me: Me }) {
               return (
                 <button key={`${o.legId}-${o.documentTypeId}`} type="button" className="drv-which-row" onClick={() => pickFor(o, choosing.kind)}>
                   <span><strong>{leg?.number}</strong> · {leg?.party ?? ""}</span>
-                  <small>{leg?.product ?? ""}{leg?.plannedQty ? ` · ${num(leg.plannedQty)} ${leg.unit ?? ""}` : ""}</small>
+                  <small>{leg?.product ?? ""}{leg?.plannedQty ? ` · ${num(leg.plannedQty)} ${leg.unit ?? ""}` : ""}{leg?.to ? ` · to ${leg.to}` : ""}</small>
                 </button>
               );
             })}

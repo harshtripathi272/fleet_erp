@@ -541,6 +541,14 @@ export async function dispatchTrip(id: string, ctx: OpsContext, input?: S.Dispat
   }, ctx);
   await log(ctx, at, `Dispatched from ${await placeName(plainStops[0]?.placeId)}`, { tripId: trip._id });
   await announce('trip.dispatched', plain, ctx, { variables: { 'place.name': await placeName(plainStops[0]?.placeId) } });
+  // A trip that starts at its loading place is there already (#102): marked arrived, not "driving to" it.
+  const next = plainStops[1];
+  if (next?.kind === 'load' && String(next.placeId) === String(plainStops[0]?.placeId)) {
+    await arriveAt(trip, 1, at, ctx, 'office');
+    trip.markModified('stops');
+    await save(trip);
+    return presentTrip(trip.toObject());
+  }
   return presentTrip(plain);
 }
 

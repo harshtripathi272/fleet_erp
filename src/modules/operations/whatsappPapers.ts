@@ -3,6 +3,7 @@ import { ConsignmentDocumentType } from '../freight/models/freight.model.js';
 import { currentStop, legsByStopFor } from './driverApp.service.js';
 import { Consignment, DriverDocument } from './models/cargo.model.js';
 import { Trip } from './models/trip.model.js';
+import { amountOf } from './cargo.service.js';
 import { driverThread, post, type OpsContext } from './support.js';
 
 /**
@@ -12,21 +13,36 @@ import { driverThread, post, type OpsContext } from './support.js';
  * driver never answers: the office can still file it.
  */
 
-type Due = { consignmentId: string; legId: string; documentTypeId: string; label: string; number: string; party?: string; kind: 'pickup' | 'drop' };
+/** `n` is the consignment's place in the stop's list, kept the same between questions; `what` tells it apart. */
+type Due = { consignmentId: string; legId: string; documentTypeId: string; label: string; number: string; party?: string; kind: 'pickup' | 'drop'; n?: number; what?: string };
 
 /** Every paper due at the stop the truck is at, one per consignment and paper. */
 async function dueHere(tripId: unknown): Promise<Due[]> {
   const trip = await Trip.findById(tripId).lean<Plain>();
   if (!trip?.dispatchedAt) return [];
-  const [consignments, docs] = await Promise.all([Consignment.find({ tripId: trip._id, status: { $ne: 'cancelled' } }).lean(), DriverDocument.find({ tripId: trip._id }).lean()]);
+  const [consignments, docs] = await Promise.all([Consignment.find({ tripId: trip._id, status: { $ne: 'cancelled' } }).sort({ number: 1 }).lean(), DriverDocument.find({ tripId: trip._id }).lean()]);
   const byStop = await legsByStopFor(trip, consignments as Plain[], docs as Plain[]);
   const stop = currentStop(trip.stops as Plain[]);
   if (!stop?.arrivedAt) return [];
-  return (byStop.get(String(stop._id)) ?? []).flatMap((l) => ((l.send ?? []) as Plain[]).map((p) => ({
-    consignmentId: String(l.consignmentId), legId: String(l.legId), documentTypeId: String(p.documentTypeId), label: String(p.label),
-    number: String(l.number), party: l.party as string | undefined, kind: l.kind as 'pickup' | 'drop',
-  })));
+  const here = byStop.get(String(stop._id)) ?? [];
+  const out: Due[] = [];
+  for (const [i, l] of here.entries()) {
+    // One supplier often fills every consignment: the goods, quantity and drop tell them apart (#102).
+    const what = [l.plannedQty && l.unit ? `${amountOf(Number(l.plannedQty), String(l.unit))} ${String(l.product ?? '')}`.trim() : l.product, l.to ? `to ${String(l.to)}` : l.kind === 'drop' ? l.party : undefined].filter(Boolean).join(' ');
+    for (const p of (l.send ?? []) as Plain[]) {
+      out.push({
+        consignmentId: String(l.consignmentId), legId: String(l.legId), documentTypeId: String(p.documentTypeId), label: String(p.label),
+        number: String(l.number), party: l.party as string | undefined, kind: l.kind as 'pickup' | 'drop', n: i + 1, what: what as string,
+      });
+    }
+  }
+  return out;
 }
+
+/** "CN/26/0003 · 16,000 L Diesel to Mbeya". */
+const describe = (o: Due) => `${o.number}${o.what ? ` · ${o.what}` : o.party ? ` · ${o.party}` : ''}`;
+/** Numbered by each consignment's fixed place at the stop, so "3" means the same one on every question. */
+const listed = (options: Array<{ n?: number; label: string }>) => options.map((o, i) => `${o.n ?? i + 1}. ${o.label}`);
 
 const numbered = (labels: string[]) => labels.map((l, i) => `${i + 1}. ${l}`).join('\n');
 /** The same list on one line, for the template that reaches a driver after WhatsApp's 24 hours. */
@@ -41,9 +57,10 @@ async function file(docId: unknown, due: Due, ctx: OpsContext) {
 }
 
 async function askWhich(docId: unknown, driverId: unknown, options: Due[], ctx: OpsContext) {
-  await DriverDocument.updateOne({ _id: docId }, { $set: { question: { ask: 'consignment', at: new Date(), options: options.map((o) => ({ label: `${o.number}${o.party ? ` · ${o.party}` : ''}`, value: `${o.consignmentId}:${o.legId}:${o.documentTypeId}` })) } } });
-  const labels = options.map((o) => `${o.number}${o.party ? ` · ${o.party}` : ''}`);
-  await post(driverThread(driverId), new Date(), { text: `Which consignment is this ${options[0]!.label.toLowerCase()} for? Reply with the number.\n${numbered(labels)}`, wa: { template: 'which_consignment', values: [options[0]!.label.toLowerCase(), inline(labels)] } }, ctx);
+  const asked = options.map((o) => ({ label: describe(o), value: `${o.consignmentId}:${o.legId}:${o.documentTypeId}`, n: o.n }));
+  await DriverDocument.updateOne({ _id: docId }, { $set: { question: { ask: 'consignment', at: new Date(), options: asked } } });
+  const lines = listed(asked);
+  await post(driverThread(driverId), new Date(), { text: `Which consignment is this ${options[0]!.label.toLowerCase()} for? Reply with the number.\n${lines.join('\n')}`, wa: { template: 'which_consignment', values: [options[0]!.label.toLowerCase(), lines.join(', ')] } }, ctx);
 }
 
 /**
@@ -75,17 +92,18 @@ export async function answerAboutPhoto(driverId: unknown, text: string | undefin
   const reply = text?.trim();
   if (!reply) return false;
   const doc = await DriverDocument.findOne({ driverId, status: 'new', 'question.at': { $exists: true } }).sort({ 'question.at': -1 }).lean<Plain>();
-  const question = doc?.question as { ask: 'kind' | 'consignment'; options: Array<{ label: string; value: string }> } | undefined;
+  const question = doc?.question as { ask: 'kind' | 'consignment'; options: Array<{ label: string; value: string; n?: number }> } | undefined;
   if (!doc || !question) return false;
   const n = /^\d{1,2}$/.test(reply) ? Number(reply) : NaN;
-  const chosen = Number.isInteger(n) && n >= 1 ? question.options[n - 1]
+  const chosen = Number.isInteger(n) && n >= 1 ? (question.options.some((o) => o.n) ? question.options.find((o) => o.n === n) : question.options[n - 1])
     : question.options.find((o) => o.label.toLowerCase().includes(reply.toLowerCase()) || reply.toLowerCase().includes(o.label.split(' · ')[0]!.toLowerCase()));
   if (!chosen) {
     // A number off the list is not filed as a message: the question is asked again.
     if (Number.isInteger(n)) {
       const labels = question.options.map((o) => o.label);
+      const lines = listed(question.options);
       if (question.ask === 'kind') await post(driverThread(driverId), new Date(), { text: `What is this photo? Reply with a number from 1 to ${labels.length}.\n${numbered(labels)}`, wa: { template: 'what_photo', values: [inline(labels)] } }, ctx);
-      else await post(driverThread(driverId), new Date(), { text: `Which consignment is it for? Reply with a number from 1 to ${labels.length}.\n${numbered(labels)}`, wa: { template: 'which_consignment', values: ['paper', inline(labels)] } }, ctx);
+      else await post(driverThread(driverId), new Date(), { text: `Which consignment is it for? Reply with one of these numbers.\n${lines.join('\n')}`, wa: { template: 'which_consignment', values: ['paper', lines.join(', ')] } }, ctx);
       return true;
     }
     return false;

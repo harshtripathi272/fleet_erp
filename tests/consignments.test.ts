@@ -543,8 +543,10 @@ describe('the driver says which consignment each paper is for (#135 Part 2)', ()
       if (n < 4) {
         assert.match(asked.text, /Which consignment is this loading invoice for\? Reply with the number/);
         assert.equal(asked.text.split('\n').length - 1, 5 - n, 'only the consignments still needing an invoice');
-        // Answer with the first one listed: the next consignment still waiting.
-        ok(await reply('1'), 201);
+        // Each consignment keeps its number at the stop (#102), and says what it carries.
+        const first = asked.text.split('\n')[1]!;
+        assert.match(first, new RegExp(`^${n}\\. CN/\\d+/\\d+ · 4,000 L`), 'numbered by its fixed place, with the goods and litres');
+        ok(await reply(String(n)), 201);
       } else {
         assert.match(asked.text, /We got your loading invoice for/, 'the last one needs no question');
       }

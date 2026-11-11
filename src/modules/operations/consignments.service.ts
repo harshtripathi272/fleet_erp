@@ -298,7 +298,7 @@ async function describe(c: Plain) {
   const legs = c.legs as Plain[];
   const from = await placeName(legs.find((l) => l.kind === 'pickup')?.placeId);
   const to = legs.filter((l) => l.kind === 'drop').at(-1)?.placeId ? await placeName(legs.filter((l) => l.kind === 'drop').at(-1)!.placeId) : 'to be confirmed';
-  return `${qty}${String(product?.name ?? '').toLowerCase()} for ${await consigneeName(c)}, ${from} → ${to}`;
+  return `${qty}${String(product?.name ?? '')} for ${await consigneeName(c)}, ${from} → ${to}`;
 }
 
 export async function consigneeName(c: Plain) {
@@ -687,7 +687,8 @@ async function quantityText(c: Plain, measures: Plain[]) {
   for (const m of measures) {
     const line = (c.lines as Plain[]).find((l) => id(l._id) === id(m.lineId))!;
     const f = await productFacts(line.productId);
-    const name = String(f.product.name).toLowerCase();
+    // The product's own name, capitals and all (#102: "diesel (ago)" read wrong).
+    const name = String(f.product.name);
     parts.push(f.volumeCorrected ? `${litres(Number(m.qty))} ${name} · ${litres(volume20(m as unknown as Measure) ?? Number(m.qty))} at 20 °C` : `${amountOf(Number(m.qty), String(m.unit))} ${name}`);
   }
   return parts.join('; ');
