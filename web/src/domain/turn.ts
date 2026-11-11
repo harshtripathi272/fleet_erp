@@ -197,6 +197,69 @@ function workedStep(data: AppData, trip: Trip): NextStep {
         since: trip.dispatchedAt,
       };
     }
+    // Some loaded but a pickup still to come (#135, #102): still loading, at the next pickup's stop.
+    const toLoad = data.cns.filter((c) => c.tripId === trip.id && c.status !== "cancelled").flatMap((c) => c.legs.filter((l) => l.kind === "pickup" && l.status === "planned").map((l) => ({ c, l })));
+    if (toLoad.length) {
+      const stopIndex = (stopId: string | null) => trip.stops.findIndex((s) => s.id === stopId);
+      const next = [...toLoad].sort((x, y) => stopIndex(x.l.stopId) - stopIndex(y.l.stopId))[0]!;
+      const stop = trip.stops.find((s) => s.id === next.l.stopId);
+      const numbers = toLoad.filter((x) => x.l.stopId === next.l.stopId).map((x) => x.c.number).join(", ");
+      if (stop?.arrivedAt)
+        return {
+          actor: "operations",
+          stage: "loading",
+          move: "confirm-load",
+          title: `Record the loading of ${numbers}`,
+          waiting: `Operations is recording the loading at ${placeName(data, stop.placeId)}`,
+          detail: `At ${placeName(data, stop.placeId)}`,
+          since: stop.arrivedAt,
+        };
+      return {
+        actor: "road",
+        stage: "loading",
+        move: "none",
+        title: `Driving to ${placeName(data, stop?.placeId)} to load ${numbers}`,
+        waiting: `Driving to ${placeName(data, stop?.placeId)}`,
+        detail: "Part loaded",
+        since: trip.dispatchedAt,
+      };
+    }
+    // Drops still to come (#135, #102): the trip goes on to the next drop's stop, one by one, until the last.
+    const toDrop = data.cns.filter((c) => c.tripId === trip.id && c.status !== "cancelled").flatMap((c) => c.legs.filter((l) => l.kind === "drop" && l.status === "planned").map((l) => ({ c, l })));
+    if (toDrop.length && data.cns.some((c) => c.tripId === trip.id && c.legs.some((l) => l.kind === "drop" && l.stopId))) {
+      const stopIndex = (stopId: string | null) => (stopId ? trip.stops.findIndex((s) => s.id === stopId) : Infinity);
+      const next = [...toDrop].sort((x, y) => stopIndex(x.l.stopId) - stopIndex(y.l.stopId))[0]!;
+      const stop = trip.stops.find((s) => s.id === next.l.stopId);
+      const here = toDrop.filter((x) => x.l.stopId === next.l.stopId);
+      const numbers = here.map((x) => x.c.number).join(", ");
+      if (!stop) {
+        return {
+          actor: "operations", stage: "offloading", move: "none",
+          title: `Say where ${numbers} is dropped`, waiting: `Operations is placing the drop of ${numbers}`,
+          detail: "Its drop is to be confirmed: split the delivery or choose the place", since: next.c.loadedAt ?? undefined,
+        };
+      }
+      if (stop.arrivedAt) {
+        const doc = docs.find((d) => (d.kind === "delivery" || d.kind === "pod") && d.status === "new" && (!d.consignmentId || here.some((x) => x.c.id === d.consignmentId)));
+        if (doc)
+          return {
+            actor: "operations", stage: "offloading", move: "confirm-delivery",
+            title: `Record the delivery of ${numbers}`, waiting: `Operations is recording the delivery at ${placeName(data, stop.placeId)}`,
+            detail: `${who} sent ${doc.read?.docNo ?? "the paper"}`, since: doc.at, refId: doc.id,
+          };
+        return {
+          actor: "driver", stage: "offloading", move: "none",
+          title: `Send the proof of delivery for ${numbers}`, waiting: `Waiting for ${who}'s proof of delivery for ${numbers}`,
+          detail: `At ${placeName(data, stop.placeId)}`, since: stop.arrivedAt,
+        };
+      }
+      return {
+        actor: "road", stage: "transit", move: "none",
+        title: `Driving to ${placeName(data, stop.placeId)}`, waiting: `Driving to ${placeName(data, stop.placeId)}`,
+        detail: `To drop ${numbers}${toDrop.length > here.length ? `; ${toDrop.length - here.length} more ${toDrop.length - here.length === 1 ? "drop" : "drops"} after` : ""}`,
+        since: next.c.loadedAt ?? undefined,
+      };
+    }
     const open = consignments.find((c) => !c.delivered);
     if (open) {
       const doc = docs.find((d) => d.kind === "delivery");
@@ -424,4 +487,20 @@ export function queueFor(data: AppData, desk: Desk): QueueItem[] {
     }
   }
   return items.sort((a, b) => (a.since ?? "").localeCompare(b.since ?? ""));
+}
+
+/**
+ * The stop that holds the truck (#102): the first one with a pickup or drop still to record. On a trip of the old
+ * kind, the loading stop until it is loaded, then the offloading stop until delivered. -1 when nothing holds it.
+ */
+export function holdingStop(data: AppData, trip: Trip): number {
+  const cns = data.cns.filter((c) => c.tripId === trip.id && c.status !== "cancelled");
+  if (cns.some((c) => c.legs.some((l) => l.stopId))) {
+    const indexes = cns.flatMap((c) => c.legs.filter((l) => l.status === "planned" && l.stopId).map((l) => trip.stops.findIndex((s) => s.id === l.stopId))).filter((i) => i >= 0);
+    return indexes.length ? Math.min(...indexes) : -1;
+  }
+  const consignments = whereIs(data.consignments, "tripId", trip.id);
+  if (!consignments.length) return trip.stops.findIndex((s) => s.kind === "load");
+  if (consignments.some((c) => !c.delivered)) return trip.stops.findIndex((s) => s.kind === "offload");
+  return -1;
 }

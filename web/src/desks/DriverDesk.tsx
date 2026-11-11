@@ -15,6 +15,10 @@ import { Segmented } from "../ui/kit";
 import { day, hm, L, stamp, inBase } from "../ui/format";
 
 const DOC_LABEL: Record<DocKind, string> = {
+  pod: "Proof of delivery",
+  weighbridge: "Weighbridge ticket",
+  permit: "Permit",
+  eway: "E-way bill",
   loading: "Loading invoice",
   delivery: "Delivery note",
   expense: "Receipt",

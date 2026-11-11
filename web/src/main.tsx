@@ -13,6 +13,7 @@ import "./styles/paper.css";
 import "./styles/map.css";
 import "./styles/masters.css";
 import "./styles/driver.css";
+import "./styles/consignments.css";
 import { QueryClientProvider } from "@tanstack/react-query";
 import App from "./App";
 import { BrandProvider } from "./ui/brand";

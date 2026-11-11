@@ -28,6 +28,10 @@ import { assertStageAllows, currentStage, recordEvent, stageSnapshot, tripTypeFo
 import { carriedIn, driverBalance } from './ledger.js';
 import { announce } from './notices.js';
 import { Consignment } from './models/cargo.model.js';
+import { tripGate } from './gate.js';
+import { isFinished, isLoaded, working } from './legs.js';
+import { freightSettings } from '../freight/settings.js';
+import { cancelPlanned, createOnTrip, prepareConsignment, reattachAll } from './consignments.service.js';
 import { FundRequest, OPEN_REQUEST, VehicleState } from './models/funding.model.js';
 import { Expense, Nomination } from './models/money.model.js';
 import { TO_SETTLE, Trip, type ArrivalSource } from './models/trip.model.js';
@@ -46,10 +50,15 @@ export const trailerPlate = async (id: unknown) => (id ? String((await Trailer.f
 export const driverName = async (id: unknown) => (id ? String((await Driver.findById(id).select('name').lean())?.name ?? '') : '');
 export const partyName = async (id: unknown) => (id ? String((await Party.findById(id).select('name').lean())?.name ?? '') : '');
 
+/** First loading to last drop, naming the work stops between (#102), as the screens do. */
 export async function routeLabel(trip: { stops: Array<{ kind: string; placeId: unknown }> }) {
-  const load = trip.stops.find((s) => s.kind === 'load');
-  const offload = trip.stops.find((s) => s.kind === 'offload');
-  return `${await placeName(load?.placeId)} to ${await placeName(offload?.placeId)}`;
+  const work = trip.stops.filter((s) => s.kind === 'load' || s.kind === 'offload');
+  const first = work.find((s) => s.kind === 'load') ?? work[0];
+  const last = [...work].reverse().find((s) => s.kind === 'offload') ?? work.at(-1);
+  const ends = new Set([String(first?.placeId), String(last?.placeId)]);
+  const between = [...new Set(work.slice(first ? work.indexOf(first) + 1 : 0, last ? work.lastIndexOf(last) : undefined).map((s) => String(s.placeId)))].filter((p) => !ends.has(p));
+  const via = between.length === 0 ? '' : between.length <= 2 ? ` via ${(await Promise.all(between.map((p) => placeName(p)))).join(' and ')}` : ` via ${between.length} stops`;
+  return `${await placeName(first?.placeId)} to ${await placeName(last?.placeId)}${via}`;
 }
 
 /* ---------- Trucks ---------- */
@@ -122,11 +131,17 @@ export async function correctVehicleState(vehicleId: string, input: S.VehicleSta
  * Road kilometres from route masters where a route has the leg; otherwise straight-line × the company's
  * road distance factor. Driving hours use its average speed; border posts add their usual wait.
  */
-export async function buildStops(plan: StopPlan[]): Promise<Array<StopLeg & { _id: Types.ObjectId }>> {
-  const { roadDistanceFactor, averageSpeedKmh } = await operationsSettings();
-  const problem = validateStops(plan);
+export async function buildStops(plan: StopPlan[], options: { tripsWithoutCargo?: boolean } = {}): Promise<Array<StopLeg & { _id: Types.ObjectId }>> {
+  const problem = validateStops(plan, options);
   if (problem) throw refuse(problem);
-  const ids = [...new Set(plan.map((s) => s.placeId))];
+  const legs = await legFigures(plan);
+  return plan.map((stop, index) => ({ _id: new Types.ObjectId(), placeId: stop.placeId, kind: stop.kind, ...legs[index]! }));
+}
+
+/** Each stop's leg: road kilometres from the stop before it and the hours to drive them, waiting at a border included. */
+export async function legFigures(plan: Array<{ placeId: unknown }>): Promise<Array<{ legKm: number; legHours: number }>> {
+  const { roadDistanceFactor, averageSpeedKmh } = await operationsSettings();
+  const ids = [...new Set(plan.map((s) => String(s.placeId)))];
   const places = await Place.find({ _id: { $in: ids } }).select('name type location status').lean();
   const byId = new Map(places.map((p) => [String(p._id), p]));
   for (const id of ids) if (byId.get(id)?.status !== 'active') throw refuse('A stop uses a place that was not found or is archived.');
@@ -142,15 +157,26 @@ export async function buildStops(plan: StopPlan[]): Promise<Array<StopLeg & { _i
   const waits = new Map((await BorderPost.find({ placeId: { $in: ids }, status: 'active' }).select('placeId typicalWaitHours').lean()).map((b) => [String(b.placeId), Number(b.typicalWaitHours ?? 0)]));
   return plan.map((stop, index) => {
     const prev = plan[index - 1];
+    const here = String(stop.placeId);
     let km = 0;
-    if (prev && prev.placeId !== stop.placeId) {
-      const a = byId.get(prev.placeId)?.location as { lat: number; lng: number } | undefined;
-      const b = byId.get(stop.placeId)?.location as { lat: number; lng: number } | undefined;
-      km = known.get(`${prev.placeId}-${stop.placeId}`) ?? (a && b ? Math.round(haversineKm(a, b) * roadDistanceFactor) : 0);
+    if (prev && String(prev.placeId) !== here) {
+      const a = byId.get(String(prev.placeId))?.location as { lat: number; lng: number } | undefined;
+      const b = byId.get(here)?.location as { lat: number; lng: number } | undefined;
+      km = known.get(`${String(prev.placeId)}-${here}`) ?? (a && b ? Math.round(haversineKm(a, b) * roadDistanceFactor) : 0);
     }
-    const wait = byId.get(stop.placeId)?.type === 'border' ? waits.get(stop.placeId) ?? 0 : 0;
-    return { _id: new Types.ObjectId(), placeId: stop.placeId, kind: stop.kind, legKm: km, legHours: round(km / averageSpeedKmh + (index ? wait : 0), 1) };
+    const wait = byId.get(here)?.type === 'border' ? waits.get(here) ?? 0 : 0;
+    return { legKm: km, legHours: round(km / averageSpeedKmh + (index ? wait : 0), 1) };
   });
+}
+
+/**
+ * A trip's stops after a stop was added, moved or removed (#135): the legs the truck has already driven keep their
+ * figures; every leg after the last stop it reached is worked out again. Ids, arrivals and everything else are kept.
+ */
+export async function refigureStops<T extends { placeId: unknown; legKm: number; legHours?: number; arrivedAt?: Date }>(stops: T[]): Promise<T[]> {
+  const reached = stops.reduce((found, s, i) => (s.arrivedAt ? i : found), -1);
+  const legs = await legFigures(stops);
+  return stops.map((stop, i) => (i <= reached ? stop : Object.assign(stop, legs[i]!)));
 }
 
 /** A route's stops, starting where the truck is now. */
@@ -263,7 +289,7 @@ export async function createTrip(input: S.CreateTripInput, ctx: OpsContext, extr
   const routePlan = route ? (route.stops as Array<{ placeId: unknown; kind: string }>).map((s) => ({ placeId: String(s.placeId), kind: s.kind })) : [];
   const plan = input.stops ?? (tripStartsFromTruck ? stopsFromTruck(routePlan, truck.placeId) : routePlan);
   if (tripStartsFromTruck && plan[0] && truck.placeId && plan[0].placeId !== truck.placeId) throw refuse(`${truck.plate} is at ${await placeName(truck.placeId)}. The trip starts there.`);
-  const stops = plan.length ? await buildStops(plan) : [];
+  const stops = plan.length ? await buildStops(plan, { tripsWithoutCargo: (await freightSettings()).tripsWithoutCargo }) : [];
   const draft: Plain = {
     customerId: customer._id, vehicleId: truck.vehicle._id, driverId: driver?._id, trailerId: trailer?._id, routeId: route?._id,
     productId: input.productId, plannedQty: input.plannedQty, plannedStart: input.plannedStart, stops, nominationId: extra.nominationId,
@@ -274,8 +300,12 @@ export async function createTrip(input: S.CreateTripInput, ctx: OpsContext, extr
     custom: extra.transferredFromTripId || extra.nominationId ? input.custom : await stepCustom('trips', 'create', input.custom),
     openingFuelL: truck.fuelL, tripTypeId: tripType?._id, stages: await stageSnapshot(tripType?._id), transferredFromTripId: extra.transferredFromTripId, createdBy: ctx.actorId, updatedBy: ctx.actorId,
   });
+  // Its consignments are checked before anything is saved, so a refused one doesn't leave a trip behind (#135).
+  const prepared = [];
+  for (const c of input.consignments ?? []) prepared.push({ input: c, ready: await prepareConsignment(c, trip.toObject() as Plain, ctx) });
   recordEvent(trip, 'created', at, ctx.actorId);
   await save(trip, `${truck.plate}, its driver or its trailer is already on a trip.`);
+  for (const { input: c, ready } of prepared) await createOnTrip(trip, c, ctx, ready);
   if (tripStartsFromTruck && !truck.placeId && plan[0]) await setVehicleState(truck.vehicle._id, { placeId: plan[0].placeId }, ctx.actorId);
   if (driver) {
     await post(driverThread(driver._id), at, {
@@ -330,7 +360,9 @@ export async function updateTrip(id: string, input: S.UpdateTripInput, ctx: OpsC
   }
   if (input.stops) {
     if ((await operationsSettings()).tripStartsFromTruck && truck.placeId && input.stops[0]?.placeId !== truck.placeId) throw refuse(`${truck.plate} is at ${await placeName(truck.placeId)}. The trip starts there.`);
-    trip.set('stops', await buildStops(input.stops));
+    trip.set('stops', await buildStops(input.stops, { tripsWithoutCargo: (await freightSettings()).tripsWithoutCargo }));
+    // The plan changed: its consignments' pickups and drops find their stops again.
+    await reattachAll(trip, ctx);
   }
   if (input.stops || input.routeId !== undefined) trip.set(await budgets(trip.toObject(), truck));
   if (input.plannedStart) trip.set('plannedStart', input.plannedStart);
@@ -351,7 +383,7 @@ export async function cancelTrip(id: string, input: S.ReasonInput, ctx: OpsConte
   need(ctx, 'trips', 'update');
   const at = new Date();
   const trip = await tripDoc(id);
-  if (await Consignment.exists({ tripId: trip._id, inTransit: true })) throw conflict("This trip carries a load from another truck. Say what happens to the load with \"Can't deliver\".");
+  if ((await Consignment.find({ tripId: trip._id }).lean()).some((c) => isLoaded(c as never) && !isFinished(c as never))) throw conflict("This trip carries a load from another truck. Say what happens to the load with \"Can't deliver\".");
   if (trip.get('dispatchedAt')) throw conflict('The truck has left. End the trip instead.');
   if (!activeTrip(trip.toObject())) throw conflict('This trip is already closed.');
   // Cash already paid or spent on the trip stays with the driver; the trip then goes on their next settlement.
@@ -361,6 +393,7 @@ export async function cancelTrip(id: string, input: S.ReasonInput, ctx: OpsConte
   );
   trip.set({ cancelledAt: at, cancelReason: input.reason, active: false, settleAfterCancel: cashOnTrip || undefined, updatedBy: ctx.actorId });
   await save(trip);
+  await cancelPlanned(trip._id, `Trip cancelled: ${input.reason}`, ctx);
   for (const request of await FundRequest.find({ tripId: trip._id, status: { $in: OPEN_REQUEST } })) {
     request.set('status', 'cancelled');
     request.get('trail').push({ desk: ctx.desk, userId: ctx.actorId, name: ctx.name, what: 'cancelled', at, note: 'Trip cancelled', via: 'app' });
@@ -404,7 +437,7 @@ export async function stopTrip(id: string, input: S.StopTripInput, ctx: OpsConte
   if (!trip.get('dispatchedAt')) throw conflict("This trip hasn't left yet. Cancel it instead.");
   if (!activeTrip(trip.toObject())) throw conflict('This trip is already closed.');
   if (!(await operationsSettings()).stopBeforeLoading) throw refuse('This company does not stop trips before loading. Ask an administrator to switch it on in Company settings.');
-  if (await Consignment.exists({ tripId: trip._id })) throw refuse('The cargo is loaded, so the trip can only end after delivery.');
+  if ((await Consignment.find({ tripId: trip._id }).lean()).some((c) => isLoaded(c as never))) throw refuse('The cargo is loaded, so the trip can only end after delivery.');
   const truck = await truckFacts(trip.get('vehicleId'), false);
   if (truck.tankL && input.closingFuelL > truck.tankL) throw refuse(`The tank holds ${litres(truck.tankL)}.`);
   const stops = trip.get('stops') as Array<{ placeId: unknown; arrivedAt?: Date }>;
@@ -412,6 +445,7 @@ export async function stopTrip(id: string, input: S.StopTripInput, ctx: OpsConte
   const placeId = input.placeId ?? [...stops].reverse().find((s) => s.arrivedAt)?.placeId ?? stops[0]!.placeId;
   await addToOdometer(trip.get('vehicleId'), Number(trip.get('tracking')?.km ?? 0));
   await closeEarly(trip, { reason: input.reason, placeId, closingFuelL: input.closingFuelL, requestNote: 'Trip stopped before loading' }, at, ctx);
+  await cancelPlanned(trip._id, `Trip stopped before loading: ${input.reason}`, ctx);
   const place = await placeName(placeId);
   const number = String(trip.get('number'));
   if (trip.get('driverId')) await post(driverThread(trip.get('driverId')), at, { title: `${number} stopped`, text: `${input.reason} Park the truck at ${place}.`, wa: { template: 'trip_stopped', values: [number, 'stopped', `${input.reason.replace(/\.\s*$/, '')}; park the truck at ${place}`] } }, ctx);
@@ -485,7 +519,9 @@ export async function dispatchTrip(id: string, ctx: OpsContext, input?: S.Dispat
   trip.set('custom', await stepCustom('trips', 'dispatch', input?.custom, (trip.toObject() as Plain).custom as Plain | undefined, ['create']));
   recordEvent(trip, 'dispatched', at, ctx.actorId);
   // A trip that took over a load from another truck leaves already loaded.
-  if (await Consignment.exists({ tripId: trip._id })) recordEvent(trip, 'loaded', at, ctx.actorId);
+  const consignments = working(await Consignment.find({ tripId: trip._id }).lean() as never, trip._id);
+  if ((await freightSettings()).consignmentBy === 'dispatch' && !consignments.length) throw refuse('Add the consignment for this trip first: this company books consignments before the truck leaves.');
+  if (consignments.some((c) => isLoaded(c))) recordEvent(trip, 'loaded', at, ctx.actorId);
   trip.set({ dispatchedAt: at, openingFuelL: Math.max(0, round(truck.fuelL - issued, 0)), tracking: { km: 0, speed: 0, heading: 0, at }, updatedBy: ctx.actorId });
   await save(trip);
   await resolve(`${trip._id}-dispatch`, 'Dispatched');
@@ -494,7 +530,8 @@ export async function dispatchTrip(id: string, ctx: OpsContext, input?: S.Dispat
   const holds = Math.max(0, await carriedIn(plain.driverId, trip._id)) + (await FundRequest.find({ tripId: trip._id, kind: 'cash', status: 'issued' }).lean()).reduce((s, r) => s + Number(r.baseAmountMinor ?? 0), 0);
   const plainStops = plain.stops as Array<{ kind: string; placeId: unknown }>;
   const loadAt = await placeName(plainStops.find((s) => s.kind === 'load')?.placeId);
-  const offloadAt = await placeName(plainStops.find((s) => s.kind === 'offload')?.placeId);
+  // The last drop, where the trip's work ends, not the first (#102).
+  const offloadAt = await placeName([...plainStops].reverse().find((s) => s.kind === 'offload')?.placeId);
   const truckLabel = `${truck.plate}${plain.trailerId ? ` · ${await trailerPlate(plain.trailerId)}` : ''}`;
   await post(driverThread(plain.driverId), at, {
     title: `On your way · ${plain.number}`,
@@ -520,9 +557,9 @@ async function announceArrival(trip: Plain, index: number, at: Date, ctx: OpsCon
     if (trip.driverId) {
       await post(driverThread(trip.driverId), at, {
         title: `You've reached ${place}`,
-        text: loading ? 'Send a photo of the loading invoice once the tanker is filled and sealed.' : 'Send the signed delivery note with the offloading readings.',
+        text: loading ? 'Send a photo of the loading invoice once the truck is loaded.' : 'Send the signed delivery note with the offloading readings.',
         buttons: [{ label: loading ? 'Send loading invoice' : 'Send delivery note', attach: loading ? 'loading' : 'delivery', tone: 'primary' }],
-        wa: { template: 'arrived_send_document', values: [place, String(trip.number), loading ? 'the loading invoice once the tanker is filled and sealed' : 'the signed delivery note with the offloading readings'] },
+        wa: { template: 'arrived_send_document', values: [place, String(trip.number), loading ? 'the loading invoice once the truck is loaded' : 'the signed delivery note with the offloading readings'] },
         refId: `${trip._id}-${loading ? 'loading' : 'delivery'}`,
       }, ctx);
     }
@@ -550,18 +587,10 @@ async function announceArrival(trip: Plain, index: number, at: Date, ctx: OpsCon
  * point before the loading is recorded, and nothing after the offloading point before the delivery is.
  */
 export async function arrivalRefusal(trip: HydratedDocument<any>, index: number, ctx: OpsContext): Promise<string | undefined> {
-  const stops = trip.get('stops') as Array<{ kind: string; placeId: unknown }>;
-  const loadIndex = stops.findIndex((s) => s.kind === 'load');
-  const offloadIndex = stops.findIndex((s) => s.kind === 'offload');
-  if (loadIndex < 0 || index <= loadIndex) return undefined;
-  const consignments = await Consignment.find({ tripId: trip._id }).select('delivered').lean();
+  const gate = await tripGate(trip.toObject() as Plain);
+  if (!gate || index <= gate.index) return undefined;
   // The office records these; a driver can only wait for it.
-  if (!consignments.length) return ctx.asDriver ? 'Waiting for Operations to record the loading.' : 'Record the loading first.';
-  if (offloadIndex >= 0 && index > offloadIndex && consignments.some((c) => !c.delivered)) {
-    const place = await placeName(stops[offloadIndex]!.placeId);
-    return ctx.asDriver ? `Waiting for Operations to record the delivery at ${place}.` : `Record the delivery at ${place} first.`;
-  }
-  return undefined;
+  return ctx.asDriver ? gate.driverReason : gate.reason;
 }
 
 /** Stamps arrival at a stop (and the stops passed before it) and sends the messages for it. Refuses a stop the cargo hasn't reached. */
@@ -571,11 +600,30 @@ export async function arriveAt(trip: HydratedDocument<any>, index: number, at: D
     const refusal = await arrivalRefusal(trip, index, ctx);
     if (refusal) throw refuse(refusal);
   }
+  await leaveAfterWork(trip, stops.slice(0, index), at);
   const stamped = stampArrival(stops, index, at);
   if (!stamped) return;
   for (const stop of stops.slice(0, index + 1)) if (stop.arrivedAt && !stop.arrivedVia) stop.arrivedVia = via;
   if (stops[index]?.kind === 'offload') recordEvent(trip, 'arrived_offloading', at, ctx.actorId);
   if (!quiet) await announceArrival(trip.toObject() as Plain, index, at, ctx, via);
+}
+
+/**
+ * A stop the truck goes on from is left no earlier than the work recorded there (#102): when the office marks the
+ * next arrival without GPS, the loading or drop recorded after the truck arrived sets when it left, not the arrival.
+ */
+async function leaveAfterWork(trip: HydratedDocument<any>, stops: Array<{ _id?: unknown; arrivedAt?: Date; leftAt?: Date }>, at: Date) {
+  const open = stops.filter((s) => s.arrivedAt && !s.leftAt);
+  if (!open.length) return;
+  const done = new Map<string, number>();
+  const list = await Consignment.find({ 'legs.tripId': trip._id }).select('legs.stopId legs.recordedAt').lean();
+  for (const c of list) for (const l of (c.legs ?? []) as Array<{ stopId?: unknown; recordedAt?: Date }>) {
+    if (l.stopId && l.recordedAt) done.set(String(l.stopId), Math.max(done.get(String(l.stopId)) ?? 0, l.recordedAt.getTime()));
+  }
+  for (const s of open) {
+    const work = done.get(String(s._id));
+    if (work) s.leftAt = new Date(Math.min(at.getTime(), Math.max(s.arrivedAt!.getTime(), work)));
+  }
 }
 
 /** A position report: kilometres along the route. The truck can't pass loading before the load is recorded, or offloading before delivery. */
@@ -590,25 +638,31 @@ export async function reportPosition(id: string, input: S.PositionInput, ctx: Op
   const end = cum.at(-1) ?? 0;
   const previous = Number(trip.get('tracking')?.km ?? 0);
   let km = Math.max(previous, Math.min(input.km, end));
-  const loadIndex = stops.findIndex((s) => s.kind === 'load');
-  const offloadIndex = stops.findIndex((s) => s.kind === 'offload');
-  const consignments = await Consignment.find({ tripId: trip._id }).select('delivered').lean();
-  if (!consignments.length) km = Math.min(km, cum[loadIndex]!);
-  else if (consignments.some((c) => !c.delivered)) km = Math.min(km, cum[offloadIndex]!);
+  // The truck can't pass the stop that holds it (design 3.7.2): the km stop there until its consignments are recorded.
+  const gate = await tripGate(trip.toObject() as Plain);
+  if (gate) km = Math.min(km, cum[gate.index]!);
   const held = km < Math.min(input.km, end) - 0.01;
-  const delivered = consignments.length > 0 && consignments.every((c) => c.delivered);
   const arrivals: number[] = [];
   stops.forEach((stop, index) => {
-    if (index > offloadIndex && !delivered) return;
+    if (gate && index > gate.index) return;
     if (index > 0 && !stop.arrivedAt && km >= cum[index]! - 0.01) arrivals.push(index);
   });
   for (const index of arrivals) await arriveAt(trip, index, at, ctx, input.source);
+  const passed = stops.filter((stop, index) => stop.arrivedAt && !stop.leftAt && km > cum[index]! + 0.5);
   stops.forEach((stop, index) => {
-    if (stop.arrivedAt && !stop.leftAt && km > cum[index]! + 0.5) {
+    if (passed.includes(stop)) {
       const back = input.speed > 0 ? ((km - cum[index]!) / input.speed) * 36e5 : 0;
-      stop.leftAt = new Date(Math.max(stop.arrivedAt.getTime(), at.getTime() - back));
+      stop.leftAt = new Date(Math.max(stop.arrivedAt!.getTime(), at.getTime() - back));
     }
   });
+  // Never before the work recorded there.
+  for (const stop of passed) {
+    const left = stop.leftAt!;
+    stop.leftAt = undefined;
+    await leaveAfterWork(trip, [stop], at);
+    const after = stop.leftAt as Date | undefined;
+    if (!after || after < left) stop.leftAt = left;
+  }
   const parked = stops.some((s, i) => s.kind !== 'via' && s.kind !== 'border' && s.kind !== 'start' && s.arrivedAt && !s.leftAt && Math.abs(cum[i]! - km) < 0.5);
   trip.set('tracking', { km, speed: km > previous && !held && !parked ? input.speed : 0, heading: km > previous ? input.heading ?? 0 : Number(trip.get('tracking')?.heading ?? 0), at, source: input.source });
   trip.markModified('stops');
@@ -657,12 +711,16 @@ export async function remind(id: string, ctx: OpsContext) {
     return { reminded: thread };
   }
   if (!trip.driverId) throw refuse('Nobody to remind: no open request and no driver.');
-  const loaded = await Consignment.exists({ tripId: trip._id });
+  // What the driver is to send: what the stop holding the truck waits for, else the delivery note once loaded.
+  const consignments = await Consignment.find({ tripId: trip._id, status: { $nin: ['cancelled', 'draft'] } }).lean();
+  const gate = await tripGate(trip, consignments as Plain[]);
+  const loaded = consignments.some((c) => isLoaded(c as never));
+  const kind = gate ? (gate.why === 'drop' || (gate.why === 'document' && (trip.stops as Plain[])[gate.index]?.kind === 'offload') ? 'delivery' : gate.why === 'pickup' || gate.why === 'no_consignment' || gate.why === 'document' ? 'loading' : loaded ? 'delivery' : 'loading') : loaded ? 'delivery' : 'loading';
   await post(driverThread(trip.driverId), at, {
     title: `Reminder · ${trip.number}`,
     text: 'Operations is waiting for your document.',
-    buttons: [{ label: 'Send it now', tone: 'primary', attach: loaded ? 'delivery' : 'loading' }],
-    wa: { template: 'document_reminder', values: [String(trip.number), loaded ? 'delivery note' : 'loading invoice'] },
+    buttons: [{ label: 'Send it now', tone: 'primary', attach: kind }],
+    wa: { template: 'document_reminder', values: [String(trip.number), kind === 'delivery' ? 'delivery note' : 'loading invoice'] },
   }, ctx);
   await log(ctx, at, 'Reminded the driver', { tripId: trip._id });
   return { reminded: 'driver' };
@@ -676,9 +734,11 @@ export async function endTrip(id: string, input: S.EndTripInput, ctx: OpsContext
   const trip = await tripDoc(id);
   if (!trip.get('dispatchedAt') || !activeTrip(trip.toObject())) throw conflict("This trip isn't on the road.");
   assertStageAllows(trip.toObject(), 'ended');
-  const consignments = await Consignment.find({ tripId: trip._id }).select('delivered').lean();
-  if (!consignments.length) throw refuse('Nothing was loaded on this trip.');
-  if (consignments.some((c) => !c.delivered)) throw refuse('Record the delivery first.');
+  const consignments = working(await Consignment.find({ tripId: trip._id }).lean() as never, trip._id);
+  const { tripsWithoutCargo } = await freightSettings();
+  if (!consignments.some((c) => isLoaded(c)) && !tripsWithoutCargo) throw refuse('Nothing was loaded on this trip.');
+  const open = consignments.filter((c) => !isFinished(c));
+  if (open.length) throw refuse(open.length === 1 && consignments.length === 1 ? 'Record the delivery first.' : `Record the delivery of ${open.map((c) => c.number).join(', ')} first, or say what happens to ${open.length === 1 ? 'it' : 'them'} with "Can't deliver".`);
   const truck = await truckFacts(trip.get('vehicleId'), false);
   if (truck.tankL && input.closingFuelL > truck.tankL) throw refuse(`The tank holds ${litres(truck.tankL)}.`);
   const stops = trip.get('stops') as Array<{ placeId: unknown; legKm: number; leftAt?: Date }>;

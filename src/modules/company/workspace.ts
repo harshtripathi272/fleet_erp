@@ -22,6 +22,10 @@ export const TERMS = {
   settlement: ['Settlement', 'Settlements'],
   statement: ['Statement', 'Statements'],
   tripSheet: ['Trip sheet', 'Trip sheets'],
+  /** One customer's goods on a trip (#135); a company in India may say "LR", another "Job" or "Shipment". */
+  consignment: ['Consignment', 'Consignments'],
+  /** The printed note that goes with a consignment; "LR" or "Bilty" in India, "CMR" in Europe. */
+  consignmentNote: ['Consignment note', 'Consignment notes'],
 } as const satisfies Record<string, readonly [string, string]>;
 export type Term = keyof typeof TERMS;
 export const TERM_KEYS = Object.keys(TERMS) as [Term, ...Term[]];
@@ -44,6 +48,7 @@ export const VIEWS = [
   { key: 'overview', name: 'Overview' },
   { key: 'today', name: 'Approvals', area: 'finance' },
   { key: 'trips', name: 'Trips', area: 'trips' },
+  { key: 'consignments', name: 'Consignments', area: 'trips' },
   { key: 'nominations', name: 'Nominations', area: 'trips' },
   { key: 'accounts', name: 'Driver accounts', area: 'finance' },
   { key: 'billing', name: 'Billing', area: 'billing' },
@@ -57,9 +62,9 @@ export const DESK_ICONS = ['gauge', 'grid', 'wallet', 'wrench', 'truck', 'clipbo
 
 /** Today's desks: who sees each is decided by permissions (`kind`), unless the company names roles. */
 export const DEFAULT_DESKS = [
-  { key: 'owner', name: 'Overview and approvals', icon: 'gauge', views: ['overview', 'trips', 'nominations', 'accounts', 'maintenance', 'billing', 'masters'], kind: 'owner' },
-  { key: 'operations', name: 'Operations', icon: 'grid', views: ['trips', 'nominations', 'accounts', 'maintenance', 'masters'], kind: 'operations' },
-  { key: 'finance', name: 'Finance', icon: 'wallet', views: ['today', 'trips', 'accounts', 'billing', 'masters'], kind: 'finance' },
+  { key: 'owner', name: 'Overview and approvals', icon: 'gauge', views: ['overview', 'trips', 'consignments', 'nominations', 'accounts', 'maintenance', 'billing', 'masters'], kind: 'owner' },
+  { key: 'operations', name: 'Operations', icon: 'grid', views: ['trips', 'consignments', 'nominations', 'accounts', 'maintenance', 'masters'], kind: 'operations' },
+  { key: 'finance', name: 'Finance', icon: 'wallet', views: ['today', 'trips', 'consignments', 'accounts', 'billing', 'masters'], kind: 'finance' },
 ] as const;
 
 const text = (max: number) => z.string().trim().min(1).max(max);

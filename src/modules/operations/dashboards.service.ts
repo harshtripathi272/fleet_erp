@@ -5,6 +5,7 @@ import { Driver } from '../drivers/models/driver.model.js';
 import { Vehicle } from '../fleet/models/vehicle.model.js';
 import { driverLedger, sumOf } from './ledger.js';
 import { Consignment, DriverDocument } from './models/cargo.model.js';
+import { presentConsignment } from './consignments.service.js';
 import { FundRequest, VehicleState } from './models/funding.model.js';
 import { Message, Activity, ThreadRead } from './models/message.model.js';
 import { DriverAccount, Expense, Nomination, Settlement } from './models/money.model.js';
@@ -73,6 +74,13 @@ export async function financeDashboard() {
   };
 }
 
+/** A trip's profit and cost lines go only to people who may see them (#135, the trip-profit area's sensitive switch). */
+export function withoutProfit(trip: Plain, can: (resource: string, action: 'sensitive') => boolean) {
+  if (can('trip-profit', 'sensitive')) return trip;
+  const { profit: _p, costLines: _c, ...rest } = trip;
+  return rest;
+}
+
 /** Everything the printed trip sheet shows. */
 export async function tripSheet(id: string) {
   const trip = await Trip.findById(id).lean();
@@ -85,7 +93,7 @@ export async function tripSheet(id: string) {
     Company.findOne().select('legalName tradingName address phone email').lean(),
   ]);
   return {
-    trip: presentTrip(trip as Plain), requests: requests.map(present), consignments: consignments.map(present), expenses: expenses.map(present),
+    trip: presentTrip(trip as Plain), requests: requests.map(present), consignments: consignments.map((c) => presentConsignment(c as Plain)), expenses: expenses.map(present),
     documents: documents.map(present), activity: (await Activity.find({ tripId: trip._id }).sort({ at: 1 }).lean()).map(present),
     company: company ? present(company) : null, currency: await baseCurrency(),
   };
@@ -119,7 +127,7 @@ async function carriedBalances(keptTripIds: unknown[], from: Date) {
   const [advances, shortages, writeOffs, expenses, settlements] = await Promise.all([
     FundRequest.aggregate<{ _id: unknown; sum: number }>([{ $match: { kind: 'cash', status: 'issued', tripId: { $nin: keptTripIds } } }, { $group: { _id: '$tripId', sum: { $sum: { $ifNull: ['$baseAmountMinor', 0] } } } }]),
     Consignment.aggregate<{ _id: unknown; sum: number }>([{ $match: { 'shortage.status': 'charged', tripId: { $nin: keptTripIds } } }, { $group: { _id: '$tripId', sum: { $sum: '$shortage.baseAmountMinor' } } }]),
-    Consignment.aggregate<{ _id: unknown; sum: number }>([{ $match: { 'writeOff.status': 'approved', 'writeOff.carrier': 'driver', tripId: { $nin: keptTripIds } } }, { $group: { _id: '$tripId', sum: { $sum: '$writeOff.baseAmountMinor' } } }]),
+    Consignment.aggregate<{ _id: unknown; sum: number }>([{ $match: { 'outcome.writeOff.status': 'approved', 'outcome.writeOff.carrier': 'driver', tripId: { $nin: keptTripIds } } }, { $group: { _id: '$tripId', sum: { $sum: '$outcome.writeOff.baseAmountMinor' } } }]),
     Expense.aggregate<{ _id: unknown; sum: number }>([{ $match: { status: 'approved', $nor: [{ tripId: { $in: keptTripIds } }, { tripId: null, at: { $gte: from } }] } }, { $group: { _id: '$driverId', sum: { $sum: '$baseAmountMinor' } } }]),
     Settlement.aggregate<{ _id: unknown; sum: number }>([{ $match: { postedAt: { $lt: from }, cashMinor: { $ne: 0 } } }, { $group: { _id: '$driverId', sum: { $sum: '$cashMinor' } } }]),
   ]);
@@ -144,10 +152,10 @@ export async function sync(since: Date | undefined, viewer: Viewer, fromInput?: 
   const ofKept: Plain = { ...changed, tripId: { $in: keptIds } };
   const orRecent = (field: string): Plain => ({ ...changed, $or: [{ tripId: { $in: keptIds } }, { tripId: null, [field]: { $gte: from } }] });
   const [trips, requests, documents, consignments, expenses, settlements, nominations, vehicleStates, driverAccounts, messages, activity] = await Promise.all([
-    read('trips', async () => keptTrips.map((t) => presentTrip(t as Plain))),
+    read('trips', async () => keptTrips.map((t) => withoutProfit(presentTrip(t as Plain), can))),
     read('fund-requests', async () => (await FundRequest.find(ofKept).lean()).map(present)),
     read('driver-documents', async () => (await DriverDocument.find(orRecent('createdAt')).lean()).map(present)),
-    read('consignments', async () => (await Consignment.find(ofKept).lean()).map(present)),
+    read('consignments', async () => (await Consignment.find(ofKept).lean()).map((c) => presentConsignment(c as Plain, can))),
     read('expenses', async () => (await Expense.find(orRecent('at')).lean()).map(present)),
     read('settlements', async () => (await Settlement.find({ ...changed, postedAt: { $gte: from } }).lean()).map(present)),
     read('nominations', async () => (await Nomination.find({ ...changed, $or: [{ status: { $in: ['draft', 'sent', 'accepted'] } }, { updatedAt: { $gte: from } }] }).lean()).map(present)),

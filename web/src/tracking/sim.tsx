@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import { useApp } from "../store";
 import { byId, cumulativeKm } from "../domain/calc";
 import { placeName } from "../domain/helpers";
+import { holdingStop, nextStep } from "../domain/turn";
 
 interface Sim {
   tripId?: string;
@@ -49,21 +50,13 @@ export function SimProvider({ children }: { children: ReactNode }) {
       const cum = cumulativeKm(trip);
       const at = trip.tracking?.km ?? 0;
       const total = cum.at(-1) ?? 0;
-      const loaded = d.consignments.some((c) => c.tripId === trip.id);
-      const delivered = loaded && d.consignments.filter((c) => c.tripId === trip.id).every((c) => c.delivered);
-      const loadKm = cum[trip.stops.findIndex((s) => s.kind === "load")];
-      const offloadKm = cum[trip.stops.findIndex((s) => s.kind === "offload")];
-      const wall = !loaded ? loadKm : !delivered ? offloadKm : total;
+      const holding = holdingStop(d, trip);
+      const wall = holding >= 0 ? cum[holding] : total;
       if (at >= wall - 0.01) {
         setRunning(false);
         if ((trip.tracking?.speed ?? 0) > 0) run({ type: "trip.ping", tripId, km: at, speed: 0 });
-        setNote(
-          !loaded
-            ? `Waiting at ${placeName(d, trip.stops.find((s) => s.kind === "load")?.placeId)} for loading`
-            : !delivered
-              ? `Waiting at ${placeName(d, trip.stops.find((s) => s.kind === "offload")?.placeId)} to offload`
-              : "Arrived",
-        );
+        // The same sentence as the trip page.
+        setNote(holding >= 0 ? nextStep(d, trip).waiting : "Arrived");
         return;
       }
       if (hold.current > 0) {
@@ -74,7 +67,7 @@ export function SimProvider({ children }: { children: ReactNode }) {
       const kmh = 58 + Math.sin(Date.now() / 2400) * 9 + Math.random() * 6;
       const step = (kmh * SIM_MINUTES * speed) / 60;
       let next = Math.min(wall, at + step);
-      const border = trip.stops.findIndex((s, i) => i > 0 && s.kind === "via" && !s.arrivedAt && cum[i] <= next);
+      const border = trip.stops.findIndex((s, i) => i > 0 && s.kind === "border" && !s.arrivedAt && cum[i] <= next);
       if (border > 0) {
         next = cum[border];
         hold.current = 3;

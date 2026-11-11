@@ -47,7 +47,11 @@ export function readDocument(
     };
   }
   if (!trip) return {};
-  const product = byId(data.products, trip.productId) ?? data.products.find((p) => p.kind === "fuel")!;
+  // The trip's product, else the goods of its first consignment still to load (#135: goods are on consignments now),
+  // else any fuel, else any product. A company with no products has nothing to read.
+  const waiting = data.cns.find((c) => c.tripId === trip.id && c.legs.some((l) => l.kind === "pickup" && l.status === "planned"));
+  const product = byId(data.products, trip.productId) ?? byId(data.products, waiting?.lines[0]?.productId) ?? data.products.find((p) => p.kind === "fuel") ?? data.products[0];
+  if (!product) return {};
   const trailer = byId(data.trailers, trip.trailerId);
   const load = trip.stops.find((s) => s.kind === "load");
   if (kind === "loading") {
@@ -56,7 +60,7 @@ export function readDocument(
       return {
         docNo: `DN-${n(20000, 89999)}`,
         productId: product.id,
-        qty: trip.plannedQty ?? Math.max(1, truck.capacityT - 2),
+        qty: trip.plannedQty ?? Math.max(1, (truck.capacityT ?? 30) - 2),
         consignor: byId(data.places, load?.placeId)?.name ?? "Shipper",
         consignee: byId(data.customers, trip.customerId)?.name,
       };

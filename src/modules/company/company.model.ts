@@ -56,6 +56,109 @@ export const OPERATIONS_DEFAULTS = {
 } as const;
 export const SETTLEMENT_PERIODS = ['any', 'weekly', 'fortnightly', 'monthly'] as const;
 
+/**
+ * How this company carries freight: consignments, stops, revenue and profit (#135, consignments design 3.9).
+ * Every default gives a company with one load and one drop exactly what it had before consignments.
+ * Settings of later phases are stored now and say "Not built yet" on the screen until they act.
+ */
+export const CONSIGNMENT_BY = ['loading', 'dispatch'] as const;
+export const CONSIGNOR_DEFAULTS = ['customer', 'empty'] as const;
+export const DUPLICATE_CHECKS = ['warn', 'refuse', 'off'] as const;
+export const LATE_SPLIT = ['by_type', 'always', 'never'] as const;
+export const LEAVE_STOP_REQUIRES = ['lines', 'required_documents'] as const;
+export const CAPACITY_CHECKS = ['refuse', 'warn', 'off'] as const;
+export const RATE_REQUIRED = ['later', 'at_booking', 'at_loading'] as const;
+export const FREIGHT_CHARGE_ON = ['loaded', 'delivered', 'planned', 'greater_of', 'lesser_of'] as const;
+export const FREIGHT_PRICE_ON = ['pickup_date', 'delivery_date', 'booking_date', 'trip_dispatch'] as const;
+export const FREIGHT_DISTANCE = ['route_lead', 'trip_loaded_km', 'manual'] as const;
+export const FREIGHT_SHORTAGE = ['none', 'beyond_allowance', 'all'] as const;
+export const SHORTAGE_SCOPES = ['consignment', 'drop'] as const;
+export const DETENTION_SHARES = ['each', 'split'] as const;
+export const COST_SHARES = ['weight', 'revenue', 'equal', 'km'] as const;
+export const FREEZE_ON = ['invoice_or_settlement', 'delivery', 'manual'] as const;
+export const PROFIT_COSTS = ['fuel', 'expenses', 'charges', 'losses', 'recovered', 'other', 'overhead'] as const;
+export const TRANSFER_SPLITS = ['delivering_trip', 'first_trip', 'by_km'] as const;
+
+export const FREIGHT_DEFAULTS = {
+  consignmentBy: 'loading' as (typeof CONSIGNMENT_BY)[number],
+  /** 0: no limit. 1 gives a single-load company a screen with no "Add consignment". */
+  maxConsignmentsPerTrip: 0,
+  defaultConsignmentTypeId: undefined as string | undefined,
+  consignorDefault: 'customer' as (typeof CONSIGNOR_DEFAULTS)[number],
+  consigneeMustBeParty: false,
+  consigneePhoneRequired: false,
+  createPlacesFromAddresses: true,
+  duplicateCheck: 'warn' as (typeof DUPLICATE_CHECKS)[number],
+  bookWithoutTrip: false,
+  stopsEditableOnRoad: true,
+  lateSplit: 'by_type' as (typeof LATE_SPLIT)[number],
+  leaveStopRequires: ['lines', 'required_documents'] as string[],
+  capacityCheck: 'refuse' as (typeof CAPACITY_CHECKS)[number],
+  capacityTolerancePercent: 0,
+  tripsWithoutCargo: false,
+  podPerStopAllowed: false,
+  notifyConsignee: false,
+  ewayBillWarnHours: 0,
+  consignmentRateRequired: 'later' as (typeof RATE_REQUIRED)[number],
+  /** Empty: Money settings → "Bill on" (delivered by default), as before consignments. */
+  chargeOnDefault: undefined as (typeof FREIGHT_CHARGE_ON)[number] | undefined,
+  priceOnDefault: 'pickup_date' as (typeof FREIGHT_PRICE_ON)[number],
+  distanceSourceDefault: 'route_lead' as (typeof FREIGHT_DISTANCE)[number],
+  /** Empty: Money settings → "Shortage on the invoice" (deducted beyond the allowance by default), as before. */
+  shortageDeductionDefault: undefined as (typeof FREIGHT_SHORTAGE)[number] | undefined,
+  shortageScopeDefault: 'consignment' as (typeof SHORTAGE_SCOPES)[number],
+  detentionShare: 'each' as (typeof DETENTION_SHARES)[number],
+  costShareBy: 'weight' as (typeof COST_SHARES)[number],
+  manualPriceNeedsReason: true,
+  freezeOn: 'invoice_or_settlement' as (typeof FREEZE_ON)[number],
+  invoiceWithoutPod: false,
+  profitCosts: ['fuel', 'expenses', 'charges', 'losses', 'recovered', 'other'] as string[],
+  /** Base-currency minor units per litre, when neither the fuel issue nor the fuel price list has a price. */
+  defaultFuelPricePerLMinor: undefined as number | undefined,
+  overheadPerKmMinor: 0,
+  overheadPerDayMinor: 0,
+  transferRevenueSplit: 'delivering_trip' as (typeof TRANSFER_SPLITS)[number],
+  showProfitOnTripList: false,
+};
+
+const freightSchema = new Schema({
+  consignmentBy: { type: String, enum: CONSIGNMENT_BY },
+  maxConsignmentsPerTrip: { type: Number, min: 0, max: 1000 },
+  defaultConsignmentTypeId: { type: ObjectId, ref: 'ConsignmentType' },
+  consignorDefault: { type: String, enum: CONSIGNOR_DEFAULTS },
+  consigneeMustBeParty: Boolean,
+  consigneePhoneRequired: Boolean,
+  createPlacesFromAddresses: Boolean,
+  duplicateCheck: { type: String, enum: DUPLICATE_CHECKS },
+  bookWithoutTrip: Boolean,
+  stopsEditableOnRoad: Boolean,
+  lateSplit: { type: String, enum: LATE_SPLIT },
+  leaveStopRequires: { type: [{ type: String, enum: LEAVE_STOP_REQUIRES }], default: undefined },
+  capacityCheck: { type: String, enum: CAPACITY_CHECKS },
+  capacityTolerancePercent: { type: Number, min: 0, max: 50 },
+  tripsWithoutCargo: Boolean,
+  podPerStopAllowed: Boolean,
+  notifyConsignee: Boolean,
+  ewayBillWarnHours: { type: Number, min: 0, max: 720 },
+  consignmentRateRequired: { type: String, enum: RATE_REQUIRED },
+  chargeOnDefault: { type: String, enum: FREIGHT_CHARGE_ON },
+  priceOnDefault: { type: String, enum: FREIGHT_PRICE_ON },
+  distanceSourceDefault: { type: String, enum: FREIGHT_DISTANCE },
+  shortageDeductionDefault: { type: String, enum: FREIGHT_SHORTAGE },
+  shortageScopeDefault: { type: String, enum: SHORTAGE_SCOPES },
+  detentionShare: { type: String, enum: DETENTION_SHARES },
+  costShareBy: { type: String, enum: COST_SHARES },
+  manualPriceNeedsReason: Boolean,
+  freezeOn: { type: String, enum: FREEZE_ON },
+  invoiceWithoutPod: Boolean,
+  profitCosts: { type: [{ type: String, enum: PROFIT_COSTS }], default: undefined },
+  defaultFuelPricePerLMinor: { type: Number, min: 0, max: 1e9 },
+  overheadPerKmMinor: { type: Number, min: 0, max: 1e9 },
+  overheadPerDayMinor: { type: Number, min: 0, max: 1e11 },
+  transferRevenueSplit: { type: String, enum: TRANSFER_SPLITS },
+  showProfitOnTripList: Boolean,
+}, { _id: false, strict: 'throw' });
+
 const operationsSchema = new Schema({
   cargoKinds: { type: [{ type: String, enum: CARGO_KINDS }], default: () => [...OPERATIONS_DEFAULTS.cargoKinds] },
   loadedTripOutcomes: { type: [{ type: String, enum: LOADED_TRIP_OUTCOMES }], default: () => [...OPERATIONS_DEFAULTS.loadedTripOutcomes] },
@@ -123,6 +226,7 @@ const companySchema = new Schema<any>({
   modules: { type: [String], default: () => [...DEFAULT_AREAS] },
   operations: { type: operationsSchema, default: () => ({}) },
   maintenance: { type: maintenanceSchema, default: () => ({}) },
+  freight: { type: freightSchema, default: () => ({}) },
   rateFeed: { type: rateFeedSchema, default: () => ({}) },
   regional: { type: regionalSchema, default: () => ({}) },
   address: { line1: String, line2: String, city: String, postalCode: String },

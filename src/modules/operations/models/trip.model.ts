@@ -17,7 +17,40 @@ const stopSchema = new Schema({
   /** Who reported the arrival. `simulator` marks a demo drive, never a real one. */
   arrivedVia: { type: String, enum: ARRIVAL_SOURCES },
   leftAt: Date,
+  /** The stop type it is, from the stop activity types (phase 2 of the consignments design); `kind` drives the arithmetic. */
+  activityTypeId: { type: ObjectId, ref: 'StopType' },
+  /** Where it came from: the route, a consignment's pickup or drop, or the office adding it. */
+  origin: { type: String, enum: ['route', 'consignment', 'office'] },
+  /** Added after dispatch (a late split, a backhaul), and by whom. */
+  addedAt: Date,
+  addedBy: { type: ObjectId, ref: 'User' },
+  /** Nothing is planned here any more; kept for the sheet, skipped by the gates. */
+  skipped: Boolean,
+  /** Someone allowed to let the truck pass this stop before its consignments were recorded, and why. */
+  gatePassed: { type: new Schema({ at: Date, by: { type: ObjectId, ref: 'User' }, byName: String, reason: String }, { _id: false }), default: undefined },
 }, { strict: 'throw' });
+
+/** A cost the system doesn't track yet, typed on the trip for its profit (a toll account, the driver's trip pay). */
+const costLineSchema = new Schema({
+  chargeTypeId: { type: ObjectId, ref: 'ChargeType' },
+  label: { type: String, required: true },
+  amount: { type: moneySchema, required: true },
+  baseAmountMinor: { type: Number, required: true },
+  note: String,
+  at: { type: Date, required: true },
+  by: { type: ObjectId, ref: 'User' },
+  byName: String,
+}, { _id: true, strict: 'throw' });
+
+/** The last worked-out profit, so lists and reports can sort and total without working it out again. */
+const profitSnapshotSchema = new Schema({
+  status: { type: String, enum: ['estimate', 'provisional', 'final'], required: true },
+  revenueMinor: Number,
+  costMinor: Number,
+  profitMinor: Number,
+  complete: Boolean,
+  at: Date,
+}, { _id: false, strict: 'throw' });
 
 const stageStepSchema = new Schema({
   stageId: { type: ObjectId, ref: 'TripStage', required: true },
@@ -75,6 +108,8 @@ const tripSchema = new Schema<any>({
   /** The latest position. `source` says where it came from; `simulator` positions are a demo, not the truck. */
   tracking: { type: new Schema({ km: Number, speed: Number, heading: Number, at: Date, source: { type: String, enum: ARRIVAL_SOURCES } }, { _id: false }), default: undefined },
   settlementId: { type: ObjectId, ref: 'Settlement' },
+  costLines: { type: [costLineSchema], default: undefined },
+  profit: { type: profitSnapshotSchema, default: undefined },
   active: { type: Boolean, default: true },
   createdBy: { type: ObjectId, ref: 'User' },
   updatedBy: { type: ObjectId, ref: 'User' },

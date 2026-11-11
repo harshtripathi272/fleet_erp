@@ -1,9 +1,11 @@
 import type {
+  FreightRules,
   ActivityEvent, AppData, Consignment, Customer, Decision, Driver, DriverDoc, Expense, ExpenseCategory, FundRequest, Message, MsgButton,
   Nomination, Pairing, Place, Product, RouteTemplate, Settings, Settlement, Trailer, Trip, Truck, Unit,
 } from "../domain/types";
 import { setBaseCurrencyCode, setRegional, type Regional } from "../ui/format";
 import { DEFAULT_DESKS, DEFAULT_STAGES, DEFAULT_WORDS } from "../domain/words";
+import { cnFrom, type Cn } from "../consignments/model";
 
 /**
  * Maps API records onto the shape the desks were built against (`AppData` from the trip-flow mock), so
@@ -128,10 +130,12 @@ export function toAppData(ref: Reference, ops: Operations): AppData {
     };
   });
 
-  const customers: Customer[] = ref.parties.filter((p) => (p.roles ?? []).includes("customer")).map((p) => {
+  const asCustomer = (p: Rec): Customer => {
     const contact = (p.contacts ?? []).find((c: Rec) => c.isPrimary) ?? p.contacts?.[0];
     return { id: p.id, name: p.name, contact: contact?.name ?? "", phone: contact?.whatsapp ?? contact?.phone ?? "" };
-  });
+  };
+  const customers: Customer[] = ref.parties.filter((p) => (p.roles ?? []).includes("customer")).map(asCustomer);
+  const parties: Customer[] = ref.parties.filter((p) => p.status !== "inactive" && p.status !== "archived").map(asCustomer);
 
   const accounts = new Map(ops.driverAccounts.map((a) => [String(a.driverId), a]));
   const drivers: Driver[] = ref.drivers.filter((d) => d.status === "active").map((d) => {
@@ -158,7 +162,7 @@ export function toAppData(ref: Reference, ops: Operations): AppData {
       tankL: positive(v.tankCapacityL, model?.tankCapacityL) ?? 0,
       emptyKmpl: positive(v.kmPerLEmpty, model?.kmPerLEmpty, norm?.kmPerLEmpty) ?? 0,
       loadedKmpl: positive(v.kmPerLLoaded, model?.kmPerLLoaded, norm?.kmPerLLoaded) ?? 0,
-      capacityT: positive(v.payloadKg) ? v.payloadKg / 1000 : 30,
+      capacityT: positive(v.payloadKg) ? v.payloadKg / 1000 : undefined,
       driverId: ref.drivers.find((d) => d.status === "active" && d.assignedVehicleId === v.id)?.id,
       trailerId: v.currentTrailerId,
     };
@@ -236,10 +240,19 @@ export function toAppData(ref: Reference, ops: Operations): AppData {
     read: d.reading ? { ...d.reading, currency: d.reading.currencyCode } : undefined,
     simulated: Boolean(d.simulated),
     status: d.status, recordRef: d.recordRef, returnReason: d.returnReason, at: d.at,
+    consignmentId: d.consignmentId ?? undefined, legId: d.legId ?? undefined, documentTypeId: d.documentTypeId ?? undefined,
   })).sort((a, b) => a.at.localeCompare(b.at));
 
-  const consignments: Consignment[] = ops.consignments.map((c) => ({
-    id: c.id, no: c.number, tripId: c.tripId, productId: c.productId, invoiceNo: c.invoiceNo, consignor: c.consignor ?? "—", consignee: c.consignee ?? "",
+  // Consignments come in the shape of #135 (lines, legs, papers, revenue). `cns` is that shape for the consignment
+  // screens; `consignments` keeps the one-load shape the stage panels read, for the ones loaded so far.
+  const partyById = new Map(ref.parties.map((p) => [String(p.id), p] as const));
+  const partyName = (id: unknown) => (id ? (partyById.get(String(id))?.name as string | undefined) : undefined);
+  const partyPhone = (id: unknown) => (id ? ((partyById.get(String(id))?.phone ?? partyById.get(String(id))?.contacts?.[0]?.phone) as string | undefined) : undefined);
+  const cns: Cn[] = ops.consignments.map((c) => cnFrom(c, partyName, partyPhone));
+  const contactName = (v: unknown, partyId: unknown) => (typeof v === "string" ? v : (v as Rec | null)?.name ?? partyName(partyId));
+  const consignments: Consignment[] = ops.consignments.filter((c) => c.load).map((c) => ({
+    id: c.id, no: c.number, tripId: c.tripId, productId: c.productId, invoiceNo: c.invoiceNo ?? "",
+    consignor: contactName(c.consignor, c.consignorPartyId ?? c.customerId) ?? "—", consignee: contactName(c.consignee, c.consigneePartyId) ?? "",
     custom: c.custom,
     loadedAt: c.loadedAt, loadDocId: c.loadDocId, load: c.load,
     delivered: c.delivered ? { ...c.delivered, at: c.delivered.at, podNo: c.delivered.podNo, docId: c.delivered.docId } : undefined,
@@ -255,7 +268,7 @@ export function toAppData(ref: Reference, ops: Operations): AppData {
       status: c.writeOff.status, carrier: c.writeOff.carrier, amountBase: baseMajor(c.writeOff.baseAmountMinor), reason: c.writeOff.reason,
       requestedByName: c.writeOff.requestedByName, decidedAt: c.writeOff.decidedAt, note: c.writeOff.note,
     } : undefined,
-  })).sort((a, b) => a.loadedAt.localeCompare(b.loadedAt));
+  })).sort((a, b) => String(a.loadedAt ?? "").localeCompare(String(b.loadedAt ?? "")));
 
   const expenses: Expense[] = ops.expenses.map((e) => ({
     custom: e.custom,
@@ -313,6 +326,7 @@ export function toAppData(ref: Reference, ops: Operations): AppData {
       writeOffDefaultCarrier: ref.company?.operations?.writeOffDefaultCarrier ?? "company",
       loadedTripRoles: ref.company?.operations?.loadedTripRoles ?? ["operations"],
       writeOffNeedsOwner: ref.company?.operations?.writeOffNeedsOwner !== false,
+      freight: freightRules((ref.company?.effectiveFreight ?? ref.company?.freight ?? {}) as Rec),
       words: (ref.workspace?.words as Settings["words"] | undefined) ?? DEFAULT_WORDS,
       stages: (ref.workspace?.stages as Settings["stages"] | undefined)?.map((s) => ({ key: s.key, name: s.name, on: s.on })) ?? DEFAULT_STAGES,
       desks: (ref.workspace?.desks as Settings["desks"] | undefined) ?? DEFAULT_DESKS,
@@ -320,8 +334,8 @@ export function toAppData(ref: Reference, ops: Operations): AppData {
       seq: {},
       people: { owner: named("owner", "Owner"), operations: named("operations", "Operations"), finance: named("finance", "Finance") },
     },
-    places, customers, drivers, trucks, trailers, pairings, routes, products, categories,
-    nominations, trips, requests, docs, consignments, expenses, settlements, messages, events,
+    places, customers, parties, drivers, trucks, trailers, pairings, routes, products, categories,
+    nominations, trips, requests, docs, consignments, cns, expenses, settlements, messages, events,
     reads: Object.fromEntries(ops.reads.map((r) => [r.thread, r.at])),
     paymentMethods: ref.paymentMethods.filter((m) => m.status === "active").map((m) => ({ id: m.id, name: m.name, kind: m.kind, forFuel: Boolean(m.forFuel), forCash: m.forCash !== false, referenceRequired: m.referenceRequired !== false })),
     orderSources: ref.orderSources.filter((o) => o.status === "active").map((o) => ({ id: o.id, name: o.name, referenceRequired: Boolean(o.referenceRequired) })),
@@ -342,5 +356,21 @@ export function forDesk(data: AppData, desk: string): AppData {
     ...data,
     messages: data.messages.map((m) => (WORK.test(m.thread) ? { ...m, thread: desk, realThread: m.thread } : m)),
     reads: { ...data.reads, [desk]: workReads.sort().at(-1) ?? "" },
+  };
+}
+
+/** Company → Freight as the screens read it. The server sends every key (`effectiveFreight`); an older one sends only what was changed. */
+export function freightRules(f: Rec): FreightRules {
+  return {
+    consignmentBy: f.consignmentBy === "dispatch" ? "dispatch" : "loading",
+    maxConsignmentsPerTrip: Number(f.maxConsignmentsPerTrip ?? 0),
+    consigneeMustBeParty: Boolean(f.consigneeMustBeParty),
+    consigneePhoneRequired: Boolean(f.consigneePhoneRequired),
+    capacityCheck: f.capacityCheck === "warn" || f.capacityCheck === "off" ? f.capacityCheck : "refuse",
+    capacityTolerancePercent: Number(f.capacityTolerancePercent ?? 0),
+    lateSplit: f.lateSplit === "always" || f.lateSplit === "never" ? f.lateSplit : "by_type",
+    stopsEditableOnRoad: f.stopsEditableOnRoad !== false,
+    manualPriceNeedsReason: f.manualPriceNeedsReason !== false,
+    showProfitOnTripList: Boolean(f.showProfitOnTripList),
   };
 }

@@ -12,6 +12,7 @@ export const tripTypeShape = {
   code, name, description: text(500).optional(),
   cargoKind: z.enum(CARGO_KINDS),
   loadTypeId: objectId.optional(),
+  defaultConsignmentTypeId: objectId.optional(),
   requiredDocumentTypeIds: idList(30).optional(),
   printLayoutId: objectId.optional(),
   isDefault: z.boolean().optional(),

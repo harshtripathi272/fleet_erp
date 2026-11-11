@@ -115,7 +115,7 @@ export async function tripSheetPdf(tripId: string): Promise<{ name: string; body
       blocks.push({ kind: 'heading', text: label ?? 'Load' }, {
         kind: 'table',
         columns: [{ label: 'Consignment', width: 2 }, { label: 'Product', width: 2 }, { label: 'Invoice', width: 2 }, { label: 'Loaded', width: 2, align: 'right' }, { label: 'Delivered', width: 2, align: 'right' }, { label: 'Delivery note', width: 2 }, { label: 'Shortage', width: 1.6, align: 'right' }],
-        rows: sheet.consignments.map((c) => {
+        rows: (sheet.consignments as Plain[]).map((c) => {
           const shortage = c.shortage as Plain | undefined;
           return [String(c.number), products.get(String(c.productId)) ?? '', String(c.invoiceNo ?? ''), measure(c.load as Plain), measure(c.delivered as Plain), String((c.delivered as Plain | undefined)?.podNo ?? ''), shortage ? measure({ qty: shortage.netShortL ?? 0, unit: shortage.unit ?? 'L' }) : '—'];
         }),
