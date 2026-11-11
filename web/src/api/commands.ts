@@ -167,6 +167,9 @@ export async function runCommand(action: Action, ctx: { data: AppData; role: Rol
         paidVia: action.paidVia && (action.paidVia.paymentMethodId || action.paidVia.reference?.trim()) ? clean({ paymentMethodId: blank(action.paidVia.paymentMethodId), reference: blank(action.paidVia.reference?.trim()) }) : undefined,
       }) });
       return;
+    case "trip.driver":
+      await api(`/trips/${action.tripId}/driver`, { method: "POST", body: { driverId: action.driverId, reason: action.reason } });
+      return;
     case "settlement.reverse":
       await api(`/settlements/${action.id}/reverse`, { method: "POST", body: { reason: action.reason.trim() } });
       return;

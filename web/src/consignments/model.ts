@@ -59,6 +59,9 @@ export interface CnLeg {
   recordedAt?: string;
   recordedBy?: string;
   pod?: { number?: string; receivedBy?: string; receivedAt?: string; remarks?: string; docIds?: string[] };
+  /** Gate in, work started and finished, gate out, and the wait before the work (#102). */
+  times?: { arrivedAt?: string; startedAt?: string; finishedAt?: string; leftAt?: string; waitedMinutes?: number };
+  loading?: { orderNo?: string; bay?: string; supervisor?: string };
   outcome?: "delivered" | "partial" | "refused";
   contact?: Contact;
   note?: string;

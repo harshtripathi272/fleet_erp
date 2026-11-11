@@ -291,6 +291,32 @@ async function startNextTrip(tripId: unknown) {
   await Trip.updateOne({ startsAfterTripId: tripId, active: false, cancelledAt: { $exists: false } }, { $set: { active: true }, $inc: { version: 1 } }).catch(() => undefined);
 }
 
+/**
+ * A relief driver takes over a trip on the road (#102: Joseph taken ill at Nakonde). The new driver gets the trip,
+ * its messages and its money from now on; both are told, and the reason is kept.
+ */
+export async function changeDriver(id: string, input: { driverId: string; reason: string }, ctx: OpsContext) {
+  need(ctx, 'trips', 'update');
+  const at = new Date();
+  const trip = await tripDoc(id);
+  if (!trip.get('dispatchedAt') || !activeTrip(trip.toObject())) throw conflict('Only a trip on the road changes driver this way. Before it leaves, change the driver on the plan.');
+  const from = trip.get('driverId');
+  if (String(from) === input.driverId) throw refuse('That driver is already on this trip.');
+  const driver = await activeDriver(input.driverId);
+  await assertFree('driverId', input.driverId, String(driver.name), trip._id);
+  trip.set({ driverId: driver._id, driverChanges: [...((trip.get('driverChanges') ?? []) as Plain[]), { from, to: driver._id, at, reason: input.reason.trim(), by: ctx.actorId }], updatedBy: ctx.actorId });
+  await save(trip, `${String(driver.name)} is already on a trip.`);
+  const plain = trip.toObject() as Plain;
+  const stops = (plain.stops ?? []) as Plain[];
+  const here = [...stops].reverse().find((s) => s.arrivedAt) ?? stops[0];
+  const place = await placeName(here?.placeId);
+  const truck = await plateOf(plain.vehicleId);
+  await post(driverThread(driver._id), at, { title: `You take over ${plain.number}`, text: `Truck ${truck}, now at ${place}. The trip and its cash are yours from now.`, wa: { template: 'trip_taken_over', values: [String(plain.number), truck, place] } }, ctx);
+  if (from) await post(driverThread(from), at, { title: `${plain.number} handed over`, text: `Handed over to ${String(driver.name)}. Hand over the cash and papers you hold; the office settles the rest with you.`, wa: { template: 'trip_handed_over', values: [String(plain.number), String(driver.name)] } }, ctx);
+  await log(ctx, at, `Driver changed to ${String(driver.name)}${from ? ` from ${await driverName(from)}` : ''}: ${input.reason.trim()}`, { tripId: trip._id });
+  return presentTrip(plain);
+}
+
 export async function assertFree(field: 'vehicleId' | 'driverId' | 'trailerId', id: unknown, label: string, except?: unknown) {
   if (!id) return;
   const filter: Plain = { [field]: id, active: true };

@@ -601,6 +601,9 @@ export async function recordLeg(cid: string, legId: string, input: S.LegRecordIn
   if (!pickup && input.outcome === 'refused') throw refuse("Goods the consignee refused are not a delivery: use \"Can't deliver\" to return, move or write them off.");
   if (!pickup && !(consignment.get('legs') as Plain[]).some((l) => l.kind === 'pickup' && l.status === 'done')) throw conflict('Record the loading first.');
   assertStageAllows(trip.toObject(), pickup ? 'loaded' : 'delivered');
+  // The gate times go in order; anything else is a typing mistake (#102).
+  const order = input.times ? [input.times.arrivedAt, input.times.startedAt, input.times.finishedAt, input.times.leftAt].filter(Boolean).map((v) => new Date(v as unknown as string).getTime()) : [];
+  if (order.some((v, i) => i > 0 && v < order[i - 1]!)) throw refuse('The times go in order: in at the gate, started, finished, out of the gate.');
   const lines = consignment.get('lines') as Plain[];
   const cargoKinds: string[] = (await operationsSettings()).cargoKinds;
   const measures: Plain[] = [];
@@ -634,11 +637,23 @@ export async function recordLeg(cid: string, legId: string, input: S.LegRecordIn
   const capacity = pickup ? await checkCapacity(trip, extra, input, ctx) : { notes: [] as string[] };
   const stops = trip.get('stops') as Array<Plain & { _id: unknown; kind: string; legKm: number }>;
   const index = stops.findIndex((s) => id(s._id) === id(leg.stopId));
-  if (index >= 0) await arriveAt(trip, index, at, ctx, 'office');
+  // The gate-in time typed with the record is when the truck arrived, when it's earlier than now (#102).
+  // Only a time between the dispatch and now; anything else is kept on the record but not used for the stop.
+  const dispatched = trip.get('dispatchedAt') as Date | undefined;
+  const real = (v?: unknown) => { const d = v ? new Date(v as string) : undefined; return d && d <= at && (!dispatched || d >= dispatched) ? d : undefined; };
+  const gateIn = real(input.times?.arrivedAt);
+  if (index >= 0) await arriveAt(trip, index, gateIn ?? at, ctx, 'office');
+  const gateOut = real(input.times?.leftAt);
+  if (index >= 0 && gateOut && !stops[index]!.leftAt && (!stops[index]!.arrivedAt || gateOut >= (stops[index]!.arrivedAt as Date))) stops[index]!.leftAt = gateOut;
   const step = pickup ? 'loading' : 'delivery';
   consignment.set('custom', await stepCustom('consignments', step, input.custom, (consignment.toObject() as Plain).custom as Plain | undefined));
   const docs = await documentsFor(input, leg, ctx, extraDocs);
+  // The gate times, and the wait before the work started (#102).
+  const times = input.times ? Object.fromEntries(Object.entries(input.times).filter(([, v]) => v).map(([k, v]) => [k, new Date(v!)])) as Record<string, Date> : undefined;
+  if (times?.arrivedAt && times.startedAt) times.waitedMinutes = Math.round((times.startedAt.getTime() - times.arrivedAt.getTime()) / 60000) as unknown as Date;
+  const loading = input.loading ? Object.fromEntries(Object.entries(input.loading).filter(([, v]) => v?.trim()).map(([k, v]) => [k, v!.trim()])) : undefined;
   Object.assign(leg, {
+    ...(times && Object.keys(times).length ? { times } : {}), ...(loading && Object.keys(loading).length ? { loading } : {}),
     status: 'done', actual: measures, recordedAt: at, recordedBy: ctx.actorId, note: input.note ?? leg.note,
     ...(pickup ? {} : { outcome: input.outcome ?? (measures.some((m) => m.accepted != null && Number(m.accepted) < Number(m.qty)) ? 'partial' : 'delivered'), pod: { ...((leg.pod ?? {}) as Plain), ...(input.pod ?? {}), docIds: input.docId ? [new Types.ObjectId(input.docId)] : (leg.pod as Plain | undefined)?.docIds } }),
   });

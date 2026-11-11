@@ -50,6 +50,7 @@ router.get('/trips/:id/sheet', authorize('trips', 'read'), validate(id), C.tripS
 router.get('/trips/:id/sheet.pdf', authorize('trips', 'read'), validate(id), C.tripSheetPdf);
 router.post('/trips/:id/cancel', authorize('trips', 'update'), validate({ ...id, body: S.reasonSchema }), C.cancelTrip);
 router.get('/operations/company-fields', C.companyFields);
+router.post('/trips/:id/driver', authorize('trips', 'update'), validate({ ...id, body: S.changeDriverSchema }), C.changeDriver);
 router.post('/trips/:id/dispatch', authorize('trips', 'update'), validate({ ...id, body: S.dispatchSchema }), C.dispatchTrip);
 router.post('/trips/:id/position', tracking, authorize('trips', 'update'), validate({ ...id, body: S.positionSchema }), C.reportPosition);
 router.post('/trips/:id/stops/:stopId/arrive', authorize('trips', 'update'), validate({ params: S.tripStopParams }), C.arriveAtStop);
