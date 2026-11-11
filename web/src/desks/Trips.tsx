@@ -12,6 +12,7 @@ import {
   Search,
   Truck as TruckIcon,
   XCircle,
+  UserRoundCog,
 } from "lucide-react";
 import { useApp } from "../store";
 import { can, useMay } from "../api/session";
@@ -237,6 +238,7 @@ function TripView({
   const panelRef = useRef<HTMLDivElement>(null);
   const [cancelOpen, setCancelOpen] = useState(false);
   const [stopOpen, setStopOpen] = useState(false);
+  const [driverOpen, setDriverOpen] = useState(false);
   const [cantDeliverOpen, setCantDeliverOpen] = useState(false);
   // Opening a trip lands on Stages, as before; Consignments is beside it (design 3.11.2).
   const [view, setView] = useState<"stages" | "consignments" | "money">("stages");
@@ -288,6 +290,12 @@ function TripView({
               <span>Stop {wl(data, "trip")}</span>
             </button>
           )}
+          {trip.dispatchedAt && !trip.endedAt && !trip.cancelledAt && may("trip.update") && (
+            <button className="icon-btn with-label" onClick={() => setDriverOpen(true)}>
+              <UserRoundCog size={18} />
+              <span>Change {wl(data, "driver")}</span>
+            </button>
+          )}
           {mayCantDeliver && (
             <button className="icon-btn with-label" onClick={() => setCantDeliverOpen(true)}>
               <XCircle size={18} />
@@ -333,6 +341,7 @@ function TripView({
       )}
       <CancelTrip trip={trip} open={cancelOpen} onClose={() => setCancelOpen(false)} />
       {stopOpen && <StopTrip trip={trip} onClose={() => setStopOpen(false)} />}
+      {driverOpen && <ChangeDriver trip={trip} onClose={() => setDriverOpen(false)} />}
       {cantDeliverOpen && <CantDeliver trip={trip} onClose={() => setCantDeliverOpen(false)} />}
     </article>
   );
@@ -453,6 +462,30 @@ function NextStepBar({ trip, step, onGo, viewing }: { trip: Trip; step: NextStep
 }
 
 /** A trip that left but will never load: close it where the truck is now, and free the truck and driver. */
+/** A relief driver takes over on the road (#102). The trip and its cash are theirs from now; both drivers are told. */
+function ChangeDriver({ trip, onClose }: { trip: Trip; onClose: () => void }) {
+  const { data, run } = useApp();
+  const busy = new Set(data.trips.filter((t) => activeTrip(t) && t.id !== trip.id).map((t) => t.driverId));
+  const [driverId, setDriverId] = useState("");
+  const [reason, setReason] = useState("");
+  const current = byId(data.drivers, trip.driverId);
+  return (
+    <Modal open title={`Change the ${wl(data, "driver")} of ${trip.no}`} onClose={onClose}
+      footer={<><Button tone="quiet" onClick={onClose}>Cancel</Button><Button tone="primary" disabled={!driverId || !reason.trim()} onClick={async () => (await run({ type: "trip.driver", tripId: trip.id, driverId, reason: reason.trim() }, "Driver changed. Both drivers are told.")) && onClose()}>Change {wl(data, "driver")}</Button></>}>
+      <div className="form-stack">
+        <p className="muted">{current?.name ?? "The driver"} hands over the truck. The new driver takes the trip and its cash from now. If {current?.name.split(" ")[0] ?? "the first driver"} keeps any cash, Finance adds it as a line on the next settlement.</p>
+        <Field label={`New ${wl(data, "driver")}`}>
+          <select value={driverId} onChange={(e) => setDriverId(e.target.value)}>
+            <option value="">Choose…</option>
+            {data.drivers.filter((d) => d.id !== trip.driverId && !busy.has(d.id)).map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+          </select>
+        </Field>
+        <Field label="Why"><input value={reason} placeholder="Taken ill at Nakonde" onChange={(e) => setReason(e.target.value)} /></Field>
+      </div>
+    </Modal>
+  );
+}
+
 function StopTrip({ trip, onClose }: { trip: Trip; onClose: () => void }) {
   const { data, run } = useApp();
   const reached = [...trip.stops].reverse().find((s) => s.arrivedAt) ?? trip.stops[0];

@@ -242,6 +242,13 @@ const legSchema = new Schema({
   actual: { type: [legMeasureSchema], default: undefined },
   recordedAt: Date,
   recordedBy: { type: ObjectId, ref: 'User' },
+  /**
+   * When it happened at the gate (#102): in at the gate, work started, work finished, out of the gate. The wait before
+   * the work started is what detention is charged on.
+   */
+  times: { type: new Schema({ arrivedAt: Date, startedAt: Date, finishedAt: Date, leftAt: Date, waitedMinutes: Number }, { _id: false }), default: undefined },
+  /** The terminal's loading order number, the bay and who supervised it. */
+  loading: { type: new Schema({ orderNo: String, bay: String, supervisor: String }, { _id: false }), default: undefined },
   pod: { type: podSchema, default: undefined },
   outcome: { type: String, enum: DROP_OUTCOMES },
   /** Someone to call at this drop, when it isn't the consignment's consignee (a depot's storeman). */

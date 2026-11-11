@@ -502,7 +502,10 @@ function Timeline({ data, c }: { data: ReturnType<typeof useApp>["data"]; c: Cn 
       <ol className="cn-timeline-list">
         {c.legs.map((l) => {
           const stop = stopOf(l.stopId);
-          const waited = stop?.arrivedAt ? ((stop.leftAt ? new Date(stop.leftAt) : new Date()).getTime() - new Date(stop.arrivedAt).getTime()) / 36e5 : undefined;
+          // The gate times typed with the record win over the stop's (#102).
+          const arrived = l.times?.arrivedAt ?? stop?.arrivedAt;
+          const left = l.times?.leftAt ?? stop?.leftAt;
+          const waited = arrived ? ((left ? new Date(left) : new Date()).getTime() - new Date(arrived).getTime()) / 36e5 : undefined;
           const qty = l.status === "done" ? l.actual?.reduce((s2, m) => s2 + (m.accepted ?? m.qty), 0) : l.planned?.reduce((s2, p) => s2 + (p.qty ?? 0), 0);
           return (
             <li key={l.id}>
@@ -511,10 +514,13 @@ function Timeline({ data, c }: { data: ReturnType<typeof useApp>["data"]; c: Cn 
                 <Status tone={l.status === "done" ? "ok" : l.status === "skipped" ? "mute" : "wait"}>{l.status === "done" ? "Done" : l.status === "skipped" ? "Skipped" : "To come"}</Status>
               </div>
               <dl className="cn-timeline-facts">
-                <div><dt>Arrived</dt><dd>{when(stop?.arrivedAt)}</dd></div>
+                <div><dt>Arrived</dt><dd>{when(arrived)}</dd></div>
+                {l.times?.waitedMinutes !== undefined && <div><dt>Waited before {l.kind === "pickup" ? "loading" : "offloading"}</dt><dd>{hoursText(l.times.waitedMinutes / 60)}</dd></div>}
+                {l.times?.startedAt && <div><dt>{l.kind === "pickup" ? "Loading" : "Offloading"}</dt><dd>{when(l.times.startedAt)}{l.times.finishedAt ? ` to ${when(l.times.finishedAt)}` : ""}</dd></div>}
                 <div><dt>{l.kind === "pickup" ? "Loading recorded" : "Drop recorded"}</dt><dd>{when(l.recordedAt)}</dd></div>
-                <div><dt>Left</dt><dd>{when(stop?.leftAt)}</dd></div>
-                <div><dt>Waited</dt><dd>{waited !== undefined ? `${hoursText(waited)}${stop?.leftAt ? "" : " so far"}` : "—"}</dd></div>
+                <div><dt>Left</dt><dd>{when(left)}</dd></div>
+                <div><dt>At the stop</dt><dd>{waited !== undefined ? `${hoursText(waited)}${left ? "" : " so far"}` : "—"}</dd></div>
+                {l.loading && <div><dt>Loading order</dt><dd>{[l.loading.orderNo, l.loading.bay, l.loading.supervisor].filter(Boolean).join(" · ")}</dd></div>}
                 <div><dt>Quantity</dt><dd className="num">{qty ? `${num(qty, 0, 3)}\u00a0${unit}${l.status === "done" ? "" : " planned"}` : "—"}</dd></div>
               </dl>
               {papersFor(l).length > 0 && (

@@ -113,7 +113,7 @@ describe('1. a truck coming back gets its next job planned before it is home', (
 /* ---------- 2. Loading ---------- */
 
 describe('2. loading as it happens at a terminal', () => {
-  test('2.1 the gate-in, start, finish and gate-out times are kept, and the waiting before loading shows', { todo: 'being built (#102 scenarios)' }, async () => {
+  test('2.1 the gate-in, start, finish and gate-out times are kept, and the waiting before loading shows', async () => {
     const t = await trip({ consignments: [{ lines: [{ productId: ids.diesel, plannedQty: 38000 }] }] });
     const [c] = await onTrip(t.id);
     await load(c!, 38000, { times: { arrivedAt: '2026-11-12T06:00:00.000Z', startedAt: '2026-11-12T09:30:00.000Z', finishedAt: '2026-11-12T10:15:00.000Z', leftAt: '2026-11-12T10:40:00.000Z' } });
@@ -121,9 +121,16 @@ describe('2. loading as it happens at a terminal', () => {
     const leg = pickupOf(after);
     assert.equal(leg.times?.startedAt, '2026-11-12T09:30:00.000Z');
     assert.equal(leg.times?.waitedMinutes, 210 as unknown as string, 'three and a half hours waiting at the gate');
+    assert.equal(leg.times?.leftAt, '2026-11-12T10:40:00.000Z');
   });
 
-  test('2.2 the loading order number, the bay and the supervisor are kept with the loading', { todo: 'being built (#102 scenarios)' }, async () => {
+  test('2.5 gate times out of order are a typing mistake, refused in words', async () => {
+    const t = await trip({ consignments: [{ lines: [{ productId: ids.diesel, plannedQty: 38000 }] }] });
+    const [c] = await onTrip(t.id);
+    refused(await as(ops).post(`/consignments/${c!.id}/legs/${pickupOf(c!).id}/record`, { measures: [{ lineId: c!.lines[0]!.id, ...fuel(38000) }], times: { arrivedAt: '2026-11-12T09:00:00.000Z', startedAt: '2026-11-12T08:00:00.000Z' } }), /in order/);
+  });
+
+  test('2.2 the loading order number, the bay and the supervisor are kept with the loading', async () => {
     const t = await trip({ consignments: [{ lines: [{ productId: ids.diesel, plannedQty: 38000 }] }] });
     const [c] = await onTrip(t.id);
     await load(c!, 38000, { loading: { orderNo: 'LO-77812', bay: 'Bay 4', supervisor: 'J. Banda' } });
@@ -168,7 +175,7 @@ describe('3. on the road', () => {
     assert.ok(before - after > 50_00, 'converted at the day\'s rate, more kwacha than dollars');
   });
 
-  test('3.3 the relief driver takes over on the road; the trip, messages and the account follow the new driver', { todo: 'being built (#102 scenarios)' }, async () => {
+  test('3.3 the relief driver takes over on the road; the trip, messages and the account follow the new driver', async () => {
     const t = await trip({ consignments: [{ lines: [{ productId: ids.diesel, plannedQty: 38000 }] }] });
     ok(await as(ops).post(`/trips/${t.id}/driver`, { driverId: ids.d2, reason: 'Joseph taken ill at Nakonde' }));
     assert.equal((await tripNow(t.id)).driverId, ids.d2);

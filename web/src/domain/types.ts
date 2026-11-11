@@ -624,6 +624,7 @@ export type Action =
   | { type: "settlement.request"; driverId: string }
   | { type: "settlement.post"; custom?: Record<string, unknown>; driverId: string; tripIds: string[]; cashBase: number; note?: string; lines?: SettlementLine[]; paidVia?: { paymentMethodId?: string; reference?: string } }
   | { type: "settlement.reverse"; id: string; reason: string }
+  | { type: "trip.driver"; tripId: string; driverId: string; reason: string }
   | { type: "thread.read"; thread: string }
   | { type: "chat.send"; thread: string; text: string }
   | { type: "customer.reply"; nominationId: string };

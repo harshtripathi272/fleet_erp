@@ -116,6 +116,14 @@ const tripSchema = new Schema<any>({
    * that trip ends or is cancelled, so the one-trip-at-a-time rule holds; it starts where that trip ends.
    */
   startsAfterTripId: { type: ObjectId, ref: 'Trip' },
+  /**
+   * A relief driver taking over on the road (#102). The new driver takes the trip and its money from then on, as
+   * if the cash was handed over; cash the first driver kept is settled by a line typed on the settlement.
+   */
+  driverChanges: {
+    type: [new Schema({ from: { type: ObjectId, ref: 'Driver' }, to: { type: ObjectId, ref: 'Driver', required: true }, at: { type: Date, required: true }, reason: String, by: { type: ObjectId, ref: 'User' } }, { _id: false })],
+    default: undefined,
+  },
   createdBy: { type: ObjectId, ref: 'User' },
   updatedBy: { type: ObjectId, ref: 'User' },
 }, schemaOptions);

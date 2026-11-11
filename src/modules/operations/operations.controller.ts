@@ -42,6 +42,7 @@ export const getTrip = asyncHandler(async (req, res) => ApiResponse.success(res,
 export const createTrip = asyncHandler(async (req, res) => ApiResponse.created(res, await Trips.createTrip(req.body, opsContext(req)), 'Trip created'));
 export const updateTrip = asyncHandler(async (req, res) => ApiResponse.success(res, await Trips.updateTrip(param(req), req.body, opsContext(req)), 'Plan updated'));
 export const cancelTrip = asyncHandler(async (req, res) => ApiResponse.success(res, await Trips.cancelTrip(param(req), req.body, opsContext(req)), 'Trip cancelled'));
+export const changeDriver = asyncHandler(async (req, res) => ApiResponse.success(res, await Trips.changeDriver(param(req), req.body, opsContext(req)), 'Driver changed'));
 export const dispatchTrip = asyncHandler(async (req, res) => ApiResponse.success(res, await Trips.dispatchTrip(param(req), opsContext(req), req.body), 'Dispatched'));
 export const reportPosition = asyncHandler(async (req, res) => ApiResponse.success(res, await Trips.reportPosition(param(req), req.body, opsContext(req))));
 export const arriveAtStop = asyncHandler(async (req, res) => ApiResponse.success(res, await Trips.arriveAtStop(param(req), param(req, 'stopId'), opsContext(req))));

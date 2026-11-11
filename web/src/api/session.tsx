@@ -66,6 +66,7 @@ export const ACTION_PERMISSION: Record<Action["type"], [resource: string, action
   "settlement.request": ["settlement-requests", "create"],
   "settlement.post": ["settlements", "create"],
   "settlement.reverse": ["settlements", "create"],
+  "trip.driver": ["trips", "update"],
   "chat.send": ["messages", "create"],
   "thread.read": ["messages", "read"],
 };
