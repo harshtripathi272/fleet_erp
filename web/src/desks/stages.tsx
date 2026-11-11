@@ -1506,7 +1506,12 @@ function ClosePanel({ trip }: { trip: Trip }) {
   const truck = byId(data.trucks, trip.truckId)!;
   const estimate = Math.round(fuelNow(data, trip) / 5) * 5;
   const [closing, setClosing] = useState(String(estimate));
-  const delivered = data.consignments.some((c) => c.tripId === trip.id) && data.consignments.filter((c) => c.tripId === trip.id).every((c) => c.delivered);
+  // Every consignment's drops are done (#102): read from the consignments' own drops, as the trip's next step is. The
+  // single-load summary misses a weighed load dropped in parts, which left the trip with no way to end.
+  const cns = data.cns.filter((c) => c.tripId === trip.id && c.status !== "cancelled");
+  const delivered = cns.length
+    ? cns.some((c) => c.legs.some((l) => l.kind === "pickup" && l.status === "done")) && cns.every((c) => !c.legs.some((l) => l.status === "planned"))
+    : data.consignments.some((c) => c.tripId === trip.id) && data.consignments.filter((c) => c.tripId === trip.id).every((c) => c.delivered);
   const issued = data.requests.filter((r) => r.tripId === trip.id && r.kind === "fuel" && r.status === "issued").reduce((s, r) => s + r.amount, 0);
   const used = trip.openingFuelL + issued - Number(closing || 0);
   const variance = used - trip.fuelBudgetL;

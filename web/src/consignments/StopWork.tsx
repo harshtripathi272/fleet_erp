@@ -157,6 +157,10 @@ function RecordLeg({ trip, c, leg, kind, onDone }: { trip: Trip; c: Cn; leg: CnL
   const [pod, setPod] = useState({ number: String(read.docNo ?? ""), receivedBy: "", receivedAt: "", remarks: "" });
   const [seals, setSeals] = useState((c.references?.sealNos ?? []).join(", "));
   const [override, setOverride] = useState("");
+  // Gate times and the terminal's details (#102): the wait before the work started is what detention is charged on.
+  const [times, setTimes] = useState({ arrivedAt: "", startedAt: "", finishedAt: "", leftAt: "" });
+  const [loadInfo, setLoadInfo] = useState({ orderNo: "", bay: "", supervisor: "" });
+  const [details, setDetails] = useState(false);
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState("");
   const setM = (lineId: string, patch: Partial<MeasureForm>) => setMeasures(measures.map((m) => (m.lineId === lineId ? { ...m, ...patch } : m)));
@@ -188,9 +192,11 @@ function RecordLeg({ trip, c, leg, kind, onDone }: { trip: Trip; c: Cn; leg: CnL
       ...(kind === "drop" && (pod.number.trim() || pod.receivedBy.trim()) ? { pod: Object.fromEntries(Object.entries({ number: pod.number.trim() || undefined, receivedBy: pod.receivedBy.trim() || undefined, receivedAt: pod.receivedAt ? new Date(pod.receivedAt).toISOString() : undefined, remarks: pod.remarks.trim() || undefined }).filter(([, v]) => v !== undefined)) } : {}),
       ...(override.trim() ? { override: { reason: override.trim() } } : {}),
       ...(company.custom ? { custom: company.custom } : {}),
+      ...(Object.values(times).some(Boolean) ? { times: Object.fromEntries(Object.entries(times).filter(([, v]) => v).map(([k, v]) => [k, new Date(v).toISOString()])) } : {}),
+      ...(kind === "pickup" && Object.values(loadInfo).some((v) => v.trim()) ? { loading: Object.fromEntries(Object.entries(loadInfo).filter(([, v]) => v.trim()).map(([k, v]) => [k, v.trim()])) } : {}),
     };
     return out;
-  }, [measures, docs, photo, seals, pod, override, kind, base, company.custom]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [measures, docs, photo, seals, pod, override, kind, base, company.custom, times, loadInfo]); // eslint-disable-line react-hooks/exhaustive-deps
   const ready = (body.measures as Rec[]).length > 0 && company.ready;
 
   const record = async () => {
@@ -257,6 +263,22 @@ function RecordLeg({ trip, c, leg, kind, onDone }: { trip: Trip; c: Cn; leg: CnL
           <p className="cn-warn">No paper number yet. The truck waits at this stop until the loading invoice is in: type its number above, or add it later under the {wl(data, "consignment")}'s Papers.</p>
         )}
         {kind === "pickup" && <Field label="Seal numbers" hint="Separated by commas."><input value={seals} onChange={(e) => setSeals(e.target.value)} /></Field>}
+        <div>
+          <Button size="sm" tone="quiet" aria-expanded={details} onClick={() => setDetails(!details)}>{details ? "Hide times and details" : kind === "pickup" ? "Gate times, loading order, bay, supervisor" : "Gate times"}</Button>
+        </div>
+        {details && (
+          <div className="grid-3">
+            <Field label="In at the gate"><input type="datetime-local" value={times.arrivedAt} onChange={(e) => setTimes({ ...times, arrivedAt: e.target.value })} /></Field>
+            <Field label={kind === "pickup" ? "Loading started" : "Offloading started"}><input type="datetime-local" value={times.startedAt} onChange={(e) => setTimes({ ...times, startedAt: e.target.value })} /></Field>
+            <Field label={kind === "pickup" ? "Loading finished" : "Offloading finished"}><input type="datetime-local" value={times.finishedAt} onChange={(e) => setTimes({ ...times, finishedAt: e.target.value })} /></Field>
+            <Field label="Out of the gate"><input type="datetime-local" value={times.leftAt} onChange={(e) => setTimes({ ...times, leftAt: e.target.value })} /></Field>
+            {kind === "pickup" && <>
+              <Field label="Loading order number"><input value={loadInfo.orderNo} onChange={(e) => setLoadInfo({ ...loadInfo, orderNo: e.target.value })} /></Field>
+              <Field label="Bay"><input value={loadInfo.bay} onChange={(e) => setLoadInfo({ ...loadInfo, bay: e.target.value })} /></Field>
+              <Field label="Supervisor"><input value={loadInfo.supervisor} onChange={(e) => setLoadInfo({ ...loadInfo, supervisor: e.target.value })} /></Field>
+            </>}
+          </div>
+        )}
         {kind === "drop" && (
           <section className="grid-2">
             <Field label="Proof of delivery number"><input value={pod.number} onChange={(e) => setPod({ ...pod, number: e.target.value })} /></Field>

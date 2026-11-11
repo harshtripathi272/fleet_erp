@@ -474,12 +474,16 @@ export const legRecordSchema = z.strictObject({
   outcome: z.enum(['delivered', 'partial', 'refused']).optional(),
   sealNos: z.array(text(40)).max(30).optional(),
   note: text(500).optional(),
+  /** Gate in, work started, work finished, gate out (#102). */
+  times: z.strictObject({ arrivedAt: isoDate.optional(), startedAt: isoDate.optional(), finishedAt: isoDate.optional(), leftAt: isoDate.optional() }).optional(),
+  loading: z.strictObject({ orderNo: text(60).optional(), bay: text(60).optional(), supervisor: text(120).optional() }).optional(),
   /** Someone allowed to record over the truck's capacity says why. */
   override: z.strictObject({ reason: text(300) }).optional(),
   custom,
 });
 export type LegRecordInput = z.infer<typeof legRecordSchema>;
 export const legParams = z.strictObject({ id: objectId, legId: objectId });
+export const changeDriverSchema = z.strictObject({ driverId: objectId, reason: text(300).refine((v) => v.trim().length > 0, 'Say why the driver changes') });
 export const refusalParams = z.strictObject({ id: objectId, refusalId: objectId });
 export const refusalDecisionSchema = z.strictObject({ outcome: z.enum(['return', 'write_off', 'charge_driver', 'claim_supplier']), note: text(300).optional() });
 export const stopRecordSchema = z.strictObject({
