@@ -102,7 +102,7 @@ export function ConsignmentDrawer({ id, tripId, onClose }: { id?: string; tripId
   const [problem, setProblem] = useState("");
   const [cancelling, setCancelling] = useState(false);
   const [reason, setReason] = useState("");
-  const [splitting, setSplitting] = useState(false);
+  const [splitting, setSplitting] = useState<null | "split" | "change">(null);
   useEffect(() => setForm(saved), [saved]);
   const dirty = JSON.stringify(bodyFrom(form, base, data.currencies)) !== JSON.stringify(bodyFrom(saved, base, data.currencies));
   const set = <K extends keyof Form>(key: K, value: Form[K]) => setForm((f) => ({ ...f, [key]: value }));
@@ -277,13 +277,13 @@ export function ConsignmentDrawer({ id, tripId, onClose }: { id?: string; tripId
             </fieldset>
           )}
 
-          {tab === "legs" && c && <Legs data={data} c={c} splittable={maySplit(c, types.data)} onSplit={() => setSplitting(true)} />}
+          {tab === "legs" && c && <Legs data={data} c={c} splittable={maySplit(c, types.data)} onSplit={() => setSplitting("split")} onChange={() => setSplitting("change")} />}
           {tab === "documents" && c && <Papers data={data} c={c} />}
           {tab === "revenue" && c?.revenue && <RevenuePanel c={c} onChanged={() => after("Revenue updated.")} />}
           {tab === "history" && c && <History data={data} c={c} />}
         </>
       )}
-      {splitting && c && <SplitDelivery c={c} onClose={() => setSplitting(false)} onSaved={() => { setSplitting(false); void after("The drops are saved and the driver has the new stops."); }} />}
+      {splitting && c && <SplitDelivery c={c} mode={splitting} onClose={() => setSplitting(null)} onSaved={() => { setSplitting(null); void after("Saved. The trip's stops follow, and the driver has the new list."); }} />}
     </Drawer>
   );
 }
@@ -329,7 +329,7 @@ function legQty(c: Cn, l: CnLeg) {
 }
 
 /** Loads and drops (design 3.11.3): pickups, then drops, each a numbered card; "Split delivery" when it may have several drops. */
-function Legs({ data, c, splittable, onSplit }: { data: ReturnType<typeof useApp>["data"]; c: Cn; splittable: boolean; onSplit: () => void }) {
+function Legs({ data, c, splittable, onSplit, onChange }: { data: ReturnType<typeof useApp>["data"]; c: Cn; splittable: boolean; onSplit: () => void; onChange: () => void }) {
   const open = c.legs.some((l) => l.kind === "drop" && l.status === "planned");
   const card = (l: CnLeg, n: number) => (
     <div key={l.id} className="item-card">
@@ -356,7 +356,12 @@ function Legs({ data, c, splittable, onSplit }: { data: ReturnType<typeof useApp
       {pickups.map((l, i) => card(l, i + 1))}
       <h4>Drops</h4>
       {drops.map((l, i) => card(l, i + 1))}
-      {open && splittable && <div><Button onClick={onSplit}>Split delivery</Button></div>}
+      {c.legs.some((l) => l.status === "planned") && (
+        <div className="row-actions">
+          <Button onClick={onChange}>Change pickups and drops</Button>
+          {open && splittable && <Button onClick={onSplit}>Split delivery</Button>}
+        </div>
+      )}
       {open && !splittable && <p className="muted">This {w(data, "consignment").toLowerCase()}'s type is dropped at one place. To split it between places, give it a type that allows several drops under Details.</p>}
     </div>
   );

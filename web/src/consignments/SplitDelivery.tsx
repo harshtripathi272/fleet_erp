@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { Plus } from "lucide-react";
 import { api, ApiError } from "../api/client";
 import type { Rec } from "../api/adapter";
@@ -20,8 +20,17 @@ type Row = { key: string; id?: string; placeId: string; name: string; phone: str
 let keys = 0;
 const row = (patch: Partial<Row> = {}): Row => ({ key: `d${++keys}`, placeId: "", name: "", phone: "", qty: "", ...patch });
 
-export function SplitDelivery({ c, onClose, onSaved }: { c: Cn; onClose: () => void; onSaved: () => void }) {
+type Pick = { key: string; id?: string; placeId: string; done: boolean };
+
+/**
+ * `mode: "change"` (from the consignment's Loads and drops, #135 Part 1) also changes its pickups: any pickup not done
+ * yet can move to another place, or another pickup can be added. A place not on the route becomes a stop.
+ */
+export function SplitDelivery({ c, onClose, onSaved, mode = "split" }: { c: Cn; onClose: () => void; onSaved: () => void; mode?: "split" | "change" }) {
   const { data } = useApp();
+  const [pickups, setPickups] = useState<Pick[]>(() => c.legs.filter((l) => l.kind === "pickup").map((l) => ({ key: `p${++keys}`, id: l.id, placeId: l.placeId ?? "", done: l.status === "done" })));
+  const trip = data.trips.find((t) => t.id === c.tripId);
+  const routePlaces = (trip?.stops ?? []).filter((s) => s.kind !== "start" && s.kind !== "end").map((s) => s.placeId);
   const line = c.lines[0];
   // Fuel is placed in litres at 20 °C, as the server counts what is on board; other goods in their own unit.
   const corrected = c.legs.some((l) => l.kind === "pickup" && l.actual?.some((m) => m.lineId === line?.id && (m.certStd20L ?? m.std20L) !== undefined));
@@ -41,10 +50,10 @@ export function SplitDelivery({ c, onClose, onSaved }: { c: Cn; onClose: () => v
   const [parts, setParts] = useState("4");
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState("");
-  const placed = rows.reduce((s, r) => s + (Number(r.qty) || 0), 0);
+  // One drop with no quantity typed takes all of it.
+  const placed = rows.length === 1 && !rows[0]!.qty.trim() ? toPlace : rows.reduce((s, r) => s + (Number(r.qty) || 0), 0);
   const left = Math.round((toPlace - placed) * 1000) / 1000;
   const set = (key: string, patch: Partial<Row>) => setRows(rows.map((r) => (r.key === key ? { ...r, ...patch } : r)));
-  const places = useMemo(() => [...data.places].sort((a, b) => a.name.localeCompare(b.name)), [data.places]);
 
   const splitEqually = () => {
     const n = Math.max(1, Math.min(20, Math.round(Number(parts) || 1)));
@@ -63,11 +72,15 @@ export function SplitDelivery({ c, onClose, onSaved }: { c: Cn; onClose: () => v
     setProblem("");
     try {
       const legs: Rec[] = [
-        ...c.legs.filter((l) => l.kind === "pickup").map((l) => ({ id: l.id, kind: "pickup", ...(l.placeId ? { placeId: l.placeId } : {}), ...(l.stopId ? { stopId: l.stopId } : {}) })),
+        ...pickups.filter((p) => p.done || p.placeId).map((p) => {
+          const was = c.legs.find((l) => l.id === p.id);
+          const same = was && was.placeId === p.placeId;
+          return { ...(p.id ? { id: p.id } : {}), kind: "pickup", ...(p.placeId ? { placeId: p.placeId } : {}), ...(same && was.stopId ? { stopId: was.stopId } : {}) };
+        }),
         ...doneDrops.map((l) => ({ id: l.id, kind: "drop", ...(l.placeId ? { placeId: l.placeId } : {}) })),
         ...rows.filter((r) => r.placeId || Number(r.qty) > 0).map((r) => ({
           ...(r.id ? { id: r.id } : {}), kind: "drop", ...(r.placeId ? { placeId: r.placeId } : {}),
-          ...(line && Number(r.qty) > 0 ? { planned: [{ lineId: line.id, qty: Number(r.qty) }] } : {}),
+          ...(line && Number(r.qty) > 0 && !(rows.length === 1 && !r.qty.trim()) ? { planned: [{ lineId: line.id, qty: Number(r.qty) }] } : {}),
           ...(r.name.trim() ? { contact: { name: r.name.trim(), ...(r.phone.trim() ? { phone: r.phone.trim() } : {}) } } : {}),
         })),
       ];
@@ -82,8 +95,27 @@ export function SplitDelivery({ c, onClose, onSaved }: { c: Cn; onClose: () => v
 
   const ready = rows.some((r) => r.placeId || Number(r.qty) > 0) && (Math.abs(left) < 0.001 || (leaveRest && left > 0)) && left >= -0.001;
   return (
-    <Modal open width={880} title={`Split the delivery of ${c.number}`} onClose={onClose}
-      footer={<><Button tone="quiet" onClick={onClose}>Cancel</Button><Button tone="primary" busy={busy} disabled={!ready} onClick={() => void save()}>Save the split</Button></>}>
+    <Modal open width={880} title={mode === "change" ? `Pickups and drops of ${c.number}` : `Split the delivery of ${c.number}`} onClose={onClose}
+      footer={<><Button tone="quiet" onClick={onClose}>Cancel</Button><Button tone="primary" busy={busy} disabled={!ready || !pickups.some((p) => p.done || p.placeId)} onClick={() => void save()}>{mode === "change" ? "Save" : "Save the split"}</Button></>}>
+      {mode === "change" && (
+        <section className="split-pickups">
+          <h4>Picked up at</h4>
+          {pickups.map((p, i) => (
+            <div key={p.key} className="cn-row-leg">
+              <span className="split-n">{i + 1}</span>
+              {p.done ? <span>{placeName(data, p.placeId)} <span className="muted">· loaded</span></span> : (
+                <select className="input" aria-label={`Pickup ${i + 1}`} value={p.placeId} onChange={(e) => setPickups(pickups.map((x) => (x.key === p.key ? { ...x, placeId: e.target.value } : x)))}>
+                  <option value="">Choose…</option>
+                  <PlaceOptions data={data} routePlaces={routePlaces} />
+                </select>
+              )}
+              {!p.done && pickups.length > 1 && <Button size="sm" tone="quiet" onClick={() => setPickups(pickups.filter((x) => x.key !== p.key))}>Remove</Button>}
+            </div>
+          ))}
+          <button type="button" className="link-btn" onClick={() => setPickups([...pickups, { key: `p${++keys}`, placeId: "", done: false }])}>Add another pickup</button>
+          <h4>Dropped at</h4>
+        </section>
+      )}
       <p>{num(toPlace, 0, 3)}&nbsp;{unit} {loaded ? "on board" : "planned"} for {c.consigneeName}. Where is it going?</p>
       {c.lines.length > 1 && <p className="muted">This places the first goods line ({line?.description || data.products.find((p) => p.id === line?.productId)?.name || "line 1"}). The other lines keep their drops.</p>}
       {problem && <p className="form-problem" role="alert">{problem}</p>}
@@ -103,7 +135,7 @@ export function SplitDelivery({ c, onClose, onSaved }: { c: Cn; onClose: () => v
                 <td>
                   <select className="input" aria-label={`Drop ${doneDrops.length + i + 1} place`} value={r.placeId} onChange={(e) => set(r.key, { placeId: e.target.value })}>
                     <option value="">To be confirmed</option>
-                    {places.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                    <PlaceOptions data={data} routePlaces={routePlaces} />
                   </select>
                 </td>
                 <td><input className="input" aria-label={`Drop ${doneDrops.length + i + 1} received by`} value={r.name} placeholder={c.consigneeName} onChange={(e) => set(r.key, { name: e.target.value })} /></td>
@@ -130,5 +162,17 @@ export function SplitDelivery({ c, onClose, onSaved }: { c: Cn; onClose: () => v
       {left > 0.001 && <SwitchField label="Leave the rest to be confirmed" hint="It stays on a drop to be confirmed, to be placed later." checked={leaveRest} onChange={setLeaveRest} />}
       <p className="muted">Saving adds a stop for each new place after where the truck is now, takes away stops nothing needs any more, and sends the driver the new list of drops.</p>
     </Modal>
+  );
+}
+
+/** Places on the trip's route first, then every other place, which becomes a stop when saved. */
+function PlaceOptions({ data, routePlaces }: { data: ReturnType<typeof useApp>["data"]; routePlaces: string[] }) {
+  const on = [...new Set(routePlaces)].map((id) => data.places.find((p) => p.id === id)).filter((p): p is NonNullable<typeof p> => Boolean(p));
+  const others = [...data.places].filter((p) => !routePlaces.includes(p.id)).sort((a, b) => a.name.localeCompare(b.name));
+  return (
+    <>
+      <optgroup label="On the route">{on.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</optgroup>
+      <optgroup label="Another place (becomes a stop)">{others.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</optgroup>
+    </>
   );
 }

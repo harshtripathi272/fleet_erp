@@ -165,3 +165,6 @@
   .cn-row-rate { grid-column: auto; }
   .cn-row-rate-controls { grid-template-columns: minmax(0, 1fr); }
 }
+.split-pickups { display: grid; gap: 8px; margin-bottom: 4px; }
+.split-pickups h4 { margin: 4px 0 0; font-size: 14px; font-weight: 600; }
+.split-n { width: 18px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
