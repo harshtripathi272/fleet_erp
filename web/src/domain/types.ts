@@ -442,6 +442,8 @@ export interface AppData {
   settings: Settings;
   places: Place[];
   customers: Customer[];
+  /** Every active party (customers, consignors, consignees), for picking a saved one by name (#102). */
+  parties?: Customer[];
   drivers: Driver[];
   trucks: Truck[];
   trailers: Trailer[];

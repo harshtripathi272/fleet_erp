@@ -50,10 +50,15 @@ export const trailerPlate = async (id: unknown) => (id ? String((await Trailer.f
 export const driverName = async (id: unknown) => (id ? String((await Driver.findById(id).select('name').lean())?.name ?? '') : '');
 export const partyName = async (id: unknown) => (id ? String((await Party.findById(id).select('name').lean())?.name ?? '') : '');
 
+/** First loading to last drop, naming the work stops between (#102), as the screens do. */
 export async function routeLabel(trip: { stops: Array<{ kind: string; placeId: unknown }> }) {
-  const load = trip.stops.find((s) => s.kind === 'load');
-  const offload = trip.stops.find((s) => s.kind === 'offload');
-  return `${await placeName(load?.placeId)} to ${await placeName(offload?.placeId)}`;
+  const work = trip.stops.filter((s) => s.kind === 'load' || s.kind === 'offload');
+  const first = work.find((s) => s.kind === 'load') ?? work[0];
+  const last = [...work].reverse().find((s) => s.kind === 'offload') ?? work.at(-1);
+  const ends = new Set([String(first?.placeId), String(last?.placeId)]);
+  const between = [...new Set(work.slice(first ? work.indexOf(first) + 1 : 0, last ? work.lastIndexOf(last) : undefined).map((s) => String(s.placeId)))].filter((p) => !ends.has(p));
+  const via = between.length === 0 ? '' : between.length <= 2 ? ` via ${(await Promise.all(between.map((p) => placeName(p)))).join(' and ')}` : ` via ${between.length} stops`;
+  return `${await placeName(first?.placeId)} to ${await placeName(last?.placeId)}${via}`;
 }
 
 /* ---------- Trucks ---------- */
@@ -525,7 +530,8 @@ export async function dispatchTrip(id: string, ctx: OpsContext, input?: S.Dispat
   const holds = Math.max(0, await carriedIn(plain.driverId, trip._id)) + (await FundRequest.find({ tripId: trip._id, kind: 'cash', status: 'issued' }).lean()).reduce((s, r) => s + Number(r.baseAmountMinor ?? 0), 0);
   const plainStops = plain.stops as Array<{ kind: string; placeId: unknown }>;
   const loadAt = await placeName(plainStops.find((s) => s.kind === 'load')?.placeId);
-  const offloadAt = await placeName(plainStops.find((s) => s.kind === 'offload')?.placeId);
+  // The last drop, where the trip's work ends, not the first (#102).
+  const offloadAt = await placeName([...plainStops].reverse().find((s) => s.kind === 'offload')?.placeId);
   const truckLabel = `${truck.plate}${plain.trailerId ? ` · ${await trailerPlate(plain.trailerId)}` : ''}`;
   await post(driverThread(plain.driverId), at, {
     title: `On your way · ${plain.number}`,

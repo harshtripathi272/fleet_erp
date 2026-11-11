@@ -396,10 +396,13 @@ function AddPaper({ c, onAdded }: { c: Cn; onAdded: () => void }) {
   const [busy, setBusy] = useState(false);
   const leg = c.legs.find((l) => l.id === legId);
   const offered = (types.data ?? []).filter((t) => !leg || t.step === (leg.kind === "pickup" ? "pickup" : "drop"));
+  // The usual paper for the leg is chosen at first, once in the list, not twice (#102).
+  const usual = offered.find((t) => t.code === (leg?.kind === "drop" ? "POD" : "LOADING_INVOICE"));
+  const chosen = documentTypeId || (usual ? String(usual.id) : "");
   const add = async () => {
     setBusy(true);
     try {
-      await api(`/consignments/${c.id}/documents`, { method: "POST", body: { ...(legId ? { legId } : {}), ...(documentTypeId ? { documentTypeId } : {}), number: number.trim(), ...(date ? { date } : {}) } });
+      await api(`/consignments/${c.id}/documents`, { method: "POST", body: { ...(legId ? { legId } : {}), ...(chosen ? { documentTypeId: chosen } : {}), number: number.trim(), ...(date ? { date } : {}) } });
       setNumber(""); setDate("");
       onAdded();
     } catch (err) {
@@ -418,8 +421,8 @@ function AddPaper({ c, onAdded }: { c: Cn; onAdded: () => void }) {
           </select>
         </Field>
         <Field label="Paper">
-          <select value={documentTypeId} onChange={(e) => setType(e.target.value)}>
-            <option value="">{leg?.kind === "drop" ? "Delivery note" : "Loading invoice"}</option>
+          <select value={chosen} onChange={(e) => setType(e.target.value)}>
+            {!usual && <option value="">{leg?.kind === "drop" ? "Proof of delivery" : "Loading invoice"}</option>}
             {offered.map((t) => <option key={String(t.id)} value={String(t.id)}>{String(t.name)}</option>)}
           </select>
         </Field>

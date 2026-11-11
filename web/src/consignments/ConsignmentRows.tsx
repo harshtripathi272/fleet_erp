@@ -15,6 +15,8 @@ import type { AppData, Product, RouteStop, Trailer, Truck } from "../domain/type
 export interface DraftLeg { key: string; placeId: string; qty: string }
 export interface DraftConsignment {
   key: string;
+  /** Who is billed; empty: the trip's customer (#102). */
+  customerId?: string;
   productId: string;
   qty: string;
   /** A customer picked by name, or a name typed for a consignor or consignee who isn't a party. */
@@ -93,6 +95,7 @@ export function consignmentBody(data: AppData, d: DraftConsignment, stops: Route
   const currency = data.currencies?.find((c) => c.id === d.rateCurrencyId) ?? data.baseCurrency;
   return {
     lines: [{ productId: d.productId, ...(d.qty.trim() ? { plannedQty: Number(d.qty) } : {}) }],
+    ...(d.customerId ? { customerId: d.customerId } : {}),
     ...(d.consignorPartyId ? { consignorPartyId: d.consignorPartyId } : d.consignorName.trim() ? { consignor: { name: d.consignorName.trim() } } : {}),
     ...(d.consigneePartyId ? { consigneePartyId: d.consigneePartyId }
       : d.consigneeName.trim() ? { consignee: { name: d.consigneeName.trim(), ...(d.consigneePhone.trim() ? { phone: d.consigneePhone.trim() } : {}) } } : {}),
@@ -171,7 +174,8 @@ export function ConsignmentRows({ data, value, stops, onChange, seesMoney, route
   const one = wl(data, "consignment");
   const canAdd = !rules.maxConsignmentsPerTrip || value.length < rules.maxConsignmentsPerTrip;
   const set = (key: string, patch: Partial<DraftConsignment>) => onChange(value.map((d) => (d.key === key ? { ...d, ...patch } : d)));
-  const party = (name: string) => data.customers.find((c) => c.name.toLowerCase() === name.trim().toLowerCase());
+  // Any saved party, not only customers: a consignee is often a depot or a co-operative (#102).
+  const party = (name: string) => (data.parties ?? data.customers).find((c) => c.name.toLowerCase() === name.trim().toLowerCase());
   const loadAt = data.places.find((p) => p.id === routePoint(stops, "load"))?.name;
   const dropAt = data.places.find((p) => p.id === routePoint(stops, "offload"))?.name;
   const onRoute = stops.filter((s) => s.placeId && s.kind !== "start" && s.kind !== "end");
@@ -219,7 +223,7 @@ export function ConsignmentRows({ data, value, stops, onChange, seesMoney, route
         Each {one} is loaded and dropped where its row says, at the price agreed for it.
         {rules.consignmentBy === "loading" ? ` Leave a row empty to add the ${one} at loading.` : ` The trip can't leave without its ${one}.`}
       </p>
-      <datalist id="party-names">{data.customers.map((c) => <option key={c.id} value={c.name} />)}</datalist>
+      <datalist id="party-names">{(data.parties ?? data.customers).map((c) => <option key={c.id} value={c.name} />)}</datalist>
       {value.map((d, i) => {
         const product = data.products.find((p) => p.id === d.productId);
         const basis = RATE_BASES.find((b) => b.value === d.rateBasis);
@@ -239,6 +243,12 @@ export function ConsignmentRows({ data, value, stops, onChange, seesMoney, route
               </Field>
               <Field label="Quantity">
                 <UnitInput label={`Quantity on ${one} ${i + 1}`} unit={product?.unit ?? ""} value={d.qty} onChange={(v) => set(d.key, { qty: v })} />
+              </Field>
+              <Field label="Bill to">
+                <select value={d.customerId ?? ""} onChange={(e) => set(d.key, { customerId: e.target.value || undefined })}>
+                  <option value="">The {wl(data, "trip")}'s {wl(data, "customer")}</option>
+                  {data.customers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </select>
               </Field>
               <Field label="Consignor" hint={d.consignorPartyId ? "A saved party." : undefined}>
                 <input list="party-names" value={d.consignorName} placeholder="The customer, unless you say" onChange={(e) => set(d.key, { consignorName: e.target.value, consignorPartyId: party(e.target.value)?.id })} />

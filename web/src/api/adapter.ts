@@ -130,10 +130,12 @@ export function toAppData(ref: Reference, ops: Operations): AppData {
     };
   });
 
-  const customers: Customer[] = ref.parties.filter((p) => (p.roles ?? []).includes("customer")).map((p) => {
+  const asCustomer = (p: Rec): Customer => {
     const contact = (p.contacts ?? []).find((c: Rec) => c.isPrimary) ?? p.contacts?.[0];
     return { id: p.id, name: p.name, contact: contact?.name ?? "", phone: contact?.whatsapp ?? contact?.phone ?? "" };
-  });
+  };
+  const customers: Customer[] = ref.parties.filter((p) => (p.roles ?? []).includes("customer")).map(asCustomer);
+  const parties: Customer[] = ref.parties.filter((p) => p.status !== "inactive" && p.status !== "archived").map(asCustomer);
 
   const accounts = new Map(ops.driverAccounts.map((a) => [String(a.driverId), a]));
   const drivers: Driver[] = ref.drivers.filter((d) => d.status === "active").map((d) => {
@@ -332,7 +334,7 @@ export function toAppData(ref: Reference, ops: Operations): AppData {
       seq: {},
       people: { owner: named("owner", "Owner"), operations: named("operations", "Operations"), finance: named("finance", "Finance") },
     },
-    places, customers, drivers, trucks, trailers, pairings, routes, products, categories,
+    places, customers, parties, drivers, trucks, trailers, pairings, routes, products, categories,
     nominations, trips, requests, docs, consignments, cns, expenses, settlements, messages, events,
     reads: Object.fromEntries(ops.reads.map((r) => [r.thread, r.at])),
     paymentMethods: ref.paymentMethods.filter((m) => m.status === "active").map((m) => ({ id: m.id, name: m.name, kind: m.kind, forFuel: Boolean(m.forFuel), forCash: m.forCash !== false, referenceRequired: m.referenceRequired !== false })),
