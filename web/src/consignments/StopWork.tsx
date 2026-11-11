@@ -90,7 +90,11 @@ function StopBlock({ trip, stop, kind, cns, openByDefault }: { trip: Trip; stop:
               <tbody>
                 {here.map(({ c, l }) => {
                   const unit = c.lines[0]?.unit ?? "";
-                  const planned = l.planned?.reduce((s, p) => s + (p.qty ?? 0), 0) ?? (kind === "pickup" ? c.lines.reduce((s, x) => s + (x.plannedQty ?? 0), 0) : 0);
+                  // A single drop is planned to take all that was loaded, or the booked quantity before loading (#102).
+                  const booked = c.lines.reduce((s, x) => s + (x.plannedQty ?? 0), 0);
+                  const loaded = c.legs.filter((x) => x.kind === "pickup").flatMap((x) => x.actual ?? []).reduce((s, m) => s + (m.qty ?? 0), 0);
+                  const onlyDrop = c.legs.filter((x) => x.kind === "drop").length === 1;
+                  const planned = l.planned?.reduce((s, p) => s + (p.qty ?? 0), 0) ?? (kind === "pickup" ? booked : onlyDrop ? loaded || booked : 0);
                   const done = l.actual?.reduce((s, m) => s + (m.accepted ?? m.qty), 0);
                   const photo = data.docs.find((d) => d.status === "new" && d.consignmentId === c.id && (!d.legId || d.legId === l.id));
                   const papers = c.documents.filter((d) => d.legId === l.id).length;

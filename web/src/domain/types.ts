@@ -51,7 +51,8 @@ export interface Truck {
   tankL: number;
   emptyKmpl: number;
   loadedKmpl: number;
-  capacityT: number;
+  /** The truck's payload; empty when not set, so no limit is made up (#102). */
+  capacityT?: number;
   driverId?: string;
   trailerId?: string;
 }

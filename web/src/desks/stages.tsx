@@ -1400,12 +1400,16 @@ export function ShortageCard({ consignment }: { consignment: Consignment }) {
   const finance = may("shortage.decide");
   // Charging needs the permission; waiving follows the shortage-waiver policy (the permission without one).
   const mayWaive = s.mayWaive ?? finance;
+  // Short beyond the allowance with nothing to charge it at (#102): said, not shown as within the allowance.
+  const unpriced = s.netShortL > 0 && !s.pricePerL;
   return (
     <Card
       title={fuel ? "Fuel reconciliation" : "Reconciliation"}
       tone={s.status === "pending" && (finance || mayWaive) ? "mine" : undefined}
       aside={
-        s.status === "none" ? (
+        s.status === "none" && unpriced ? (
+          <Status tone="wait">No shortage price</Status>
+        ) : s.status === "none" ? (
           <Status tone="ok">Within allowance</Status>
         ) : s.status === "pending" ? (
           <Status tone="wait">With Finance</Status>
@@ -1438,12 +1442,18 @@ export function ShortageCard({ consignment }: { consignment: Consignment }) {
             <td>Net shortage</td>
             <td className="num">{amount(s.netShortL)}</td>
           </tr>
-          <tr className="total">
-            <td>
-              At {inBase(s.pricePerL)} per {fuel ? "litre" : s.unit}
-            </td>
-            <td className="num">{inBase(s.amountBase)}</td>
-          </tr>
+          {unpriced ? (
+            <tr className="total">
+              <td colSpan={2}>Nothing to charge: these goods have no shortage price. To charge a shortage like this, set one on the goods or in a shortage policy.</td>
+            </tr>
+          ) : (
+            <tr className="total">
+              <td>
+                At {inBase(s.pricePerL)} per {fuel ? "litre" : s.unit}
+              </td>
+              <td className="num">{inBase(s.amountBase)}</td>
+            </tr>
+          )}
         </tbody>
       </table>
       {s.status === "pending" && (finance || mayWaive) && (

@@ -60,7 +60,7 @@ export function readDocument(
       return {
         docNo: `DN-${n(20000, 89999)}`,
         productId: product.id,
-        qty: trip.plannedQty ?? Math.max(1, truck.capacityT - 2),
+        qty: trip.plannedQty ?? Math.max(1, (truck.capacityT ?? 30) - 2),
         consignor: byId(data.places, load?.placeId)?.name ?? "Shipper",
         consignee: byId(data.customers, trip.customerId)?.name,
       };

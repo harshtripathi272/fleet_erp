@@ -162,7 +162,7 @@ export function toAppData(ref: Reference, ops: Operations): AppData {
       tankL: positive(v.tankCapacityL, model?.tankCapacityL) ?? 0,
       emptyKmpl: positive(v.kmPerLEmpty, model?.kmPerLEmpty, norm?.kmPerLEmpty) ?? 0,
       loadedKmpl: positive(v.kmPerLLoaded, model?.kmPerLLoaded, norm?.kmPerLLoaded) ?? 0,
-      capacityT: positive(v.payloadKg) ? v.payloadKg / 1000 : 30,
+      capacityT: positive(v.payloadKg) ? v.payloadKg / 1000 : undefined,
       driverId: ref.drivers.find((d) => d.status === "active" && d.assignedVehicleId === v.id)?.id,
       trailerId: v.currentTrailerId,
     };
