@@ -389,7 +389,8 @@ const references = z.strictObject({
 /** A rate agreed on the consignment (#135 Part 1). null on an edit takes it off, so a tariff prices it again. */
 const agreedRate = z.strictObject({
   basis: z.enum(['per_consignment', 'per_kg', 'per_tonne', 'per_litre', 'per_litre_20', 'per_piece', 'per_km']),
-  price: money,
+  /** A unit price keeps fractions of a minor unit: 0.085 USD a litre is 8.5. */
+  price: z.strictObject({ amountMinor: z.number().min(0).max(1e13), currencyId: objectId }),
   chargeOn: z.enum(['loaded', 'delivered']).optional(),
 });
 const consignmentShape = {

@@ -29,14 +29,14 @@ export function NewTrip({ open, onClose, onCreated }: { open: boolean; onClose: 
   const [customerId, setCustomerId] = useState(data.customers[0]?.id ?? "");
   const [routeId, setRouteId] = useState("");
   const [stops, setStops] = useState<RouteStop[]>([]);
-  const [drafts, setDrafts] = useState<DraftConsignment[]>(() => [draftConsignment()]);
+  const [drafts, setDrafts] = useState<DraftConsignment[]>(() => [draftConsignment(data.baseCurrency?.id)]);
   const [start, setStart] = useState(() => localInput(new Date(Date.now() + data.settings.clockOffsetMs + 36e5 * 2).toISOString()));
   useEffect(() => {
     if (!open) return;
     setTruckId("");
     setRouteId("");
     setStops([]);
-    setDrafts([draftConsignment()]);
+    setDrafts([draftConsignment(data.baseCurrency?.id)]);
     setStart(localInput(new Date(Date.now() + data.settings.clockOffsetMs + 36e5 * 2).toISOString()));
   }, [open, data.settings.clockOffsetMs]);
   const pickTruck = (id: string) => {
@@ -57,7 +57,7 @@ export function NewTrip({ open, onClose, onCreated }: { open: boolean; onClose: 
   };
   const problem = validateStops(stops);
   const cargoProblem = drafts.map((d, i) => draftProblem(data, d, i + 1)).find(Boolean);
-  const onBoard = capacityLine(data, drafts, truck, byId(data.trailers, trailerId));
+  const onBoard = capacityLine(data, drafts, stops, truck, byId(data.trailers, trailerId));
   const preview = useMemo(() => {
     if (problem || !truck) return undefined;
     const s = stops.map((x, i) => ({ ...x, id: String(i), legKm: i ? leg(data, stops[i - 1].placeId, x.placeId).km : 0, legHours: 0 }));
@@ -77,7 +77,7 @@ export function NewTrip({ open, onClose, onCreated }: { open: boolean; onClose: 
           routeId: routeId || undefined,
           stops,
           plannedStart: fromLocalInput(start),
-          consignments: drafts.filter((d) => !isEmptyDraft(d)).map(consignmentBody),
+          consignments: drafts.filter((d) => !isEmptyDraft(d)).map((d) => consignmentBody(data, d, stops)),
         },
         "Trip created. The driver has it on WhatsApp.",
       )
@@ -180,8 +180,9 @@ export function NewTrip({ open, onClose, onCreated }: { open: boolean; onClose: 
                 </select>
               </Field>
             </div>
-            <ConsignmentRows data={data} value={drafts} onChange={setDrafts} />
+            <ConsignmentRows data={data} value={drafts} stops={stops} onChange={setDrafts} />
             {onBoard.text && <p className="framed-line">{onBoard.text}</p>}
+            {onBoard.note && <p className="muted">{onBoard.note}</p>}
             {onBoard.over.map((o) => <p key={o} className="form-problem">{o}{onBoard.refuse ? " Lower a quantity, or choose a bigger truck." : ""}</p>)}
             {cargoProblem && <p className="form-problem">{cargoProblem}</p>}
             <StopEditor stops={stops} onChange={setStops} startLocked={truck.placeId || undefined} />

@@ -6,24 +6,7 @@
 .consignment-rows { display: grid; gap: 10px; min-width: 0; }
 .consignment-rows > h3 { margin: 0; font-size: 15px; font-weight: 600; }
 .consignment-rows > p { margin: 0; max-width: 70ch; }
-.consignment-row {
-  display: grid;
-  grid-template-columns: 28px repeat(2, minmax(0, 1fr)) auto;
-  gap: 10px 12px;
-  align-items: start;
-  padding: 10px 12px;
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  background: var(--surface-2);
-}
-.consignment-row > * { min-width: 0; }
-.consignment-row-n { grid-row: span 2; padding-top: 30px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
-.consignment-row > .btn { grid-column: 4; grid-row: 1; margin-top: 26px; }
-@media (max-width: 560px) {
-  .consignment-row { grid-template-columns: minmax(0, 1fr); }
-  .consignment-row-n { grid-row: auto; padding-top: 0; }
-  .consignment-row > .btn { grid-column: auto; grid-row: auto; margin-top: 0; justify-self: start; }
-}
+.consignment-row { display: grid; gap: 10px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-2); }
 .framed-line { font-variant-numeric: tabular-nums; }
 
 /* The trip's views (design 3.11.2): underline tabs under its heading. */
@@ -162,3 +145,23 @@
 .drv-leg-who { display: grid; flex: 1 1 100%; min-width: 0; }
 .drv-legs .btn { min-height: 40px; }
 .drv-gate { margin: 0; padding: 8px 10px; border: 1px solid var(--brass-2); border-radius: 10px; background: var(--brass-50); }
+
+/* New trip: each consignment decided on its row (#135 Part 1). */
+.consignment-row-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.consignment-row-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px 12px; align-items: start; }
+.consignment-row-grid > * { min-width: 0; }
+.cn-row-rate { grid-column: span 3; display: grid; gap: 4px; min-width: 0; }
+.cn-row-rate-controls { display: flex; flex-wrap: wrap; gap: 8px; }
+.cn-row-rate-controls > * { flex: 0 1 auto; min-width: 0; }
+.cn-row-rate-controls .unit-box { width: 160px; }
+.consignment-row-legs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.cn-row-legs { display: grid; gap: 6px; min-width: 0; align-content: start; }
+.cn-row-leg { display: flex; gap: 6px; align-items: center; min-width: 0; }
+.cn-row-leg select { flex: 1 1 auto; min-width: 0; }
+.cn-row-leg .unit-box { width: 130px; flex: none; }
+.cn-row-legs .link-btn { justify-self: start; }
+@media (max-width: 560px) {
+  .consignment-row-grid, .consignment-row-legs { grid-template-columns: minmax(0, 1fr); }
+  .cn-row-rate { grid-column: auto; }
+  .cn-row-rate-controls { grid-template-columns: minmax(0, 1fr); }
+}
