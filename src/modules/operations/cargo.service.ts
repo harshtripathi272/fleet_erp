@@ -75,6 +75,10 @@ export async function getDocument(id: string) {
 /** A document as filed: an uploaded file, a WhatsApp photo by URL, or the simulated phone's sample picture. */
 export type DocumentInput = Omit<S.SendDocumentInput, 'file'> & {
   file?: { fileId: string } | { name: string; mime: string; sampleId?: string; url?: string };
+  /** The consignment, pickup or drop, and paper the driver said it is for (#135 Part 2). */
+  consignmentId?: string;
+  legId?: string;
+  documentTypeId?: string;
 };
 
 export async function sendDocument(input: DocumentInput, ctx: OpsContext) {
@@ -100,6 +104,7 @@ export async function sendDocument(input: DocumentInput, ctx: OpsContext) {
   const doc = new DriverDocument({
     driverId: driver._id, tripId: trip?._id, kind: input.kind, channel: input.channel, note: input.note, file,
     reading, simulated, status: 'new', at, createdBy: ctx.actorId, updatedBy: ctx.actorId,
+    ...(input.consignmentId ? { consignmentId: input.consignmentId } : {}), ...(input.legId ? { legId: input.legId } : {}), ...(input.documentTypeId ? { documentTypeId: input.documentTypeId } : {}),
   });
   await save(doc);
   const id = String(doc._id);

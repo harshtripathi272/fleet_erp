@@ -475,3 +475,56 @@ describe('the A-to-E trip of #135 Part 1, made entirely from New trip', () => {
     assert.equal(profit.revenueMinor > 0, true, 'the trip shows its revenue');
   });
 });
+
+describe('the driver says which consignment each paper is for (#135 Part 2)', () => {
+  test('four consignments loading at one stop: the app lists them, asks which, files each paper on its own, and the gate opens after the fourth', async () => {
+    const cn = (n: number) => ({ lines: [{ productId: ids.diesel, plannedQty: 4000 }], consignee: { name: `Depot ${n}`, phone: `+26097700020${n}` } });
+    const t = await trip({ consignments: [cn(1), cn(2), cn(3), cn(4)] }, true, owner);
+    const load = t.stops.find((s) => s.kind === 'load')!;
+    ok(await as(ops).post(`/trips/${t.id}/stops/${load.id}/arrive`));
+    ok(await as(owner).put(`/users/driver-access/${ids.d1}`, { phone: '+260971234567', password: 'Truck2026' }));
+    const driver = { token: ok<{ accessToken: string }>(await api().post('/api/v1/auth/login').send({ phone: '+260971234567', password: 'Truck2026' })).accessToken };
+    const home = async () => ok(await as(driver).get('/driver-app/home')).trip;
+    let h = await home();
+    const here = h.stops.find((s: { id: string }) => s.id === load.id);
+    assert.equal(here.legs.length, 4, 'the four consignments loading here');
+    assert.ok(here.legs.every((l: { send: Array<{ label: string }>; party: string }) => l.send.some((p) => p.label === 'Loading invoice') && l.party), 'each with its party and the invoice due');
+    assert.equal(h.next.length, 4, 'four invoices due now, one per consignment');
+    assert.match(h.gate.driverReason, /Waiting for Operations/);
+    // Sent without saying which: four are open here, so it is filed on the trip and the driver is asked.
+    const unsure = ok(await as(driver).post('/driver-app/send', { kind: 'loading', note: 'Invoice' }), 201);
+    assert.equal(unsure.pick.length, 4);
+    assert.equal(unsure.consignmentId, undefined);
+    // Each invoice for its own consignment.
+    for (const due of h.next) {
+      const doc = ok(await as(driver).post('/driver-app/send', { kind: 'loading', note: `Invoice for ${due.label}`, consignmentId: due.consignmentId, legId: due.legId, documentTypeId: due.documentTypeId }), 201);
+      assert.equal(doc.consignmentId, due.consignmentId);
+      assert.equal(doc.legId, due.legId);
+    }
+    h = await home();
+    assert.equal(h.next.length, 0, 'nothing more due: every invoice is with the office');
+    // The office records the four; the truck may go after the fourth.
+    const now = await tripNow(t.id);
+    const list = await onTrip(t.id);
+    for (const [i, c] of list.entries()) {
+      assert.ok(ok(await as(ops).get(`/trips/${t.id}/gate`)).gate, `held before the ${i + 1}th is recorded`);
+      const leg = c.legs.find((l) => l.kind === 'pickup')!;
+      ok(await as(ops).post(`/consignments/${c.id}/legs/${leg.id}/record`, { measures: [{ lineId: c.lines[0]!.id, ...fuel(4000) }], documents: [{ number: `INV-${i + 1}` }] }));
+    }
+    const gate = ok(await as(ops).get(`/trips/${t.id}/gate`)).gate;
+    assert.ok(!gate || gate.stopId !== load.id, 'the loading stop no longer holds the truck');
+    void now;
+  });
+
+  test('with only one consignment at the stop, a paper sent without saying which is filed on it', async () => {
+    const t = await trip({ consignments: [{ lines: [{ productId: ids.diesel, plannedQty: 4000 }] }] }, true, owner);
+    const load = t.stops.find((s) => s.kind === 'load')!;
+    ok(await as(ops).post(`/trips/${t.id}/stops/${load.id}/arrive`));
+    ok(await as(owner).put(`/users/driver-access/${ids.d1}`, { phone: '+260971234567', password: 'Truck2026' }));
+    const driver = { token: ok<{ accessToken: string }>(await api().post('/api/v1/auth/login').send({ phone: '+260971234567', password: 'Truck2026' })).accessToken };
+    const [c] = await onTrip(t.id);
+    const doc = ok(await as(driver).post('/driver-app/send', { kind: 'loading', note: 'Invoice' }), 201);
+    assert.equal(doc.consignmentId, c!.id);
+    assert.equal(doc.pick, undefined);
+  });
+});

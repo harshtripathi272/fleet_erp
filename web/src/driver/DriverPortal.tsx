@@ -95,7 +95,17 @@ export function DriverPortal({ me }: { me: Me }) {
   }, [outbox.sent.length, outbox.refused.length]);
 
   const pick = (kind: Kind) => { setPending(kind); setPendingFor(null); file.current?.click(); };
-  const pickFor = (due: { consignmentId: string; legId: string; documentTypeId?: string; label: string }, kind: Kind) => { setPending(kind); setPendingFor(due); file.current?.click(); };
+  const pickFor = (due: { consignmentId: string; legId: string; documentTypeId?: string; label: string }, kind: Kind) => { setPending(kind); setPendingFor(due); setChoosing(null); file.current?.click(); };
+  // "Which consignment?" first (#135 Part 2): the consignments at this stop still needing that kind of paper.
+  const [choosing, setChoosing] = useState<{ kind: Kind; options: Due[] } | null>(null);
+  const ask = (kind: Kind) => {
+    const due = Array.isArray(home.data?.trip?.next) ? (home.data!.trip!.next as Due[]) : [];
+    const options = due.filter((d) => kindOfLeg(home.data!.trip!.stops, d.legId) === kind);
+    if (kind !== "loading" && kind !== "delivery") return pick(kind);
+    if (options.length === 1) return pickFor(options[0]!, kind);
+    if (options.length > 1) return setChoosing({ kind, options });
+    return pick(kind);
+  };
   const upload = async (chosen: File | undefined) => {
     if (file.current) file.current.value = "";
     if (!chosen) return;
@@ -223,9 +233,24 @@ export function DriverPortal({ me }: { me: Me }) {
         <h3>Send a document</h3>
         <div className="drv-kinds">
           {KINDS.map(([kind, label]) => (
-            <Button key={kind} disabled={preparing} onClick={() => pick(kind)}><Camera /> {label}</Button>
+            <Button key={kind} disabled={preparing} onClick={() => ask(kind)}><Camera /> {label}</Button>
           ))}
         </div>
+        {choosing && (
+          <div className="drv-which" role="group" aria-label="Which consignment is it for?">
+            <strong>Which {say("consignment").toLowerCase()} is this {KIND_LABEL[choosing.kind].toLowerCase()} for?</strong>
+            {choosing.options.map((o) => {
+              const leg = trip?.stops.flatMap((s) => s.legs ?? []).find((l) => l.legId === o.legId);
+              return (
+                <button key={`${o.legId}-${o.documentTypeId}`} type="button" className="drv-which-row" onClick={() => pickFor(o, choosing.kind)}>
+                  <span><strong>{leg?.number}</strong> · {leg?.party ?? ""}</span>
+                  <small>{leg?.product ?? ""}{leg?.plannedQty ? ` · ${num(leg.plannedQty)} ${leg.unit ?? ""}` : ""}</small>
+                </button>
+              );
+            })}
+            <Button tone="quiet" onClick={() => setChoosing(null)}>Cancel</Button>
+          </div>
+        )}
         {trip && trip.documents.some((d) => d.file) && (
           <ul className="drv-docs">
             {/* Messages without a file are in the conversation below. */}
