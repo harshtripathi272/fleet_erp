@@ -467,7 +467,7 @@ function FundingPanel({ trip, step }: { trip: Trip; step: NextStep }) {
             { value: f.fuel.open, tone: "open", label: "Waiting" },
           ]}
           suggested={f.fuel.suggested}
-          suggestionText={f.fuel.suggested ? `Top up ${L(f.fuel.suggested)}` : "Covered"}
+          suggestionText={f.fuel.suggested ? `Top up ${L(f.fuel.suggested)}` : f.fuel.budget > 0 ? "Covered" : "No budget worked out: the truck has no fuel use figures. Ask for what it needs."}
           canRequest={canRequest}
           kind="fuel"
           trip={trip}
@@ -490,7 +490,7 @@ function FundingPanel({ trip, step }: { trip: Trip; step: NextStep }) {
             { value: f.cash.open, tone: "open", label: "Waiting" },
           ]}
           suggested={f.cash.suggested}
-          suggestionText={f.cash.suggested ? `Advance ${inBase(f.cash.suggested)}` : "Covered"}
+          suggestionText={f.cash.suggested ? `Advance ${inBase(f.cash.suggested)}` : f.cash.budget > 0 ? "Covered" : "No budget worked out for this route. Ask for what the driver needs."}
           canRequest={canRequest}
           kind="cash"
           trip={trip}
