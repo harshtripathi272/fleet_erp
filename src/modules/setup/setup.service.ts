@@ -11,7 +11,7 @@ import { getMaster, refsOf } from '../../core/masters/registry.js';
 import { SystemState } from '../auth/systemState.model.js';
 import { Company } from '../company/company.model.js';
 import { Connection } from '../connections/connection.model.js';
-import { connectionRules } from '../connections/connections.service.js';
+import { connectionRules, using } from '../connections/connections.service.js';
 import { RecordLayout } from '../../core/masters/layout.js';
 import { contextFor, providerFor, type Provider } from '../../core/connections/index.js';
 import { CustomMaster, FieldDefinition, List } from '../configuration/models/configuration.model.js';
@@ -20,7 +20,7 @@ import { StoredFile } from '../files/file.model.js';
 import { Role } from '../roles/role.model.js';
 import * as DriverAccess from '../users/driverAccess.service.js';
 import { User } from '../users/user.model.js';
-import { createUser } from '../users/users.service.js';
+import { createUser, setPassword } from '../users/users.service.js';
 import { isDeepStrictEqual } from 'node:util';
 import { type Result, applyCompanyFile, applyFile, lastApplied, lastAppliedFile } from './apply.js';
 import { type SampleSize, loadSampleData } from '../meta/sampleData.js';
@@ -275,7 +275,7 @@ export async function applyHere(input: { file: unknown; clear?: { confirm?: stri
   const result = await applyFile(parsed.data, JSON.stringify(parsed.data), read, { onResult, inviteOwner: true });
   const state = await SystemState.findOne({ key: DRAFT }).lean<{ value?: Draft }>();
   if (state?.value) await saveDraft({ ...state.value, finishedAt: new Date().toISOString() });
-  const logins = parsed.data.purpose === 'demo' ? await demoLogins(parsed.data, actor.userId, onResult) : [];
+  const logins = parsed.data.purpose === 'demo' ? await demoLogins(parsed.data, actor.userId, onResult) : await staffLogins(parsed.data, result.results, actor.userId, onResult);
   return { ...result, logins };
 }
 
@@ -352,6 +352,28 @@ const demoPassword = () => {
  * once, with one new password that's shown on the finishing screen and kept nowhere in readable form. Real
  * companies never get these: their people are invited by e-mail.
  */
+/**
+ * People this set-up added while the copy has no e-mail server (#102): nobody could be e-mailed, so each gets a
+ * first password, shown once on the screen. They choose their own when they first sign in.
+ */
+async function staffLogins(file: CompanyFile, results: Result[], actorId: string, onResult: (r: Result) => void): Promise<DemoLogin[]> {
+  if ((await using('email')).via !== 'simulated') return [];
+  const added = new Set(results.filter((r) => r.outcome === 'created' && r.step.startsWith('staff ')).map((r) => r.step.slice('staff '.length)));
+  const out: DemoLogin[] = [];
+  for (const person of file.staff) {
+    if (!added.has(person.email)) continue;
+    const user = await User.findOne({ email: person.email }).select('_id').lean<{ _id: unknown }>();
+    if (!user) continue;
+    const password = demoPassword();
+    try {
+      await setPassword(String(user._id), password, { actorId, canSeeSensitive: true });
+      out.push({ role: person.name ?? person.email, login: person.email, password });
+      onResult({ step: `staff ${person.email}`, outcome: 'updated', detail: 'Not e-mailed: this copy has no e-mail server. A first password is shown below.' });
+    } catch (err) { onResult({ step: `staff ${person.email}`, outcome: 'failed', detail: `No password set: ${(err as Error).message}. Set one under Masters → Users.` }); }
+  }
+  return out;
+}
+
 async function demoLogins(file: CompanyFile, actorId: string, onResult: (r: Result) => void): Promise<DemoLogin[]> {
   const password = demoPassword();
   const system = { actorId, canSeeSensitive: true };

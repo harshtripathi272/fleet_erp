@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { registerProvider } from '../registry.js';
-import type { LatLng, RouteAnswer } from '../types.js';
+import type { LatLng, PlaceHit, RouteAnswer } from '../types.js';
 import { callJson } from './http.js';
 
 /*
@@ -26,15 +26,75 @@ const tested = async (route: (p: LatLng[]) => Promise<RouteAnswer>) => {
   return { ok: answer.km > 0, message: `Lusaka to Kapiri Mposhi: ${Math.round(answer.km)} km${answer.hours ? `, ${answer.hours.toFixed(1)} h` : ''}.` };
 };
 
+/* ---------- Finding a place by name or address (#102) ---------- */
+
+/** OpenStreetMap's own search, free and keyless; its rules ask for at most one search a second and a named app. */
+export const NOMINATIM_URL = 'https://nominatim.openstreetmap.org';
+const SEARCH_LABEL = 'Address search server';
+const SEARCH_HINT = "Finds places by name or address on the place form. OpenStreetMap's Nominatim by default; your own copy of Nominatim can go here.";
+const searchUrlField = z.url().refine((u) => /^https?:\/\//.test(u), 'An http or https address').default(NOMINATIM_URL);
+const searchUrlOf = (settings: Record<string, unknown>) => String(settings.searchUrl || NOMINATIM_URL);
+const SEARCH_LIMIT = 6;
+
+let lastNominatim = 0;
+/** One search a second across this server, as Nominatim's usage policy asks. */
+async function nominatimTurn() {
+  const wait = lastNominatim + 1100 - Date.now();
+  lastNominatim = Math.max(Date.now(), lastNominatim + 1100);
+  if (wait > 0) await new Promise((r) => setTimeout(r, wait));
+}
+
+interface NominatimRow { lat: string; lon: string; name?: string; display_name: string; address?: Record<string, string> }
+export async function nominatim(baseUrl: string, query: string, options: { countryCode?: string; signal?: AbortSignal } = {}): Promise<PlaceHit[]> {
+  await nominatimTurn();
+  const params = new URLSearchParams({ q: query, format: 'jsonv2', addressdetails: '1', limit: String(SEARCH_LIMIT) });
+  if (options.countryCode) params.set('countrycodes', options.countryCode.toLowerCase());
+  const rows = await callJson<NominatimRow[]>('Address search', `${baseUrl.replace(/\/$/, '')}/search?${params}`, {
+    signal: options.signal, headers: { 'user-agent': 'fleet-erp (self-hosted transport software; place search)' },
+  });
+  return (rows ?? []).map((r) => {
+    const a = r.address ?? {};
+    return {
+      name: r.name || r.display_name.split(',')[0]!.trim(), address: r.display_name, lat: Number(r.lat), lng: Number(r.lon),
+      city: a.city ?? a.town ?? a.municipality ?? a.village ?? a.suburb, region: a.state ?? a.county ?? a.region,
+      countryCode: a.country_code?.toUpperCase(),
+    };
+  });
+}
+
+async function mapboxSearch(token: string, query: string, options: { countryCode?: string; signal?: AbortSignal }): Promise<PlaceHit[]> {
+  const params = new URLSearchParams({ q: query, limit: String(SEARCH_LIMIT), access_token: token });
+  if (options.countryCode) params.set('country', options.countryCode.toLowerCase());
+  const body = await callJson<{ features?: Array<{ properties: { name?: string; full_address?: string; coordinates: { latitude: number; longitude: number }; context?: Record<string, { name?: string; country_code?: string }> } }> }>('Mapbox', `https://api.mapbox.com/search/geocode/v6/forward?${params}`, { signal: options.signal });
+  return (body.features ?? []).map(({ properties: p }) => ({
+    name: p.name ?? p.full_address ?? '', address: p.full_address ?? p.name ?? '', lat: p.coordinates.latitude, lng: p.coordinates.longitude,
+    city: p.context?.place?.name, region: p.context?.region?.name, countryCode: p.context?.country?.country_code?.toUpperCase(),
+  }));
+}
+
+async function googleSearch(key: string, query: string, options: { countryCode?: string; signal?: AbortSignal }): Promise<PlaceHit[]> {
+  const params = new URLSearchParams({ address: query, key });
+  if (options.countryCode) params.set('components', `country:${options.countryCode}`);
+  const body = await callJson<{ status?: string; error_message?: string; results?: Array<{ formatted_address: string; geometry: { location: { lat: number; lng: number } }; address_components: Array<{ long_name: string; short_name: string; types: string[] }> }> }>('Google Maps', `https://maps.googleapis.com/maps/api/geocode/json?${params}`, { signal: options.signal });
+  if (body.status && !['OK', 'ZERO_RESULTS'].includes(body.status)) throw new Error(`Google Maps could not search (${body.status}${body.error_message ? `: ${body.error_message}` : ''})`);
+  return (body.results ?? []).slice(0, SEARCH_LIMIT).map((r) => {
+    const part = (type: string) => r.address_components.find((c) => c.types.includes(type));
+    return {
+      name: r.formatted_address.split(',')[0]!.trim(), address: r.formatted_address, lat: r.geometry.location.lat, lng: r.geometry.location.lng,
+      city: part('locality')?.long_name ?? part('postal_town')?.long_name, region: part('administrative_area_level_1')?.long_name, countryCode: part('country')?.short_name,
+    };
+  });
+}
+
 /** Today's behaviour: a straight line between stops, times the company's road distance factor. */
 registerProvider({
   kind: 'routing', key: 'straight-line', label: 'Straight line', simulated: true,
   description: "No map service: the straight line between stops, times a road factor. Maps draw straight lines. The routes master's distances still win.",
-  fields: z.strictObject({ roadFactor: z.number().min(1).max(3).default(1.28), averageSpeedKmh: z.number().min(10).max(120).default(62) }),
-  labels: { roadFactor: 'Road distance factor', averageSpeedKmh: 'Average speed (km/h)' },
-  hints: { roadFactor: 'Road kilometres per straight-line kilometre; 1.28 suits most of Southern Africa' },
+  fields: z.strictObject({ roadFactor: z.number().min(1).max(3).default(1.28), averageSpeedKmh: z.number().min(10).max(120).default(62), searchUrl: searchUrlField }),
+  labels: { roadFactor: 'Road distance factor', averageSpeedKmh: 'Average speed (km/h)', searchUrl: SEARCH_LABEL },
+  hints: { roadFactor: 'Road kilometres per straight-line kilometre; 1.28 suits most of Southern Africa', searchUrl: SEARCH_HINT },
   test: async (ctx) => tested(async (p) => straight(p, ctx.settings)),
-  open: (ctx) => ({ route: async (points) => straight(points, ctx.settings) }),
+  open: (ctx) => ({ route: async (points) => straight(points, ctx.settings), search: (q, o) => nominatim(searchUrlOf(ctx.settings), q, o) }),
 });
 
 function straight(points: LatLng[], settings: Record<string, unknown>): RouteAnswer {
@@ -49,11 +109,11 @@ function straight(points: LatLng[], settings: Record<string, unknown>): RouteAns
 registerProvider({
   kind: 'routing', key: 'osrm', label: 'OSRM',
   description: 'Open-source routing on OpenStreetMap roads, from a server you run or a hosted one.',
-  fields: z.strictObject({ baseUrl: z.url().refine((u) => /^https?:\/\//.test(u), 'An http or https address') }),
-  labels: { baseUrl: 'Server address' },
-  hints: { baseUrl: 'e.g. https://router.project-osrm.org (the public demo, for trying only)' },
+  fields: z.strictObject({ baseUrl: z.url().refine((u) => /^https?:\/\//.test(u), 'An http or https address'), searchUrl: searchUrlField }),
+  labels: { baseUrl: 'Server address', searchUrl: SEARCH_LABEL },
+  hints: { baseUrl: 'e.g. https://router.project-osrm.org (the public demo, for trying only)', searchUrl: SEARCH_HINT },
   test: async (ctx) => tested((p) => osrm(String(ctx.settings.baseUrl), p)),
-  open: (ctx) => ({ route: (points, signal) => osrm(String(ctx.settings.baseUrl), points, signal) }),
+  open: (ctx) => ({ route: (points, signal) => osrm(String(ctx.settings.baseUrl), points, signal), search: (q, o) => nominatim(searchUrlOf(ctx.settings), q, o) }),
 });
 
 async function osrm(baseUrl: string, points: LatLng[], signal?: AbortSignal): Promise<RouteAnswer> {
@@ -71,7 +131,7 @@ registerProvider({
   fields: z.strictObject({}),
   secrets: [{ key: 'accessToken', label: 'Access token', required: true }],
   test: async (ctx) => tested((p) => mapbox(ctx.secret('accessToken')!, p)),
-  open: (ctx) => ({ route: (points, signal) => mapbox(ctx.secret('accessToken')!, points, signal) }),
+  open: (ctx) => ({ route: (points, signal) => mapbox(ctx.secret('accessToken')!, points, signal), search: (q, o) => mapboxSearch(ctx.secret('accessToken')!, q, o) }),
 });
 
 async function mapbox(token: string, points: LatLng[], signal?: AbortSignal): Promise<RouteAnswer> {
@@ -89,7 +149,7 @@ registerProvider({
   fields: z.strictObject({}),
   secrets: [{ key: 'apiKey', label: 'API key', required: true }],
   test: async (ctx) => tested((p) => google(ctx.secret('apiKey')!, p)),
-  open: (ctx) => ({ route: (points, signal) => google(ctx.secret('apiKey')!, points, signal) }),
+  open: (ctx) => ({ route: (points, signal) => google(ctx.secret('apiKey')!, points, signal), search: (q, o) => googleSearch(ctx.secret('apiKey')!, q, o) }),
 });
 
 async function google(key: string, points: LatLng[], signal?: AbortSignal): Promise<RouteAnswer> {
