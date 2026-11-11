@@ -53,6 +53,24 @@ const routePoint = (stops: RouteStop[], kind: "load" | "offload") => stops.find(
 /** The place a leg names, with "" read as the route's loading or offloading point. */
 const placeOf = (leg: DraftLeg, stops: RouteStop[], kind: "pickup" | "drop") => (leg.placeId === "tbc" ? "" : leg.placeId || routePoint(stops, kind === "pickup" ? "load" : "offload"));
 
+/**
+ * The trip's stops built from the rows (#135 Part 1), when no saved route is chosen: the truck's place, every place
+ * something is picked up (in the rows' order), every place something is dropped, and the end at the last drop. A
+ * place that is both a pickup and a drop (C in "C offloads two and loads one") appears as a loading and an offloading
+ * stop. The person can still re-order them in the stop list.
+ */
+export function stopsFromRows(drafts: DraftConsignment[], truckPlaceId: string | undefined): RouteStop[] | null {
+  const loads = [...new Set(drafts.flatMap((d) => d.pickups.map((p) => p.placeId)).filter((x) => x && x !== "tbc"))];
+  const drops = [...new Set(drafts.flatMap((d) => d.drops.map((p) => p.placeId)).filter((x) => x && x !== "tbc"))];
+  if (!loads.length && !drops.length) return null;
+  return [
+    { placeId: truckPlaceId ?? "", kind: "start" },
+    ...loads.map((placeId) => ({ placeId, kind: "load" as const })),
+    ...drops.map((placeId) => ({ placeId, kind: "offload" as const })),
+    { placeId: drops.at(-1) ?? loads.at(-1) ?? truckPlaceId ?? "", kind: "end" },
+  ];
+}
+
 /** What is missing on a row that has something in it, in words, or nothing. */
 export function draftProblem(data: AppData, d: DraftConsignment, n: number): string | undefined {
   if (isEmptyDraft(d)) return undefined;
@@ -148,7 +166,7 @@ export function capacityLine(data: AppData, drafts: DraftConsignment[], stops: R
   };
 }
 
-export function ConsignmentRows({ data, value, stops, onChange, seesMoney }: { data: AppData; value: DraftConsignment[]; stops: RouteStop[]; onChange: (next: DraftConsignment[]) => void; seesMoney: boolean }) {
+export function ConsignmentRows({ data, value, stops, onChange, seesMoney, routeChosen }: { data: AppData; value: DraftConsignment[]; stops: RouteStop[]; onChange: (next: DraftConsignment[]) => void; seesMoney: boolean; routeChosen: boolean }) {
   const rules = data.settings.freight;
   const one = wl(data, "consignment");
   const canAdd = !rules.maxConsignmentsPerTrip || value.length < rules.maxConsignmentsPerTrip;
@@ -158,14 +176,16 @@ export function ConsignmentRows({ data, value, stops, onChange, seesMoney }: { d
   const dropAt = data.places.find((p) => p.id === routePoint(stops, "offload"))?.name;
   const onRoute = stops.filter((s) => s.placeId && s.kind !== "start" && s.kind !== "end");
   const others = data.places.filter((p) => !onRoute.some((s) => s.placeId === p.id));
+  // With a saved route, an empty choice is the route's own point; with none, the rows build the route.
+  const fromRows = !routeChosen;
   const placeOptions = (kind: "pickup" | "drop") => (
     <>
-      <option value="">{kind === "pickup" ? `The route's loading point${loadAt ? ` (${loadAt})` : ""}` : `The route's offloading point${dropAt ? ` (${dropAt})` : ""}`}</option>
+      <option value="">{fromRows ? "Choose a place…" : kind === "pickup" ? `The route's loading point${loadAt ? ` (${loadAt})` : ""}` : `The route's offloading point${dropAt ? ` (${dropAt})` : ""}`}</option>
       {kind === "drop" && <option value="tbc">To be confirmed</option>}
-      <optgroup label="On the route">
+      <optgroup label={fromRows ? "Already on this trip" : "On the route"}>
         {onRoute.map((s, i) => <option key={`${s.placeId}-${i}`} value={s.placeId}>{data.places.find((p) => p.id === s.placeId)?.name ?? "—"}</option>)}
       </optgroup>
-      <optgroup label="Another place (becomes a stop)">
+      <optgroup label={fromRows ? "Places" : "Another place (becomes a stop)"}>
         {others.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
       </optgroup>
     </>

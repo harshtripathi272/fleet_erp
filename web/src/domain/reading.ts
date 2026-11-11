@@ -47,7 +47,11 @@ export function readDocument(
     };
   }
   if (!trip) return {};
-  const product = byId(data.products, trip.productId) ?? data.products.find((p) => p.kind === "fuel")!;
+  // The trip's product, else the goods of its first consignment still to load (#135: goods are on consignments now),
+  // else any fuel, else any product. A company with no products has nothing to read.
+  const waiting = data.cns.find((c) => c.tripId === trip.id && c.legs.some((l) => l.kind === "pickup" && l.status === "planned"));
+  const product = byId(data.products, trip.productId) ?? byId(data.products, waiting?.lines[0]?.productId) ?? data.products.find((p) => p.kind === "fuel") ?? data.products[0];
+  if (!product) return {};
   const trailer = byId(data.trailers, trip.trailerId);
   const load = trip.stops.find((s) => s.kind === "load");
   if (kind === "loading") {

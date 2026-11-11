@@ -14,7 +14,7 @@ import { StopEditor } from "./stages";
 import { MiniRoute } from "../tracking/MiniRoute";
 import { wl } from "../domain/words";
 import { AddNew, FirstTripSteps } from "./firstTrip";
-import { capacityLine, ConsignmentRows, consignmentBody, draftConsignment, draftProblem, isEmptyDraft, type DraftConsignment } from "../consignments/ConsignmentRows";
+import { capacityLine, ConsignmentRows, consignmentBody, draftConsignment, draftProblem, isEmptyDraft, stopsFromRows, type DraftConsignment } from "../consignments/ConsignmentRows";
 
 /** Truck first: pick the truck, its driver and trailer follow, the route starts where it stands. */
 export function NewTrip({ open, onClose, onCreated }: { open: boolean; onClose: () => void; onCreated: (id: string) => void }) {
@@ -30,6 +30,8 @@ export function NewTrip({ open, onClose, onCreated }: { open: boolean; onClose: 
   const [customerId, setCustomerId] = useState(data.customers[0]?.id ?? "");
   const [routeId, setRouteId] = useState("");
   const [stops, setStops] = useState<RouteStop[]>([]);
+  // Without a saved route the rows build the stops (#135 Part 1), until the person changes the stop list by hand.
+  const [stopsByHand, setStopsByHand] = useState(false);
   const [drafts, setDrafts] = useState<DraftConsignment[]>(() => [draftConsignment(data.baseCurrency?.id)]);
   const [start, setStart] = useState(() => localInput(new Date(Date.now() + data.settings.clockOffsetMs + 36e5 * 2).toISOString()));
   useEffect(() => {
@@ -37,6 +39,7 @@ export function NewTrip({ open, onClose, onCreated }: { open: boolean; onClose: 
     setTruckId("");
     setRouteId("");
     setStops([]);
+    setStopsByHand(false);
     setDrafts([draftConsignment(data.baseCurrency?.id)]);
     setStart(localInput(new Date(Date.now() + data.settings.clockOffsetMs + 36e5 * 2).toISOString()));
   }, [open, data.settings.clockOffsetMs]);
@@ -51,9 +54,21 @@ export function NewTrip({ open, onClose, onCreated }: { open: boolean; onClose: 
   };
   const pickRoute = (id: string) => {
     setRouteId(id);
+    setStopsByHand(false);
     const r = byId(data.routes, id);
     if (r && truck) {
       setStops(stopsFromTruck(r.stops, truck));
+    } else if (!id) {
+      // Back to no saved route: the rows build the stops again.
+      const built = stopsFromRows(drafts, truck?.placeId);
+      if (built) setStops(built);
+    }
+  };
+  const changeDrafts = (next: DraftConsignment[]) => {
+    setDrafts(next);
+    if (!routeId && !stopsByHand) {
+      const built = stopsFromRows(next, truck?.placeId);
+      if (built) setStops(built);
     }
   };
   const problem = validateStops(stops);
@@ -181,12 +196,13 @@ export function NewTrip({ open, onClose, onCreated }: { open: boolean; onClose: 
                 </select>
               </Field>
             </div>
-            <ConsignmentRows data={data} value={drafts} stops={stops} onChange={setDrafts} seesMoney={can(me, "consignment-revenue", "sensitive")} />
+            <ConsignmentRows data={data} value={drafts} stops={stops} onChange={changeDrafts} seesMoney={can(me, "consignment-revenue", "sensitive")} routeChosen={Boolean(routeId)} />
             {onBoard.text && <p className="framed-line">{onBoard.text}</p>}
             {onBoard.note && <p className="muted">{onBoard.note}</p>}
             {onBoard.over.map((o) => <p key={o} className="form-problem">{o}{onBoard.refuse ? " Lower a quantity, or choose a bigger truck." : ""}</p>)}
             {cargoProblem && <p className="form-problem">{cargoProblem}</p>}
-            <StopEditor stops={stops} onChange={setStops} startLocked={truck.placeId || undefined} />
+            <StopEditor stops={stops} onChange={(next) => { setStops(next); setStopsByHand(true); }} startLocked={truck.placeId || undefined} />
+            {!routeId && !stopsByHand && <p className="muted">The stops follow the {wl(data, "consignment", true)} above. Change them here to set the order by hand.</p>}
             <AddNew master="places" what="place" />
             {preview && stops.find((x) => x.kind === "load")?.placeId === stops.find((x) => x.kind === "offload")?.placeId && (
               <p className="muted">Loading and offloading are at the same place. Check that's right.</p>
