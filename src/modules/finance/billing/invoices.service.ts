@@ -12,7 +12,12 @@ import { applyRate } from '../finance.service.js';
 import { billingSettings } from '../settings.service.js';
 import { Invoice } from './billing.model.js';
 import type * as S from './billing.schema.js';
-import { currencyUnits, invoiceCurrencyOf, priceTrip, rateFor, rateOrRefuse, termsOf, totalLine, totals, type Line, type PricedLine } from './pricing.js';
+import {
+  consignmentCurrency, consignmentLines, consignmentProblem, currencyUnits, invoiceCurrencyOf, priceTrip, pricedByConsignments, rateFor, rateOrRefuse,
+  termsOf, totalLine, totals, tripConsignments, tripCustomers, type Line, type PricedLine,
+} from './pricing.js';
+import { Consignment } from '../../operations/models/cargo.model.js';
+import { markInvoiced } from '../../freight/pricing.js';
 
 /**
  * Invoices and credit notes (#61). Drafts are priced from closed trips and can be edited; approving one numbers
@@ -24,41 +29,60 @@ const day = (d = new Date()) => new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMo
 const addDays = (d: Date, n: number) => new Date(d.getTime() + n * 86_400_000);
 const NOT_CANCELLED = { status: { $ne: 'cancelled' } };
 
-/** Trips already on an invoice that isn't cancelled. */
-async function billedTripIds(tripIds: unknown[]) {
-  const invoices = await Invoice.find({ kind: 'invoice', ...NOT_CANCELLED, tripIds: { $in: tripIds } }).select('tripIds').lean() as Plain[];
-  return new Set(invoices.flatMap((i) => (i.tripIds as unknown[]).map(String)));
+/** Each trip and customer already on an invoice that isn't cancelled, as `trip:customer`. */
+async function billedPairs(tripIds?: unknown[]) {
+  const invoices = await Invoice.find({ kind: 'invoice', ...NOT_CANCELLED, ...(tripIds ? { tripIds: { $in: tripIds } } : {}) }).select('tripIds customerId').lean() as Plain[];
+  return new Set(invoices.flatMap((i) => (i.tripIds as unknown[]).map((t) => `${t}:${i.customerId}`)));
 }
 
 const CLOSED = { endedAt: { $exists: true }, cancelledAt: { $exists: false } };
 
-/** Closed trips with no invoice yet, oldest first, each with why it can't be drafted when it can't. */
-export async function unbilledTrips(query: S.UnbilledQuery) {
-  const filter: Plain = { ...CLOSED, ...(query.customerId ? { customerId: query.customerId } : {}) };
-  const billed = await Invoice.distinct('tripIds', { kind: 'invoice', ...NOT_CANCELLED });
-  filter._id = { $nin: billed };
-  const [rows, total] = await Promise.all([
-    Trip.find(filter).sort({ endedAt: 1 }).skip((query.page - 1) * query.limit).limit(query.limit).lean(),
-    Trip.countDocuments(filter),
-  ]);
-  const data = [];
-  for (const t of rows as Plain[]) {
-    const problem = await rateFor(t).then(() => undefined, (err: Error) => err.message);
-    data.push({ id: String(t._id), number: t.number, customerId: String(t.customerId), customer: await partyName(t.customerId), nominationId: t.nominationId ? String(t.nominationId) : undefined, endedAt: t.endedAt, ...(problem ? { problem } : {}) });
+/** One trip billed to one customer: with consignments, a trip may bill several customers (#135). */
+interface Entry { trip: Plain; customerId: string }
+
+/** The trips' customers not yet invoiced: each consignment's customer, else the trip's own. */
+async function entriesOf(trips: Plain[], billed: Set<string>, customerId?: string) {
+  const open: Entry[] = [];
+  const done: Plain[] = [];
+  for (const trip of trips) {
+    const customers = (await tripCustomers(trip)).filter((c) => !customerId || c === customerId);
+    const left = customers.filter((c) => !billed.has(`${trip._id}:${c}`));
+    if (customers.length && !left.length) done.push(trip);
+    for (const c of left) open.push({ trip, customerId: c });
   }
-  return { data, page: query.page, limit: query.limit, total };
+  return { open, done };
+}
+
+/** Why one customer's part of a trip can't be drafted, or nothing. */
+async function problemOf(e: Entry) {
+  if (await pricedByConsignments(e.trip._id)) return consignmentProblem(await tripConsignments(e.trip._id, e.customerId));
+  return rateFor(e.trip).then(() => undefined, (err: Error) => err.message);
+}
+
+/** Closed trips with no invoice yet (one row per trip and customer), oldest first, each with why it can't be drafted when it can't. */
+export async function unbilledTrips(query: S.UnbilledQuery) {
+  const customerFilter = query.customerId ? { $or: [{ customerId: query.customerId }, { _id: { $in: await Consignment.distinct('tripId', { customerId: query.customerId }) } }] } : {};
+  const trips = await Trip.find({ ...CLOSED, ...customerFilter }).sort({ endedAt: 1 }).lean() as Plain[];
+  const { open } = await entriesOf(trips, await billedPairs(), query.customerId);
+  const page = open.slice((query.page - 1) * query.limit, query.page * query.limit);
+  const data = [];
+  for (const e of page) {
+    const problem = await problemOf(e);
+    data.push({ id: String(e.trip._id), number: e.trip.number, customerId: e.customerId, customer: await partyName(e.customerId), nominationId: e.trip.nominationId ? String(e.trip.nominationId) : undefined, endedAt: e.trip.endedAt, ...(problem ? { problem } : {}) });
+  }
+  return { data, page: query.page, limit: query.limit, total: open.length };
 }
 
 interface Group { customerId: string; nominationId?: unknown; trips: Plain[] }
 
-/** Which trips go on one invoice, by Money settings → Invoice from. */
-function groupTrips(trips: Plain[], from: string): Group[] {
+/** Which trips go on one invoice, by Money settings → Invoice from. Always one customer per invoice. */
+function groupTrips(entries: Entry[], from: string): Group[] {
   const groups = new Map<string, Group>();
-  for (const t of trips) {
-    const key = from === 'trip' ? String(t._id)
-      : from === 'nomination' ? `${t.customerId}:${t.nominationId ?? t._id}`
-        : String(t.customerId);
-    const g = groups.get(key) ?? { customerId: String(t.customerId), nominationId: from === 'nomination' ? t.nominationId : undefined, trips: [] };
+  for (const { trip: t, customerId } of entries) {
+    const key = from === 'trip' ? `${t._id}:${customerId}`
+      : from === 'nomination' ? `${customerId}:${t.nominationId ?? t._id}`
+        : customerId;
+    const g = groups.get(key) ?? { customerId, nominationId: from === 'nomination' ? t.nominationId : undefined, trips: [] };
     g.trips.push(t);
     groups.set(key, g);
   }
@@ -67,24 +91,25 @@ function groupTrips(trips: Plain[], from: string): Group[] {
 
 /**
  * Drafts invoices from closed trips: the trips given, or every closed trip not yet invoiced (for one customer).
- * Each trip goes on one invoice, one per trip, per nomination (once all its trips are closed) or per customer,
- * by Money settings. A trip that can't be priced is listed with the reason, and the others are still drafted.
+ * Each trip and customer goes on one invoice, one per trip, per nomination (once all its trips are closed) or per
+ * customer, by Money settings. A trip with consignments is priced from each consignment's own revenue; one without,
+ * from the customer rate table. A trip that can't be priced is listed with the reason, and the others are still drafted.
  */
 export async function draftInvoices(input: S.DraftInvoicesInput, ctx: OpsContext) {
   need(ctx, 'invoices', 'create');
   const settings = await billingSettings();
   const date = input.date ?? day();
-  const filter: Plain = input.tripIds ? { _id: { $in: input.tripIds } } : { ...CLOSED, ...(input.customerId ? { customerId: input.customerId } : {}) };
+  const filter: Plain = input.tripIds ? { _id: { $in: input.tripIds } } : { ...CLOSED, ...(input.customerId ? { $or: [{ customerId: input.customerId }, { _id: { $in: await Consignment.distinct('tripId', { customerId: input.customerId }) } }] } : {}) };
   const trips = await Trip.find(filter).sort({ endedAt: 1 }).limit(500).lean() as Plain[];
   if (input.tripIds && trips.length !== new Set(input.tripIds).size) throw new NotFoundError('Trip not found');
-  const billed = await billedTripIds(trips.map((t) => t._id));
   const skipped: Array<{ tripId: string; number: unknown; reason: string }> = [];
-  const open: Plain[] = [];
+  const closed: Plain[] = [];
   for (const t of trips) {
-    if (billed.has(String(t._id))) { if (input.tripIds) skipped.push({ tripId: String(t._id), number: t.number, reason: `${t.number} is already invoiced.` }); continue; }
     if (!t.endedAt || t.cancelledAt) { skipped.push({ tripId: String(t._id), number: t.number, reason: `${t.number} isn't closed yet.` }); continue; }
-    open.push(t);
+    closed.push(t);
   }
+  const { open, done } = await entriesOf(closed, await billedPairs(closed.map((t) => t._id)), input.customerId);
+  if (input.tripIds) for (const t of done) skipped.push({ tripId: String(t._id), number: t.number, reason: `${t.number} is already invoiced.` });
   const drafted: Plain[] = [];
   for (const group of groupTrips(open, settings.invoiceFrom)) {
     if (group.nominationId) {
@@ -107,9 +132,15 @@ export async function draftInvoices(input: S.DraftInvoicesInput, ctx: OpsContext
 async function draftFor(group: Group, date: Date, settings: Awaited<ReturnType<typeof billingSettings>>, ctx: OpsContext) {
   await customerParty(group.customerId);
   const terms = await termsOf(group.customerId);
-  const currencyId = invoiceCurrencyOf(terms, await rateFor(group.trips[0]!));
+  const first = group.trips[0]!;
+  const byConsignments = await pricedByConsignments(first._id);
+  const currencyId = terms?.currencyId ? String(terms.currencyId)
+    : byConsignments ? consignmentCurrency(await tripConsignments(first._id, group.customerId)) ?? String((await baseCurrency()).id)
+      : invoiceCurrencyOf(terms, await rateFor(first));
   const lines: PricedLine[] = [];
-  for (const trip of group.trips) lines.push(...await priceTrip(trip, currencyId, date, settings));
+  for (const trip of group.trips) {
+    lines.push(...(await pricedByConsignments(trip._id) ? await consignmentLines(trip, group.customerId, currencyId, date, settings) : await priceTrip(trip, currencyId, date, settings)));
+  }
   const priced = lines.map((l) => totalLine(l, settings.pricesIncludeTax));
   const sums = totals(priced, settings.pricesIncludeTax);
   if (sums.totalMinor < 0) throw refuse(`The deductions on ${group.trips.map((t) => t.number).join(', ')} are more than the charges.`);
@@ -253,6 +284,8 @@ export async function approveInvoice(id: string, version: number, ctx: OpsContex
     updatedBy: ctx.actorId,
   });
   await save(doc, 'This number is already taken. Try again.');
+  // Its consignments' prices are now fixed: they can't be repriced, and the trip's profit can become final (#135).
+  if (!isCredit) await markInvoiced([...new Set(((doc.get('lines') ?? []) as Plain[]).map((l) => l.consignmentId).filter(Boolean).map(String))], doc._id);
   if (original) {
     // What the credit takes off, in the invoice's currency and at its rate; the invoice cannot go below zero.
     const updated = await Invoice.findOneAndUpdate(
