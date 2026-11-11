@@ -440,7 +440,7 @@ describe('a rate agreed on the consignment (#135 Part 1)', () => {
 describe('the A-to-E trip of #135 Part 1, made entirely from New trip', () => {
   test('A loads four, B loads two more, C offloads two and loads one, D offloads some, E the rest; priced at agreed rates; run to the end', async () => {
     // A Dar es Salaam, B Nakonde, C Ndola, D Kasumbalesa, E Lusaka depot (the truck starts and ends at the depot).
-    const [A, B, C, D, E] = [ids.dar, ids.nakonde, ids.ndola, ids.kasumbalesa, ids.depot];
+    const [A, B, C, D, E] = [ids.dar!, ids.nakonde!, ids.ndola!, ids.kasumbalesa!, ids.depot!];
     const rate = (minor: number) => ({ basis: 'per_consignment', price: { amountMinor: minor, currencyId: ids.usd } });
     const cn = (from: string, to: string, n: number) => ({
       consignmentTypeId: ids.bulk, lines: [{ productId: ids.diesel, plannedQty: 4000 }], consignee: { name: `Depot ${n}`, phone: `+26097700010${n}` },
