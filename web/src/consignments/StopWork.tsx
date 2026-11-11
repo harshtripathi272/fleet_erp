@@ -11,6 +11,7 @@ import type { DriverDoc, Product, Stop, Trip } from "../domain/types";
 import { Button, Empty, Field, Status, UnitInput } from "../ui/kit";
 import { clockTime, day, hoursText, num } from "../ui/format";
 import { DocHeader, DocPhoto, ReturnDoc, UploadDoc } from "../desks/stages";
+import { usePlacement } from "../desks/usePlacement";
 import { CN_STATUS_LABEL, cnStatusTone, maySplit, type Cn, type CnLeg } from "./model";
 import { ConsignmentDrawer } from "./ConsignmentDrawer";
 import { SplitDelivery } from "./SplitDelivery";
@@ -145,6 +146,8 @@ function RecordLeg({ trip, c, leg, kind, onDone }: { trip: Trip; c: Cn; leg: CnL
   const types = useQuery({ queryKey: ["consignment-document-types"], queryFn: () => api<Rec[]>("/consignment-document-types", { query: { status: "active", limit: 100 } }).catch(() => []) });
   const step = kind === "pickup" ? "pickup" : "drop";
   const offered = (types.data ?? []).filter((t) => t.step === step);
+  // The company's own fields at loading or delivery (Customise), as the single-load form had them (#102).
+  const company = usePlacement("consignments", kind === "pickup" ? "loading" : "delivery", c.custom);
   const [docs, setDocs] = useState<DocForm[]>([{ key: `k${++docKeys}`, documentTypeId: "", number: String(read.docNo ?? ""), date: "", amount: "" }]);
   const [measures, setMeasures] = useState<MeasureForm[]>(() => c.lines.map((l) => ({
     lineId: l.id, qty: "", ambientL: read.ambientL != null ? String(read.ambientL) : "", tempC: read.tempC != null ? String(read.tempC) : "", density: read.density != null ? String(read.density) : "",
@@ -183,10 +186,11 @@ function RecordLeg({ trip, c, leg, kind, onDone }: { trip: Trip; c: Cn; leg: CnL
       ...(kind === "pickup" && seals.trim() ? { sealNos: seals.split(",").map((s) => s.trim()).filter(Boolean) } : {}),
       ...(kind === "drop" && (pod.number.trim() || pod.receivedBy.trim()) ? { pod: Object.fromEntries(Object.entries({ number: pod.number.trim() || undefined, receivedBy: pod.receivedBy.trim() || undefined, receivedAt: pod.receivedAt ? new Date(pod.receivedAt).toISOString() : undefined, remarks: pod.remarks.trim() || undefined }).filter(([, v]) => v !== undefined)) } : {}),
       ...(override.trim() ? { override: { reason: override.trim() } } : {}),
+      ...(company.custom ? { custom: company.custom } : {}),
     };
     return out;
-  }, [measures, docs, photo, seals, pod, override, kind, base]); // eslint-disable-line react-hooks/exhaustive-deps
-  const ready = (body.measures as Rec[]).length > 0;
+  }, [measures, docs, photo, seals, pod, override, kind, base, company.custom]); // eslint-disable-line react-hooks/exhaustive-deps
+  const ready = (body.measures as Rec[]).length > 0 && company.ready;
 
   const record = async () => {
     setBusy(true);
@@ -260,6 +264,7 @@ function RecordLeg({ trip, c, leg, kind, onDone }: { trip: Trip; c: Cn; leg: CnL
             <Field label="Remarks on the paper"><input value={pod.remarks} placeholder="2 bags torn" onChange={(e) => setPod({ ...pod, remarks: e.target.value })} /></Field>
           </section>
         )}
+        {company.block}
         {problem && (
           <div className="form-problem" role="alert">
             {problem}
