@@ -68,8 +68,11 @@ function nextUpload(trip: Plain, consignments: Plain[], docs: Plain[]): 'loading
 /* ---------- Which consignment each paper is for (#135 Part 2) ---------- */
 
 type PaperType = GateDocType & { code?: string; requiredBy?: string };
-/** The papers a driver is always asked for: the loading invoice at a pickup, the delivery note and POD at a drop. */
-const USUAL = new Set(['LOADING_INVOICE', 'DELIVERY_NOTE', 'POD']);
+/**
+ * The papers a driver is always asked for: the loading invoice at a pickup, and one paper at a drop, the proof of
+ * delivery (a signed delivery note is the same paper). Any other paper a stop or invoice waits for is added.
+ */
+const USUAL = new Set(['LOADING_INVOICE', 'POD']);
 /** The papers a driver sends at a pickup or a drop: the ones a stop waits for, and the usual invoice, delivery note and POD. */
 export async function paperTypes(): Promise<PaperType[]> {
   return (await ConsignmentDocumentType.find({ status: 'active', step: { $in: ['pickup', 'drop'] } }).select('name step driverKind code requiredBy').lean()) as unknown as PaperType[];

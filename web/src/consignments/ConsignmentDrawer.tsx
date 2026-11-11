@@ -456,7 +456,7 @@ function Timeline({ data, c }: { data: ReturnType<typeof useApp>["data"]; c: Cn 
   const stopOf = (stopId: string | null) => trip?.stops.find((s) => s.id === stopId);
   const when = (iso?: string | null) => (iso ? `${day(iso)} ${clockTime(iso)}` : "—");
   const unit = c.lines[0]?.unit ?? "";
-  const usual = new Set(["LOADING_INVOICE", "DELIVERY_NOTE", "POD"]);
+  const usual = new Set(["LOADING_INVOICE", "POD"]);
   const papersFor = (l: CnLeg) => {
     const step = l.kind === "pickup" ? "pickup" : "drop";
     const asked = (types.data ?? []).filter((t) => t.step === step && (usual.has(String(t.code)) || (t.requiredBy && t.requiredBy !== "none")));
