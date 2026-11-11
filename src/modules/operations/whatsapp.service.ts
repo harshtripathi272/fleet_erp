@@ -15,7 +15,7 @@ import { upload } from '../files/files.service.js';
 import { noteReply } from '../messaging/whatsapp/service.js';
 import { User } from '../users/user.model.js';
 import { redeem, redeemByLabel } from './actionTokens.js';
-import { decideShortage, markDone, returnDocument, sendDocument } from './cargo.service.js';
+import { acknowledgeDocument, decideShortage, markDone, returnDocument, sendDocument } from './cargo.service.js';
 import { recordDelivery, recordLoading } from './consignments.service.js';
 import { decideExpense, recordExpense } from './expenses.service.js';
 import { decideRequest, issueRequest } from './funding.service.js';
@@ -39,8 +39,9 @@ export async function simulate(input: S.SimulateInput, ctx: OpsContext) {
   const as = { ...ctx, asDriver: true, simulated: true };
   // The simulated phone behaves as WhatsApp does: a reply to the bot's question answers it (#135 Part 2).
   if (!input.file && (await answerAboutPhoto(input.driverId, input.text, as))) return { answered: true };
-  const doc = await sendDocument({ driverId: input.driverId, tripId, kind: input.kind ?? 'other', note: input.text, file: input.file, reading: input.reading, channel: 'whatsapp' }, as);
-  await sortOutPhoto(doc as Plain, as);
+  const doc = await sendDocument({ driverId: input.driverId, tripId, kind: input.kind ?? 'other', note: input.text, file: input.file, reading: input.reading, channel: 'whatsapp', holdReply: true }, as);
+  // One reply per photo (#102): the consignment it was filed on, the question about it, or else the usual one.
+  if (!(await sortOutPhoto(doc as Plain, as))) await acknowledgeDocument(input.driverId, input.kind ?? 'other', (doc as Plain).reading as Plain | undefined, new Date(), as);
   return doc;
 }
 
@@ -51,8 +52,8 @@ async function fileDriverMessage(driver: { _id: unknown; name?: unknown }, messa
   const ctx = { ...driverContext(String(driver.name)), driverId: String(driver._id) };
   // A reply to the bot's question about a photo answers it, rather than being filed as a message (#135 Part 2).
   if (!message.file && (await answerAboutPhoto(driver._id, message.text, ctx))) return { id: undefined };
-  const doc = await sendDocument({ driverId: String(driver._id), tripId, kind: message.kind ?? 'other', note: message.text, file: message.file, channel: 'whatsapp' }, ctx);
-  await sortOutPhoto(doc as Plain, ctx);
+  const doc = await sendDocument({ driverId: String(driver._id), tripId, kind: message.kind ?? 'other', note: message.text, file: message.file, channel: 'whatsapp', holdReply: true }, ctx);
+  if (!(await sortOutPhoto(doc as Plain, ctx))) await acknowledgeDocument(driver._id, message.kind ?? 'other', (doc as Plain).reading as Plain | undefined, new Date(), ctx);
   return doc;
 }
 

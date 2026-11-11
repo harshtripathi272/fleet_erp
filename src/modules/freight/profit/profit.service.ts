@@ -193,6 +193,12 @@ export async function tripProfit(tripId: string) {
   const days = start ? Math.max(1, Math.ceil(((trip.endedAt ? new Date(trip.endedAt as string) : new Date()).getTime() - start.getTime()) / DAY)) : 0;
   const allFrozen = consignments.every((c) => ['frozen', 'invoiced'].includes(String((c.revenue as Plain | undefined)?.status)));
   const status = !ended ? 'estimate' : trip.settlementId && allFrozen && complete ? 'final' : 'provisional';
+  // A settled trip stays provisional while a price can still change: say which, and what fixes it (#102).
+  if (status === 'provisional' && trip.settlementId) {
+    const open = consignments.filter((c) => !['frozen', 'invoiced'].includes(String((c.revenue as Plain | undefined)?.status))).map((c) => String(c.number));
+    if (open.length) warnings.push(`Provisional until the prices are fixed: ${open.join(', ')} can still be repriced. A price is fixed when it is invoiced, or on delivery if Company → Freight says so, or by Freeze on the consignment.`);
+    else if (!complete) warnings.push('Provisional until every pickup and drop is recorded.');
+  }
   const cashBudget = trip.cashBudget ? (await toBase(Number((trip.cashBudget as Plain).amountMinor ?? 0), (trip.cashBudget as Plain).currencyId)).baseMinor : 0;
   const result = {
     status, complete, currency: base,

@@ -540,6 +540,8 @@ describe('the driver says which consignment each paper is for (#135 Part 2)', ()
     for (let n = 1; n <= 4; n++) {
       const sent = ok(await as(ops).post('/whatsapp/simulate', photo(n)), 201);
       const asked = (await driverMessages()).at(-1)!;
+      // One reply per photo (#102): the question or the filing, not a "Got your …" before it as well.
+      assert.doesNotMatch(String((await driverMessages()).at(-2)?.text ?? ''), /^Got your/, `photo ${n} gets one reply`);
       if (n < 4) {
         assert.match(asked.text, /Which consignment is this loading invoice for\? Reply with the number/);
         assert.equal(asked.text.split('\n').length - 1, 5 - n, 'only the consignments still needing an invoice');
