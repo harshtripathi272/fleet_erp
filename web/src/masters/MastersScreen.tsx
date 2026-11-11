@@ -11,6 +11,8 @@ import { Button, ChoiceChips, Drawer, Empty, Field, FieldGroup, Status, Switch, 
 import { WorkspacePanel } from "./WorkspacePanel";
 import { InstallationPanel } from "./Installation";
 import { CompanyPanel } from "./CompanyPanel";
+import { FreightSettings } from "./FreightSettings";
+import { TariffEditor } from "./TariffEditor";
 import { DriverAccess } from "./DriverAccess";
 import { UserAccess } from "./UserAccess";
 import { PermissionMatrix } from "./PermissionMatrix";
@@ -128,6 +130,7 @@ export function MastersScreen({ initialEntity, initialId }: { initialEntity?: st
           const pages = [
             { key: "setup", label: "Ready for a first trip", badge: readiness.data?.missing.length ?? 0, show: can(me, "company", "read") },
             { key: "company", label: "Company", show: can(me, "company", "read") },
+            { key: "freight", label: "Freight", show: can(me, "company", "read") },
             { key: "workspace", label: "Words, stages and desks", show: can(me, "company", "read") },
             { key: "installation", label: "This installation", show: can(me, "company", "read") },
             { key: "messaging", label: "Sending messages", show: can(me, "connections", "read") },
@@ -165,6 +168,7 @@ export function MastersScreen({ initialEntity, initialId }: { initialEntity?: st
         <button className="masters-back link-btn" onClick={() => { setBrowsing(true); window.scrollTo({ top: 0 }); }}><ChevronLeft size={16} /> All masters</button>
         {selected === "setup" ? <CompanySetup defs={defs} onOpen={(key) => setSelected(key)} />
           : selected === "company" ? <CompanyPanel />
+          : selected === "freight" ? <FreightSettings />
           : selected === "workspace" ? <WorkspacePanel />
           : selected === "installation" ? <InstallationPanel />
           : selected === "messaging" ? <MessagingSettings onOpenConnections={() => setSelected("connections")} />
@@ -198,6 +202,8 @@ function Records({ def, defs, openId }: { def: Def; defs: Def[]; openId?: string
     queryFn: () => request<Rec[]>(`/${def.key}`, { query: { search: search.trim() || undefined, status: status || undefined, sort, page, limit: 25 } }),
   });
   const columns = listColumns(def);
+  // A tariff's charge lines need the width of the page, not a drawer (design 3.11.9).
+  if (def.key === "tariffs" && open) return <TariffEditor def={def} defs={defs} id={open === "new" ? undefined : open} onClose={() => setOpen(null)} />;
   return (
     <div className="desk">
       <header className="masters-head">
@@ -932,7 +938,7 @@ function useOptions(target: string, defs: Def[], search = "") {
   });
 }
 
-function RefSelect({ target, defs, value, onChange, disabled, partyRoles }: { target: string; defs: Def[]; value: string; onChange: (v: unknown) => void; disabled?: boolean; partyRoles?: string[] }) {
+export function RefSelect({ target, defs, value, onChange, disabled, partyRoles }: { target: string; defs: Def[]; value: string; onChange: (v: unknown) => void; disabled?: boolean; partyRoles?: string[] }) {
   const options = useOptions(target, defs);
   // A field that takes only some parties (a workshop) offers only those: the API refuses the rest.
   const list = (options.data ?? []).filter((o) => !partyRoles || o.roles?.some((r) => partyRoles.includes(r)));
@@ -962,7 +968,7 @@ function RefMulti({ target, defs, value, onChange, disabled }: { target: string;
   );
 }
 
-function RefName({ target, id, defs }: { target: string; id: string; defs: Def[] }) {
+export function RefName({ target, id, defs }: { target: string; id: string; defs: Def[] }) {
   const def = defs.find((d) => d.key === target);
   const rec = useQuery({ queryKey: ["ref", target, id], queryFn: () => api<Rec>(`/${target}/${id}`), enabled: Boolean(def?.permissions?.read), staleTime: 5 * 60_000, retry: false });
   return <>{rec.data ? titleOf(rec.data, def) : `…${id.slice(-6)}`}</>;

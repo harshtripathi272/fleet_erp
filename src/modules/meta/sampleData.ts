@@ -15,6 +15,8 @@ import { ensureDefaultMessages } from '../messaging/defaults.js';
 import { MessageTemplate } from '../messaging/models/messaging.model.js';
 import { Role } from '../roles/role.model.js';
 import { loadSampleHistory } from './sampleHistory.js';
+import { ensureFreightLists } from '../freight/defaults.js';
+import { ChargeType } from '../freight/models/freight.model.js';
 
 /** `small`: the masters with two trucks and two drivers, which the tests build on. `full`: a fleet of ten with trips at every stage. */
 export type SampleSize = 'small' | 'full';
@@ -186,6 +188,14 @@ export async function loadSampleData(actorId?: string, size: SampleSize = 'full'
   await make('advance-policies', 'apRoute', { code: 'ROUTE-BUDGET', name: 'Advance from route budget', basis: 'route_budget', maxAmount: money(10_000_00), capOnCashHeld: money(2_000_00), approvalPolicyId: ids.advanceApproval, paymentMethodIds: [ids.pmCash, ids.pmAirtel] });
   // What a customer pays (#61): Copperbelt Minerals pays per tonne of cathodes, with a minimum per trip.
   await make('customer-rates', 'rateCopper', { code: 'CBM-CATH', name: 'Copperbelt cathodes per tonne', customerId: ids.copper, productId: ids.cuCathodes, basis: 'per_tonne', price: money(42_00, 'USD'), minimumCharge: money(1_200_00, 'USD'), validFrom: days(-365).toISOString().slice(0, 10) });
+  // Freight (#135): the usual consignment types, papers and charge types, and the same rate as a tariff.
+  created += await ensureFreightLists(actorId);
+  const chargeId = async (code: string) => String((await ChargeType.findOne({ code }).select('_id').lean())!._id);
+  await make('tariffs', 'tariffCopper', {
+    code: 'CBM-CATH', name: 'Copperbelt cathodes per tonne', customerId: ids.copper, productId: ids.cuCathodes, currencyId: ids.USD, chargeOn: 'delivered',
+    lines: [{ chargeTypeId: await chargeId('FREIGHT'), basis: 'per_tonne', price: money(42_00, 'USD') }], minimumCharge: money(1_200_00, 'USD'), validFrom: days(-365).toISOString().slice(0, 10),
+  });
+  await make('fuel-prices', 'fuelPriceZm', { code: 'DIESEL-ZM', name: 'Diesel in Zambia', fuelTypeId: ids.diesel, countryId: ids.ZM, pricePerL: money(28_50), validFrom: days(-60).toISOString().slice(0, 10) });
   // The accounts the export posts to (#62).
   for (const [code, name, postsFor] of [
     ['1100', 'Trade debtors', ['receivables']], ['4000', 'Freight income', ['revenue']], ['2200', 'VAT output', ['tax']], ['1000', 'Bank', ['bank']],

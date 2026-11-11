@@ -4,6 +4,9 @@ import type { Request, Response } from 'express';
 import { ApiResponse, buildPaginationMeta } from '../../core/response/index.js';
 import { asyncHandler } from '../../utils/asyncHandler.js';
 import * as Cargo from './cargo.service.js';
+import * as Consignments from './consignments.service.js';
+import * as Report from './report.service.js';
+import * as Stops from './stops.service.js';
 import * as Dashboards from './dashboards.service.js';
 import * as DriverApp from './driverApp.service.js';
 import * as Expenses from './expenses.service.js';
@@ -31,8 +34,11 @@ function sendPdf(res: Response, pdf: { name: string; body: Buffer }) {
 }
 
 /* Trips */
-export const listTrips = asyncHandler(async (req, res) => paged(res, await Trips.listTrips(query(req))));
-export const getTrip = asyncHandler(async (req, res) => ApiResponse.success(res, await Trips.getTrip(param(req))));
+export const listTrips = asyncHandler(async (req, res) => {
+  const page = await Trips.listTrips(query(req));
+  return paged(res, { ...page, data: page.data.map((t) => Dashboards.withoutProfit(t, req.auth!.can)) });
+});
+export const getTrip = asyncHandler(async (req, res) => ApiResponse.success(res, Dashboards.withoutProfit(await Trips.getTrip(param(req)), req.auth!.can)));
 export const createTrip = asyncHandler(async (req, res) => ApiResponse.created(res, await Trips.createTrip(req.body, opsContext(req)), 'Trip created'));
 export const updateTrip = asyncHandler(async (req, res) => ApiResponse.success(res, await Trips.updateTrip(param(req), req.body, opsContext(req)), 'Plan updated'));
 export const cancelTrip = asyncHandler(async (req, res) => ApiResponse.success(res, await Trips.cancelTrip(param(req), req.body, opsContext(req)), 'Trip cancelled'));
@@ -65,10 +71,25 @@ export const getDocument = asyncHandler(async (req, res) => ApiResponse.success(
 export const sendDocument = asyncHandler(async (req, res) => ApiResponse.created(res, await Cargo.sendDocument(req.body, opsContext(req)), 'Document received'));
 export const markDocumentDone = asyncHandler(async (req, res) => ApiResponse.success(res, await Cargo.markDone(param(req), opsContext(req)), 'Done'));
 export const returnDocument = asyncHandler(async (req, res) => ApiResponse.success(res, await Cargo.returnDocument(param(req), req.body, opsContext(req)), 'Returned to the driver'));
-export const listConsignments = asyncHandler(async (req, res) => paged(res, await Cargo.listConsignments(query(req))));
-export const getConsignment = asyncHandler(async (req, res) => ApiResponse.success(res, await Cargo.getConsignment(param(req))));
-export const recordLoading = asyncHandler(async (req, res) => ApiResponse.created(res, await Cargo.recordLoading(req.body, opsContext(req)), 'Loading recorded'));
-export const recordDelivery = asyncHandler(async (req, res) => ApiResponse.success(res, await Cargo.recordDelivery(param(req), req.body, opsContext(req)), 'Delivery recorded'));
+export const listConsignments = asyncHandler(async (req, res) => paged(res, await Consignments.listConsignments(query(req), opsContext(req))));
+export const getConsignment = asyncHandler(async (req, res) => ApiResponse.success(res, await Consignments.getConsignment(param(req), opsContext(req))));
+export const recordLoading = asyncHandler(async (req, res) => ApiResponse.created(res, await Consignments.recordLoading(req.body, opsContext(req)), 'Loading recorded'));
+export const createConsignment = asyncHandler(async (req, res) => ('invoiceNo' in req.body
+  ? ApiResponse.created(res, await Consignments.recordLoading(req.body, opsContext(req)), 'Loading recorded')
+  : ApiResponse.created(res, await Consignments.createConsignment(req.body, opsContext(req)), 'Consignment added')));
+export const updateConsignment = asyncHandler(async (req, res) => ApiResponse.success(res, await Consignments.updateConsignment(param(req), req.body, opsContext(req)), 'Consignment saved'));
+export const putLegs = asyncHandler(async (req, res) => ApiResponse.success(res, await Consignments.putLegs(param(req), req.body, opsContext(req)), 'Pickups and drops saved'));
+export const recordLeg = asyncHandler(async (req, res) => ApiResponse.success(res, await Consignments.recordLeg(param(req), param(req, 'legId'), req.body, opsContext(req)), 'Recorded'));
+export const cancelConsignment = asyncHandler(async (req, res) => ApiResponse.success(res, await Consignments.cancelConsignment(param(req), req.body, opsContext(req)), 'Consignment cancelled'));
+export const attachDocument = asyncHandler(async (req, res) => ApiResponse.created(res, await Consignments.attachDocument(param(req), req.body, opsContext(req)), 'Document added'));
+export const detachDocument = asyncHandler(async (req, res) => ApiResponse.success(res, await Consignments.detachDocument(param(req), param(req, 'docId'), opsContext(req)), 'Document taken off'));
+export const recordAtStop = asyncHandler(async (req, res) => ApiResponse.success(res, await Consignments.recordAtStop(param(req), param(req, 'stopId'), req.body, opsContext(req))));
+export const fileDriverDocument = asyncHandler(async (req, res) => ApiResponse.success(res, await Consignments.fileDriverDocument(param(req), req.body, opsContext(req)), 'Filed'));
+export const passStop = asyncHandler(async (req, res) => ApiResponse.success(res, await Stops.passStop(param(req), param(req, 'stopId'), req.body.reason, opsContext(req)), 'The truck may pass'));
+export const putStops = asyncHandler(async (req, res) => ApiResponse.success(res, await Stops.putStops(param(req), req.body, opsContext(req)), 'Stops saved'));
+export const tripGate = asyncHandler(async (req, res) => ApiResponse.success(res, await Stops.gateOf(param(req))));
+export const tripCapacity = asyncHandler(async (req, res) => ApiResponse.success(res, await Stops.capacityOf(param(req))));
+export const recordDelivery = asyncHandler(async (req, res) => ApiResponse.success(res, await Consignments.recordDelivery(param(req), req.body, opsContext(req)), 'Delivery recorded'));
 export const decideShortage = asyncHandler(async (req, res) => ApiResponse.success(res, await Cargo.decideShortage(param(req), req.body, opsContext(req))));
 
 /* Expenses */
@@ -120,3 +141,12 @@ export const companyFields = asyncHandler(async (_req, res) => ApiResponse.succe
 export const driverFields = asyncHandler(async (req, res) => ApiResponse.success(res, await DriverApp.answerFields(driverActor(req), req.body), 'Sent to the office'));
 export const driverDefect = asyncHandler(async (req, res) => ApiResponse.created(res, await DriverApp.reportDefect(driverActor(req), req.body), 'Sent to the office'));
 export const driverArrive = asyncHandler(async (req, res) => ApiResponse.success(res, await DriverApp.arrive(driverActor(req), param(req, 'stopId')), 'Arrival recorded'));
+
+/* The consignment report (#135 Part 4). */
+export const consignmentReport = asyncHandler(async (req, res) => ApiResponse.success(res, await Report.consignmentReport(query(req), opsContext(req))));
+export const consignmentReportFile = (kind: 'xlsx' | 'csv') => asyncHandler(async (req, res) => {
+  const file = await Report.consignmentReportFile(query(req), opsContext(req), kind);
+  res.setHeader('Content-Type', file.mime);
+  res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(file.name)}`);
+  res.send(file.body);
+});

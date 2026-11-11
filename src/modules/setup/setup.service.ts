@@ -94,6 +94,8 @@ export async function fromInstallation(): Promise<{ file: CompanyFileInput; atta
     watermark: c.watermark as CompanyFileInput['watermark'],
     areas: c.modules as CompanyFileInput['areas'],
     operations: c.operations as CompanyFileInput['operations'],
+    // A consignment type is named by its id, which belongs to this copy; the rest of the block travels as it is.
+    freight: c.freight ? (({ defaultConsignmentTypeId: _id, ...rest }: Plain) => (Object.keys(rest).length ? rest : undefined))(c.freight as Plain) as CompanyFileInput['freight'] : undefined,
     selfSignUp: Boolean(c.allowSelfRegistration),
     connections: connections.map((x) => defined({
       code: x.code, name: x.name, description: x.description, kind: x.kind, provider: x.provider, enabled: Boolean(x.enabled),
@@ -313,7 +315,7 @@ export async function resetDemo(confirm: string | undefined, actor: { userId: st
 /** The sections of a company file, in the order the screen lists them, with what each covers. */
 const SECTIONS: { key: keyof CompanyFile; label: string }[] = [
   { key: 'company', label: 'Company details' }, { key: 'regional', label: 'Region: currency, time zone, formats' }, { key: 'brand', label: 'Brand' },
-  { key: 'areas', label: 'Areas switched on' }, { key: 'operations', label: 'Trip settings' }, { key: 'workspace', label: 'Words, stages and desks' },
+  { key: 'areas', label: 'Areas switched on' }, { key: 'operations', label: 'Trip settings' }, { key: 'freight', label: 'Freight: consignments, revenue and profit' }, { key: 'workspace', label: 'Words, stages and desks' },
   { key: 'masters', label: 'Masters: fields, lists, custom masters' }, { key: 'roles', label: 'Roles' }, { key: 'owner', label: 'Owner' }, { key: 'staff', label: 'Staff' },
   { key: 'connections', label: 'Connections' }, { key: 'connectionRules', label: 'Locked settings' }, { key: 'data', label: 'Data: sample and spreadsheets' },
 ];

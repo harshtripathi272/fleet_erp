@@ -1,0 +1,197 @@
+/* Consignments (#135, design 3.11): the rows on a new trip, and the consignment screens. */
+
+/* A figure line divided by rules, framed once ("On board at most: 28.4 t of 30 t · 0 L of 38,000 L"). */
+.framed-line { margin: 0; padding: 8px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); color: var(--ink-2); }
+
+.consignment-rows { display: grid; gap: 10px; min-width: 0; }
+.consignment-rows > h3 { margin: 0; font-size: 15px; font-weight: 600; }
+.consignment-rows > p { margin: 0; max-width: 70ch; }
+.consignment-row { display: grid; gap: 10px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-2); }
+.framed-line { font-variant-numeric: tabular-nums; }
+
+/* The trip's views (design 3.11.2): underline tabs under its heading. */
+.trip-tabs { margin: 4px 0 16px; }
+
+/* The trip's Consignments tab. */
+.trip-consignments { display: grid; gap: 14px; min-width: 0; }
+.cn-toolbar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.cn-onboard { margin-left: auto; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.cn-note { margin: 0; }
+.cn-table td, .cn-table th { white-space: nowrap; }
+.cn-table th:first-child, .cn-table td:first-child { position: sticky; left: 0; z-index: 1; background: var(--surface); }
+.cn-party { max-width: 220px; overflow: hidden; text-overflow: ellipsis; }
+.cn-unpriced { color: var(--rust); }
+.cn-warn { color: var(--rust); }
+.cn-stops { display: grid; gap: 8px; min-width: 0; }
+.cn-stops > h3 { margin: 6px 0 0; font-size: 15px; font-weight: 600; }
+.cn-stops > p { margin: 0; max-width: 70ch; }
+.cn-stop-list { list-style: none; margin: 0; padding: 0; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
+.cn-stop-list > li { padding: 10px 14px; border-bottom: 1px solid var(--line); }
+.cn-stop-list > li:last-child { border-bottom: 0; }
+.cn-stop { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; min-width: 0; }
+.cn-stop-n { width: 20px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+.cn-stop-time { margin-left: auto; white-space: nowrap; }
+.cn-stop-legs { list-style: none; margin: 6px 0 0 30px; padding: 0; display: grid; gap: 4px; }
+.cn-stop-legs li { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+
+/* The consignment drawer (design 3.11.3). */
+.cn-ids { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin: -6px 0 12px; color: var(--ink-2); }
+.cn-form { display: grid; gap: 12px; border: 0; padding: 0; margin: 0; min-width: 0; }
+.cn-form h4, .cn-legs h4, .cn-history h4, .revenue-panel h4 { margin: 10px 0 0; font-size: 14px; font-weight: 600; }
+.cn-lines, .cn-legs { display: grid; gap: 10px; min-width: 0; }
+.cn-line-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px 12px; align-items: start; }
+.cn-line-grid > * { min-width: 0; }
+.cn-party-field { display: grid; gap: 10px; min-width: 0; }
+.cn-leg-body { display: grid; gap: 4px; }
+.cn-cancel { margin-right: auto; }
+.cn-cancel-confirm { display: flex; gap: 8px; align-items: center; margin-right: auto; flex-wrap: wrap; }
+.cn-cancel-confirm .input { width: 220px; }
+.cn-history p { margin: 0; }
+
+/* The revenue panel (design 3.11.7): one framed line of figures divided by rules. */
+.revenue-panel { display: grid; gap: 14px; min-width: 0; }
+.figure-line { display: flex; flex-wrap: wrap; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
+.figure-line > div { display: grid; gap: 4px; padding: 10px 14px; border-right: 1px solid var(--line); min-width: 0; }
+.figure-line > div:last-child { border-right: 0; }
+.figure-line span { color: var(--ink-3); font-size: 12.5px; }
+.figure-line b { font-weight: 600; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.revenue-unpriced { padding: 10px 12px; border: 1px solid var(--rust); border-radius: 10px; background: var(--surface); display: grid; gap: 8px; }
+.revenue-unpriced p { margin: 0; }
+.revenue-explain { margin: 6px 0 0; padding-left: 20px; display: grid; gap: 4px; max-width: 70ch; }
+.revenue-panel tfoot td { border-top: 1px solid var(--line-2); }
+
+/* Splitting a delivery (design 3.11.5). */
+.split-table select, .split-table input { width: 100%; min-width: 120px; }
+.split-tools { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 10px 0; }
+.split-equal { display: inline-flex; align-items: center; gap: 6px; }
+.split-equal .unit-box { width: 120px; }
+.split-over { border-color: var(--rust); color: var(--rust); }
+
+@media (max-width: 1100px) {
+  .cn-line-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 560px) {
+  .cn-line-grid { grid-template-columns: minmax(0, 1fr); }
+  .figure-line > div { border-right: 0; border-bottom: 1px solid var(--line); width: 100%; }
+  .figure-line > div:last-child { border-bottom: 0; }
+  .cn-onboard { margin-left: 0; }
+}
+
+/* Loading and offloading by stop (design 3.11.4, 3.11.5). */
+.stop-work { min-width: 0; }
+.stop-block { display: grid; gap: 10px; padding: 14px 16px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); min-width: 0; }
+.stop-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.stop-head h3 { margin: 0; font-size: 16px; font-weight: 600; }
+.stop-head p { margin: 2px 0 0; }
+.stop-actions { display: flex; gap: 6px; justify-content: flex-end; white-space: nowrap; }
+.stop-gate { color: var(--ink); }
+.record-leg { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: 18px; padding-top: 12px; border-top: 1px solid var(--line); min-width: 0; }
+.record-photo { display: grid; gap: 10px; align-content: start; min-width: 0; }
+.record-nophoto { display: grid; gap: 10px; padding: 14px; border: 1px dashed var(--line-2); border-radius: 10px; }
+.record-nophoto p { margin: 0; }
+.record-form { display: grid; gap: 14px; min-width: 0; }
+.record-form h4 { margin: 0; font-size: 15px; font-weight: 600; }
+.record-form h5 { margin: 0 0 8px; font-size: 13.5px; font-weight: 600; color: var(--ink-2); }
+.record-form section { display: grid; gap: 8px; min-width: 0; }
+.record-doc { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px; align-items: end; }
+.record-doc > * { min-width: 0; }
+.measure-block { display: grid; gap: 8px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-2); min-width: 0; }
+.measure-line { margin: 0; font-weight: 560; }
+.record-actions { display: flex; gap: 10px; justify-content: flex-end; flex-wrap: wrap; }
+.record-actions > :first-child { margin-right: auto; }
+.photos-to-file { display: grid; gap: 8px; padding: 14px 16px; border: 1px solid var(--line-2); border-radius: 12px; background: var(--surface); }
+.photos-to-file h3 { margin: 0; font-size: 15px; font-weight: 600; }
+.photos-to-file > p { margin: 0; }
+.photo-strip { display: flex; gap: 12px; overflow-x: auto; padding-bottom: 4px; }
+.photo-file { display: grid; gap: 8px; width: 220px; flex: 0 0 auto; }
+@media (max-width: 1100px) {
+  .record-leg { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 560px) {
+  .record-doc { grid-template-columns: minmax(0, 1fr); }
+  .stop-actions { flex-wrap: wrap; justify-content: flex-start; }
+}
+
+/* The trip's Money tab (design 3.11.8). */
+.profit-panel { display: grid; gap: 14px; min-width: 0; }
+.profit-figures b { font-size: 18px; }
+.profit-loss { color: var(--rust); }
+.profit-warnings { margin: 0; padding-left: 18px; color: var(--ink-2); max-width: 70ch; }
+.profit-tables { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; align-items: start; }
+.profit-tables > section { display: grid; gap: 8px; min-width: 0; }
+.profit-tables h4 { margin: 0; font-size: 14px; font-weight: 600; }
+.profit-item td { color: var(--ink-2); padding-left: 24px; }
+.profit-pending h5 { margin: 6px 0 4px; font-size: 13px; font-weight: 600; color: var(--ink-2); }
+.profit-budget { margin: 0; max-width: 70ch; color: var(--ink-2); }
+@media (max-width: 1100px) {
+  .profit-tables { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* The Consignments list and the report (design 3.11.6). */
+.consignments-screen { display: grid; gap: 14px; min-width: 0; }
+.cn-report { display: grid; gap: 12px; min-width: 0; }
+.cn-report-actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+.cn-report-pod { display: inline-flex; align-items: center; gap: 8px; color: var(--ink-2); white-space: nowrap; }
+.cn-report tfoot td { border-top: 1px solid var(--line-2); position: sticky; bottom: 0; background: var(--surface); }
+.column-list { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 4px; }
+.column-list li { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 10px; padding: 4px 0; border-bottom: 1px solid var(--line); }
+.column-move { display: inline-flex; gap: 4px; }
+.unpriced-why { max-width: 48ch; overflow: hidden; text-overflow: ellipsis; }
+
+/* The driver phone (design 3.11.13): each consignment at the current stop, who to call, and the paper due. */
+.drv-stops > li { flex-wrap: wrap; }
+.drv-legs { order: 3; flex-basis: 100%; display: grid; gap: 10px; margin: 4px 0 0 22px; padding: 0; list-style: none; }
+.drv-stops .drv-legs li { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
+.drv-leg-who { display: grid; flex: 1 1 100%; min-width: 0; }
+.drv-legs .btn { min-height: 40px; }
+.drv-gate { margin: 0; padding: 8px 10px; border: 1px solid var(--brass-2); border-radius: 10px; background: var(--brass-50); }
+
+/* New trip: each consignment decided on its row (#135 Part 1). */
+.consignment-row-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.consignment-row-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px 12px; align-items: start; }
+.consignment-row-grid > * { min-width: 0; }
+.cn-row-rate { grid-column: span 3; display: grid; gap: 4px; min-width: 0; }
+.cn-row-rate-controls { display: flex; flex-wrap: wrap; gap: 8px; }
+.cn-row-rate-controls > * { flex: 0 1 auto; min-width: 0; }
+.cn-row-rate-controls .unit-box { width: 160px; }
+.consignment-row-legs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.cn-row-legs { display: grid; gap: 6px; min-width: 0; align-content: start; }
+.cn-row-leg { display: flex; gap: 6px; align-items: center; min-width: 0; }
+.cn-row-leg select { flex: 1 1 auto; min-width: 0; }
+.cn-row-leg .unit-box { width: 130px; flex: none; }
+.cn-row-legs .link-btn { justify-self: start; }
+@media (max-width: 560px) {
+  .consignment-row-grid, .consignment-row-legs { grid-template-columns: minmax(0, 1fr); }
+  .cn-row-rate { grid-column: auto; }
+  .cn-row-rate-controls { grid-template-columns: minmax(0, 1fr); }
+}
+.split-pickups { display: grid; gap: 8px; margin-bottom: 4px; }
+.split-pickups h4 { margin: 4px 0 0; font-size: 14px; font-weight: 600; }
+.split-n { width: 18px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+.drv-which { display: grid; gap: 8px; margin-top: 12px; padding: 12px; border: 1px solid var(--line-2); border-radius: 10px; background: var(--surface); }
+.drv-which-row { display: grid; gap: 2px; min-height: 48px; padding: 8px 12px; text-align: left; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-2); color: var(--ink); }
+.drv-which-row small { color: var(--ink-3); }
+.move-photo { display: grid; gap: 6px; padding-top: 6px; border-top: 1px solid var(--line); }
+
+/* A consignment's timeline (#135 Part 3). */
+.cn-timeline { display: grid; gap: 12px; }
+.cn-timeline > p { margin: 0; }
+.cn-timeline-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.cn-timeline-list > li { display: grid; gap: 8px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-2); }
+.cn-timeline-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.cn-timeline-facts { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px 12px; margin: 0; }
+.cn-timeline-facts > div { min-width: 0; }
+.cn-timeline-facts dt { color: var(--ink-3); font-size: 12.5px; }
+.cn-timeline-facts dd { margin: 0; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.cn-timeline-papers { margin: 0; color: var(--ink-2); }
+@media (max-width: 1100px) { .cn-timeline-facts { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 560px) { .cn-timeline-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+/* Revenue, costs and profit at the top of a trip, for those who may see them. */
+.profit-line { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 18px; width: 100%; margin: 4px 0 0; padding: 8px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); color: var(--ink-2); text-align: left; font: inherit; cursor: pointer; }
+.profit-line:hover { background: var(--surface-2); }
+.profit-line b { color: var(--ink); font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.cn-add-paper { display: grid; gap: 8px; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); }
+.cn-add-paper h4 { margin: 0; font-size: 14px; font-weight: 600; }
+.cn-add-paper-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+.cn-add-paper-grid > * { min-width: 0; }
+@media (max-width: 560px) { .cn-add-paper-grid { grid-template-columns: minmax(0, 1fr); } }

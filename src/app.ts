@@ -37,6 +37,7 @@ import rolesRouter from './modules/roles/roles.router.js';
 import setupKitRouter from './modules/setup/setup.router.js';
 import installationRouter from './modules/setup/installation.router.js';
 import tripsRouter from './modules/trips/trips.router.js';
+import freightRouter from './modules/freight/freight.router.js';
 import usersRouter from './modules/users/users.router.js';
 
 export const app = express();
@@ -85,6 +86,7 @@ app.use('/api/v1', authenticate, driversRouter);
 app.use('/api/v1', authenticate, complianceRouter);
 app.use('/api/v1', authenticate, cargoRouter);
 app.use('/api/v1', authenticate, tripsRouter);
+app.use('/api/v1', authenticate, freightRouter);
 app.use('/api/v1', authenticate, messagingRouter);
 app.use('/api/v1', authenticate, connectionsRouter);
 app.use('/api/v1', authenticate, configurationRouter);

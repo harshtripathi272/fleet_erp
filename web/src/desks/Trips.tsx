@@ -14,11 +14,13 @@ import {
   XCircle,
 } from "lucide-react";
 import { useApp } from "../store";
-import { useMay } from "../api/session";
+import { can, useMay } from "../api/session";
 import { useMine } from "./mine";
 import { byId, tripKm } from "../domain/calc";
 import { activeTrip, placeName, routeLabel } from "../domain/helpers";
 import { ACTOR_NAME, nextStep, stageIndex, stageTimes, visibleStages } from "../domain/turn";
+import { TripConsignments } from "../consignments/TripConsignments";
+import { ProfitLine, ProfitPanel } from "../consignments/ProfitPanel";
 import type { Move, NextStep, StageId } from "../domain/turn";
 import type { Action, Desk, Trip } from "../domain/types";
 import { Avatar, Button, Empty, Field, Modal, Segmented } from "../ui/kit";
@@ -236,6 +238,11 @@ function TripView({
   const [cancelOpen, setCancelOpen] = useState(false);
   const [stopOpen, setStopOpen] = useState(false);
   const [cantDeliverOpen, setCantDeliverOpen] = useState(false);
+  // Opening a trip lands on Stages, as before; Consignments is beside it (design 3.11.2).
+  const [view, setView] = useState<"stages" | "consignments" | "money">("stages");
+  // The Money tab is the trip's revenue and profit, for people who may see profit (design 3.11.8).
+  const seesProfit = can(me, "trip-profit", "sensitive");
+  const tripCns = data.cns.filter((c) => c.tripId === trip.id && c.status !== "cancelled").length;
   // On the truck and not delivered, and nothing already waiting for the owner.
   const onBoard = data.consignments.find((c) => c.tripId === trip.id && !c.delivered && activeTrip(trip));
   const mayCantDeliver = Boolean(onBoard) && onBoard!.writeOff?.status !== "pending" && data.settings.loadedTripOutcomes.length > 0 && may("trip.undelivered")
@@ -296,18 +303,34 @@ function TripView({
         </div>
       </header>
 
-      <Stepper trip={trip} step={step} selected={selectedStage} onSelect={onStage} />
-      <NextStepBar trip={trip} step={step} onGo={focus} viewing={selectedStage} />
-      {trip.stopReason && !trip.undelivered && <p className="drawer-note">Stopped before loading: {trip.stopReason}</p>}
-      <UndeliveredNote trip={trip} load={data.consignments.find((c) => c.tripId === trip.id)} />
-
-      <div className="trip-body">
-        <div className="trip-main" ref={panelRef}>
-          <DriverMessages trip={trip} />
-          <StagePanel trip={trip} stage={selectedStage} step={step} />
-        </div>
-        <TripAside trip={trip} />
+      {seesProfit && <ProfitLine trip={trip} onOpen={() => setView("money")} />}
+      <div className="seg-tabs trip-tabs" role="tablist" aria-label={`${w(data, "trip")} views`}>
+        <button role="tab" aria-selected={view === "stages"} className={view === "stages" ? "on" : ""} onClick={() => setView("stages")}>Stages</button>
+        <button role="tab" aria-selected={view === "consignments"} className={view === "consignments" ? "on" : ""} onClick={() => setView("consignments")}>
+          {w(data, "consignment", true)}{tripCns ? <span className="muted"> {tripCns}</span> : null}
+        </button>
+        {seesProfit && <button role="tab" aria-selected={view === "money"} className={view === "money" ? "on" : ""} onClick={() => setView("money")}>Money</button>}
       </div>
+      {view === "consignments" ? (
+        <TripConsignments trip={trip} />
+      ) : view === "money" && seesProfit ? (
+        <ProfitPanel trip={trip} />
+      ) : (
+        <>
+          <Stepper trip={trip} step={step} selected={selectedStage} onSelect={onStage} />
+          <NextStepBar trip={trip} step={step} onGo={focus} viewing={selectedStage} />
+          {trip.stopReason && !trip.undelivered && <p className="drawer-note">Stopped before loading: {trip.stopReason}</p>}
+          <UndeliveredNote trip={trip} load={data.consignments.find((c) => c.tripId === trip.id)} />
+
+          <div className="trip-body">
+            <div className="trip-main" ref={panelRef}>
+              <DriverMessages trip={trip} />
+              <StagePanel trip={trip} stage={selectedStage} step={step} />
+            </div>
+            <TripAside trip={trip} />
+          </div>
+        </>
+      )}
       <CancelTrip trip={trip} open={cancelOpen} onClose={() => setCancelOpen(false)} />
       {stopOpen && <StopTrip trip={trip} onClose={() => setStopOpen(false)} />}
       {cantDeliverOpen && <CantDeliver trip={trip} onClose={() => setCantDeliverOpen(false)} />}

@@ -173,6 +173,8 @@ export const companyFileSchema = z.strictObject({
   areas: z.array(z.enum(AREA_KEYS)).max(AREA_KEYS.length).optional(),
   operations: company.operations,
   maintenance: company.maintenance,
+  /** Company → Freight (#135): consignments, stops, revenue and profit. Only what differs from the defaults. */
+  freight: company.freight,
   /** The company's own words, trip stages and desks. Only what differs from the defaults. */
   workspace: z.strictObject(workspaceInput).optional(),
   masters: mastersPart.optional(),

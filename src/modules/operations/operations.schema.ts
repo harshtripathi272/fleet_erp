@@ -51,6 +51,8 @@ export const createTripSchema = z.strictObject({
   plannedStart: isoDate,
   productId: objectId.optional(),
   plannedQty: quantity.optional(),
+  /** The trip's consignments, made with it (#135). Left out, the load is added at loading, as before. */
+  consignments: z.array(z.lazy(() => inlineConsignmentSchema)).max(50).optional(),
 });
 export type CreateTripInput = z.infer<typeof createTripSchema>;
 
@@ -128,6 +130,8 @@ export const issueSchema = z.strictObject({
   medium: text(60).optional(),
   reference: text(60).optional(),
   station: text(120).optional(),
+  /** Fuel: what a litre cost, for trip profit. */
+  unitPrice: money.optional(),
   via,
   custom,
 }).refine((v) => v.paymentMethodId || v.medium, 'Choose the payment method');
@@ -163,6 +167,8 @@ export const readingSchema = z.strictObject({
   currencyCode: z.string().trim().toUpperCase().regex(/^[A-Z]{3}$/).optional(),
   categoryId: objectId.optional(),
   fuelL: litresValue.optional(),
+  /** The consignment the sender says it is for: its number, or its position in the list they were shown. */
+  consignmentNo: text(40).optional(),
 });
 
 export const sendDocumentSchema = z.strictObject({
@@ -174,6 +180,9 @@ export const sendDocumentSchema = z.strictObject({
   /** Figures typed by whoever files it. A person checks them before they are recorded. */
   reading: readingSchema.optional(),
   channel: z.enum(DOC_CHANNELS).default('operations'),
+  consignmentId: objectId.optional(),
+  legId: objectId.optional(),
+  documentTypeId: objectId.optional(),
 });
 export type SendDocumentInput = z.infer<typeof sendDocumentSchema>;
 
@@ -326,6 +335,12 @@ export const driverFieldsSchema = z.strictObject({ values: z.record(z.string().r
 export type DriverFieldsInput = z.infer<typeof driverFieldsSchema>;
 export const driverSendSchema = z.strictObject({
   kind: z.enum(DOC_KINDS),
+  /** Which consignment, pickup or drop, and paper it is, when the driver chose (#135). */
+  consignmentId: objectId.optional(),
+  legId: objectId.optional(),
+  documentTypeId: objectId.optional(),
+  /** One signed sheet for every consignment dropped at the stop (Company → Freight). */
+  allAtStop: z.boolean().optional(),
   fileId: objectId.optional(),
   note: text(1000).optional(),
   reading: readingSchema.optional(),
@@ -333,3 +348,170 @@ export const driverSendSchema = z.strictObject({
 export type DriverSendInput = z.infer<typeof driverSendSchema>;
 export const driverMessagesQuery = z.strictObject({ since: z.iso.datetime().optional() });
 export const driverStopParams = z.strictObject({ stopId: objectId });
+
+/* ---------- Consignments (#135, consignments design 3.12) ---------- */
+
+const contact = z.strictObject({
+  name: text(200), phone: text(40).optional(), whatsapp: text(40).optional(), email: text(200).optional(), address: text(300).optional(), taxId: text(60).optional(),
+});
+const consignmentLine = z.strictObject({
+  /** Kept on an edit, so the legs' quantities still point at it. */
+  id: objectId.optional(),
+  productId: objectId,
+  description: text(200).optional(),
+  plannedQty: quantity.optional(),
+  pieces: z.number().int().min(0).max(1e7).optional(),
+  grossKg: quantity.optional(),
+  volumeM3: z.number().min(0).max(1e5).optional(),
+  declaredValue: money.optional(),
+  hazard: z.boolean().optional(),
+});
+/** A planned quantity for one goods line at a pickup or drop: the line by its id, or by its position in `lines`. */
+const plannedAt = z.strictObject({ lineId: objectId.optional(), line: z.number().int().min(0).max(99).optional(), qty: quantity.optional(), pieces: z.number().int().min(0).max(1e7).optional() })
+  .refine((v) => v.lineId !== undefined || v.line !== undefined, 'Say which goods line');
+export const plannedLeg = z.strictObject({
+  /** An existing leg, kept on an edit. */
+  id: objectId.optional(),
+  kind: z.enum(['pickup', 'drop']),
+  /** Empty: to be confirmed (a drop decided on the road). */
+  placeId: objectId.optional(),
+  /** A stop of the trip it happens at, when the person chose one. */
+  stopId: objectId.optional(),
+  plannedAt: isoDate.optional(),
+  planned: z.array(plannedAt).max(50).optional(),
+  contact: contact.optional(),
+  note: text(300).optional(),
+});
+const references = z.strictObject({
+  customerRef: text(60).optional(), orderNo: text(60).optional(), lrNo: text(60).optional(), ewayBillNo: text(60).optional(), ewayBillValidUntil: isoDate.optional(),
+  sealNos: z.array(text(40)).max(30).optional(), permitNo: text(60).optional(), leadKm: z.number().min(0).max(20000).optional(),
+});
+/** A rate agreed on the consignment (#135 Part 1). null on an edit takes it off, so a tariff prices it again. */
+const agreedRate = z.strictObject({
+  basis: z.enum(['per_consignment', 'per_kg', 'per_tonne', 'per_litre', 'per_litre_20', 'per_piece', 'per_km']),
+  /** A unit price keeps fractions of a minor unit: 0.085 USD a litre is 8.5. */
+  price: z.strictObject({ amountMinor: z.number().min(0).max(1e13), currencyId: objectId }),
+  chargeOn: z.enum(['loaded', 'delivered']).optional(),
+});
+const consignmentShape = {
+  consignmentTypeId: objectId.optional(),
+  /** Who is billed; the trip's customer when left out. */
+  customerId: objectId.optional(),
+  consignorPartyId: objectId.optional(),
+  consignor: contact.optional(),
+  consigneePartyId: objectId.optional(),
+  consignee: contact.optional(),
+  brokerPartyId: objectId.optional(),
+  paymentTerms: z.enum(['to_be_billed', 'paid', 'to_pay']).optional(),
+  requiredBy: isoDate.optional(),
+  lines: z.array(consignmentLine).min(1, 'Add the goods').max(50),
+  references: references.optional(),
+  rate: agreedRate.nullable().optional(),
+  notes: text(1000).optional(),
+  custom,
+};
+/** One consignment as the New trip form sends it: the trip is the one being made. */
+export const inlineConsignmentSchema = z.strictObject({ ...consignmentShape, legs: z.array(plannedLeg).max(60).optional() });
+export type InlineConsignmentInput = z.infer<typeof inlineConsignmentSchema>;
+export const createConsignmentSchema = z.strictObject({ ...consignmentShape, tripId: objectId, legs: z.array(plannedLeg).max(60).optional() });
+export type CreateConsignmentInput = z.infer<typeof createConsignmentSchema>;
+export const updateConsignmentSchema = z.strictObject({
+  version: z.number().int().min(0),
+  ...Object.fromEntries(Object.entries(consignmentShape).map(([k, v]) => [k, (v as z.ZodType).optional()])),
+}).refine((v) => Object.keys(v).some((k) => k !== 'version'), 'Send at least one field to change');
+export type UpdateConsignmentInput = Partial<z.infer<typeof inlineConsignmentSchema>> & { version: number };
+/** Replace the planned legs: the split-delivery save. Done legs are sent back as they are or left out. */
+export const putLegsSchema = z.strictObject({
+  version: z.number().int().min(0),
+  legs: z.array(plannedLeg).min(2).max(60),
+  /** Leave quantity unplaced, to be confirmed later, instead of putting all of it on the drops. */
+  leaveRest: z.boolean().optional(),
+});
+export type PutLegsInput = z.infer<typeof putLegsSchema>;
+
+const legMeasure = z.strictObject({
+  lineId: objectId,
+  qty: quantity.optional(),
+  ambientL: litresValue.optional(),
+  tempC: z.number().min(-30).max(80).optional(),
+  density: z.number().min(0).max(2000).optional(),
+  certStd20L: litresValue.optional(),
+  gross: quantity.optional(),
+  tare: quantity.optional(),
+  ticketNo: text(60).optional(),
+  pieces: z.number().int().min(0).max(1e7).optional(),
+  /** Drops: when the consignee did not take everything. */
+  accepted: quantity.optional(),
+  damaged: quantity.optional(),
+  shortDelivered: quantity.optional(),
+});
+const legDocument = z.strictObject({
+  documentTypeId: objectId.optional(),
+  number: text(60).optional(),
+  date: isoDate.optional(),
+  amount: money.optional(),
+  validUntil: isoDate.optional(),
+  driverDocId: objectId.optional(),
+  fileId: objectId.optional(),
+});
+export const legRecordSchema = z.strictObject({
+  measures: z.array(legMeasure).min(1, 'Enter what was loaded or delivered').max(50),
+  documents: z.array(legDocument).max(20).optional(),
+  /** The driver's photo the figures came from; it is marked recorded. */
+  docId: objectId.optional(),
+  pod: z.strictObject({ podTypeId: objectId.optional(), number: text(60).optional(), receivedBy: text(120).optional(), receivedAt: isoDate.optional(), remarks: text(500).optional() }).optional(),
+  outcome: z.enum(['delivered', 'partial', 'refused']).optional(),
+  sealNos: z.array(text(40)).max(30).optional(),
+  note: text(500).optional(),
+  /** Someone allowed to record over the truck's capacity says why. */
+  override: z.strictObject({ reason: text(300) }).optional(),
+  custom,
+});
+export type LegRecordInput = z.infer<typeof legRecordSchema>;
+export const legParams = z.strictObject({ id: objectId, legId: objectId });
+export const stopRecordSchema = z.strictObject({
+  records: z.array(legRecordSchema.extend({ consignmentId: objectId, legId: objectId })).min(1).max(200),
+});
+export type StopRecordInput = z.infer<typeof stopRecordSchema>;
+export const attachDocumentSchema = legDocument.extend({ legId: objectId.optional() });
+export type AttachDocumentInput = z.infer<typeof attachDocumentSchema>;
+export const documentParams = z.strictObject({ id: objectId, docId: objectId });
+/** Say what a driver's photo is and which consignment and leg it belongs to. */
+export const fileDocumentSchema = z.strictObject({
+  documentTypeId: objectId.optional(),
+  consignmentId: objectId.optional(),
+  legId: objectId.optional(),
+});
+export type FileDocumentInput = z.infer<typeof fileDocumentSchema>;
+export const cancelConsignmentSchema = z.strictObject({ version: z.number().int().min(0), reason: reasonText });
+export const passStopSchema = z.strictObject({ reason: reasonText });
+/** Re-order the stops not yet reached, or add one (a border, a rest, a weighbridge). */
+export const putStopsSchema = z.strictObject({
+  version: z.number().int().min(0),
+  stops: z.array(z.strictObject({ id: objectId.optional(), placeId: objectId, kind: z.enum(STOP_KINDS) })).min(2).max(60),
+});
+export type PutStopsInput = z.infer<typeof putStopsSchema>;
+
+export const consignmentsQuery = z.strictObject({
+  ...page,
+  tripId: objectId.optional(),
+  status: z.string().trim().regex(/^[a-z_]+(,[a-z_]+)*$/).max(200).optional(),
+  customerId: objectId.optional(),
+  consignorPartyId: objectId.optional(),
+  consigneePartyId: objectId.optional(),
+  productId: objectId.optional(),
+  revenueStatus: z.enum(['unpriced', 'estimated', 'priced', 'frozen', 'invoiced']).optional(),
+  podMissing: z.coerce.boolean().optional(),
+  from: isoDate.optional(),
+  to: isoDate.optional(),
+  dateField: z.enum(['booked', 'loaded', 'delivered']).optional(),
+  q: z.string().trim().min(1).max(60).optional(),
+  shortage: z.enum(['pending', 'charged', 'waived', 'none']).optional(),
+  tab: z.enum(['all', 'to_load', 'on_road', 'to_deliver', 'waiting_pod', 'unpriced']).optional(),
+});
+export type ConsignmentsQuery = z.infer<typeof consignmentsQuery>;
+/** The consignment report (#135 Part 4): the list's filters, the columns to show (comma list of keys), and up to 500 a page. */
+export const reportQuery = consignmentsQuery.extend({
+  columns: z.string().trim().regex(/^[a-zA-Z0-9.]+(,[a-zA-Z0-9.]+)*$/).max(600).optional(),
+  limit: z.coerce.number().int().min(1).max(500).optional(),
+});

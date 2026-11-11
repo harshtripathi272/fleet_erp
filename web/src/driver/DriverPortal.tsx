@@ -2,7 +2,7 @@ import { FieldInput } from "../desks/usePlacement";
 import { useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Camera, CloudOff, Download, LogOut, MapPin, Send } from "lucide-react";
+import { Camera, CloudOff, Download, LogOut, MapPin, MessageCircle, Phone, Send } from "lucide-react";
 import { api, ApiError } from "../api/client";
 import { ACCEPT, downloadPdf } from "../api/files";
 import { clearNotices, connectionLost, connectionWorks, enqueue, startOutbox, useOutbox } from "./outbox";
@@ -24,7 +24,11 @@ const KINDS: [Kind, string][] = [["loading", "Loading invoice"], ["delivery", "D
 const KIND_LABEL = Object.fromEntries(KINDS) as Record<Kind, string>;
 const STOP_LABEL: Record<string, string> = { start: "Start", load: "Loading", via: "Stop", border: "Border", offload: "Offloading", end: "End" };
 
-interface Stop { id: string; kind: string; place: string; legKm?: number; arrivedAt?: string; arrivedVia?: string }
+/** What happens to each consignment at a stop (#135): who to call there, and the papers to send. */
+interface StopLeg { consignmentId: string; legId: string; number: string; kind: "pickup" | "drop"; party?: string; phone?: string; whatsapp?: string; product?: string; plannedQty?: number; unit?: string; status: string; send?: { documentTypeId: string; label: string }[] }
+interface Stop { id: string; kind: string; place: string; legKm?: number; arrivedAt?: string; arrivedVia?: string; legs?: StopLeg[] }
+/** The one thing due next, for a consignment (#135); an older server sends the document kind alone. */
+interface Due { consignmentId: string; legId: string; documentTypeId: string; label: string; stopId?: string }
 interface Doc { id: string; kind: Kind; status: string; at: string; note?: string; returnReason?: string; simulated?: boolean; file?: { fileId?: string; name?: string; mime?: string; sampleId?: string } }
 interface Home {
   questions?: { entity?: string; key: string; label: string; type: string; required: boolean; options?: string[]; min?: number; max?: number; helpText?: string; accept?: string[]; maxSizeMb?: number; maxFiles?: number; withExpiry?: boolean }[];
@@ -32,7 +36,7 @@ interface Home {
   driver: { id: string; name: string; code?: string };
   trip: null | {
     id: string; number: string; truck: string; trailer?: string; customer: string; product: string; dispatchedAt?: string;
-    stops: Stop[]; next?: Kind | null; issued: { id: string; number: string; kind: string; text: string; at?: string }[]; documents: Doc[];
+    stops: Stop[]; next?: Kind | Due[] | null; gate?: { stopId: string; driverReason: string } | null; issued: { id: string; number: string; kind: string; text: string; at?: string }[]; documents: Doc[];
   };
   account: { balance: string; direction: "holds" | "owed" | "even"; settlements: { id: string; number: string; at: string }[] };
   /** The company's words (#73); an older server sends none. */
@@ -75,6 +79,8 @@ export function DriverPortal({ me }: { me: Me }) {
   const outbox = useOutbox();
   const file = useRef<HTMLInputElement>(null);
   const [pending, setPending] = useState<Kind>("other");
+  // A photo for a named consignment and paper carries them, so the office doesn't have to file it.
+  const [pendingFor, setPendingFor] = useState<{ consignmentId: string; legId: string; documentTypeId?: string; label: string } | null>(null);
   const [preparing, setPreparing] = useState(false);
 
   // Everything the driver sends goes through the outbox, which keeps it on the phone until the API has it.
@@ -88,14 +94,28 @@ export function DriverPortal({ me }: { me: Me }) {
     return () => window.clearTimeout(t);
   }, [outbox.sent.length, outbox.refused.length]);
 
-  const pick = (kind: Kind) => { setPending(kind); file.current?.click(); };
+  const pick = (kind: Kind) => { setPending(kind); setPendingFor(null); file.current?.click(); };
+  const pickFor = (due: { consignmentId: string; legId: string; documentTypeId?: string; label: string }, kind: Kind) => { setPending(kind); setPendingFor(due); setChoosing(null); file.current?.click(); };
+  // "Which consignment?" first (#135 Part 2): the consignments at this stop still needing that kind of paper.
+  const [choosing, setChoosing] = useState<{ kind: Kind; options: Due[] } | null>(null);
+  const ask = (kind: Kind) => {
+    const due = Array.isArray(home.data?.trip?.next) ? (home.data!.trip!.next as Due[]) : [];
+    const options = due.filter((d) => kindOfLeg(home.data!.trip!.stops, d.legId) === kind);
+    if (kind !== "loading" && kind !== "delivery") return pick(kind);
+    if (options.length === 1) return pickFor(options[0]!, kind);
+    if (options.length > 1) return setChoosing({ kind, options });
+    return pick(kind);
+  };
   const upload = async (chosen: File | undefined) => {
     if (file.current) file.current.value = "";
     if (!chosen) return;
     setPreparing(true);
     try {
       const photo = await shrinkPhoto(chosen);
-      await enqueue({ type: "send", kind: pending, file: photo.blob, fileName: photo.name, label: KIND_LABEL[pending] });
+      await enqueue({
+        type: "send", kind: pending, file: photo.blob, fileName: photo.name, label: pendingFor ? pendingFor.label : KIND_LABEL[pending],
+        ...(pendingFor ? { consignmentId: pendingFor.consignmentId, legId: pendingFor.legId, ...(pendingFor.documentTypeId ? { documentTypeId: pendingFor.documentTypeId } : {}) } : {}),
+      });
     } finally {
       setPreparing(false);
     }
@@ -150,11 +170,18 @@ export function DriverPortal({ me }: { me: Me }) {
             <div><dt>Customer</dt><dd>{trip.customer}</dd></div>
             {trip.product && <div><dt>Cargo</dt><dd>{trip.product}</dd></div>}
           </dl>
-          {trip.next && (
-            <Button tone="primary" size="lg" busy={preparing} onClick={() => pick(trip.next!)}>
-              <Camera /> Send the {KIND_LABEL[trip.next].toLowerCase()}
-            </Button>
-          )}
+          {trip.gate?.driverReason && <p className="drv-gate" role="status">{trip.gate.driverReason}</p>}
+          {Array.isArray(trip.next)
+            ? trip.next.map((d) => (
+              <Button key={`${d.legId}-${d.documentTypeId}`} tone="primary" size="lg" busy={preparing} onClick={() => pickFor({ ...d, label: d.label }, kindOfLeg(trip.stops, d.legId))}>
+                <Camera /> {d.label}
+              </Button>
+            ))
+            : trip.next && (
+              <Button tone="primary" size="lg" busy={preparing} onClick={() => pick(trip.next as Kind)}>
+                <Camera /> Send the {KIND_LABEL[trip.next as Kind].toLowerCase()}
+              </Button>
+            )}
         </section>
       )}
 
@@ -173,6 +200,22 @@ export function DriverPortal({ me }: { me: Me }) {
                     {s.arrivedAt ? ` · arrived ${stamp(s.arrivedAt)}${s.arrivedVia === "simulator" ? " (simulated)" : ""}` : ""}
                   </small>
                 </span>
+                {s.legs && s.legs.length > 0 && (s === nextStop || (s.arrivedAt && s.legs.some((l) => l.status !== "done"))) && (
+                  <ul className="drv-legs">
+                    {s.legs.map((l) => (
+                      <li key={l.legId}>
+                        <span className="drv-leg-who"><strong>{l.party ?? l.number}</strong><small>{l.kind === "pickup" ? "Load" : "Drop"} {l.product ?? ""}{l.plannedQty ? ` · ${num(l.plannedQty)} ${l.unit ?? ""}` : ""}{l.status === "done" ? " · done" : ""}</small></span>
+                        {l.phone && <a className="btn btn-secondary btn-sm" href={`tel:${l.phone}`}><Phone size={15} /> Call</a>}
+                        {(l.whatsapp ?? l.phone) && <a className="btn btn-secondary btn-sm" href={`https://wa.me/${(l.whatsapp ?? l.phone)!.replace(/[^\d]/g, "")}`} target="_blank" rel="noreferrer"><MessageCircle size={15} /> WhatsApp</a>}
+                        {l.status !== "done" && l.send?.map((p) => (
+                          <Button key={p.documentTypeId} size="sm" disabled={preparing} onClick={() => pickFor({ consignmentId: l.consignmentId, legId: l.legId, documentTypeId: p.documentTypeId, label: `${p.label} for ${l.number}` }, l.kind === "pickup" ? "loading" : "delivery")}>
+                            <Camera /> {p.label}
+                          </Button>
+                        ))}
+                      </li>
+                    ))}
+                  </ul>
+                )}
                 {s === nextStop && trip.dispatchedAt && s.kind !== "start" && (arrivalWaiting(s.id)
                   ? <small className="drv-waiting">Arrival waiting to send</small>
                   : (
@@ -190,9 +233,24 @@ export function DriverPortal({ me }: { me: Me }) {
         <h3>Send a document</h3>
         <div className="drv-kinds">
           {KINDS.map(([kind, label]) => (
-            <Button key={kind} disabled={preparing} onClick={() => pick(kind)}><Camera /> {label}</Button>
+            <Button key={kind} disabled={preparing} onClick={() => ask(kind)}><Camera /> {label}</Button>
           ))}
         </div>
+        {choosing && (
+          <div className="drv-which" role="group" aria-label="Which consignment is it for?">
+            <strong>Which {say("consignment").toLowerCase()} is this {KIND_LABEL[choosing.kind].toLowerCase()} for?</strong>
+            {choosing.options.map((o) => {
+              const leg = trip?.stops.flatMap((s) => s.legs ?? []).find((l) => l.legId === o.legId);
+              return (
+                <button key={`${o.legId}-${o.documentTypeId}`} type="button" className="drv-which-row" onClick={() => pickFor(o, choosing.kind)}>
+                  <span><strong>{leg?.number}</strong> · {leg?.party ?? ""}</span>
+                  <small>{leg?.product ?? ""}{leg?.plannedQty ? ` · ${num(leg.plannedQty)} ${leg.unit ?? ""}` : ""}</small>
+                </button>
+              );
+            })}
+            <Button tone="quiet" onClick={() => setChoosing(null)}>Cancel</Button>
+          </div>
+        )}
         {trip && trip.documents.some((d) => d.file) && (
           <ul className="drv-docs">
             {/* Messages without a file are in the conversation below. */}
@@ -355,4 +413,10 @@ function StatementLink({ id, number }: { id: string; number: string }) {
       <Download size={15} /> {state === "busy" ? "Getting it…" : state === "failed" ? "No signal. Try again" : "PDF"}
     </button>
   );
+}
+
+/** A pickup's papers go as a loading photo, a drop's as a delivery one, as the office expects them. */
+function kindOfLeg(stops: Stop[], legId: string): Kind {
+  const leg = stops.flatMap((s) => s.legs ?? []).find((l) => l.legId === legId);
+  return leg?.kind === "pickup" ? "loading" : "delivery";
 }

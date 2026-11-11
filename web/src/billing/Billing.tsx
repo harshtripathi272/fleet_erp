@@ -9,6 +9,8 @@ import { Button, Drawer, Empty, Field, FieldGroup, Modal, Rows, Segmented, Statu
 import { Card } from "../desks/stages";
 import { baseCurrencyCode, calendarDate, num } from "../ui/format";
 import { MoneySettings } from "./MoneySettings";
+import { ConsignmentDrawer } from "../consignments/ConsignmentDrawer";
+import { w } from "../domain/words";
 import { AccountingExport, Ageing, Revaluations } from "./Receivables";
 
 /**
@@ -52,6 +54,7 @@ export function Billing() {
         <Segmented label="Billing" value={tab} options={tabs} onChange={setTab} />
       </div>
       {tab === "invoice" && <ToInvoice onOpen={(id) => { setTab("invoices"); setOpen(id); }} />}
+      {tab === "invoice" && <Unpriced />}
       {tab === "invoices" && <Invoices onOpen={setOpen} />}
       {tab === "payments" && <Payments onOpen={setOpen} />}
       {tab === "ageing" && <Ageing />}
@@ -357,5 +360,37 @@ function RecordPayment({ onClose }: { onClose: () => void }) {
       </Field>
       <Field label="Reference"><input className="input" value={form.reference} onChange={(e) => set({ reference: e.target.value })} /></Field>
     </Modal>
+  );
+}
+
+/**
+ * Consignments that can't be invoiced because they have no price (#135, design 3.11.12), each with the engine's
+ * reason. Opening one gives its revenue panel, where it is priced from a tariff or by hand.
+ */
+function Unpriced() {
+  const { data } = useApp();
+  const [open, setOpen] = useState<{ id: string; tripId: string } | null>(null);
+  const rows = data.cns.filter((c) => c.revenue?.status === "unpriced" && c.status !== "cancelled");
+  if (!rows.length) return null;
+  return (
+    <Card title={`Unpriced ${w(data, "consignment", true).toLowerCase()}`} aside={<span className="muted">{rows.length} can't be invoiced yet</span>}>
+      <div className="table-frame">
+        <table className="table">
+          <thead><tr><th>{w(data, "consignment")}</th><th>{w(data, "trip")}</th><th>{w(data, "customer")}</th><th>Why</th><th /></tr></thead>
+          <tbody>
+            {rows.map((c) => (
+              <tr key={c.id}>
+                <td className="mono">{c.number}</td>
+                <td className="mono">{data.trips.find((t) => t.id === c.tripId)?.no ?? "—"}</td>
+                <td>{data.customers.find((p) => p.id === c.customerId)?.name ?? "—"}</td>
+                <td className="unpriced-why" title={c.revenue?.problem ?? undefined}>{c.revenue?.problem ?? "No tariff covers it."}</td>
+                <td className="right">{c.tripId && <Button size="sm" onClick={() => setOpen({ id: c.id, tripId: c.tripId! })}>Price it</Button>}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {open && <ConsignmentDrawer id={open.id} tripId={open.tripId} onClose={() => setOpen(null)} />}
+    </Card>
   );
 }

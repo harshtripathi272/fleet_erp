@@ -27,7 +27,7 @@ export const tripTypeDefinition = defineMaster({
   key: 'trip-types', label: 'Trip types', singular: 'Trip type', group: GROUPS.trips, module: 'trips',
   description: 'Fuel, general cargo, container, local delivery, empty run. Each has its own stages, required documents and trip sheet layout. One may be the default.',
   model: TripType, createSchema: S.createTripTypeSchema, updateSchema: S.updateTripTypeSchema,
-  refs: [{ path: 'loadTypeId', target: 'load-types' }, { path: 'requiredDocumentTypeIds', target: 'document-types' }, { path: 'printLayoutId', target: 'print-layouts' }],
+  refs: [{ path: 'loadTypeId', target: 'load-types' }, { path: 'defaultConsignmentTypeId', target: 'consignment-types' }, { path: 'requiredDocumentTypeIds', target: 'document-types' }, { path: 'printLayoutId', target: 'print-layouts' }],
   filters: { cargoKind: { schema: z.enum(CARGO_KINDS), apply: (v: string) => ({ cargoKind: v }), description: 'Cargo kind' } },
 });
 

@@ -11,6 +11,10 @@ import { ExpenseCategory } from '../trips/models/expense.model.js';
 import { sendDocument } from './cargo.service.js';
 import { driverLedger } from './ledger.js';
 import { Consignment, DriverDocument } from './models/cargo.model.js';
+import { hasDocument, isFinished, isLoaded, type ConsignmentP, type GateDocType, type LegP } from './legs.js';
+import { ConsignmentDocumentType } from '../freight/models/freight.model.js';
+import { tripGate } from './gate.js';
+import { refuse } from './support.js';
 import { FundRequest } from './models/funding.model.js';
 import { Message } from './models/message.model.js';
 import { Settlement } from './models/money.model.js';
@@ -55,9 +59,100 @@ function nextUpload(trip: Plain, consignments: Plain[], docs: Plain[]): 'loading
   const waiting = (kind: string) => docs.some((d) => d.kind === kind && d.status === 'new');
   const load = stops.find((s) => s.kind === 'load');
   const offload = stops.find((s) => s.kind === 'offload');
-  if (!consignments.length) return load?.arrivedAt && !waiting('loading') ? 'loading' : undefined;
-  if (consignments.some((c) => !c.delivered)) return offload?.arrivedAt && !waiting('delivery') ? 'delivery' : undefined;
+  const loaded = consignments.filter((c) => isLoaded(c as never));
+  if (!loaded.length) return load?.arrivedAt && !waiting('loading') ? 'loading' : undefined;
+  if (consignments.some((c) => !isFinished(c as never))) return offload?.arrivedAt && !waiting('delivery') ? 'delivery' : undefined;
   return undefined;
+}
+
+/* ---------- Which consignment each paper is for (#135 Part 2) ---------- */
+
+type PaperType = GateDocType & { code?: string; requiredBy?: string };
+/**
+ * The papers a driver is always asked for: the loading invoice at a pickup, and one paper at a drop, the proof of
+ * delivery (a signed delivery note is the same paper). Any other paper a stop or invoice waits for is added.
+ */
+const USUAL = new Set(['LOADING_INVOICE', 'POD']);
+/** The papers a driver sends at a pickup or a drop: the ones a stop waits for, and the usual invoice, delivery note and POD. */
+export async function paperTypes(): Promise<PaperType[]> {
+  return (await ConsignmentDocumentType.find({ status: 'active', step: { $in: ['pickup', 'drop'] } }).select('name step driverKind code requiredBy').lean()) as unknown as PaperType[];
+}
+const asked = (t: PaperType) => (t.requiredBy !== undefined && t.requiredBy !== 'none') || USUAL.has(String(t.code));
+
+/** For one pickup or drop, the papers still to send: not recorded, and no photo of it waiting at the office. */
+function papersDue(c: Plain, leg: Plain, types: PaperType[], waiting: Plain[]) {
+  if (leg.status !== 'planned') return [];
+  const step = leg.kind === 'pickup' ? 'pickup' : 'drop';
+  return types.filter((t) => t.step === step && asked(t)
+    && !hasDocument(c as unknown as ConsignmentP, leg as unknown as LegP, t)
+    && !waiting.some((d) => String(d.consignmentId) === String(c._id) && String(d.legId ?? '') === String(leg._id) && String(d.documentTypeId ?? '') === String(t._id)))
+    .map((t) => ({ documentTypeId: String(t._id), label: String(t.name), kind: String(t.driverKind ?? 'other') }));
+}
+
+/** The stop the truck is at (arrived, not left), else the next one it is going to. */
+export const currentStop = (stops: Plain[]) => stops.find((s) => s.arrivedAt && !s.leftAt && s.kind !== 'start') ?? stops.find((s) => !s.arrivedAt && s.kind !== 'start');
+
+/** The consignments at each stop, as the driver sees them: who, what, how much, and the papers due. Never a rate. */
+export async function legsByStopFor(trip: Plain, consignments: Plain[], docs: Plain[]) {
+  const types = await paperTypes();
+  const waiting = docs.filter((d) => d.status === 'new' && d.consignmentId);
+  const products = new Map((await Product.find({ _id: { $in: consignments.flatMap((c) => ((c.lines ?? []) as Plain[]).map((l) => l.productId)) } }).select('name unit').lean()).map((p) => [String(p._id), p as Plain]));
+  const out = new Map<string, Plain[]>();
+  for (const c of consignments) {
+    if (c.status === 'cancelled') continue;
+    const first = ((c.lines ?? []) as Plain[])[0];
+    const product = first ? products.get(String(first.productId)) : undefined;
+    for (const leg of (c.legs ?? []) as Plain[]) {
+      if (!leg.stopId || leg.status === 'skipped') continue;
+      const contact = (leg.contact ?? (leg.kind === 'pickup' ? c.consignor : c.consignee)) as Plain | undefined;
+      const partyId = leg.kind === 'pickup' ? c.consignorPartyId ?? c.customerId : c.consigneePartyId;
+      const planned = ((leg.planned ?? []) as Plain[]).reduce((s, p) => s + Number(p.qty ?? 0), 0) || (leg.kind === 'pickup' ? Number(first?.plannedQty ?? 0) : 0);
+      const list = out.get(String(leg.stopId)) ?? [];
+      list.push({
+        consignmentId: String(c._id), legId: String(leg._id), number: c.number, kind: leg.kind,
+        party: contact?.name ?? (partyId ? await partyName(partyId) : undefined), phone: contact?.phone, whatsapp: contact?.whatsapp,
+        product: product?.name, plannedQty: planned || undefined, unit: first?.unit ?? product?.unit, status: leg.status,
+        send: papersDue(c, leg, types, waiting).map(({ documentTypeId, label }) => ({ documentTypeId, label })),
+      });
+      out.set(String(leg.stopId), list);
+    }
+  }
+  return out;
+}
+
+/** The papers due at the stop the truck is at, one per consignment and paper: what "Send …" offers first. */
+export function dueNow(stops: Plain[], legs: Map<string, Plain[]>) {
+  const stop = currentStop(stops);
+  if (!stop?.arrivedAt) return [];
+  return (legs.get(String(stop._id)) ?? []).flatMap((l) => ((l.send ?? []) as Plain[]).map((p) => ({
+    consignmentId: l.consignmentId, legId: l.legId, documentTypeId: p.documentTypeId, stopId: String(stop._id), label: `${String(p.label)} for ${String(l.number)}`,
+  })));
+}
+
+/**
+ * Which consignment a photo is for, when the driver didn't say: the only one at the stop still needing that kind of
+ * paper is chosen for them; with several, the photo is filed on the trip and the answer lists them to pick from.
+ */
+async function targetFor(trip: Plain, kind: string, input: S.DriverSendInput) {
+  const consignments = await Consignment.find({ tripId: trip._id, status: { $ne: 'cancelled' } }).lean() as Plain[];
+  if (input.consignmentId) {
+    const c = consignments.find((x) => String(x._id) === input.consignmentId);
+    if (!c) throw refuse('That consignment is not on your trip.');
+    if (input.legId && !((c.legs ?? []) as Plain[]).some((l) => String(l._id) === input.legId)) throw refuse('That pickup or drop is not on the consignment.');
+    return { target: { consignmentId: input.consignmentId, legId: input.legId, documentTypeId: input.documentTypeId } };
+  }
+  if (!['loading', 'delivery', 'pod', 'weighbridge'].includes(kind)) return {};
+  const docs = await DriverDocument.find({ tripId: trip._id }).lean() as Plain[];
+  const legs = await legsByStopFor(trip, consignments, docs);
+  const stop = currentStop(trip.stops as Plain[]);
+  const step = kind === 'loading' || kind === 'weighbridge' ? 'pickup' : 'drop';
+  const open = (stop ? legs.get(String(stop._id)) ?? [] : []).filter((l) => l.kind === step && ((l.send ?? []) as Plain[]).length);
+  if (open.length === 1) {
+    const only = open[0]!;
+    const paper = ((only.send ?? []) as Plain[]).find((p) => kind === 'loading' || kind === 'pod' || kind === 'delivery') as Plain | undefined;
+    return { target: { consignmentId: String(only.consignmentId), legId: String(only.legId), documentTypeId: paper ? String(paper.documentTypeId) : undefined } };
+  }
+  return open.length > 1 ? { pick: open.map((l) => ({ consignmentId: l.consignmentId, legId: l.legId, number: l.number, party: l.party, product: l.product, qty: l.plannedQty })) } : {};
 }
 
 export async function home(actor: DriverActor) {
@@ -77,6 +172,11 @@ export async function home(actor: DriverActor) {
         arrivedAt: iso(s.arrivedAt), arrivedVia: s.arrivedVia, leftAt: iso(s.leftAt),
       }))),
     ]);
+    // Each stop's consignments, the papers due where the truck is, and what holds it there (#135 Part 2).
+    const byStop = await legsByStopFor(trip, consignments as Plain[], docs as Plain[]);
+    for (const s of stops) (s as Plain).legs = byStop.get(s.id) ?? [];
+    const due = dueNow(trip.stops as Plain[], byStop);
+    const gate = trip.dispatchedAt ? await tripGate(trip).catch(() => null) : null;
     const issued = await Promise.all(requests.map(async (r) => ({
       id: String(r._id), number: r.number, kind: r.kind,
       text: r.kind === 'fuel' ? `${Fmt.number(Number(r.litres ?? 0), { max: 2 })} L` : r.amount ? formatMoney(r.amount.amountMinor, await currencyInfo(r.amount.currencyId)) : '',
@@ -87,8 +187,10 @@ export async function home(actor: DriverActor) {
       truck: await plateOf(trip.vehicleId), trailer: await trailerPlate(trip.trailerId),
       customer: await partyName(trip.customerId), product: product?.name ?? '',
       dispatchedAt: iso(trip.dispatchedAt), stops,
-      next: nextUpload(trip, consignments, docs),
-      loaded: consignments.length > 0, delivered: consignments.length > 0 && consignments.every((c) => c.delivered),
+      // The papers due now, named by consignment; a trip with no consignment on its stops yet keeps the older single kind.
+      next: consignments.some((c) => ((c.legs ?? []) as Plain[]).some((l) => l.stopId)) ? due : nextUpload(trip, consignments, docs),
+      gate: gate ? { stopId: gate.stopId, driverReason: gate.driverReason } : null,
+      loaded: consignments.some((c) => isLoaded(c as never)), delivered: consignments.some((c) => isLoaded(c as never)) && consignments.every((c) => isFinished(c as never) || !isLoaded(c as never)),
       issued,
       documents: docs.map((d) => ({
         id: String(d._id), kind: d.kind, status: d.status, at: iso(d.at), note: d.note, returnReason: d.returnReason,
@@ -140,10 +242,14 @@ export async function messages(actor: DriverActor, since?: string) {
 /** A photo, a PDF or a message from the driver, filed on the open trip, or the last one not yet settled (#92). */
 export async function send(actor: DriverActor, input: S.DriverSendInput) {
   const trip = await driverTripNow(actor.driverId);
-  return sendDocument({
+  const { target, pick } = trip ? await targetFor(trip as Plain, input.kind, input) : {};
+  const doc = await sendDocument({
     driverId: actor.driverId, tripId: trip ? String(trip._id) : undefined, kind: input.kind, note: input.note,
     file: input.fileId ? { fileId: input.fileId } : undefined, reading: input.reading, channel: 'app',
+    ...(target?.consignmentId ? { consignmentId: target.consignmentId } : {}), ...(target?.legId ? { legId: target.legId } : {}), ...(target?.documentTypeId ? { documentTypeId: target.documentTypeId } : {}),
   }, driverContext(actor));
+  // Several consignments at the stop and none named: filed on the trip, and the driver is asked which (contract 8).
+  return pick ? { ...(doc as Plain), pick } : doc;
 }
 
 /** The driver answers what the company asks of them about their trip and load (#67). */
@@ -151,7 +257,7 @@ export async function answerFields(actor: DriverActor, input: S.DriverFieldsInpu
   const plain = await ownTrip(actor.driverId);
   if (!plain) throw new NotFoundError('You have no trip on the road');
   const trip = await Trip.findById(plain._id);
-  const consignment = await Consignment.findOne({ tripId: plain._id, inTransit: true });
+  const consignment = await Consignment.findOne({ tripId: plain._id, status: { $in: ['loading', 'loaded', 'in_transit', 'delivering'] } }).sort({ bookedAt: 1 });
   await driverAnswers(trip!, consignment, input.values);
   await save(trip!);
   if (consignment) await save(consignment);

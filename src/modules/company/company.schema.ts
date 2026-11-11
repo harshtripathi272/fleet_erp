@@ -6,6 +6,7 @@ import { DATE_FORMATS, DECIMAL_SEPARATORS, THOUSANDS_SEPARATORS, TIME_FORMATS, U
 
 import { AREA_KEYS } from './areaList.js';
 import { CARGO_KINDS, LOADED_TRIP_OUTCOMES, WRITE_OFF_CARRIERS } from './company.model.js';
+import * as F from './company.model.js';
 import { isTimeZone } from '../../core/format/regional.js';
 
 export const MODULES = AREA_KEYS;
@@ -66,6 +67,44 @@ const companyShape = {
     dueSoonKm: z.number().min(0).max(100_000).optional(),
     dueSoonDays: z.number().min(0).max(365).optional(),
     dueSoonHours: z.number().min(0).max(10_000).optional(),
+  }).optional(),
+  /** Company → Freight (#135): only the settings sent change; null puts one back to its default. */
+  freight: z.strictObject({
+    consignmentBy: z.enum(F.CONSIGNMENT_BY).nullable().optional(),
+    maxConsignmentsPerTrip: z.number().int().min(0).max(1000).nullable().optional(),
+    defaultConsignmentTypeId: objectId.nullable().optional(),
+    consignorDefault: z.enum(F.CONSIGNOR_DEFAULTS).nullable().optional(),
+    consigneeMustBeParty: z.boolean().nullable().optional(),
+    consigneePhoneRequired: z.boolean().nullable().optional(),
+    createPlacesFromAddresses: z.boolean().nullable().optional(),
+    duplicateCheck: z.enum(F.DUPLICATE_CHECKS).nullable().optional(),
+    bookWithoutTrip: z.boolean().nullable().optional(),
+    stopsEditableOnRoad: z.boolean().nullable().optional(),
+    lateSplit: z.enum(F.LATE_SPLIT).nullable().optional(),
+    leaveStopRequires: z.array(z.enum(F.LEAVE_STOP_REQUIRES)).max(2).refine((v) => new Set(v).size === v.length, 'Each once').nullable().optional(),
+    capacityCheck: z.enum(F.CAPACITY_CHECKS).nullable().optional(),
+    capacityTolerancePercent: z.number().min(0).max(50).nullable().optional(),
+    tripsWithoutCargo: z.boolean().nullable().optional(),
+    podPerStopAllowed: z.boolean().nullable().optional(),
+    notifyConsignee: z.boolean().nullable().optional(),
+    ewayBillWarnHours: z.number().min(0).max(720).nullable().optional(),
+    consignmentRateRequired: z.enum(F.RATE_REQUIRED).nullable().optional(),
+    chargeOnDefault: z.enum(F.FREIGHT_CHARGE_ON).nullable().optional(),
+    priceOnDefault: z.enum(F.FREIGHT_PRICE_ON).nullable().optional(),
+    distanceSourceDefault: z.enum(F.FREIGHT_DISTANCE).nullable().optional(),
+    shortageDeductionDefault: z.enum(F.FREIGHT_SHORTAGE).nullable().optional(),
+    shortageScopeDefault: z.enum(F.SHORTAGE_SCOPES).nullable().optional(),
+    detentionShare: z.enum(F.DETENTION_SHARES).nullable().optional(),
+    costShareBy: z.enum(F.COST_SHARES).nullable().optional(),
+    manualPriceNeedsReason: z.boolean().nullable().optional(),
+    freezeOn: z.enum(F.FREEZE_ON).nullable().optional(),
+    invoiceWithoutPod: z.boolean().nullable().optional(),
+    profitCosts: z.array(z.enum(F.PROFIT_COSTS)).max(7).refine((v) => new Set(v).size === v.length, 'Each once').nullable().optional(),
+    defaultFuelPricePerLMinor: z.number().int().min(0).max(1e9).nullable().optional(),
+    overheadPerKmMinor: z.number().int().min(0).max(1e9).nullable().optional(),
+    overheadPerDayMinor: z.number().int().min(0).max(1e11).nullable().optional(),
+    transferRevenueSplit: z.enum(F.TRANSFER_SPLITS).nullable().optional(),
+    showProfitOnTripList: z.boolean().nullable().optional(),
   }).optional(),
   /** Only the settings sent change; the rest keep their values. */
   operations: z.strictObject({

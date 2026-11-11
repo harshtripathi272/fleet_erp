@@ -354,6 +354,7 @@ async function settings(file: CompanyFile, changed: Changed, note: Note) {
   if (file.watermark && changed((f) => f.watermark)) patch.watermark = file.watermark;
   if (file.operations && changed((f) => f.operations)) patch.operations = file.operations;
   if (file.maintenance && changed((f) => f.maintenance)) patch.maintenance = file.maintenance;
+  if (file.freight && changed((f) => f.freight)) patch.freight = file.freight;
   for (const key of ['vocabulary', 'stages', 'desks'] as const) {
     const value = file.workspace?.[key];
     if (value !== undefined && changed((f) => f.workspace?.[key])) patch[key] = value;

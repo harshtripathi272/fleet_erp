@@ -1,3 +1,4 @@
+import { StopWork } from "../consignments/StopWork";
 import { usePlacement } from "./usePlacement";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useAreas } from "../api/areas";
@@ -466,7 +467,7 @@ function FundingPanel({ trip, step }: { trip: Trip; step: NextStep }) {
             { value: f.fuel.open, tone: "open", label: "Waiting" },
           ]}
           suggested={f.fuel.suggested}
-          suggestionText={f.fuel.suggested ? `Top up ${L(f.fuel.suggested)}` : "Covered"}
+          suggestionText={f.fuel.suggested ? `Top up ${L(f.fuel.suggested)}` : f.fuel.budget > 0 ? "Covered" : "No budget worked out: the truck has no fuel use figures. Ask for what it needs."}
           canRequest={canRequest}
           kind="fuel"
           trip={trip}
@@ -489,7 +490,7 @@ function FundingPanel({ trip, step }: { trip: Trip; step: NextStep }) {
             { value: f.cash.open, tone: "open", label: "Waiting" },
           ]}
           suggested={f.cash.suggested}
-          suggestionText={f.cash.suggested ? `Advance ${inBase(f.cash.suggested)}` : "Covered"}
+          suggestionText={f.cash.suggested ? `Advance ${inBase(f.cash.suggested)}` : f.cash.budget > 0 ? "Covered" : "No budget worked out for this route. Ask for what the driver needs."}
           canRequest={canRequest}
           kind="cash"
           trip={trip}
@@ -753,7 +754,7 @@ export function DocPhoto({ doc, size = "md" }: { doc: DriverDoc; size?: "sm" | "
   );
 }
 
-function DocHeader({ doc }: { doc: DriverDoc }) {
+export function DocHeader({ doc }: { doc: DriverDoc }) {
   const { data } = useApp();
   const driver = byId(data.drivers, doc.driverId);
   return (
@@ -803,7 +804,7 @@ export function DriverMessages({ trip }: { trip: Trip }) {
   );
 }
 
-function ReturnDoc({ doc }: { doc: DriverDoc }) {
+export function ReturnDoc({ doc }: { doc: DriverDoc }) {
   const { run } = useApp();
   const may = useMay();
   const [open, setOpen] = useState(false);
@@ -826,7 +827,7 @@ function ReturnDoc({ doc }: { doc: DriverDoc }) {
 }
 
 /** The office uploads the real document (a photo or PDF) for the driver; a person then types the figures from it. */
-function UploadDoc({ trip, kind, label }: { trip: Trip; kind: DocKind; label: string }) {
+export function UploadDoc({ trip, kind, label }: { trip: Trip; kind: DocKind; label: string }) {
   const { run, toast } = useApp();
   const may = useMay();
   const input = useRef<HTMLInputElement>(null);
@@ -1119,6 +1120,14 @@ function Ticket({ consignment, part }: { consignment: Consignment; part: "load" 
 
 function LoadingPanel({ trip }: { trip: Trip }) {
   const { data } = useApp();
+  // A trip whose consignments have their pickups on its stops is loaded stop by stop (#135, design 3.11.4).
+  if (data.cns.some((c) => c.tripId === trip.id && c.legs.some((l) => l.kind === "pickup" && l.stopId))) return <StopWork trip={trip} kind="pickup" />;
+  return <OneLoad trip={trip} />;
+}
+
+/** One load with no consignment yet: today's form, which makes the consignment as it records the loading. */
+function OneLoad({ trip }: { trip: Trip }) {
+  const { data } = useApp();
   const may = useMay();
   const [manual, setManual] = useState(false);
   const load = trip.stops.find((s) => s.kind === "load");
@@ -1309,6 +1318,20 @@ function ReceiptStatus({ doc }: { doc: DriverDoc }) {
 
 function OffloadingPanel({ trip }: { trip: Trip }) {
   const { data } = useApp();
+  // Drops on the trip's stops are recorded stop by stop (#135, design 3.11.5); the shortage card follows each consignment.
+  if (data.cns.some((c) => c.tripId === trip.id && c.legs.some((l) => l.kind === "drop" && l.stopId))) {
+    return (
+      <div className="stack">
+        <StopWork trip={trip} kind="drop" />
+        {data.consignments.filter((c) => c.tripId === trip.id && c.shortage).map((c) => <ShortageCard key={c.id} consignment={c} />)}
+      </div>
+    );
+  }
+  return <OneDrop trip={trip} />;
+}
+
+function OneDrop({ trip }: { trip: Trip }) {
+  const { data } = useApp();
   const may = useMay();
   const [manual, setManual] = useState(false);
   const offload = trip.stops.find((s) => s.kind === "offload");
@@ -1377,12 +1400,16 @@ export function ShortageCard({ consignment }: { consignment: Consignment }) {
   const finance = may("shortage.decide");
   // Charging needs the permission; waiving follows the shortage-waiver policy (the permission without one).
   const mayWaive = s.mayWaive ?? finance;
+  // Short beyond the allowance with nothing to charge it at (#102): said, not shown as within the allowance.
+  const unpriced = s.netShortL > 0 && !s.pricePerL;
   return (
     <Card
       title={fuel ? "Fuel reconciliation" : "Reconciliation"}
       tone={s.status === "pending" && (finance || mayWaive) ? "mine" : undefined}
       aside={
-        s.status === "none" ? (
+        s.status === "none" && unpriced ? (
+          <Status tone="wait">No shortage price</Status>
+        ) : s.status === "none" ? (
           <Status tone="ok">Within allowance</Status>
         ) : s.status === "pending" ? (
           <Status tone="wait">With Finance</Status>
@@ -1415,12 +1442,18 @@ export function ShortageCard({ consignment }: { consignment: Consignment }) {
             <td>Net shortage</td>
             <td className="num">{amount(s.netShortL)}</td>
           </tr>
-          <tr className="total">
-            <td>
-              At {inBase(s.pricePerL)} per {fuel ? "litre" : s.unit}
-            </td>
-            <td className="num">{inBase(s.amountBase)}</td>
-          </tr>
+          {unpriced ? (
+            <tr className="total">
+              <td colSpan={2}>Nothing to charge: these goods have no shortage price. To charge a shortage like this, set one on the goods or in a shortage policy.</td>
+            </tr>
+          ) : (
+            <tr className="total">
+              <td>
+                At {inBase(s.pricePerL)} per {fuel ? "litre" : s.unit}
+              </td>
+              <td className="num">{inBase(s.amountBase)}</td>
+            </tr>
+          )}
         </tbody>
       </table>
       {s.status === "pending" && (finance || mayWaive) && (

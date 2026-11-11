@@ -51,7 +51,8 @@ export interface Truck {
   tankL: number;
   emptyKmpl: number;
   loadedKmpl: number;
-  capacityT: number;
+  /** The truck's payload; empty when not set, so no limit is made up (#102). */
+  capacityT?: number;
   driverId?: string;
   trailerId?: string;
 }
@@ -102,6 +103,23 @@ export interface ExpenseCategory {
   id: string;
   name: string;
 }
+/** The Company → Freight settings the screens act on (the server's `effectiveFreight`). */
+export type { Cn } from "../consignments/model";
+import type { Cn } from "../consignments/model";
+
+export interface FreightRules {
+  consignmentBy: "loading" | "dispatch";
+  /** 0: no limit. */
+  maxConsignmentsPerTrip: number;
+  consigneeMustBeParty: boolean;
+  consigneePhoneRequired: boolean;
+  capacityCheck: "refuse" | "warn" | "off";
+  capacityTolerancePercent: number;
+  lateSplit: "by_type" | "always" | "never";
+  stopsEditableOnRoad: boolean;
+  manualPriceNeedsReason: boolean;
+  showProfitOnTripList: boolean;
+}
 export interface Settings {
   company: string;
   office: string;
@@ -123,6 +141,8 @@ export interface Settings {
   writeOffDefaultCarrier: string;
   loadedTripRoles: string[];
   writeOffNeedsOwner: boolean;
+  /** Company → Freight as it applies now (#135): what the consignment screens follow. */
+  freight: FreightRules;
   /** The company's words for the app's core terms (#73): `words.trip.plural` and so on. */
   words: Record<string, { singular: string; plural: string }>;
   /** The desks' stages as the company names them, and which are on. */
@@ -234,7 +254,7 @@ export interface Attachment {
   sampleId?: string;
   dataUrl?: string;
 }
-export type DocKind = "loading" | "delivery" | "expense" | "fuel" | "other";
+export type DocKind = "loading" | "delivery" | "expense" | "fuel" | "pod" | "weighbridge" | "permit" | "eway" | "other";
 export interface Extracted {
   docNo?: string;
   productId?: string;
@@ -265,6 +285,10 @@ export interface DriverDoc {
   recordRef?: string;
   returnReason?: string;
   at: string;
+  /** The consignment, pickup or drop and paper it was filed as (#135). */
+  consignmentId?: string;
+  legId?: string;
+  documentTypeId?: string;
 }
 
 export interface Measure {
@@ -419,6 +443,8 @@ export interface AppData {
   settings: Settings;
   places: Place[];
   customers: Customer[];
+  /** Every active party (customers, consignors, consignees), for picking a saved one by name (#102). */
+  parties?: Customer[];
   drivers: Driver[];
   trucks: Truck[];
   trailers: Trailer[];
@@ -431,6 +457,8 @@ export interface AppData {
   requests: FundRequest[];
   docs: DriverDoc[];
   consignments: Consignment[];
+  /** Every consignment in the shape of #135, for the consignment screens. */
+  cns: Cn[];
   expenses: Expense[];
   settlements: Settlement[];
   messages: Message[];
@@ -486,6 +514,8 @@ export type Action =
       plannedStart: string;
       productId?: string;
       plannedQty?: number;
+      /** The trip's consignments (#135): `POST /trips` puts each on the route's loading and offloading stops. */
+      consignments?: Record<string, unknown>[];
     }
   | {
       type: "trip.update";

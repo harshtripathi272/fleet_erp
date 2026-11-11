@@ -69,6 +69,7 @@ export async function runCommand(action: Action, ctx: { data: AppData; role: Rol
           customerId: action.customerId, vehicleId: action.truckId, driverId: blank(action.driverId), trailerId: blank(action.trailerId),
           routeId: blank(action.routeId), stops: action.stops, plannedStart: new Date(action.plannedStart).toISOString(),
           productId: blank(action.productId), plannedQty: blank(action.plannedQty),
+          ...(action.consignments?.length ? { consignments: action.consignments } : {}),
         }),
       });
       return;

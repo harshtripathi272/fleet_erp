@@ -4,6 +4,7 @@ import * as MasterService from '../../core/masters/service.js';
 import type { Plain } from '../../core/masters/types.js';
 import { Company } from '../company/company.model.js';
 import { Role } from '../roles/role.model.js';
+import { ensureFreightLists } from '../freight/defaults.js';
 
 /**
  * "Just the usual lists" (#116): what nearly every transport company uses, so a real company reaches its first
@@ -95,6 +96,9 @@ export async function loadStarterLists(actorId?: string) {
   // What's carried: one general product, so a load can be recorded from day one. Rename it, or add the company's own.
   const goods = await put('product-groups', { code: 'GENERAL', name: 'General goods' });
   if (goods && tonne) await put('products', { code: 'GENERAL', name: 'General cargo', groupId: goods, unitId: tonne });
+
+  // Freight (#135): kinds of consignment, the papers that go with them, and the kinds of money line on a bill.
+  result.created += await ensureFreightLists(actorId);
 
   const finance = await Role.findOne({ key: 'finance' }).select('_id').lean<{ _id: unknown }>();
   if (currency && finance) {

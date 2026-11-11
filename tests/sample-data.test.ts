@@ -32,7 +32,7 @@ describe('the full sample', () => {
   });
 
   test('trips at every stage', async () => {
-    const states = { settled: 4, ended: 1, on_road: 2, planned: 2 };
+    const states = { settled: 4, ended: 2, on_road: 2, planned: 2 };
     for (const [state, count] of Object.entries(states)) assert.equal(await total('/trips', { state }), count, state);
     const onRoad = (await get('/trips', { state: 'on_road' })).data as Array<{ stops: Array<{ kind: string; arrivedAt?: string }> }>;
     assert.ok(onRoad.some((t) => t.stops.some((s) => s.kind === 'border' && s.arrivedAt)), 'one truck is through the border');
@@ -60,6 +60,19 @@ describe('the full sample', () => {
     assert.ok(settlements.some((s) => s.tripIds.length === 1 && s.cashMinor > 0 && s.closingMinor === 0));
     const accounts = (await get('/driver-accounts')).data as Array<{ name: string; settleRequestedAt?: string | null }>;
     assert.ok(accounts.some((a) => a.settleRequestedAt), 'one driver waiting to be settled');
+  });
+
+  test('one truck carrying three consignments, two loaded at Dar es Salaam and one at Lusaka, one split late, each priced (#135)', async () => {
+    const trips = (await get('/trips', { state: 'ended', limit: 10 })).data as Array<{ id: string }>;
+    const lists = await Promise.all(trips.map(async (t) => (await get('/consignments', { tripId: t.id, limit: 50 })).data as Array<{ status: string; rate?: unknown; revenue?: { totalMinor: number }; legs: Array<{ kind: string; status: string }> }>));
+    const shared = lists.find((l) => l.length === 3);
+    assert.ok(shared, 'a trip with three consignments');
+    for (const c of shared) {
+      assert.equal(c.status, 'delivered');
+      assert.ok(c.rate, 'a rate agreed with the customer');
+      assert.ok((c.revenue?.totalMinor ?? 0) > 0, 'priced');
+    }
+    assert.ok(shared.some((c) => c.legs.filter((l) => l.kind === 'drop').length === 2), 'one delivery split between two drops');
   });
 
   test('loads only once', async () => {

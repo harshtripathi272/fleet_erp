@@ -24,6 +24,8 @@ const TERM_NOTE: Record<string, string> = {
   settlement: "Squaring up with the driver after a trip.",
   statement: "The driver's account on paper.",
   tripSheet: "The paper that travels with the truck.",
+  consignment: "One customer's goods on a trip, with its own papers and proof of delivery.",
+  consignmentNote: "The note that goes with a consignment (an LR in India).",
 };
 
 interface Workspace {
