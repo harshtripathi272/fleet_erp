@@ -203,7 +203,7 @@ function RecordLeg({ trip, c, leg, kind, onDone }: { trip: Trip; c: Cn; leg: CnL
   return (
     <div className="record-leg">
       <div className="record-photo">
-        {photo ? <><DocPhoto doc={photo} /><DocHeader doc={photo} /></> : (
+        {photo ? <><DocPhoto doc={photo} /><DocHeader doc={photo} /><MovePhoto trip={trip} doc={photo} kind={kind} onMoved={onDone} /></> : (
           <div className="record-nophoto">
             <p className="muted">No photo. Type the figures from the paper, or upload it.</p>
             <UploadDoc trip={trip} kind={kind === "pickup" ? "loading" : "delivery"} label={kind === "pickup" ? "Upload the invoice" : "Upload the delivery note"} />
@@ -362,5 +362,40 @@ function PhotosToFile({ trip, docs, cns, kind }: { trip: Trip; docs: DriverDoc[]
       </div>
       {trip.endedAt && <p className="muted">The {wl(data, "trip")} has ended; filing still puts the paper on its {w(data, "consignment").toLowerCase()}.</p>}
     </section>
+  );
+}
+
+/** The driver picked the wrong consignment: the office moves the photo to the right one (#135 Part 2). */
+function MovePhoto({ trip, doc, kind, onMoved }: { trip: Trip; doc: DriverDoc; kind: Kind; onMoved: () => void }) {
+  const { data, toast } = useApp();
+  const client = useQueryClient();
+  const [target, setTarget] = useState("");
+  const options = data.cns.filter((c) => c.tripId === trip.id && c.status !== "cancelled").flatMap((c) => c.legs
+    .filter((l) => l.kind === kind && l.status === "planned" && !(c.id === doc.consignmentId && l.id === doc.legId))
+    .map((l) => ({ value: `${c.id}:${l.id}`, label: `${c.number} · ${kind === "pickup" ? c.consignorName : l.contact?.name ?? c.consigneeName}${l.placeId ? ` at ${placeName(data, l.placeId)}` : ""}` })));
+  if (!options.length) return null;
+  const move = async () => {
+    const [consignmentId, legId] = target.split(":");
+    try {
+      await api(`/driver-documents/${doc.id}/file`, { method: "POST", body: { consignmentId, legId, ...(doc.documentTypeId ? { documentTypeId: doc.documentTypeId } : {}) } });
+      toast("Moved.");
+      await client.refetchQueries({ queryKey: ["operations"] });
+      onMoved();
+    } catch (err) {
+      toast(err instanceof ApiError ? err.message : "That didn't work.", "error");
+    }
+  };
+  const current = data.cns.find((c) => c.id === doc.consignmentId);
+  return (
+    <div className="move-photo">
+      <span className="muted">{current ? `The driver sent it for ${current.number}.` : "Not filed on a consignment yet."}</span>
+      <div className="cn-row-leg">
+        <select className="input" aria-label="It is for" value={target} onChange={(e) => setTarget(e.target.value)}>
+          <option value="">{current ? "It is for another one…" : "It is for…"}</option>
+          {options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+        </select>
+        <Button size="sm" disabled={!target} onClick={() => void move()}>Move it</Button>
+      </div>
+    </div>
   );
 }
