@@ -160,7 +160,9 @@ export function galleryFor(data: AppData, trip: Trip | undefined): Sample[] {
   const out: Sample[] = [];
   if (trip) {
     const loaded = data.consignments.some((c) => c.tripId === trip.id);
-    if (!loaded) {
+    // A loading invoice while nothing is loaded, or while any consignment still has a pickup to come (#135).
+    const pickupToCome = data.cns.some((c) => c.tripId === trip.id && c.legs.some((l) => l.kind === "pickup" && l.status === "planned"));
+    if (!loaded || pickupToCome) {
       const id = `loading:${trip.id}:0`;
       const read = readDocument(data, trip, "loading", id);
       out.push({ sampleId: id, kind: "loading", title: "Loading invoice", detail: read.docNo ?? "", read, image: svgUrl(invoice(data, trip, read, id)) });

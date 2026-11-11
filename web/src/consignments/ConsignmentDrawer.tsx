@@ -278,7 +278,7 @@ export function ConsignmentDrawer({ id, tripId, onClose }: { id?: string; tripId
           )}
 
           {tab === "legs" && c && <Legs data={data} c={c} splittable={maySplit(c, types.data)} onSplit={() => setSplitting("split")} onChange={() => setSplitting("change")} />}
-          {tab === "documents" && c && <Papers data={data} c={c} />}
+          {tab === "documents" && c && <Papers data={data} c={c} onAdded={() => void after("Paper added.")} />}
           {tab === "revenue" && c?.revenue && <RevenuePanel c={c} onChanged={() => after("Revenue updated.")} />}
           {tab === "history" && c && <Timeline data={data} c={c} />}
         </>
@@ -367,13 +367,60 @@ function Legs({ data, c, splittable, onSplit, onChange }: { data: ReturnType<typ
   );
 }
 
-function Papers({ data, c }: { data: ReturnType<typeof useApp>["data"]; c: Cn }) {
+/** The office adds a paper it holds, or one to follow, to a pickup or drop (#102: a truck waited for an invoice nobody could add). */
+function AddPaper({ c, onAdded }: { c: Cn; onAdded: () => void }) {
+  const { data, toast } = useApp();
+  const types = useQuery({ queryKey: ["consignment-document-types"], queryFn: () => api<Rec[]>("/consignment-document-types", { query: { status: "active", limit: 100 } }).catch(() => []) });
+  const [legId, setLegId] = useState(c.legs.find((l) => l.kind === "pickup")?.id ?? "");
+  const [documentTypeId, setType] = useState("");
+  const [number, setNumber] = useState("");
+  const [date, setDate] = useState("");
+  const [busy, setBusy] = useState(false);
+  const leg = c.legs.find((l) => l.id === legId);
+  const offered = (types.data ?? []).filter((t) => !leg || t.step === (leg.kind === "pickup" ? "pickup" : "drop"));
+  const add = async () => {
+    setBusy(true);
+    try {
+      await api(`/consignments/${c.id}/documents`, { method: "POST", body: { ...(legId ? { legId } : {}), ...(documentTypeId ? { documentTypeId } : {}), number: number.trim(), ...(date ? { date } : {}) } });
+      setNumber(""); setDate("");
+      onAdded();
+    } catch (err) {
+      toast(err instanceof ApiError ? err.message : "That didn't work.", "error");
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="cn-add-paper">
+      <h4>Add a paper</h4>
+      <div className="cn-add-paper-grid">
+        <Field label="For">
+          <select value={legId} onChange={(e) => { setLegId(e.target.value); setType(""); }}>
+            {c.legs.map((l, i) => <option key={l.id} value={l.id}>{l.kind === "pickup" ? "Pickup" : "Drop"} {i + 1}{l.placeId ? ` at ${placeName(data, l.placeId)}` : ""}</option>)}
+          </select>
+        </Field>
+        <Field label="Paper">
+          <select value={documentTypeId} onChange={(e) => setType(e.target.value)}>
+            <option value="">{leg?.kind === "drop" ? "Delivery note" : "Loading invoice"}</option>
+            {offered.map((t) => <option key={String(t.id)} value={String(t.id)}>{String(t.name)}</option>)}
+          </select>
+        </Field>
+        <Field label="Number"><input value={number} onChange={(e) => setNumber(e.target.value)} /></Field>
+        <Field label="Date"><input type="date" value={date} onChange={(e) => setDate(e.target.value)} /></Field>
+      </div>
+      <div><Button size="sm" busy={busy} disabled={!number.trim()} onClick={() => void add()}>Add the paper</Button></div>
+    </div>
+  );
+}
+
+function Papers({ data, c, onAdded }: { data: ReturnType<typeof useApp>["data"]; c: Cn; onAdded: () => void }) {
   const where = (legId?: string) => {
     const l = c.legs.find((x) => x.id === legId);
     return l ? `${l.kind === "pickup" ? "Pickup" : "Drop"} at ${l.placeId ? placeName(data, l.placeId) : "a place to be confirmed"}` : "The consignment";
   };
-  if (!c.documents.length) return <Empty title="No papers yet">The loading invoice, weighbridge ticket, delivery note and proof of delivery appear here as they are recorded.</Empty>;
+  if (!c.documents.length) return <><Empty title="No papers yet">The loading invoice, weighbridge ticket, delivery note and proof of delivery appear here as they are recorded.</Empty><AddPaper c={c} onAdded={onAdded} /></>;
   return (
+    <>
     <div className="table-frame">
       <table className="table">
         <thead><tr><th>Paper</th><th>Number</th><th>Date</th><th>For</th><th>From</th><th className="num">Value</th></tr></thead>
@@ -391,6 +438,9 @@ function Papers({ data, c }: { data: ReturnType<typeof useApp>["data"]; c: Cn })
         </tbody>
       </table>
     </div>
+  
+    <AddPaper c={c} onAdded={onAdded} />
+    </>
   );
 }
 

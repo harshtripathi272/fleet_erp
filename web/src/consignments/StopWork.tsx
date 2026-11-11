@@ -85,7 +85,7 @@ function StopBlock({ trip, stop, kind, cns, openByDefault }: { trip: Trip; stop:
           <div className="table-frame">
             <table className="table">
               <thead>
-                <tr><th>Number</th><th>{kind === "pickup" ? "Consignor → consignee" : "Consignee"}</th><th>Goods</th><th className="num">Planned</th><th className="num">{kind === "pickup" ? "Loaded" : "Delivered"}</th><th>Papers</th><th>Status</th><th /></tr>
+                <tr><th>Number</th><th /><th>Status</th><th>{kind === "pickup" ? "Consignor → consignee" : "Consignee"}</th><th>Goods</th><th className="num">Planned</th><th className="num">{kind === "pickup" ? "Loaded" : "Delivered"}</th><th>Papers</th></tr>
               </thead>
               <tbody>
                 {here.map(({ c, l }) => {
@@ -97,12 +97,6 @@ function StopBlock({ trip, stop, kind, cns, openByDefault }: { trip: Trip; stop:
                   return (
                     <tr key={l.id} className={working === l.id ? "on" : ""}>
                       <td className="mono">{c.number}</td>
-                      <td className="cn-party">{kind === "pickup" ? `${c.consignorName} → ${c.consigneeName}` : l.contact?.name ?? c.consigneeName}</td>
-                      <td>{byId(data.products, c.lines[0]?.productId)?.name ?? "—"}{c.lines.length > 1 ? ` +${c.lines.length - 1}` : ""}</td>
-                      <td className="num">{planned ? `${num(planned, 0, 3)} ${unit}` : "—"}</td>
-                      <td className="num">{done !== undefined && l.status === "done" ? `${num(done, 0, 3)} ${unit}` : "—"}</td>
-                      <td>{papers ? `${papers} in` : photo ? "A photo is waiting" : <span className="muted">None yet</span>}</td>
-                      <td><Status tone={l.status === "done" ? "ok" : cnStatusTone(c.status)}>{l.status === "done" ? (l.outcome === "partial" ? "Part delivered" : "Done") : CN_STATUS_LABEL[c.status]}</Status></td>
                       <td className="stop-actions">
                         {l.status === "planned" && working !== l.id && (
                           <Button size="sm" tone={photo || stop.arrivedAt ? "primary" : "secondary"} onClick={() => setWorking(l.id)}>
@@ -111,6 +105,12 @@ function StopBlock({ trip, stop, kind, cns, openByDefault }: { trip: Trip; stop:
                         )}
                         {kind === "drop" && l.status === "planned" && maySplit(c, types.data) && <Button size="sm" tone="quiet" onClick={() => setSplitting(c)}>Split delivery</Button>}
                       </td>
+                      <td><Status tone={l.status === "done" ? "ok" : cnStatusTone(c.status)}>{l.status === "done" ? (l.outcome === "partial" ? "Part delivered" : "Done") : CN_STATUS_LABEL[c.status]}</Status></td>
+                      <td className="cn-party">{kind === "pickup" ? `${c.consignorName} → ${c.consigneeName}` : l.contact?.name ?? c.consigneeName}</td>
+                      <td>{byId(data.products, c.lines[0]?.productId)?.name ?? "—"}{c.lines.length > 1 ? ` +${c.lines.length - 1}` : ""}</td>
+                      <td className="num">{planned ? `${num(planned, 0, 3)} ${unit}` : "—"}</td>
+                      <td className="num">{done !== undefined && l.status === "done" ? `${num(done, 0, 3)} ${unit}` : "—"}</td>
+                      <td>{papers ? `${papers} in` : photo ? "A photo is waiting" : l.status === "done" && kind === "pickup" ? <span className="cn-warn">Invoice missing</span> : <span className="muted">None yet</span>}</td>
                     </tr>
                   );
                 })}
@@ -243,6 +243,9 @@ function RecordLeg({ trip, c, leg, kind, onDone }: { trip: Trip; c: Cn; leg: CnL
           })}
         </section>
 
+        {kind === "pickup" && !docs.some((d) => d.number.trim()) && (
+          <p className="cn-warn">No paper number yet. The truck waits at this stop until the loading invoice is in: type its number above, or add it later under the {wl(data, "consignment")}'s Papers.</p>
+        )}
         {kind === "pickup" && <Field label="Seal numbers" hint="Separated by commas."><input value={seals} onChange={(e) => setSeals(e.target.value)} /></Field>}
         {kind === "drop" && (
           <section className="grid-2">
