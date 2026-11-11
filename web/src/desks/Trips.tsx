@@ -20,7 +20,7 @@ import { byId, tripKm } from "../domain/calc";
 import { activeTrip, placeName, routeLabel } from "../domain/helpers";
 import { ACTOR_NAME, nextStep, stageIndex, stageTimes, visibleStages } from "../domain/turn";
 import { TripConsignments } from "../consignments/TripConsignments";
-import { ProfitPanel } from "../consignments/ProfitPanel";
+import { ProfitLine, ProfitPanel } from "../consignments/ProfitPanel";
 import type { Move, NextStep, StageId } from "../domain/turn";
 import type { Action, Desk, Trip } from "../domain/types";
 import { Avatar, Button, Empty, Field, Modal, Segmented } from "../ui/kit";
@@ -303,6 +303,7 @@ function TripView({
         </div>
       </header>
 
+      {seesProfit && <ProfitLine trip={trip} onOpen={() => setView("money")} />}
       <div className="seg-tabs trip-tabs" role="tablist" aria-label={`${w(data, "trip")} views`}>
         <button role="tab" aria-selected={view === "stages"} className={view === "stages" ? "on" : ""} onClick={() => setView("stages")}>Stages</button>
         <button role="tab" aria-selected={view === "consignments"} className={view === "consignments" ? "on" : ""} onClick={() => setView("consignments")}>

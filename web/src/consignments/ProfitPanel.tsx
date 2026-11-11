@@ -186,3 +186,21 @@ function AddCost({ trip, currency, onClose, onSaved }: { trip: Trip; currency: P
     </Modal>
   );
 }
+
+/** Revenue, costs and profit in one line at the top of the trip (#135 Part 4), opening the Money tab. */
+export function ProfitLine({ trip, onOpen }: { trip: Trip; onOpen: () => void }) {
+  const { data } = useApp();
+  const profit = useQuery({ queryKey: ["trip-profit", trip.id], queryFn: () => api<Profit>(`/trips/${trip.id}/profit`), staleTime: 30_000 });
+  if (!profit.data) return null;
+  const p = profit.data;
+  const m = (minor: number) => `${num(minor / 10 ** p.currency.minorUnits, 0, p.currency.minorUnits)}\u00a0${p.currency.code}`;
+  const st = STATUS[p.status] ?? STATUS.estimate;
+  return (
+    <button type="button" className="profit-line" onClick={onOpen} aria-label={`${w(data, "trip")} money: open the Money tab`}>
+      <span>Revenue <b>{m(p.revenueMinor)}</b></span>
+      <span>Costs <b>{m(p.costMinor)}</b></span>
+      <span>Profit <b className={p.profitMinor < 0 ? "profit-loss" : ""}>{m(p.profitMinor)}</b></span>
+      <Status tone={st.tone}>{st.label}</Status>
+    </button>
+  );
+}
