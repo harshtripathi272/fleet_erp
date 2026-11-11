@@ -113,22 +113,22 @@ export async function loadStarterLists(actorId?: string) {
   await put('numbering-series', { code: 'TRIPS', name: 'Trip numbers', entity: 'trips', prefix: 'TRIP', pattern: '{PREFIX}/{YY}/{SEQ}', padding: 4, resetPolicy: 'yearly' }, { entity: 'trips', branchId: { $exists: false } });
 
   // Who approves money and fuel: Finance, in the app or on WhatsApp. One level; add more as the company grows.
-  // What's carried, so a load can be recorded from day one, in the kinds of cargo the company chose (How it works):
-  // fuel in litres at 20 °C for liquids, general cargo in tonnes for weighed loads, packages for counted ones (#102).
-  // Rename them, or add the company's own.
+  // What's carried, so a load can be recorded from day one. A company that carries weighed loads gets general cargo
+  // in tonnes, as before; one that doesn't gets what it does carry (#102): fuel in litres at 20 °C for liquids,
+  // packages for counted goods. Rename them, or add the company's own.
   const kinds = company?.operations?.cargoKinds?.length ? company.operations.cargoKinds : ['volume', 'weighed', 'counted'];
-  if (kinds.includes('volume') && litre) {
+  if (kinds.includes('weighed') || kinds.includes('counted')) {
+    const goods = await put('product-groups', { code: 'GENERAL', name: 'General goods' });
+    if (goods && tonne && kinds.includes('weighed')) await put('products', { code: 'GENERAL', name: 'General cargo', groupId: goods, unitId: tonne });
+    const each = await idOf('units', 'EA');
+    if (goods && each && kinds.includes('counted') && !kinds.includes('weighed')) await put('products', { code: 'PACKAGES', name: 'Packages', groupId: goods, unitId: each });
+  }
+  if (kinds.includes('volume') && !kinds.includes('weighed') && litre) {
     const fuel = await put('product-groups', { code: 'FUEL', name: 'Fuel', defaultUnitId: litre, pricingBasis: 'per_litre' });
     if (fuel) {
       await put('products', { code: 'DIESEL', name: 'Diesel', groupId: fuel, unitId: litre, hazard: { unClass: '3', unNumber: 'UN1202', packingGroup: 'III' }, densityKgPerL: 0.835, volumeCorrected: true, referenceTemperatureC: 20, packaging: 'bulk' });
       await put('products', { code: 'PETROL', name: 'Petrol', groupId: fuel, unitId: litre, hazard: { unClass: '3', unNumber: 'UN1203', packingGroup: 'II' }, densityKgPerL: 0.745, volumeCorrected: true, referenceTemperatureC: 20, packaging: 'bulk' });
     }
-  }
-  if (kinds.includes('weighed') || kinds.includes('counted')) {
-    const goods = await put('product-groups', { code: 'GENERAL', name: 'General goods' });
-    if (goods && tonne && kinds.includes('weighed')) await put('products', { code: 'GENERAL', name: 'General cargo', groupId: goods, unitId: tonne });
-    const each = await idOf('units', 'EA');
-    if (goods && each && kinds.includes('counted')) await put('products', { code: 'PACKAGES', name: 'Packages', groupId: goods, unitId: each });
   }
 
   // Freight (#135): kinds of consignment, the papers that go with them, and the kinds of money line on a bill.
