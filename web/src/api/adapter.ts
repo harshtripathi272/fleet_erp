@@ -286,6 +286,8 @@ export function toAppData(ref: Reference, ops: Operations): AppData {
     id: s.id, no: s.number, driverId: s.driverId, tripIds: s.tripIds, from: s.from, to: s.to,
     openingBase: baseMajor(s.openingMinor), advancesBase: baseMajor(s.advancesMinor), expensesBase: baseMajor(s.expensesMinor),
     custom: s.custom, shortagesBase: baseMajor(s.shortagesMinor), writeOffsBase: baseMajor(s.writeOffsMinor ?? 0), cashBase: baseMajor(s.cashMinor), closingBase: baseMajor(s.closingMinor), note: s.note, postedAt: s.postedAt,
+    lines: (s.lines ?? []).map((l: Rec) => ({ id: l.id ?? l._id, kind: l.kind, label: l.label, amountBase: baseMajor(l.amountMinor), toDriver: Boolean(l.toDriver), reason: l.reason })),
+    paidVia: s.paidVia ?? undefined, reversedAt: s.reversedAt ?? undefined, reverseReason: s.reverseReason ?? undefined,
   })).sort((a, b) => a.postedAt.localeCompare(b.postedAt));
 
   const sources = index(ref.orderSources);

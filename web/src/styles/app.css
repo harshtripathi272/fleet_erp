@@ -995,6 +995,21 @@
   gap: 12px;
   padding-top: 4px;
 }
+/* Lines typed by hand on a statement (#102): one row per line, wrapping on narrow screens. */
+.statement-lines {
+  display: grid;
+  gap: 10px;
+  justify-items: start;
+}
+.statement-line-form {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 10px;
+  align-items: end;
+  width: 100%;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--line);
+}
 .carry {
   display: flex;
   justify-content: space-between;

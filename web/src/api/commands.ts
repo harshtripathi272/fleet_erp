@@ -161,7 +161,14 @@ export async function runCommand(action: Action, ctx: { data: AppData; role: Rol
     case "expense.decide": await api(`/expenses/${action.id}/decide`, { method: "POST", body: clean({ custom: action.custom, approve: action.approve, reason: blank(action.reason?.trim()), via: viaOf(action.via) }) }); return;
     case "settlement.request": await api(`/driver-accounts/${action.driverId}/settlement-request`, { method: "POST" }); return;
     case "settlement.post":
-      await api("/settlements", { method: "POST", body: clean({ custom: action.custom, driverId: action.driverId, tripIds: action.tripIds, cashMinor: Math.round(action.cashBase * 10 ** (data.baseCurrency?.minorUnits ?? 2)), note: blank(action.note?.trim()) }) });
+      await api("/settlements", { method: "POST", body: clean({
+        custom: action.custom, driverId: action.driverId, tripIds: action.tripIds, cashMinor: Math.round(action.cashBase * 10 ** (data.baseCurrency?.minorUnits ?? 2)), note: blank(action.note?.trim()),
+        lines: action.lines?.length ? action.lines.map((l) => clean({ kind: l.kind, label: l.label.trim(), amountMinor: Math.round(l.amountBase * 10 ** (data.baseCurrency?.minorUnits ?? 2)), toDriver: l.toDriver, reason: blank(l.reason?.trim()) })) : undefined,
+        paidVia: action.paidVia && (action.paidVia.paymentMethodId || action.paidVia.reference?.trim()) ? clean({ paymentMethodId: blank(action.paidVia.paymentMethodId), reference: blank(action.paidVia.reference?.trim()) }) : undefined,
+      }) });
+      return;
+    case "settlement.reverse":
+      await api(`/settlements/${action.id}/reverse`, { method: "POST", body: { reason: action.reason.trim() } });
       return;
 
     /* Messages */

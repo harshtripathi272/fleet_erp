@@ -4,6 +4,7 @@ import { ForbiddenError, NotFoundError } from '../../core/errors/index.js';
 import { mayDecideAll, routeApproval } from './approvals.js';
 import type { Plain } from '../../core/masters/types.js';
 import { Company } from '../company/company.model.js';
+import { PaymentMethod } from '../finance/models/paymentMethod.model.js';
 import { Driver } from '../drivers/models/driver.model.js';
 import { driverLedger, sumOf } from './ledger.js';
 import { Consignment, DriverDocument } from './models/cargo.model.js';
@@ -111,19 +112,25 @@ export async function postSettlement(input: S.SettlementInput, ctx: OpsContext) 
   const balance = sumOf(ledger);
   const selectedSum = sumOf(selected);
   const opening = balance - selectedSum;
-  const before = opening + selectedSum;
+  // Lines typed by hand (#102): in the driver's favour lower what they hold, against them raise it.
+  const lines = input.lines ?? [];
+  const linesSum = lines.reduce((sum, l) => sum + (l.toDriver ? -l.amountMinor : l.amountMinor), 0);
+  if (!trips.length && !lines.length && !input.cashMinor && !balance) throw refuse(`${driver.name} has nothing to settle.`);
+  const before = opening + selectedSum + linesSum;
   if (input.cashMinor > 0 && input.cashMinor > Math.max(0, before)) throw refuse(`${driver.name} holds ${formatMoney(Math.max(0, before), base)}. Not more can be returned.`);
   if (input.cashMinor < 0 && -input.cashMinor > Math.max(0, -before)) throw refuse(`The company owes ${formatMoney(Math.max(0, -before), base)}. Don't pay more.`);
   // With a settlement policy, posting is an approval: the poster must be its final approver for this amount.
-  const approval = await routeApproval('settlement', { amountMinor: Math.abs(input.cashMinor), currencyId: base.id });
+  const approval = await routeApproval('settlement', { amountMinor: Math.abs(input.cashMinor) + lines.reduce((sum, l) => sum + l.amountMinor, 0), currencyId: base.id });
   if (!mayDecideAll(ctx, approval)) throw new ForbiddenError(`Posting this settlement needs ${approval.levels.at(-1)!.label}.`);
   const sumKind = (kind: string) => sumOf(selected.filter((e) => e.kind === kind));
   const starts = trips.map((t) => (t.dispatchedAt ?? t.createdAt) as Date).sort((a, b) => a.getTime() - b.getTime());
   const ends = trips.map((t) => (t.endedAt ?? t.cancelledAt) as Date).sort((a, b) => a.getTime() - b.getTime());
+  if (input.paidVia?.paymentMethodId && !(await PaymentMethod.exists({ _id: input.paidVia.paymentMethodId }))) throw refuse('Choose a payment method from the list.');
   const custom = await stepCustom('settlements', 'post', input.custom);
   const settlement = await Settlement.create({
     custom,
-    number: await nextNumber('settlements', 'SET', at), driverId: driver._id, tripIds: input.tripIds, from: starts[0], to: ends.at(-1),
+    number: await nextNumber('settlements', 'SET', at), driverId: driver._id, tripIds: input.tripIds, from: starts[0] ?? at, to: ends.at(-1) ?? at,
+    lines, ...(input.paidVia ? { paidVia: input.paidVia } : {}),
     currencyId: base.id, openingMinor: opening, advancesMinor: sumKind('advance'), expensesMinor: -sumKind('expense'), shortagesMinor: sumKind('shortage'), writeOffsMinor: sumKind('write_off'),
     cashMinor: input.cashMinor, closingMinor: before - input.cashMinor, note: input.note, postedAt: at, createdBy: ctx.actorId, updatedBy: ctx.actorId,
   });
@@ -144,14 +151,15 @@ export async function postSettlement(input: S.SettlementInput, ctx: OpsContext) 
     title: `Settlement ${s.number}`,
     text: cash > 0 ? `You returned ${money(cash)}. ${carry}` : cash < 0 ? `${money(-cash)} paid to you. ${carry}` : `${money(Math.abs(closing))} carries forward${closing < 0 ? ' in your favour' : ''}.`,
     rows: [
-      ['Trips', trips.map((t) => t.number).join(', ')], ['Advances', money(Number(s.advancesMinor))], ['Approved expenses', money(Number(s.expensesMinor))],
+      ['Trips', trips.map((t) => t.number).join(', ') || 'None'], ['Advances', money(Number(s.advancesMinor))], ['Approved expenses', money(Number(s.expensesMinor))],
       ...(Number(s.shortagesMinor) ? [['Shortage', money(Number(s.shortagesMinor))] as [string, string]] : []),
       ...(Number(s.writeOffsMinor) ? [['Load written off', money(Number(s.writeOffsMinor))] as [string, string]] : []),
+      ...((s.lines ?? []) as Plain[]).map((l) => [String(l.label), `${l.toDriver ? '' : '− '}${money(Number(l.amountMinor))}`] as [string, string]),
     ],
     buttons: [{ label: 'View statement', nav: { view: 'statement', driverId: String(driver._id) } }],
     wa: { template: 'settlement_posted', values: [String(s.number), (cash > 0 ? `you returned ${money(cash)}. ${carry}` : cash < 0 ? `${money(-cash)} paid to you. ${carry}` : `${money(Math.abs(closing))} carries forward${closing < 0 ? ' in your favour' : ''}`).replace(/\.\s*$/, '')] },
   }, ctx);
-  await post(queue('trips'), at, { title: `${driver.name} settled`, text: `${s.number} covers ${trips.length} trip${trips.length === 1 ? '' : 's'}. Trip sheets are final.` }, ctx);
+  if (trips.length) await post(queue('trips'), at, { title: `${driver.name} settled`, text: `${s.number} covers ${trips.length} trip${trips.length === 1 ? '' : 's'}. Trip sheets are final.` }, ctx);
   await log(ctx, at, `Settled ${driver.name}: ${s.number}, ${trips.length} trips, carry forward ${money(closing)}`, { entity: 'settlements', entityId: settlement._id });
   for (const t of trips) await log(ctx, at, `Settled in ${s.number}`, { tripId: t._id });
   await announce('settlement.posted', null, ctx, {
@@ -166,6 +174,30 @@ export async function postSettlement(input: S.SettlementInput, ctx: OpsContext) 
     },
   });
   return present(s);
+}
+
+/**
+ * Undo a settlement posted by mistake (#102). Only the driver's latest, so later balances stay right; it is kept,
+ * marked reversed with the reason, its money stops counting and its trips can be settled again.
+ */
+export async function reverseSettlement(id: string, input: { reason: string }, ctx: OpsContext) {
+  need(ctx, 'settlements', 'create', 'Finance reverses settlements.');
+  const settlement = await Settlement.findById(id);
+  if (!settlement) throw new NotFoundError('Settlement not found');
+  if (settlement.get('reversedAt')) throw conflict(`${settlement.get('number')} is already reversed.`);
+  const later = await Settlement.exists({ driverId: settlement.get('driverId'), reversedAt: { $exists: false }, postedAt: { $gt: settlement.get('postedAt') } });
+  if (later) throw refuse('Reverse the later settlements of this driver first: only the latest can be reversed.');
+  const at = new Date();
+  settlement.set({ reversedAt: at, reversedBy: ctx.actorId, reverseReason: input.reason.trim(), updatedBy: ctx.actorId });
+  await settlement.save();
+  await Trip.updateMany({ settlementId: settlement._id }, { $unset: { settlementId: 1 }, $set: { updatedBy: ctx.actorId }, $inc: { version: 1 } });
+  const number = String(settlement.get('number'));
+  await post(driverThread(settlement.get('driverId')), at, {
+    title: `Settlement ${number} reversed`, text: `Finance reversed ${number}: ${input.reason.trim()}. Your account is as it was before it.`,
+    wa: { template: 'settlement_posted', values: [number, `reversed by Finance (${input.reason.trim()}); your account is as it was before it`] },
+  }, ctx);
+  await log(ctx, at, `Reversed ${number}: ${input.reason.trim()}`, { entity: 'settlements', entityId: settlement._id });
+  return present(settlement.toObject() as Plain);
 }
 
 /** Everything the printed driver statement shows. */

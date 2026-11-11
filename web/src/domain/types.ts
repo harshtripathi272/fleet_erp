@@ -383,7 +383,14 @@ export interface Settlement {
   closingBase: number;
   note?: string;
   postedAt: string;
+  /** Lines Finance typed (#102): in the driver's favour (an allowance) or against them (a fine), with a reason. */
+  lines?: SettlementLine[];
+  paidVia?: { paymentMethodId?: string; reference?: string };
+  reversedAt?: string;
+  reverseReason?: string;
 }
+export type SettlementLineKind = "allowance" | "bonus" | "fine" | "loan" | "repayment" | "correction" | "other";
+export interface SettlementLine { id?: string; kind: SettlementLineKind; label: string; amountBase: number; toDriver: boolean; reason?: string }
 
 export interface Nomination {
   custom?: Record<string, unknown>;
@@ -612,7 +619,8 @@ export type Action =
   | { type: "expense.decide"; custom?: Record<string, unknown>; id: string; approve: boolean; reason?: string; via?: "app" | "WhatsApp" }
   | { type: "trip.end"; custom?: Record<string, unknown>; tripId: string; closingFuelL: number }
   | { type: "settlement.request"; driverId: string }
-  | { type: "settlement.post"; custom?: Record<string, unknown>; driverId: string; tripIds: string[]; cashBase: number; note?: string }
+  | { type: "settlement.post"; custom?: Record<string, unknown>; driverId: string; tripIds: string[]; cashBase: number; note?: string; lines?: SettlementLine[]; paidVia?: { paymentMethodId?: string; reference?: string } }
+  | { type: "settlement.reverse"; id: string; reason: string }
   | { type: "thread.read"; thread: string }
   | { type: "chat.send"; thread: string; text: string }
   | { type: "customer.reply"; nominationId: string };

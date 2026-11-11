@@ -42,6 +42,8 @@ export const Expense = opsModel('Expense', expenseSchema);
  * A periodic settlement of one driver across several closed trips. Amounts are in the base
  * currency's minor units. Positive `cashMinor`: the driver handed cash back; negative: paid to the driver.
  */
+export const SETTLEMENT_LINE_KINDS = ['allowance', 'bonus', 'fine', 'loan', 'repayment', 'correction', 'other'] as const;
+
 const settlementSchema = new Schema<any>({
   number: { type: String, required: true },
   driverId: { type: ObjectId, ref: 'Driver', required: true },
@@ -56,9 +58,29 @@ const settlementSchema = new Schema<any>({
   writeOffsMinor: { type: Number, default: 0 },
   custom: { type: Schema.Types.Mixed, default: undefined },
   cashMinor: { type: Number, required: true },
+  /**
+   * Lines typed by Finance (#102): an allowance or bonus in the driver's favour, a fine or a repayment against them,
+   * each with a reason. They count on the driver's account like any other entry.
+   */
+  lines: {
+    type: [new Schema({
+      kind: { type: String, enum: SETTLEMENT_LINE_KINDS, required: true },
+      label: { type: String, required: true },
+      amountMinor: { type: Number, required: true, min: 0 },
+      toDriver: { type: Boolean, required: true },
+      reason: String,
+    })],
+    default: [],
+  },
+  /** How the cash moved: the payment method and its reference. */
+  paidVia: { type: new Schema({ paymentMethodId: { type: ObjectId, ref: 'PaymentMethod' }, reference: String }, { _id: false }), default: undefined },
   closingMinor: { type: Number, required: true },
   note: String,
   postedAt: { type: Date, required: true },
+  /** Reversed by Finance with a reason: its money no longer counts and its trips are open to settle again. */
+  reversedAt: Date,
+  reversedBy: { type: ObjectId, ref: 'User' },
+  reverseReason: String,
   createdBy: { type: ObjectId, ref: 'User' },
   updatedBy: { type: ObjectId, ref: 'User' },
 }, schemaOptions);
