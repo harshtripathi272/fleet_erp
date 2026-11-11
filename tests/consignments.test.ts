@@ -594,3 +594,24 @@ describe('the consignment report (#135 Part 4)', () => {
     assert.ok(text.startsWith('﻿"Consignment no.","Loaded on","Delivered on","Hours on the road","Total","Currency"'));
   });
 });
+
+describe('bad input to POST /consignments (#135 Part 5)', () => {
+  test('is refused in words, never a server error', async () => {
+    const t = await trip({}, false);
+    const bodies: unknown[] = [
+      {}, [], 'x', null, { tripId: 'x' }, { tripId: t.id }, { tripId: t.id, lines: 'x' }, { tripId: t.id, lines: [] }, { tripId: t.id, lines: [{}] },
+      { tripId: t.id, lines: [{ productId: ids.diesel, plannedQty: -5 }] }, { tripId: t.id, lines: [{ productId: 'nope' }] },
+      { tripId: t.id, lines: [{ productId: ids.diesel }], legs: 'x' }, { tripId: t.id, lines: [{ productId: ids.diesel }], legs: [{ kind: 'nowhere' }] },
+      { tripId: t.id, lines: [{ productId: ids.diesel }], legs: [{ kind: 'drop', placeId: ids.depot }] },
+      { tripId: t.id, lines: [{ productId: ids.diesel }], rate: { basis: 'per_parsec', price: { amountMinor: 1, currencyId: ids.usd } } },
+      { tripId: t.id, lines: [{ productId: ids.diesel }], rate: { basis: 'per_kg', price: { amountMinor: -1, currencyId: ids.usd } } },
+      { tripId: t.id, invoiceNo: 5 }, { tripId: t.id, invoiceNo: 'INV-1' }, { tripId: t.id, invoiceNo: 'INV-1', productId: ids.diesel, qty: 'many' },
+      { tripId: t.id, lines: [{ productId: ids.diesel }], consignee: 'just a string' }, { tripId: t.id, lines: [{ productId: ids.diesel }], references: { lrNo: 'x'.repeat(5000) } },
+    ];
+    for (const body of bodies) {
+      const res = await api().post('/api/v1/consignments').set(bearer(owner)).set('Content-Type', 'application/json').send(JSON.stringify(body));
+      assert.ok(res.status < 500, `${JSON.stringify(body).slice(0, 80)} -> ${res.status} ${JSON.stringify(res.body).slice(0, 160)}`);
+      if (res.status >= 400) assert.ok(res.body.error?.message, 'refused with a message');
+    }
+  });
+});
