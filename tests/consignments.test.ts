@@ -469,6 +469,14 @@ describe('the A-to-E trip of #135 Part 1, made entirely from New trip', () => {
     }
     const done = await Promise.all(all.map(async (c) => ok<Consignment>(await as(owner).get(`/consignments/${c.id}`))));
     for (const c of done) assert.equal(c.status, 'delivered', c.number);
+    // Each stop is left no earlier than the work recorded there (#102), not at the minute the truck arrived.
+    const ran = (await tripNow(t.id)) as unknown as { stops: Array<{ id: string; kind: string; leftAt?: string }> };
+    for (const stop of ran.stops.slice(1, -2)) {
+      const work = done.flatMap((c) => c.legs).map((l) => l as typeof l & { recordedAt?: string }).filter((l) => l.stopId === stop.id && l.recordedAt).map((l) => Date.parse(String(l.recordedAt)));
+      if (!work.length) continue;
+      assert.ok(stop.leftAt, `stop ${stop.kind} has a leaving time`);
+      assert.ok(Date.parse(stop.leftAt) >= Math.max(...work), `stop ${stop.kind} is left after its work is recorded`);
+    }
     assert.deepEqual(done.map((c) => c.revenue.totalMinor).sort((a, b) => a - b), [100000, 200000, 300000, 400000, 500000, 600000, 700000]);
     ok(await as(ops).post(`/trips/${t.id}/end`, { closingFuelL: 80 }));
     const profit = ok(await as(owner).get(`/trips/${t.id}/profit`));

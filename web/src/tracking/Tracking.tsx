@@ -12,6 +12,7 @@ import { useApp } from "../store";
 import { useMay } from "../api/session";
 import { byId, cumulativeKm, fuelNow, legLoaded, positionAt, tripKm, tripShape } from "../domain/calc";
 import { activeTrip, placeName, routeLabel } from "../domain/helpers";
+import { holdingStop, nextStep } from "../domain/turn";
 import { useSim } from "./sim";
 import { Dashcam } from "./Dashcam";
 import { clock, day, hm, hoursText, km, L } from "../ui/format";
@@ -178,11 +179,10 @@ export default function Tracking({ tripId }: { tripId: string }) {
   const cum = cumulativeKm(trip);
   const nextIndex = trip.stops.findIndex((s, i) => i > 0 && !s.arrivedAt);
   const next = trip.stops[nextIndex];
-  const loaded = data.consignments.some((c) => c.tripId === trip.id);
-  const delivered = loaded && data.consignments.filter((c) => c.tripId === trip.id).every((c) => c.delivered);
-  const blocked =
-    (!loaded && nextIndex > trip.stops.findIndex((s) => s.kind === "load")) ||
-    (!delivered && nextIndex > trip.stops.findIndex((s) => s.kind === "offload"));
+  // Every stop kind can be marked, borders too, unless an earlier stop still has work to record (#102).
+  const holding = holdingStop(data, trip);
+  const blocked = holding >= 0 && nextIndex > holding;
+  const step = nextStep(data, trip);
   const toNext = next ? Math.max(0, cum[nextIndex] - at) : 0;
   const eta = next ? clock(data) + (toNext / (data.settings.averageSpeedKmh || 62)) * 36e5 : undefined;
   const total = tripKm(trip);
@@ -231,11 +231,13 @@ export default function Tracking({ tripId }: { tripId: string }) {
           <div className="gauge">
             <Fuel size={16} />
             <span>Tank</span>
-            <strong>{Math.round(fuel)}</strong>
-            <small>L of {truck.tankL}</small>
-            <i className="gauge-bar">
-              <b style={{ width: `${Math.min(100, (fuel / truck.tankL) * 100)}%` }} />
-            </i>
+            <strong>{Number.isFinite(fuel) ? Math.round(fuel) : "—"}</strong>
+            <small>{truck.tankL > 0 ? `L of ${truck.tankL}` : "L"}</small>
+            {truck.tankL > 0 && Number.isFinite(fuel) && (
+              <i className="gauge-bar">
+                <b style={{ width: `${Math.min(100, (fuel / truck.tankL) * 100)}%` }} />
+              </i>
+            )}
           </div>
         </div>
         <div className="track-progress">
@@ -270,7 +272,7 @@ export default function Tracking({ tripId }: { tripId: string }) {
             <span>Follow truck</span>
           </button>
         </div>
-        {sim.note && sim.tripId === trip.id && <p className="sim-note">{sim.note}</p>}
+        {sim.note && sim.tripId === trip.id && sim.running ? <p className="sim-note">{sim.note}</p> : activeTrip(trip) && trip.dispatchedAt ? <p className="sim-note">{step.waiting}{step.detail ? ` · ${step.detail}` : ""}</p> : null}
         {ops && next && !blocked && !running && activeTrip(trip) && trip.dispatchedAt && (
           <button className="link-btn" onClick={() => run({ type: "trip.arrive", tripId: trip.id, stopId: next.id }, `Marked at ${placeName(data, next.placeId)}.`)}>
             Mark arrived at {placeName(data, next.placeId)}

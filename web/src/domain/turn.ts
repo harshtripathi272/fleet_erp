@@ -488,3 +488,19 @@ export function queueFor(data: AppData, desk: Desk): QueueItem[] {
   }
   return items.sort((a, b) => (a.since ?? "").localeCompare(b.since ?? ""));
 }
+
+/**
+ * The stop that holds the truck (#102): the first one with a pickup or drop still to record. On a trip of the old
+ * kind, the loading stop until it is loaded, then the offloading stop until delivered. -1 when nothing holds it.
+ */
+export function holdingStop(data: AppData, trip: Trip): number {
+  const cns = data.cns.filter((c) => c.tripId === trip.id && c.status !== "cancelled");
+  if (cns.some((c) => c.legs.some((l) => l.stopId))) {
+    const indexes = cns.flatMap((c) => c.legs.filter((l) => l.status === "planned" && l.stopId).map((l) => trip.stops.findIndex((s) => s.id === l.stopId))).filter((i) => i >= 0);
+    return indexes.length ? Math.min(...indexes) : -1;
+  }
+  const consignments = whereIs(data.consignments, "tripId", trip.id);
+  if (!consignments.length) return trip.stops.findIndex((s) => s.kind === "load");
+  if (consignments.some((c) => !c.delivered)) return trip.stops.findIndex((s) => s.kind === "offload");
+  return -1;
+}

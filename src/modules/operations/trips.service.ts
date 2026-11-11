@@ -594,11 +594,30 @@ export async function arriveAt(trip: HydratedDocument<any>, index: number, at: D
     const refusal = await arrivalRefusal(trip, index, ctx);
     if (refusal) throw refuse(refusal);
   }
+  await leaveAfterWork(trip, stops.slice(0, index), at);
   const stamped = stampArrival(stops, index, at);
   if (!stamped) return;
   for (const stop of stops.slice(0, index + 1)) if (stop.arrivedAt && !stop.arrivedVia) stop.arrivedVia = via;
   if (stops[index]?.kind === 'offload') recordEvent(trip, 'arrived_offloading', at, ctx.actorId);
   if (!quiet) await announceArrival(trip.toObject() as Plain, index, at, ctx, via);
+}
+
+/**
+ * A stop the truck goes on from is left no earlier than the work recorded there (#102): when the office marks the
+ * next arrival without GPS, the loading or drop recorded after the truck arrived sets when it left, not the arrival.
+ */
+async function leaveAfterWork(trip: HydratedDocument<any>, stops: Array<{ _id?: unknown; arrivedAt?: Date; leftAt?: Date }>, at: Date) {
+  const open = stops.filter((s) => s.arrivedAt && !s.leftAt);
+  if (!open.length) return;
+  const done = new Map<string, number>();
+  const list = await Consignment.find({ 'legs.tripId': trip._id }).select('legs.stopId legs.recordedAt').lean();
+  for (const c of list) for (const l of (c.legs ?? []) as Array<{ stopId?: unknown; recordedAt?: Date }>) {
+    if (l.stopId && l.recordedAt) done.set(String(l.stopId), Math.max(done.get(String(l.stopId)) ?? 0, l.recordedAt.getTime()));
+  }
+  for (const s of open) {
+    const work = done.get(String(s._id));
+    if (work) s.leftAt = new Date(Math.min(at.getTime(), Math.max(s.arrivedAt!.getTime(), work)));
+  }
 }
 
 /** A position report: kilometres along the route. The truck can't pass loading before the load is recorded, or offloading before delivery. */
@@ -623,12 +642,21 @@ export async function reportPosition(id: string, input: S.PositionInput, ctx: Op
     if (index > 0 && !stop.arrivedAt && km >= cum[index]! - 0.01) arrivals.push(index);
   });
   for (const index of arrivals) await arriveAt(trip, index, at, ctx, input.source);
+  const passed = stops.filter((stop, index) => stop.arrivedAt && !stop.leftAt && km > cum[index]! + 0.5);
   stops.forEach((stop, index) => {
-    if (stop.arrivedAt && !stop.leftAt && km > cum[index]! + 0.5) {
+    if (passed.includes(stop)) {
       const back = input.speed > 0 ? ((km - cum[index]!) / input.speed) * 36e5 : 0;
-      stop.leftAt = new Date(Math.max(stop.arrivedAt.getTime(), at.getTime() - back));
+      stop.leftAt = new Date(Math.max(stop.arrivedAt!.getTime(), at.getTime() - back));
     }
   });
+  // Never before the work recorded there.
+  for (const stop of passed) {
+    const left = stop.leftAt!;
+    stop.leftAt = undefined;
+    await leaveAfterWork(trip, [stop], at);
+    const after = stop.leftAt as Date | undefined;
+    if (!after || after < left) stop.leftAt = left;
+  }
   const parked = stops.some((s, i) => s.kind !== 'via' && s.kind !== 'border' && s.kind !== 'start' && s.arrivedAt && !s.leftAt && Math.abs(cum[i]! - km) < 0.5);
   trip.set('tracking', { km, speed: km > previous && !held && !parked ? input.speed : 0, heading: km > previous ? input.heading ?? 0 : Number(trip.get('tracking')?.heading ?? 0), at, source: input.source });
   trip.markModified('stops');
