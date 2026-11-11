@@ -172,3 +172,17 @@
 .drv-which-row { display: grid; gap: 2px; min-height: 48px; padding: 8px 12px; text-align: left; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-2); color: var(--ink); }
 .drv-which-row small { color: var(--ink-3); }
 .move-photo { display: grid; gap: 6px; padding-top: 6px; border-top: 1px solid var(--line); }
+
+/* A consignment's timeline (#135 Part 3). */
+.cn-timeline { display: grid; gap: 12px; }
+.cn-timeline > p { margin: 0; }
+.cn-timeline-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.cn-timeline-list > li { display: grid; gap: 8px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-2); }
+.cn-timeline-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.cn-timeline-facts { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px 12px; margin: 0; }
+.cn-timeline-facts > div { min-width: 0; }
+.cn-timeline-facts dt { color: var(--ink-3); font-size: 12.5px; }
+.cn-timeline-facts dd { margin: 0; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.cn-timeline-papers { margin: 0; color: var(--ink-2); }
+@media (max-width: 1100px) { .cn-timeline-facts { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 560px) { .cn-timeline-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); } }

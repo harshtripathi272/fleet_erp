@@ -9,7 +9,7 @@ import { placeName } from "../domain/helpers";
 import { byId } from "../domain/calc";
 import { w, wl } from "../domain/words";
 import { Button, Drawer, Empty, Field, Segmented, Status, SwitchField, UnitInput } from "../ui/kit";
-import { calendarDate, clockTime, day, num, phonePlaceholder } from "../ui/format";
+import { calendarDate, clockTime, day, hoursText, num, phonePlaceholder } from "../ui/format";
 import { cnFrom, CN_STATUS_LABEL, cnStatusTone, maySplit, type Cn, type CnLeg } from "./model";
 import { moneyText, qtyText } from "./TripConsignments";
 import { RATE_BASES } from "./ConsignmentRows";
@@ -180,7 +180,7 @@ export function ConsignmentDrawer({ id, tripId, onClose }: { id?: string; tripId
         <>
           {id && (
             <div className="seg-tabs" role="tablist" aria-label={one}>
-              {([["details", "Details"], ["legs", "Loads and drops"], ["documents", "Papers"], ...(c?.revenue ? [["revenue", "Revenue"]] : []), ["history", "History"]] as [Tab, string][]).map(([k, label]) => (
+              {([["details", "Details"], ["legs", "Loads and drops"], ["documents", "Papers"], ...(c?.revenue ? [["revenue", "Revenue"]] : []), ["history", "Timeline"]] as [Tab, string][]).map(([k, label]) => (
                 <button key={k} role="tab" aria-selected={tab === k} className={tab === k ? "on" : ""} onClick={() => setTab(k)}>{label}</button>
               ))}
             </div>
@@ -280,7 +280,7 @@ export function ConsignmentDrawer({ id, tripId, onClose }: { id?: string; tripId
           {tab === "legs" && c && <Legs data={data} c={c} splittable={maySplit(c, types.data)} onSplit={() => setSplitting("split")} onChange={() => setSplitting("change")} />}
           {tab === "documents" && c && <Papers data={data} c={c} />}
           {tab === "revenue" && c?.revenue && <RevenuePanel c={c} onChanged={() => after("Revenue updated.")} />}
-          {tab === "history" && c && <History data={data} c={c} />}
+          {tab === "history" && c && <Timeline data={data} c={c} />}
         </>
       )}
       {splitting && c && <SplitDelivery c={c} mode={splitting} onClose={() => setSplitting(null)} onSaved={() => { setSplitting(null); void after("Saved. The trip's stops follow, and the driver has the new list."); }} />}
@@ -394,17 +394,73 @@ function Papers({ data, c }: { data: ReturnType<typeof useApp>["data"]; c: Cn })
   );
 }
 
-function History({ data, c }: { data: ReturnType<typeof useApp>["data"]; c: Cn }) {
+/**
+ * The consignment's timeline (#135 Part 3): one line per pickup and per drop, with the place, when the truck arrived,
+ * when the load or drop was recorded, when the truck left, the quantity, and each paper as in or missing; the time
+ * from first loading to last drop, and the trips it has been on. Read from what is already stored: no new records.
+ */
+function Timeline({ data, c }: { data: ReturnType<typeof useApp>["data"]; c: Cn }) {
+  const types = useQuery({ queryKey: ["consignment-document-types"], queryFn: () => api<Rec[]>("/consignment-document-types", { query: { status: "active", limit: 100 } }).catch(() => []) });
   const moves = ((c as unknown as Rec).movements ?? []) as Rec[];
+  const trip = byId(data.trips, c.tripId ?? undefined);
+  const stopOf = (stopId: string | null) => trip?.stops.find((s) => s.id === stopId);
+  const when = (iso?: string | null) => (iso ? `${day(iso)} ${clockTime(iso)}` : "—");
+  const unit = c.lines[0]?.unit ?? "";
+  const usual = new Set(["LOADING_INVOICE", "DELIVERY_NOTE", "POD"]);
+  const papersFor = (l: CnLeg) => {
+    const step = l.kind === "pickup" ? "pickup" : "drop";
+    const asked = (types.data ?? []).filter((t) => t.step === step && (usual.has(String(t.code)) || (t.requiredBy && t.requiredBy !== "none")));
+    const have = c.documents.filter((d) => d.legId === l.id);
+    const podIn = Boolean(l.pod?.number || l.pod?.docIds?.length);
+    return asked.map((t) => {
+      const doc = have.find((d) => d.documentTypeId === t.id);
+      const isIn = Boolean(doc) || (t.driverKind === "pod" || t.driverKind === "delivery" ? podIn : false);
+      return { name: String(t.name), isIn, number: doc?.number ?? (isIn ? l.pod?.number : undefined) };
+    });
+  };
+  const firstUp = c.legs.filter((l) => l.kind === "pickup" && l.recordedAt).map((l) => l.recordedAt!).sort()[0];
+  const lastDown = c.legs.filter((l) => l.kind === "drop" && l.recordedAt).map((l) => l.recordedAt!).sort().at(-1);
+  const allDropped = c.legs.filter((l) => l.kind === "drop" && l.status !== "skipped").every((l) => l.status === "done");
+  const onRoad = firstUp && lastDown && allDropped ? (new Date(lastDown).getTime() - new Date(firstUp).getTime()) / 36e5 : undefined;
   return (
-    <div className="cn-history">
-      <p>Booked {day(c.bookedAt)} {clockTime(c.bookedAt)}{c.loadedAt ? ` · loaded ${day(c.loadedAt)}` : ""}{c.deliveredAt ? ` · delivered ${day(c.deliveredAt)}` : ""}.</p>
+    <div className="cn-timeline">
+      <p>
+        Booked {when(c.bookedAt)}.{" "}
+        {onRoad !== undefined ? `From first loading to last drop: ${hoursText(onRoad)}.` : firstUp ? `Loading began ${when(firstUp)}; still on the way.` : "Not loaded yet."}
+      </p>
+      <ol className="cn-timeline-list">
+        {c.legs.map((l) => {
+          const stop = stopOf(l.stopId);
+          const waited = stop?.arrivedAt ? ((stop.leftAt ? new Date(stop.leftAt) : new Date()).getTime() - new Date(stop.arrivedAt).getTime()) / 36e5 : undefined;
+          const qty = l.status === "done" ? l.actual?.reduce((s2, m) => s2 + (m.accepted ?? m.qty), 0) : l.planned?.reduce((s2, p) => s2 + (p.qty ?? 0), 0);
+          return (
+            <li key={l.id}>
+              <div className="cn-timeline-head">
+                <strong>{l.kind === "pickup" ? "Loaded at" : "Dropped at"} {l.placeId ? placeName(data, l.placeId) : "a place to be confirmed"}</strong>
+                <Status tone={l.status === "done" ? "ok" : l.status === "skipped" ? "mute" : "wait"}>{l.status === "done" ? "Done" : l.status === "skipped" ? "Skipped" : "To come"}</Status>
+              </div>
+              <dl className="cn-timeline-facts">
+                <div><dt>Arrived</dt><dd>{when(stop?.arrivedAt)}</dd></div>
+                <div><dt>{l.kind === "pickup" ? "Loading recorded" : "Drop recorded"}</dt><dd>{when(l.recordedAt)}</dd></div>
+                <div><dt>Left</dt><dd>{when(stop?.leftAt)}</dd></div>
+                <div><dt>Waited</dt><dd>{waited !== undefined ? `${hoursText(waited)}${stop?.leftAt ? "" : " so far"}` : "—"}</dd></div>
+                <div><dt>Quantity</dt><dd className="num">{qty ? `${num(qty, 0, 3)}\u00a0${unit}${l.status === "done" ? "" : " planned"}` : "—"}</dd></div>
+              </dl>
+              {papersFor(l).length > 0 && (
+                <p className="cn-timeline-papers">
+                  {papersFor(l).map((p, i) => <span key={p.name}>{i ? " · " : ""}{p.name}: {p.isIn ? <>in{p.number ? <> (<span className="mono">{p.number}</span>)</> : null}</> : <span className="cn-warn">missing</span>}</span>)}
+                </p>
+              )}
+            </li>
+          );
+        })}
+      </ol>
       {moves.length > 0 && (
         <>
           <h4>Trips it has been on</h4>
           <ol className="plain">
             {moves.map((m, i) => (
-              <li key={i}><span className="mono">{byId(data.trips, String(m.tripId))?.no ?? "A trip"}</span> from {day(String(m.from))}{m.to ? ` to ${day(String(m.to))}` : ", now"}{m.reason && m.reason !== "assigned" ? ` · ${String(m.reason)}` : ""}</li>
+              <li key={i}><span className="mono">{byId(data.trips, String(m.tripId))?.no ?? "A trip"}</span> from {day(String(m.from))}{m.to ? ` to ${day(String(m.to))}` : ["delivered", "closed", "cancelled", "returned", "written_off"].includes(c.status) ? "" : ", now"}{m.reason && m.reason !== "assigned" ? ` · ${String(m.reason)}` : ""}</li>
             ))}
           </ol>
         </>
