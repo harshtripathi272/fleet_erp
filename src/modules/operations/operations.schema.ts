@@ -510,3 +510,8 @@ export const consignmentsQuery = z.strictObject({
   tab: z.enum(['all', 'to_load', 'on_road', 'to_deliver', 'waiting_pod', 'unpriced']).optional(),
 });
 export type ConsignmentsQuery = z.infer<typeof consignmentsQuery>;
+/** The consignment report (#135 Part 4): the list's filters, the columns to show (comma list of keys), and up to 500 a page. */
+export const reportQuery = consignmentsQuery.extend({
+  columns: z.string().trim().regex(/^[a-zA-Z0-9.]+(,[a-zA-Z0-9.]+)*$/).max(600).optional(),
+  limit: z.coerce.number().int().min(1).max(500).optional(),
+});

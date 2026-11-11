@@ -82,6 +82,10 @@ const newConsignment = validate({ body: S.createConsignmentSchema });
 const oldLoading = validate({ body: S.loadingSchema });
 const consignmentBody = Object.assign<RequestHandler, { meta: object }>((req, res, next) => (req.body && typeof req.body === 'object' && 'invoiceNo' in req.body ? oldLoading : newConsignment)(req, res, next), { meta: (newConsignment as unknown as { meta: object }).meta });
 router.post('/consignments', authorize('consignments', 'create'), consignmentBody, C.createConsignment);
+// The report sits before /consignments/:id, which would otherwise take "report" for an id.
+router.get('/consignments/report', authorize('consignments', 'read'), validate({ query: S.reportQuery }), C.consignmentReport);
+router.get('/consignments/report.xlsx', authorize('consignments', 'read'), validate({ query: S.reportQuery }), C.consignmentReportFile('xlsx'));
+router.get('/consignments/report.csv', authorize('consignments', 'read'), validate({ query: S.reportQuery }), C.consignmentReportFile('csv'));
 router.get('/consignments/:id', authorize('consignments', 'read'), validate(id), C.getConsignment);
 router.patch('/consignments/:id', authorize('consignments', 'update'), validate({ ...id, body: S.updateConsignmentSchema }), C.updateConsignment);
 router.put('/consignments/:id/legs', authorize('consignments', 'update'), validate({ ...id, body: S.putLegsSchema }), C.putLegs);

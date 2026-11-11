@@ -5,6 +5,7 @@ import { ApiResponse, buildPaginationMeta } from '../../core/response/index.js';
 import { asyncHandler } from '../../utils/asyncHandler.js';
 import * as Cargo from './cargo.service.js';
 import * as Consignments from './consignments.service.js';
+import * as Report from './report.service.js';
 import * as Stops from './stops.service.js';
 import * as Dashboards from './dashboards.service.js';
 import * as DriverApp from './driverApp.service.js';
@@ -140,3 +141,12 @@ export const companyFields = asyncHandler(async (_req, res) => ApiResponse.succe
 export const driverFields = asyncHandler(async (req, res) => ApiResponse.success(res, await DriverApp.answerFields(driverActor(req), req.body), 'Sent to the office'));
 export const driverDefect = asyncHandler(async (req, res) => ApiResponse.created(res, await DriverApp.reportDefect(driverActor(req), req.body), 'Sent to the office'));
 export const driverArrive = asyncHandler(async (req, res) => ApiResponse.success(res, await DriverApp.arrive(driverActor(req), param(req, 'stopId')), 'Arrival recorded'));
+
+/* The consignment report (#135 Part 4). */
+export const consignmentReport = asyncHandler(async (req, res) => ApiResponse.success(res, await Report.consignmentReport(query(req), opsContext(req))));
+export const consignmentReportFile = (kind: 'xlsx' | 'csv') => asyncHandler(async (req, res) => {
+  const file = await Report.consignmentReportFile(query(req), opsContext(req), kind);
+  res.setHeader('Content-Type', file.mime);
+  res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(file.name)}`);
+  res.send(file.body);
+});

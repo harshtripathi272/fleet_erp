@@ -560,3 +560,37 @@ describe('the driver says which consignment each paper is for (#135 Part 2)', ()
     assert.equal(doc.pick, undefined);
   });
 });
+
+describe('the consignment report (#135 Part 4)', () => {
+  test('the 8 Nov columns by default, chosen columns, totals, money only for those who see it, and downloads', async () => {
+    const t = await trip({ consignments: [
+      { lines: [{ productId: ids.diesel, plannedQty: 20000 }], rate: { basis: 'per_consignment', price: { amountMinor: 150000, currencyId: ids.usd } } },
+      { lines: [{ productId: ids.diesel, plannedQty: 10000 }], references: { lrNo: 'LR-0091' } },
+    ] }, true, owner);
+    for (const stop of t.stops) if (stop.kind === 'load' || stop.kind === 'offload') await recordStop(t, stop, (c) => fuel(c.lines[0] && c.number.endsWith('1') ? 20000 : 10000));
+    const report = ok(await as(owner).get('/consignments/report', { tripId: t.id }));
+    assert.deepEqual(report.columns.map((c: { key: string }) => c.key), ['tripNo', 'vehicleNo', 'invoiceDate', 'lrNo', 'product', 'quantity', 'unit', 'route', 'leadKm']);
+    assert.equal(report.rows.length, 2);
+    assert.ok(report.rows.every((r: Record<string, unknown>) => r.tripNo && r.vehicleNo && r.product && r.route && r.invoiceDate));
+    assert.ok(report.rows.some((r: Record<string, unknown>) => r.lrNo === 'LR-0091'));
+    assert.equal(report.totals.count, 2);
+    // Chosen columns, money among them: the owner sees it, Operations doesn't, even when asked.
+    const cols = { tripId: t.id, columns: 'number,loadedOn,deliveredOn,hoursOnRoad,total,currency' };
+    const mine = ok(await as(owner).get('/consignments/report', cols));
+    assert.deepEqual(mine.columns.map((c: { key: string }) => c.key), ['number', 'loadedOn', 'deliveredOn', 'hoursOnRoad', 'total', 'currency']);
+    assert.ok(mine.rows.some((r: Record<string, unknown>) => r.total === 1500 && r.currency === 'USD'));
+    const theirs = ok(await as(ops).get('/consignments/report', cols));
+    assert.deepEqual(theirs.columns.map((c: { key: string }) => c.key), ['number', 'loadedOn', 'deliveredOn', 'hoursOnRoad']);
+    assert.ok(!theirs.available.some((c: { money: boolean }) => c.money));
+    // Downloads: a real Excel workbook (a zip) and a CSV that Excel reads, with the same header.
+    const asFile = (path: string) => api().get(`/api/v1${path}`).query(cols).set(bearer(owner)).buffer(true).parse((res, done) => { const parts: Buffer[] = []; res.on('data', (b: Buffer) => parts.push(b)); res.on('end', () => done(null, Buffer.concat(parts))); });
+    const book = await asFile('/consignments/report.xlsx');
+    assert.equal(book.status, 200);
+    assert.match(String(book.headers['content-type']), /spreadsheetml/);
+    assert.equal((book.body as Buffer).subarray(0, 2).toString(), 'PK');
+    assert.ok((book.body as Buffer).includes(Buffer.from('Consignment no.')));
+    const sheet = await asFile('/consignments/report.csv');
+    const text = (sheet.body as Buffer).toString('utf8');
+    assert.ok(text.startsWith('﻿"Consignment no.","Loaded on","Delivered on","Hours on the road","Total","Currency"'));
+  });
+});

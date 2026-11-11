@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { ArrowDown, ArrowUp, Download } from "lucide-react";
-import { api, ApiError } from "../api/client";
+import { api } from "../api/client";
 import { downloadPdf } from "../api/files";
 import { useApp } from "../store";
 import { w, wl } from "../domain/words";
@@ -23,6 +23,7 @@ interface ReportData {
 }
 
 type DateField = "booked" | "loaded" | "delivered" | "invoiced";
+const COLUMNS_KEY = "fleet.consignment-report.columns";
 
 export function Report() {
   const { data, toast } = useApp();
@@ -31,21 +32,19 @@ export function Report() {
   const [to, setTo] = useState("");
   const [customerId, setCustomerId] = useState("");
   const [productId, setProductId] = useState("");
-  const [vehicleId, setVehicleId] = useState("");
-  const [withPod, setWithPod] = useState(false);
-  const [columns, setColumns] = useState<string[] | null>(null);
+  // The person's column choice is kept in this browser (a convenience: the default view is the server's).
+  const [columns, setColumns] = useState<string[] | null>(() => { try { const kept = localStorage.getItem(COLUMNS_KEY); return kept ? (JSON.parse(kept) as string[]) : null; } catch { return null; } });
   const [choosing, setChoosing] = useState(false);
   const query = {
-    dateField, from: from || undefined, to: to || undefined, customerId: customerId || undefined, productId: productId || undefined, vehicleId: vehicleId || undefined,
-    withPod: withPod ? "true" : undefined, columns: columns?.join(",") || undefined, limit: 500,
+    dateField, from: from || undefined, to: to || undefined, customerId: customerId || undefined, productId: productId || undefined, columns: columns?.join(",") || undefined, limit: 500,
   };
   const report = useQuery({ queryKey: ["consignment-report", query], queryFn: () => api<ReportData>("/consignments/report", { query }) });
   // The person's remembered columns are what the server answers with when none are asked for.
   useEffect(() => { if (report.data && !columns) setColumns(report.data.columns.map((c) => c.key)); }, [report.data, columns]);
 
-  const saveColumns = async (next: string[]) => {
+  const saveColumns = (next: string[]) => {
     setColumns(next);
-    try { await api("/consignments/report/columns", { method: "PUT", body: { columns: next } }); } catch (err) { toast(err instanceof ApiError ? err.message : "The columns couldn't be remembered.", "error"); }
+    try { localStorage.setItem(COLUMNS_KEY, JSON.stringify(next)); } catch { /* private window: the choice lasts until the page closes */ }
   };
   const download = (ext: "xlsx" | "csv") => {
     const qs = new URLSearchParams(Object.entries(query).filter(([, v]) => v !== undefined).map(([k, v]) => [k, String(v)])).toString();
@@ -62,7 +61,7 @@ export function Report() {
     <div className="cn-report">
       <div className="desk-tools">
         <Segmented choice label="Dates by" value={dateField} onChange={setDateField}
-          options={[{ value: "booked", label: "Booked" }, { value: "loaded", label: "Loaded" }, { value: "delivered", label: "Delivered" }, { value: "invoiced", label: "Invoiced" }]} />
+          options={[{ value: "booked", label: "Booked" }, { value: "loaded", label: "Loaded" }, { value: "delivered", label: "Delivered" }]} />
         <input className="input" type="date" aria-label="From" value={from} onChange={(e) => setFrom(e.target.value)} />
         <input className="input" type="date" aria-label="Until" value={to} onChange={(e) => setTo(e.target.value)} />
         <select className="input" aria-label={w(data, "customer")} value={customerId} onChange={(e) => setCustomerId(e.target.value)}>
@@ -73,11 +72,6 @@ export function Report() {
           <option value="">All goods</option>
           {data.products.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
         </select>
-        <select className="input" aria-label={w(data, "truck")} value={vehicleId} onChange={(e) => setVehicleId(e.target.value)}>
-          <option value="">Every {wl(data, "truck")}</option>
-          {data.trucks.map((t) => <option key={t.id} value={t.id}>{t.plate}</option>)}
-        </select>
-        <label className="cn-report-pod"><Switch label="Only with proof of delivery" checked={withPod} onChange={setWithPod} /> Only with proof of delivery</label>
       </div>
       <div className="cn-report-actions">
         <Button onClick={() => setChoosing(true)} disabled={!r}>Columns</Button>
@@ -105,7 +99,7 @@ export function Report() {
           </table>
         </div>
       )}
-      {choosing && r && <ColumnChooser shown={columns ?? r.columns.map((c) => c.key)} available={r.available} onClose={() => setChoosing(false)} onSave={(next) => { setChoosing(false); void saveColumns(next); }} />}
+      {choosing && r && <ColumnChooser shown={columns ?? r.columns.map((c) => c.key)} available={r.available} onClose={() => setChoosing(false)} onSave={(next) => { setChoosing(false); saveColumns(next); }} />}
     </div>
   );
 }
