@@ -143,6 +143,8 @@ export interface Cn {
   lines: CnLine[];
   legs: CnLeg[];
   documents: CnDocument[];
+  /** The rate agreed for it (#135 Part 1); unit prices keep fractions of a minor unit. */
+  rate?: { basis: string; price: Money; chargeOn?: "loaded" | "delivered" };
   references?: { customerRef?: string; orderNo?: string; lrNo?: string; ewayBillNo?: string; ewayBillValidUntil?: string; sealNos?: string[]; permitNo?: string; leadKm?: number };
   /** Left out for people who may not see money. */
   revenue?: Revenue;

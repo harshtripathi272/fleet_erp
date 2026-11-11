@@ -78,7 +78,8 @@ export function presentConsignment(doc: Plain, can?: OpsContext['can']): Plain {
     returned: (doc.outcome as Plain | undefined)?.returned,
     transfers: (doc.outcome as Plain | undefined)?.transfers,
   });
-  if (can && !seesRevenue(can)) delete out.revenue;
+  // A rate is money as much as revenue is: both only for those who may see it.
+  if (can && !seesRevenue(can)) { delete out.revenue; delete out.rate; }
   return out;
 }
 
@@ -179,7 +180,8 @@ export async function prepareConsignment(input: S.InlineConsignmentInput, trip: 
   const data: Plain = {
     consignmentTypeId: type?._id, customerId, consignorPartyId, consignor: input.consignor, consigneePartyId: input.consigneePartyId ?? (!input.consignee ? customerId : undefined),
     consignee: input.consignee, brokerPartyId: input.brokerPartyId, paymentTerms: input.paymentTerms ?? 'to_be_billed', requiredBy: input.requiredBy, lines,
-    references: input.references, rate: input.rate ?? undefined, notes: input.notes, custom: await stepCustom('consignments', 'booking', input.custom),
+    // Only someone who may see money sets a rate; anyone else's is ignored rather than refused.
+    references: input.references, rate: seesRevenue(ctx.can) ? input.rate ?? undefined : undefined, notes: input.notes, custom: await stepCustom('consignments', 'booking', input.custom),
   };
   if (!ctx.can('consignments', 'create')) throw new ForbiddenError('Your role does not allow "create" on consignments');
   return { data, type, facts };
@@ -333,6 +335,8 @@ export async function updateConsignment(cid: string, input: S.UpdateConsignmentI
   const consignment = await editable(cid, input.version);
   const trip = await tripOf(consignment.get('tripId'));
   const { version: _v, lines, ...rest } = input;
+  // Someone who may not see money can't see the rate, so can't change or clear it either.
+  if (!seesRevenue(ctx.can)) delete (rest as { rate?: unknown }).rate;
   const current = consignment.toObject() as Plain;
   if (lines) {
     const used = new Set((current.legs as Plain[]).filter((l) => l.status === 'done').flatMap((l) => ((l.actual ?? []) as Plain[]).map((m) => id(m.lineId))));

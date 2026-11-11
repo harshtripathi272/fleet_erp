@@ -1,4 +1,5 @@
 import { useHeldTrucks } from "../api/areas";
+import { can } from "../api/session";
 import { useEffect, useMemo, useState } from "react";
 import { Check } from "lucide-react";
 import { api } from "../api/client";
@@ -17,7 +18,7 @@ import { capacityLine, ConsignmentRows, consignmentBody, draftConsignment, draft
 
 /** Truck first: pick the truck, its driver and trailer follow, the route starts where it stands. */
 export function NewTrip({ open, onClose, onCreated }: { open: boolean; onClose: () => void; onCreated: (id: string) => void }) {
-  const { data, run } = useApp();
+  const { data, run, me } = useApp();
   const busy = useMemo(() => new Set(data.trips.filter(activeTrip).flatMap((t) => [t.truckId, t.driverId, t.trailerId])), [data.trips]);
   const free = data.trucks.filter((t) => !busy.has(t.id));
   const company = usePlacement("trips", "create");
@@ -180,7 +181,7 @@ export function NewTrip({ open, onClose, onCreated }: { open: boolean; onClose: 
                 </select>
               </Field>
             </div>
-            <ConsignmentRows data={data} value={drafts} stops={stops} onChange={setDrafts} />
+            <ConsignmentRows data={data} value={drafts} stops={stops} onChange={setDrafts} seesMoney={can(me, "consignment-revenue", "sensitive")} />
             {onBoard.text && <p className="framed-line">{onBoard.text}</p>}
             {onBoard.note && <p className="muted">{onBoard.note}</p>}
             {onBoard.over.map((o) => <p key={o} className="form-problem">{o}{onBoard.refuse ? " Lower a quantity, or choose a bigger truck." : ""}</p>)}

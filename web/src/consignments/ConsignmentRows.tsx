@@ -148,7 +148,7 @@ export function capacityLine(data: AppData, drafts: DraftConsignment[], stops: R
   };
 }
 
-export function ConsignmentRows({ data, value, stops, onChange }: { data: AppData; value: DraftConsignment[]; stops: RouteStop[]; onChange: (next: DraftConsignment[]) => void }) {
+export function ConsignmentRows({ data, value, stops, onChange, seesMoney }: { data: AppData; value: DraftConsignment[]; stops: RouteStop[]; onChange: (next: DraftConsignment[]) => void; seesMoney: boolean }) {
   const rules = data.settings.freight;
   const one = wl(data, "consignment");
   const canAdd = !rules.maxConsignmentsPerTrip || value.length < rules.maxConsignmentsPerTrip;
@@ -229,7 +229,7 @@ export function ConsignmentRows({ data, value, stops, onChange }: { data: AppDat
               <Field label="Consignee phone">
                 <input type="tel" value={d.consigneePhone} placeholder={phonePlaceholder()} disabled={Boolean(d.consigneePartyId)} onChange={(e) => set(d.key, { consigneePhone: e.target.value })} />
               </Field>
-              <div className="cn-row-rate">
+              {seesMoney && <div className="cn-row-rate">
                 <span className="field-label">Rate</span>
                 <div className="cn-row-rate-controls">
                   <UnitInput label={`Price for ${one} ${i + 1}`} unit={cur?.code ?? ""} value={d.ratePrice} onChange={(v) => set(d.key, { ratePrice: v })} />
@@ -250,7 +250,7 @@ export function ConsignmentRows({ data, value, stops, onChange }: { data: AppDat
                   )}
                 </div>
                 <span className="field-hint">{d.ratePrice.trim() ? "" : "Empty: a matching tariff prices it, or set the price later."}</span>
-              </div>
+              </div>}
             </div>
             <div className="consignment-row-legs">
               {legList(d, "pickups", i)}

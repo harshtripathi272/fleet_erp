@@ -4,6 +4,7 @@ import { Plus } from "lucide-react";
 import { api, ApiError } from "../api/client";
 import type { Rec } from "../api/adapter";
 import { useApp } from "../store";
+import { can } from "../api/session";
 import { placeName } from "../domain/helpers";
 import { byId } from "../domain/calc";
 import { w, wl } from "../domain/words";
@@ -11,6 +12,7 @@ import { Button, Drawer, Empty, Field, Segmented, Status, SwitchField, UnitInput
 import { calendarDate, clockTime, day, num, phonePlaceholder } from "../ui/format";
 import { cnFrom, CN_STATUS_LABEL, cnStatusTone, maySplit, type Cn, type CnLeg } from "./model";
 import { moneyText, qtyText } from "./TripConsignments";
+import { RATE_BASES } from "./ConsignmentRows";
 import { RevenuePanel } from "./RevenuePanel";
 import { SplitDelivery } from "./SplitDelivery";
 
@@ -25,6 +27,7 @@ type PartyPick = { partyId: string; name: string; phone: string };
 type LineForm = { key: string; id?: string; productId: string; description: string; plannedQty: string; pieces: string; grossKg: string; volumeM3: string; declaredValue: string; hazard: boolean };
 type Form = {
   consignmentTypeId: string; customerId: string; consignor: PartyPick; consignee: PartyPick; paymentTerms: "to_be_billed" | "paid" | "to_pay";
+  rateBasis: string; ratePrice: string; rateCurrencyId: string; rateOn: "" | "loaded" | "delivered";
   lines: LineForm[]; customerRef: string; orderNo: string; lrNo: string; ewayBillNo: string; ewayBillValidUntil: string; sealNos: string; permitNo: string; notes: string;
 };
 
@@ -32,7 +35,9 @@ let lineKeys = 0;
 const newLine = (): LineForm => ({ key: `n${++lineKeys}`, productId: "", description: "", plannedQty: "", pieces: "", grossKg: "", volumeM3: "", declaredValue: "", hazard: false });
 const str = (v: unknown) => (v === undefined || v === null ? "" : String(v));
 
-function formFrom(c: Cn | undefined, customerId: string, baseUnits: number): Form {
+type Units = { id: string; code: string; minorUnits: number };
+function formFrom(c: Cn | undefined, customerId: string, baseUnits: number, currencies: Units[] = [], baseId = ""): Form {
+  const rateUnits = currencies.find((x) => x.id === c?.rate?.price.currencyId)?.minorUnits ?? baseUnits;
   const pick = (partyId: unknown, contact: Cn["consignee"]): PartyPick => ({ partyId: str(partyId), name: contact?.name ?? "", phone: contact?.phone ?? "" });
   return {
     consignmentTypeId: str(c?.consignmentTypeId), customerId: str(c?.customerId ?? customerId),
@@ -44,10 +49,16 @@ function formFrom(c: Cn | undefined, customerId: string, baseUnits: number): For
     customerRef: str(c?.references?.customerRef), orderNo: str(c?.references?.orderNo), lrNo: str(c?.references?.lrNo), ewayBillNo: str(c?.references?.ewayBillNo),
     ewayBillValidUntil: str(c?.references?.ewayBillValidUntil).slice(0, 10), sealNos: (c?.references?.sealNos ?? []).join(", "), permitNo: str(c?.references?.permitNo),
     notes: str((c as Rec | undefined)?.notes),
+    rateBasis: c?.rate?.basis ?? "per_consignment", ratePrice: c?.rate ? String(c.rate.price.amountMinor / 10 ** rateUnits) : "",
+    rateCurrencyId: c?.rate?.price.currencyId ?? baseId, rateOn: c?.rate?.chargeOn ?? "",
   };
 }
 
-function bodyFrom(f: Form, base: { id: string; minorUnits: number } | undefined): Rec {
+function bodyFrom(f: Form, base: { id: string; minorUnits: number } | undefined, currencies: Units[] = []): Rec {
+  const rateUnits = currencies.find((x) => x.id === f.rateCurrencyId)?.minorUnits ?? base?.minorUnits ?? 2;
+  const rate = f.ratePrice.trim() && f.rateCurrencyId
+    ? { basis: f.rateBasis, price: { amountMinor: Math.round(Number(f.ratePrice) * 10 ** rateUnits * 1e4) / 1e4, currencyId: f.rateCurrencyId }, ...(f.rateOn && !["per_consignment", "per_km"].includes(f.rateBasis) ? { chargeOn: f.rateOn } : {}) }
+    : null;
   const n = (v: string) => (v.trim() === "" ? undefined : Number(v));
   const party = (p: PartyPick, key: "consignor" | "consignee") =>
     p.partyId ? { [`${key}PartyId`]: p.partyId } : p.name.trim() ? { [key]: { name: p.name.trim(), ...(p.phone.trim() ? { phone: p.phone.trim() } : {}) } } : {};
@@ -60,6 +71,7 @@ function bodyFrom(f: Form, base: { id: string; minorUnits: number } | undefined)
     ...(f.customerId ? { customerId: f.customerId } : {}),
     ...party(f.consignor, "consignor"), ...party(f.consignee, "consignee"),
     paymentTerms: f.paymentTerms,
+    rate,
     lines: f.lines.filter((l) => l.productId).map((l) => Object.fromEntries(Object.entries({
       id: l.id, productId: l.productId, description: l.description.trim() || undefined, plannedQty: n(l.plannedQty), pieces: n(l.pieces), grossKg: n(l.grossKg), volumeM3: n(l.volumeM3),
       declaredValue: l.declaredValue.trim() && base ? { amountMinor: Math.round(Number(l.declaredValue) * 10 ** base.minorUnits), currencyId: base.id } : undefined,
@@ -71,7 +83,9 @@ function bodyFrom(f: Form, base: { id: string; minorUnits: number } | undefined)
 }
 
 export function ConsignmentDrawer({ id, tripId, onClose }: { id?: string; tripId: string; onClose: () => void }) {
-  const { data, toast } = useApp();
+  const { data, toast, me } = useApp();
+  // Rates are money: only for those who may see it (consignment-revenue's sensitive switch).
+  const seesMoney = can(me, "consignment-revenue", "sensitive");
   const client = useQueryClient();
   const trip = byId(data.trips, tripId);
   const one = w(data, "consignment");
@@ -81,7 +95,7 @@ export function ConsignmentDrawer({ id, tripId, onClose }: { id?: string; tripId
   const partyPhone = (pid: unknown) => (pid ? byId(data.customers, String(pid))?.phone : undefined);
   const c = useMemo(() => (record.data ? cnFrom(record.data, partyName, partyPhone) : undefined), [record.data]); // eslint-disable-line react-hooks/exhaustive-deps
   const base = data.baseCurrency;
-  const saved = useMemo(() => formFrom(c, trip?.customerId ?? "", base?.minorUnits ?? 2), [c, trip?.customerId, base?.minorUnits]);
+  const saved = useMemo(() => formFrom(c, trip?.customerId ?? "", base?.minorUnits ?? 2, data.currencies ?? [], base?.id ?? ""), [c, trip?.customerId, base?.minorUnits, base?.id, data.currencies]);
   const [form, setForm] = useState<Form>(saved);
   const [tab, setTab] = useState<Tab>("details");
   const [busy, setBusy] = useState(false);
@@ -90,7 +104,7 @@ export function ConsignmentDrawer({ id, tripId, onClose }: { id?: string; tripId
   const [reason, setReason] = useState("");
   const [splitting, setSplitting] = useState(false);
   useEffect(() => setForm(saved), [saved]);
-  const dirty = JSON.stringify(bodyFrom(form, base)) !== JSON.stringify(bodyFrom(saved, base));
+  const dirty = JSON.stringify(bodyFrom(form, base, data.currencies)) !== JSON.stringify(bodyFrom(saved, base, data.currencies));
   const set = <K extends keyof Form>(key: K, value: Form[K]) => setForm((f) => ({ ...f, [key]: value }));
   const setLine = (key: string, patch: Partial<LineForm>) => set("lines", form.lines.map((l) => (l.key === key ? { ...l, ...patch } : l)));
   const closed = Boolean(c && ["delivered", "closed", "cancelled", "returned", "written_off"].includes(c.status));
@@ -105,8 +119,14 @@ export function ConsignmentDrawer({ id, tripId, onClose }: { id?: string; tripId
     setBusy(true);
     setProblem("");
     try {
-      if (id) await api(`/consignments/${id}`, { method: "PATCH", body: { version: c!.version, ...bodyFrom(form, base) } });
-      else await api("/consignments", { method: "POST", body: { tripId, ...bodyFrom(form, base) } });
+      if (id) {
+        const { rate, ...rest } = bodyFrom(form, base, data.currencies);
+        await api(`/consignments/${id}`, { method: "PATCH", body: { version: c!.version, ...rest, ...(seesMoney ? { rate } : {}) } });
+      }
+      else {
+        const { rate, ...rest } = bodyFrom(form, base, data.currencies);
+        await api("/consignments", { method: "POST", body: { tripId, ...rest, ...(rate && seesMoney ? { rate } : {}) } });
+      }
       await after(id ? `${one} saved.` : `${one} added to the ${wl(data, "trip")}.`);
       if (!id) onClose();
     } catch (err) {
@@ -187,6 +207,29 @@ export function ConsignmentDrawer({ id, tripId, onClose }: { id?: string; tripId
                 <PartyField data={data} label="Consignor" value={form.consignor} onChange={(v) => set("consignor", v)} emptyText="The customer" />
                 <PartyField data={data} label="Consignee" value={form.consignee} onChange={(v) => set("consignee", v)} emptyText="The customer" phone />
               </div>
+
+              {seesMoney && <>
+              <h4>Rate</h4>
+              <div className="cn-row-rate-controls">
+                <UnitInput label="Price" unit={data.currencies?.find((x) => x.id === form.rateCurrencyId)?.code ?? ""} value={form.ratePrice} onChange={(v) => set("ratePrice", v)} />
+                {(data.currencies?.length ?? 0) > 1 && (
+                  <select className="input" aria-label="Currency of the price" value={form.rateCurrencyId} onChange={(e) => set("rateCurrencyId", e.target.value)}>
+                    {(data.currencies ?? []).map((x) => <option key={x.id} value={x.id}>{x.code}</option>)}
+                  </select>
+                )}
+                <select className="input" aria-label="Per what" value={form.rateBasis} onChange={(e) => set("rateBasis", e.target.value)}>
+                  {RATE_BASES.map((b) => <option key={b.value} value={b.value}>{b.label}</option>)}
+                </select>
+                {!["per_consignment", "per_km"].includes(form.rateBasis) && (
+                  <select className="input" aria-label="On which quantity" value={form.rateOn} onChange={(e) => set("rateOn", e.target.value as Form["rateOn"])}>
+                    <option value="">on the company's usual quantity</option>
+                    <option value="loaded">on the loaded quantity</option>
+                    <option value="delivered">on the delivered quantity</option>
+                  </select>
+                )}
+              </div>
+              <p className="muted">{form.ratePrice.trim() ? "This price is used instead of any tariff." : "Empty: a matching tariff prices it, or it stays unpriced until a price is set."}</p>
+              </>}
 
               <h4>Goods</h4>
               <div className="cn-lines">

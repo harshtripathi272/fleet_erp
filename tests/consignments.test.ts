@@ -34,9 +34,9 @@ const setFreight = async (freight: Record<string, unknown>) => {
 const driverMessages = async () => ok<Array<{ title?: string; text: string }>>(await as(ops).get('/messages', { thread: `driver:${ids.d1}`, limit: 500 }));
 
 /** A trip on the sample's Dar run (start, load at Dar, Nakonde border, offload at Lusaka, end), dispatched when asked. */
-async function trip(body: Record<string, unknown> = {}, dispatch = true) {
+async function trip(body: Record<string, unknown> = {}, dispatch = true, by: Session = ops) {
   ok(await as(ops).put(`/vehicle-states/${ids.v1}`, { placeId: ids.depot, fuelL: 600 }));
-  const made = ok<Trip>(await as(ops).post('/trips', {
+  const made = ok<Trip>(await as(by).post('/trips', {
     customerId: ids.zambezi, vehicleId: ids.v1, driverId: ids.d1, trailerId: ids.t1, routeId: ids.routeDar, plannedStart: '2026-11-03T06:00:00.000Z', ...body,
   }), 201);
   return dispatch ? ok<Trip>(await as(ops).post(`/trips/${made.id}/dispatch`)) : made;
@@ -402,7 +402,7 @@ describe('tariff matching', () => {
 describe('a rate agreed on the consignment (#135 Part 1)', () => {
   test('prices it with no tariff, on the quantity it says, and can be changed or taken off', async () => {
     const rate = { basis: 'per_litre_20', price: { amountMinor: 8.5, currencyId: ids.usd }, chargeOn: 'loaded' };
-    const t = await trip({ consignments: [{ lines: [{ productId: ids.diesel, plannedQty: 38000 }], consignee: { name: 'Zambezi depot' }, rate }] });
+    const t = await trip({ consignments: [{ lines: [{ productId: ids.diesel, plannedQty: 38000 }], consignee: { name: 'Zambezi depot' }, rate }] }, true, owner);
     const asOwner = async (id: string) => ok<Consignment>(await as(owner).get(`/consignments/${id}`));
     const first = (await onTrip(t.id))[0]!;
     let c = await asOwner(first.id);
@@ -422,5 +422,17 @@ describe('a rate agreed on the consignment (#135 Part 1)', () => {
     c = ok(await as(owner).patch(`/consignments/${c.id}`, { version: c.version, rate: null }));
     assert.equal(c.rate, undefined);
     assert.doesNotMatch(c.revenue.explanation.join(' '), /rate agreed/);
+  });
+
+  test('is money: Operations neither sees a rate nor sets or clears one (the owner can give its role the money switch)', async () => {
+    const rate = { basis: 'per_consignment', price: { amountMinor: 250000, currencyId: ids.usd } };
+    const t = await trip({ consignments: [{ lines: [{ productId: ids.diesel, plannedQty: 38000 }], rate }] }, true, owner);
+    const [seen] = await onTrip(t.id);
+    assert.equal(seen!.rate, undefined, 'not shown to Operations');
+    // The owner's rate stays when Operations saves the consignment with a rate of its own, or with none.
+    ok(await as(ops).patch(`/consignments/${seen!.id}`, { version: seen!.version, rate: null, references: { customerRef: 'PO-1' } }));
+    const after = ok<Consignment>(await as(owner).get(`/consignments/${seen!.id}`));
+    assert.deepEqual(after.rate, rate);
+    assert.equal(after.revenue.totalMinor, 250000);
   });
 });
