@@ -1,5 +1,5 @@
 import { fullDate, moment } from "../ui/format";
-import { useEffect, useMemo, useState } from "react";
+import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Archive, ArrowDown, ArrowUp, ChevronLeft, History, Link2, Plus, RotateCcw, Search, Settings2, Trash2, Upload } from "lucide-react";
@@ -297,6 +297,22 @@ const WRITE_ONLY = new Set(["password"]);
 
 /* ---------- One record ---------- */
 
+/** What the server refused, by field path, so each problem shows on its own field (#102). */
+const FormProblems = createContext<Record<string, string>>({});
+const WRAPPERS = new Set(["body", "data", "formErrors", "fieldErrors", "references"]);
+function problemsOf(details: unknown, prefix = "", out: Record<string, string> = {}): Record<string, string> {
+  if (!details || typeof details !== "object" || Array.isArray(details)) return out;
+  for (const [k, v] of Object.entries(details as Record<string, unknown>)) {
+    if (k === "currentVersion" || k === "usage") continue;
+    if (WRAPPERS.has(k)) { problemsOf(v, prefix, out); continue; }
+    const path = `${prefix}${k}`;
+    if (typeof v === "string") out[path] = v;
+    else if (Array.isArray(v) && typeof v[0] === "string") out[path] = v[0];
+    else problemsOf(v, `${path}.`, out);
+  }
+  return out;
+}
+
 function RecordDrawer({ def, defs, id, onClose, initial, onCreated }: { def: Def; defs: Def[]; id?: string; onClose: () => void; initial?: Rec; onCreated?: (id: string) => void }) {
   const client = useQueryClient();
   const { refreshReference, toast } = useApp();
@@ -306,6 +322,7 @@ function RecordDrawer({ def, defs, id, onClose, initial, onCreated }: { def: Def
   const [busy, setBusy] = useState(false);
   const [asking, setAsking] = useState<null | "archive" | "delete">(null);
   const [reason, setReason] = useState("");
+  const [problems, setProblems] = useState<Record<string, string>>({});
   // Adding a field from the record itself (#97): the editor opens beside the form, which keeps what was typed.
   const { me } = useApp();
   const [addingField, setAddingField] = useState(false);
@@ -323,6 +340,7 @@ function RecordDrawer({ def, defs, id, onClose, initial, onCreated }: { def: Def
   };
   const act = async (fn: () => Promise<unknown>, message: string | ((result: unknown) => string), close = false) => {
     setBusy(true);
+    setProblems({});
     try {
       const result = await fn();
       await done(typeof message === "string" ? message : message(result));
@@ -331,7 +349,11 @@ function RecordDrawer({ def, defs, id, onClose, initial, onCreated }: { def: Def
       setReason("");
       if (close) onClose();
     } catch (err) {
-      toast(err instanceof ApiError ? err.message : "That didn't work.", "error");
+      const marked = err instanceof ApiError ? problemsOf(err.details) : {};
+      setProblems(marked);
+      // Each problem by the field's own name, and marked on the field.
+      const named = Object.entries(marked).map(([p, m]) => `${fieldTitle(def, p)}: ${m}`);
+      toast(err instanceof ApiError ? (named.length ? `Check the marked fields. ${named.join(". ")}` : err.message) : "That didn't work.", "error");
     } finally {
       setBusy(false);
     }
@@ -404,6 +426,7 @@ function RecordDrawer({ def, defs, id, onClose, initial, onCreated }: { def: Def
               Archived{base.archivedAt ? ` on ${fullDate(String(base.archivedAt))}` : ""}{base.archiveReason ? `: ${base.archiveReason}` : ""}. Restore it to make changes.
             </p>
           )}
+          <FormProblems.Provider value={problems}>
           <div className={addingField ? "record-split" : undefined}>
             <div>
               <Extras def={def} id={id} record={base} />
@@ -420,6 +443,7 @@ function RecordDrawer({ def, defs, id, onClose, initial, onCreated }: { def: Def
               </aside>
             )}
           </div>
+          </FormProblems.Provider>
         </>
       )}
       {tab === "usage" && id && <Usage def={def} id={id} />}
@@ -659,7 +683,11 @@ function SchemaForm({ schema, def, defs, value, onChange, readOnly, canSensitive
   const infoOf = (k: string) => fieldOf(def, path ? `${path}.${k}` : k);
   const shown = ([k]: [string, Schema]) => { const f = infoOf(k); return !f?.companyHidden || f.systemRequired; };
   const rank = (k: string) => Number(infoOf(k)?.order ?? 1e6);
-  const main = props.filter(([k]) => (path || !BASE_KEYS.has(k)) && (!spec || !FOR_TYPES[k] || FOR_TYPES[k]!.includes(String(value.type ?? ""))) && !(numbered && k === POSITION_KEY))
+  // A trailer's compartments only when its type has them (#102): otherwise saving would be refused.
+  const trailerTypeId = !path && def.key === "trailers" ? String(value.trailerTypeId ?? "") : "";
+  const trailerType = useQuery({ queryKey: ["record", "trailer-types", trailerTypeId], queryFn: () => api<Rec>(`/trailer-types/${trailerTypeId}`), enabled: Boolean(trailerTypeId), staleTime: 60_000 });
+  const noCompartments = def.key === "trailers" && !path && !((value.compartments as unknown[] | undefined)?.length) && (!trailerTypeId || trailerType.data?.hasCompartments !== true);
+  const main = props.filter(([k]) => (path || !BASE_KEYS.has(k)) && (!spec || !FOR_TYPES[k] || FOR_TYPES[k]!.includes(String(value.type ?? ""))) && !(numbered && k === POSITION_KEY) && !(noCompartments && k === "compartments"))
     .filter(shown).sort(([a], [b]) => rank(a) - rank(b));
   const more = path ? [] : props.filter(([k]) => BASE_KEYS.has(k) && !["externalRefs", "attachments", "custom"].includes(k));
   const set = (key: string, v: unknown) => {
@@ -721,8 +749,9 @@ function FieldInput({ name, path, schema, required, def, defs, value, onChange, 
   const isSpecMaster = def.key === "field-definitions" || def.key === "custom-masters";
   const specField = isSpecMaster ? SPEC_LABEL[name] ?? "" : undefined;
   const title = `${specField || fieldTitle(def, path, name)}${required ? " *" : ""}`;
-  // What to put in the field, when the master says (numbering patterns, approval thresholds).
-  const hint = fieldOf(def, path)?.hint as string | undefined;
+  // What the server refused here, in place of the hint; otherwise what to put in it (numbering patterns, thresholds).
+  const problem = useContext(FormProblems)[path];
+  const hint: ReactNode = problem ? <span className="field-problem" role="alert">{problem}</span> : (fieldOf(def, path)?.hint as string | undefined);
   // Which master a custom field belongs to, or links to: chosen from the masters, not typed as a key.
   if ((def.key === "field-definitions" && name === "entity") || ((def.key === "field-definitions" || def.key === "custom-masters") && name === "referenceMaster")) {
     const choices = defs.filter((d) => d.key !== "custom-records" && (name !== "entity" || d.customFieldsAllowed !== false));
@@ -767,6 +796,7 @@ function FieldInput({ name, path, schema, required, def, defs, value, onChange, 
     return (
       <fieldset className="form-group field-wide">
         <legend>{title}</legend>
+        {problem && <p className="field-problem" role="alert">{problem}</p>}
         <SchemaForm schema={schema} def={def} defs={defs} value={(value as Rec) ?? {}} onChange={onChange} readOnly={readOnly} canSensitive={canSensitive} path={path} currencyId={currencyId} />
       </fieldset>
     );

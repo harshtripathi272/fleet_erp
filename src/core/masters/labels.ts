@@ -24,7 +24,7 @@ const UNITS: [RegExp, string][] = [
 const WORDS: Record<string, string> = { min: 'minimum', max: 'maximum', email: 'e-mail' };
 /** Whole keys with a name of their own: an address's lines (#102). */
 const NAMED: Record<string, string> = { line1: 'Street address', line2: 'Address line 2' };
-const ACRONYMS = new Set(['vin', 'gps', 'url', 'id', 'sms', 'pdf', 'eta', 'tin', 'vat', 'pod', 'po', 'api', 'smtp', 'ip']);
+const ACRONYMS = new Set(['un', 'vin', 'gps', 'url', 'id', 'sms', 'pdf', 'eta', 'tin', 'vat', 'pod', 'po', 'api', 'smtp', 'ip']);
 
 /**
  * One path segment as words: "registrationNumber" → "Registration number", "makeId" (a link) → "Make",

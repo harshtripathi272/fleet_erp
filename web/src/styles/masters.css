@@ -237,6 +237,8 @@ details.form-group summary { cursor: pointer; }
 .empty .first-trip { margin: 8px 0 0; max-width: 560px; }
 .add-new { display: inline-flex; gap: 4px; align-items: center; margin-top: 6px; font-size: 13px; }
 
+.field-problem { color: var(--rust); font-size: 13px; }
+
 /* Where a place is (#102): search by name or address, or put the pin on the map. */
 .place-finder { display: grid; gap: 8px; margin-bottom: 16px; padding: 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
 .place-finder-search { display: flex; gap: 8px; }

@@ -359,7 +359,7 @@ function ReviewStep({ hasCompany, saveNow, onLeave }: { hasCompany: boolean; sav
         <section className="su-done">
           <h2>{failed ? `Set up, with ${failed} ${failed === 1 ? "step" : "steps"} to look at` : `${String(file.company?.tradingName || file.company?.legalName)} is set up`}</h2>
           <p>{failed ? "Everything else worked. Fix what failed above, then apply again: what already worked is left alone." : file.purpose === "demo" ? "It's ready to show." : "Next, add the company's own places, customers, trucks and drivers. Overview shows what a first trip still needs."}</p>
-          {logins.length > 0 && <DemoLogins logins={logins} owner={me.email} />}
+          {logins.length > 0 && <DemoLogins logins={logins} owner={me.email} demo={file.purpose === "demo"} />}
           <span className="su-actions">
             <Button tone="primary" size="lg" onClick={() => { history.replaceState(null, "", location.pathname); onLeave(); location.reload(); }}><ExternalLink size={16} /> Open the app and try it</Button>
             <Button size="lg" onClick={() => { location.hash = "#package"; }}><Package size={16} /> Package it</Button>
@@ -374,13 +374,22 @@ function ReviewStep({ hasCompany, saveNow, onLeave }: { hasCompany: boolean; sav
 interface DemoLogin { role: string; login: string; password: string }
 
 /** Shown once: the server keeps only their hashes. Each side of the demonstration needs its own browser window. */
-function DemoLogins({ logins, owner }: { logins: DemoLogin[]; owner: string }) {
+function DemoLogins({ logins, owner, demo }: { logins: DemoLogin[]; owner: string; demo: boolean }) {
   const [copied, setCopied] = useState(false);
   const text = logins.map((l) => `${l.role}: ${l.login} / ${l.password}`).join("\n");
   return (
     <div className="su-logins">
-      <h3>Sign-ins for showing it around</h3>
-      <p>One for each side of the work. Save them now: they aren't shown again. You stay signed in as {owner}, the owner. Use a private window for each extra person, because a browser holds one sign-in at a time.</p>
+      {demo ? (
+        <>
+          <h3>Sign-ins for showing it around</h3>
+          <p>One for each side of the work. Save them now: they aren't shown again. You stay signed in as {owner}, the owner. Use a private window for each extra person, because a browser holds one sign-in at a time.</p>
+        </>
+      ) : (
+        <>
+          <h3>First passwords for your people</h3>
+          <p>This copy has no e-mail server, so nobody was e-mailed. Give each person their own password: they choose a new one when they first sign in. Save them now: they aren't shown again. Once e-mail is set up under Connections, "Forgot password" works too.</p>
+        </>
+      )}
       <div className="cust-table-wrap">
         <table className="cust-table">
           <thead><tr><th>Who</th><th>Sign in with</th><th>Password</th></tr></thead>
