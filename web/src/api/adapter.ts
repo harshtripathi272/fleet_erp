@@ -85,7 +85,7 @@ const movedUpFrom = (approval?: Rec) => (approval?.levels as Rec[] | undefined)?
 const positive = (...values: unknown[]) => values.find((v): v is number => typeof v === "number" && v > 0);
 const via = (v?: string): Decision["via"] => (v === "whatsapp" ? "WhatsApp" : "app");
 const CHANNEL: Record<string, DriverDoc["channel"]> = { whatsapp: "WhatsApp", app: "App", operations: "Operations" };
-const DEPOT_TYPES = new Set(["depot", "terminal", "refinery", "port", "fuel_station", "yard", "mine"]);
+const DEPOT_TYPES = new Set(["depot", "terminal", "refinery", "port", "fuel_station", "yard", "mine", "quarry", "plant", "factory", "warehouse"]);
 
 export function toAppData(ref: Reference, ops: Operations): AppData {
   const currencies = index(ref.currencies);

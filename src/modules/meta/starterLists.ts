@@ -3,7 +3,9 @@ import { getMaster } from '../../core/masters/registry.js';
 import * as MasterService from '../../core/masters/service.js';
 import type { Plain } from '../../core/masters/types.js';
 import { Company } from '../company/company.model.js';
+import { Country } from '../geography/models/country.model.js';
 import { Role } from '../roles/role.model.js';
+import { STARTER_CITIES, codeOf } from './starterCities.js';
 
 /**
  * "Just the usual lists" (#116): what nearly every transport company uses, so a real company reaches its first
@@ -14,7 +16,7 @@ import { Role } from '../roles/role.model.js';
  */
 export async function loadStarterLists(actorId?: string) {
   const ctx = { actorId, canSeeSensitive: true };
-  const company = await Company.findOne().select('baseCurrencyId').lean<{ baseCurrencyId?: unknown }>();
+  const company = await Company.findOne().select('baseCurrencyId countryId').lean<{ baseCurrencyId?: unknown; countryId?: unknown }>();
   const currency = company?.baseCurrencyId ? String(company.baseCurrencyId) : undefined;
   const ids: Record<string, string> = {};
   const result = { created: 0, existing: 0, failed: [] as string[] };
@@ -59,6 +61,23 @@ export async function loadStarterLists(actorId?: string) {
   await put('document-types', { code: 'TRAILER-INS', name: 'Trailer insurance', appliesTo: 'trailer', hasExpiryDate: true, reminderDaysBefore: 30, blocking: 'none' });
   await put('document-types', { code: 'DL', name: 'Driving licence', appliesTo: 'driver', hasExpiryDate: true, reminderDaysBefore: 60, blocking: 'none' });
   await put('document-types', { code: 'PASSPORT', name: 'Passport', appliesTo: 'driver', hasExpiryDate: true, reminderDaysBefore: 90, blocking: 'none' });
+
+  // Trailers: each needs a type, and a type says what it can carry (#102).
+  await put('trailer-types', { code: 'TANKER', name: 'Fuel tanker', cargoKinds: ['liquid_bulk'], hasCompartments: true });
+  await put('trailer-types', { code: 'FLATBED', name: 'Flatbed', cargoKinds: ['general', 'container', 'abnormal'] });
+  await put('trailer-types', { code: 'TAUTLINER', name: 'Tautliner (curtain-sider)', cargoKinds: ['general'] });
+  await put('trailer-types', { code: 'SIDE-TIPPER', name: 'Side tipper', cargoKinds: ['dry_bulk'] });
+  await put('trailer-types', { code: 'BULKER', name: 'Dry bulk tanker (cement, flour)', cargoKinds: ['dry_bulk'] });
+  await put('trailer-types', { code: 'SKELETAL', name: 'Skeletal (containers)', cargoKinds: ['container'] });
+  await put('trailer-types', { code: 'LOWBED', name: 'Lowbed', cargoKinds: ['abnormal'] });
+  await put('trailer-types', { code: 'REEFER', name: 'Refrigerated', cargoKinds: ['refrigerated'] });
+
+  // The main towns of the company's country, each in its region (#102).
+  const country = company?.countryId ? await Country.findById(company.countryId).select('code').lean<{ code: string }>() : null;
+  for (const [name, region, lat, lng] of country ? STARTER_CITIES[country.code] ?? [] : []) {
+    const provinceId = await put('provinces', { code: `${country!.code}-${codeOf(region)}`.slice(0, 32), name: region, countryId: String(company!.countryId) });
+    if (provinceId) await put('cities', { code: `${country!.code}-${codeOf(name)}`.slice(0, 32), name, provinceId, location: { lat, lng } });
+  }
 
   // Trucks: each needs a type and a make.
   await put('vehicle-types', { code: 'PRIME', name: 'Prime mover (horse)', category: 'prime_mover', towsTrailer: true });

@@ -23,6 +23,7 @@ import ConnectionsSettings from "../settings/ConnectionsSettings";
 import WhatsAppTemplates from "../settings/WhatsAppTemplates";
 import { AUDIT_VIEW, choiceName, fieldName, fieldTitle, label, short, shown, singular, wantsAuditLog } from "./history";
 import { AuditLog } from "./AuditLog";
+import { PlaceFinder } from "./PlaceFinder";
 import { Customise } from "./Customise";
 import { FileChip, FileField, type FileTarget, type FileValue } from "./FileField";
 import { CompanyFieldEditor, FieldEditor, specLine, type FieldSpec } from "./FieldEditor";
@@ -400,6 +401,7 @@ function RecordDrawer({ def, defs, id, onClose, initial, onCreated }: { def: Def
           <div className={addingField ? "record-split" : undefined}>
             <div>
               <Extras def={def} id={id} record={base} />
+              {def.key === "places" && writable && <PlaceFinder value={value} onChange={setDraft} />}
               <SchemaForm schema={id ? withoutWriteOnly(def.createSchema) : def.createSchema} def={def} defs={defs} value={value} onChange={setDraft} readOnly={!writable} canSensitive={canSensitive} editing={Boolean(id)} recordId={id} />
               {writable && def.customFieldsAllowed !== false && can(me, "field-definitions", "create") && !addingField && (
                 <div className="add-field-row"><Button size="sm" tone="quiet" onClick={() => setAddingField(true)}><Plus size={14} /> Add a field to {String(def.label).toLowerCase()}</Button></div>

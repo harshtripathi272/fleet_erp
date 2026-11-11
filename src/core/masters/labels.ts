@@ -22,6 +22,8 @@ const UNITS: [RegExp, string][] = [
 /** Words that are written in capitals. */
 /** Short words written out. */
 const WORDS: Record<string, string> = { min: 'minimum', max: 'maximum', email: 'e-mail' };
+/** Whole keys with a name of their own: an address's lines (#102). */
+const NAMED: Record<string, string> = { line1: 'Street address', line2: 'Address line 2' };
 const ACRONYMS = new Set(['vin', 'gps', 'url', 'id', 'sms', 'pdf', 'eta', 'tin', 'vat', 'pod', 'po', 'api', 'smtp', 'ip']);
 
 /**
@@ -30,6 +32,7 @@ const ACRONYMS = new Set(['vin', 'gps', 'url', 'id', 'sms', 'pdf', 'eta', 'tin',
  * `link` says the field points at another record, so its trailing "Id" is dropped.
  */
 export function fieldLabel(key: string, link = /Ids?$/.test(key) && key !== 'id'): string {
+  if (NAMED[key]) return NAMED[key];
   const list = link && key.endsWith('Ids');
   // Money is stored in minor units ("amountMinor") but typed in the currency, so the suffix is not part of its name.
   let base = (link ? key.replace(/Ids?$/, '') : key).replace(/(.)Minor$/, '$1');
