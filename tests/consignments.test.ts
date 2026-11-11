@@ -469,6 +469,10 @@ describe('the A-to-E trip of #135 Part 1, made entirely from New trip', () => {
     }
     const done = await Promise.all(all.map(async (c) => ok<Consignment>(await as(owner).get(`/consignments/${c.id}`))));
     for (const c of done) assert.equal(c.status, 'delivered', c.number);
+    // After each loading and each drop but the last, the driver is told where to go next (#102).
+    const told = (await driverMessages()).filter((m) => m.title === 'Delivery confirmed' || m.title === 'Loading confirmed');
+    assert.ok(told.some((m) => m.title === 'Delivery confirmed' && /Next: .+ to (drop|load) CN\//.test(m.text)), 'a drop with more to come names the next stop');
+    assert.ok(told.some((m) => m.title === 'Loading confirmed' && /Next: .+ to load CN\//.test(m.text)), 'a loading with another pickup next names that pickup');
     // Each stop is left no earlier than the work recorded there (#102), not at the minute the truck arrived.
     const ran = (await tripNow(t.id)) as unknown as { stops: Array<{ id: string; kind: string; leftAt?: string }> };
     for (const stop of ran.stops.slice(1, -2)) {

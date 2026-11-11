@@ -693,14 +693,32 @@ async function quantityText(c: Plain, measures: Plain[]) {
   return parts.join('; ');
 }
 
+/**
+ * Where the truck goes next and why (#102): the earliest stop with a pickup or drop still planned, across every
+ * consignment on the trip, so the driver isn't sent past a stop with work left.
+ */
+async function nextOnTrip(trip: Plain): Promise<string | undefined> {
+  const stops = (trip.stops ?? []) as Plain[];
+  const index = (stopId: unknown) => stops.findIndex((s) => id(s._id) === id(stopId));
+  const list = await Consignment.find({ tripId: trip._id, status: { $ne: 'cancelled' } }).select('number legs').lean<Plain[]>();
+  const open = list.flatMap((c) => ((c.legs ?? []) as Plain[]).filter((l) => l.status === 'planned' && l.stopId).map((l) => ({ c, l, i: index(l.stopId) }))).filter((x) => x.i >= 0);
+  if (!open.length) return undefined;
+  const first = Math.min(...open.map((x) => x.i));
+  const here = open.filter((x) => x.i === first);
+  const numbers = (kind: string) => [...new Set(here.filter((x) => x.l.kind === kind).map((x) => String(x.c.number)))].join(', ');
+  const work = [numbers('drop') && `drop ${numbers('drop')}`, numbers('pickup') && `load ${numbers('pickup')}`].filter(Boolean).join(' and ');
+  return `${await placeName(stops[first]!.placeId)} to ${work}`;
+}
+
 async function afterPickup(trip: Plain, c: Plain, leg: Plain, measures: Plain[], docs: Plain[], events: string[], at: Date, ctx: OpsContext) {
   const qty = await quantityText(c, measures);
   const invoice = docs.find((d) => d.number)?.number as string | undefined;
   const nextDrop = drops(c as never).find((l) => l.status === 'planned');
-  const to = nextDrop?.placeId ? await placeName(nextDrop.placeId) : 'the drop the office will confirm';
+  // The next stop on the whole trip, which may be another pickup, not this consignment's drop (#102).
+  const to = (await nextOnTrip(trip)) ?? (nextDrop?.placeId ? await placeName(nextDrop.placeId) : 'the drop the office will confirm');
   if (trip.driverId) {
     await post(driverThread(trip.driverId), at, {
-      title: 'Loading confirmed', text: `${qty}. Drive safe to ${to}.`, rows: [['Consignment', String(c.number)], ...(invoice ? [['Invoice', invoice] as [string, string]] : [])],
+      title: 'Loading confirmed', text: `${qty}. Next: ${to}. Drive safely.`, rows: [['Consignment', String(c.number)], ...(invoice ? [['Invoice', invoice] as [string, string]] : [])],
       wa: { template: 'loading_confirmed', values: [String(trip.number), qty, to] },
     }, ctx);
   }
@@ -723,7 +741,10 @@ async function afterDrop(trip: Plain, c: Plain, leg: Plain, measures: Plain[], i
         ? `${delivered}. ${amountOf(Number(shortage.lossL), String(shortage.unit))} less than loaded${shortage.status === 'pending' ? `; finance will review the ${amountOf(Number(shortage.netShortL), String(shortage.unit))} above the allowance` : ''}.`
         : `${delivered}, within the allowance. Well done.`
       : `${delivered}.`;
-    await post(driverThread(trip.driverId), at, { title: 'Delivery confirmed', text, rows: [['Delivery note', pod]], wa: { template: 'delivery_confirmed', values: [String(trip.number), `${text.replace(/\.$/, '')}, delivery note ${pod}`] } }, ctx);
+    // With work left on the trip, the driver is told where to drive on to (#102).
+    const next = await nextOnTrip(trip);
+    const told = next ? `${text} Next: ${next}.` : text;
+    await post(driverThread(trip.driverId), at, { title: 'Delivery confirmed', text: told, rows: [['Delivery note', pod]], wa: { template: 'delivery_confirmed', values: [String(trip.number), `${text.replace(/\.$/, '')}, delivery note ${pod}${next ? `. Next: ${next}` : ''}`] } }, ctx);
   }
   if (shortage?.status === 'pending') {
     const charge = formatMoney(Number(shortage.baseAmountMinor), await baseCurrency());

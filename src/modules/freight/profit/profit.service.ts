@@ -130,6 +130,11 @@ export async function tripProfit(tripId: string) {
       warnings.push(`${Fmt.number(unpricedL)} L of fuel has no price: set one when issuing fuel, under Fuel prices, or as the company's default under Freight.`);
       complete = false;
     }
+    // A truck that drove with no fuel recorded at all (#102): the profit can't be complete, and it says so.
+    if (trip.dispatchedAt && used === 0) {
+      warnings.push("No fuel is counted: none was in the tank at dispatch and none was issued. Record the truck's fuel level and the fuel issued, or the profit is too high.");
+      complete = false;
+    }
     if (fallback !== undefined && !listed && issues.some((f) => !f.unitPrice)) warnings.push(`Fuel is priced at the company's default ${money(fallback)} per litre.`);
     costs.push({ group: 'fuel', label: 'Fuel', amountMinor: fuelMinor, items, litres: { opening, issued, closing, used } });
   }

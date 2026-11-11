@@ -551,9 +551,9 @@ async function announceArrival(trip: Plain, index: number, at: Date, ctx: OpsCon
     if (trip.driverId) {
       await post(driverThread(trip.driverId), at, {
         title: `You've reached ${place}`,
-        text: loading ? 'Send a photo of the loading invoice once the tanker is filled and sealed.' : 'Send the signed delivery note with the offloading readings.',
+        text: loading ? 'Send a photo of the loading invoice once the truck is loaded.' : 'Send the signed delivery note with the offloading readings.',
         buttons: [{ label: loading ? 'Send loading invoice' : 'Send delivery note', attach: loading ? 'loading' : 'delivery', tone: 'primary' }],
-        wa: { template: 'arrived_send_document', values: [place, String(trip.number), loading ? 'the loading invoice once the tanker is filled and sealed' : 'the signed delivery note with the offloading readings'] },
+        wa: { template: 'arrived_send_document', values: [place, String(trip.number), loading ? 'the loading invoice once the truck is loaded' : 'the signed delivery note with the offloading readings'] },
         refId: `${trip._id}-${loading ? 'loading' : 'delivery'}`,
       }, ctx);
     }
