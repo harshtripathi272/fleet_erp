@@ -223,6 +223,9 @@ const podSchema = new Schema({
 }, { _id: false, strict: 'throw' });
 
 /** One pickup or one drop of a consignment at a place: planned, then done. It attaches to a stop of the trip. */
+/** What happens to goods the consignee refused: brought back, written off, charged to the driver, or claimed from the supplier. */
+export const REFUSAL_OUTCOMES = ['return', 'write_off', 'charge_driver', 'claim_supplier'] as const;
+
 const legSchema = new Schema({
   kind: { type: String, enum: LEG_KINDS, required: true },
   sequence: { type: Number, required: true },
@@ -398,6 +401,28 @@ const consignmentSchema = new Schema<any>({
   revenue: { type: revenueSchema, default: undefined },
   /** The driver-side shortage (what the driver may pay for), worked out when the last drop is recorded. */
   shortage: { type: shortageSchema, default: undefined },
+  /**
+   * What the consignee refused at a drop (#102: 150 L refused for water). It arrived, so it isn't a transit loss,
+   * and the customer isn't billed for it; it waits for the office to say what happens to it.
+   */
+  refusals: {
+    type: [new Schema({
+      legId: { type: ObjectId, required: true },
+      lineId: { type: ObjectId, required: true },
+      qty: { type: Number, required: true, min: 0 },
+      unit: { type: String, required: true },
+      reason: String,
+      at: { type: Date, required: true },
+      status: { type: String, enum: ['to_decide', 'decided'], default: 'to_decide' },
+      outcome: { type: String, enum: REFUSAL_OUTCOMES },
+      note: String,
+      decidedAt: Date,
+      decidedBy: { type: ObjectId, ref: 'User' },
+      /** Charged to the driver: at the goods' shortage price. */
+      amount: { type: new Schema({ amountMinor: Number, currencyId: ObjectId, baseAmountMinor: Number }, { _id: false }), default: undefined },
+    })],
+    default: undefined,
+  },
   outcome: { type: outcomeSchema, default: undefined },
   /** When the first pickup and the last drop were recorded: lists and the pricing date read these. */
   loadedAt: Date,

@@ -304,6 +304,15 @@ function workedStep(data: AppData, trip: Trip): NextStep {
         since: open.loadedAt,
       };
     }
+    // Goods refused at a drop wait for a decision before the trip closes (#102).
+    const refused = data.cns.filter((c) => c.tripId === trip.id && (c.refusals ?? []).some((r) => r.status === "to_decide"));
+    if (refused.length)
+      return {
+        actor: "operations", stage: "offloading", move: "none",
+        title: `Say what happens to what was refused on ${refused.map((c) => c.number).join(", ")}`,
+        waiting: "Operations is deciding on goods the customer refused",
+        detail: "Bring it back, write it off, charge the driver or claim it from the supplier", since: refused[0]!.deliveredAt ?? undefined,
+      };
     const end = trip.stops.at(-1)!;
     return {
       actor: "operations",

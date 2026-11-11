@@ -480,6 +480,8 @@ export const legRecordSchema = z.strictObject({
 });
 export type LegRecordInput = z.infer<typeof legRecordSchema>;
 export const legParams = z.strictObject({ id: objectId, legId: objectId });
+export const refusalParams = z.strictObject({ id: objectId, refusalId: objectId });
+export const refusalDecisionSchema = z.strictObject({ outcome: z.enum(['return', 'write_off', 'charge_driver', 'claim_supplier']), note: text(300).optional() });
 export const stopRecordSchema = z.strictObject({
   records: z.array(legRecordSchema.extend({ consignmentId: objectId, legId: objectId })).min(1).max(200),
 });

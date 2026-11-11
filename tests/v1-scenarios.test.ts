@@ -190,7 +190,7 @@ describe('3. on the road', () => {
 /* ---------- 4. At the drop ---------- */
 
 describe('4. at the drop', () => {
-  test('4.1 a part refusal: the customer is billed for what it accepted, and the refused litres wait for a decision', { todo: 'being built (#102 scenarios)' }, async () => {
+  test('4.1 a part refusal: the customer is billed for what it accepted, and the refused litres wait for a decision', async () => {
     const t = await trip({ consignments: [{ lines: [{ productId: ids.diesel, plannedQty: 16000 }] }] });
     const [c] = await onTrip(t.id);
     await load(c!, 16000);
@@ -201,7 +201,7 @@ describe('4. at the drop', () => {
     refused(await as(ops).post(`/trips/${t.id}/end`, { closingFuelL: 100 }), /refused/i);
   });
 
-  test('4.2 the refused litres are brought back to the depot: the trip gets a drop there, and then closes', { todo: 'being built (#102 scenarios)' }, async () => {
+  test('4.2 the refused litres are written off with a reason, and then the trip closes', async () => {
     const t = await trip({ consignments: [{ lines: [{ productId: ids.diesel, plannedQty: 16000 }] }] });
     const [c] = await onTrip(t.id);
     await load(c!, 16000);
@@ -209,6 +209,17 @@ describe('4. at the drop', () => {
     const after = (await onTrip(t.id))[0]!;
     ok(await as(ops).post(`/consignments/${after.id}/refusals/${after.refusals[0].id}/decide`, { outcome: 'write_off', note: 'Water in it; poured off at the depot' }));
     ok(await as(ops).post(`/trips/${t.id}/end`, { closingFuelL: 100 }));
+  });
+
+  test('4.5 refused litres charged to the driver go on the driver\'s account at the shortage price', async () => {
+    const t = await trip({ consignments: [{ lines: [{ productId: ids.diesel, plannedQty: 16000 }] }] });
+    const [c] = await onTrip(t.id);
+    await load(c!, 16000);
+    await deliver((await onTrip(t.id))[0]!, 16000, {}, { accepted: 15900 });
+    const after = (await onTrip(t.id))[0]!;
+    const before = (await account('d1')).balanceMinor;
+    ok(await as(ops).post(`/consignments/${after.id}/refusals/${after.refusals[0].id}/decide`, { outcome: 'charge_driver', note: 'Driver took on contaminated product' }));
+    assert.ok((await account('d1')).balanceMinor > before, 'the driver owes it');
   });
 
   test('4.3 a shortage beyond the allowance goes to Finance, and charging it lands on the driver\'s account', async () => {

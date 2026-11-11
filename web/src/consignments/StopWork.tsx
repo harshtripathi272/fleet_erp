@@ -12,7 +12,7 @@ import { Button, Empty, Field, Status, UnitInput } from "../ui/kit";
 import { clockTime, day, hoursText, num } from "../ui/format";
 import { DocHeader, DocPhoto, ReturnDoc, UploadDoc } from "../desks/stages";
 import { usePlacement } from "../desks/usePlacement";
-import { CN_STATUS_LABEL, cnStatusTone, maySplit, type Cn, type CnLeg } from "./model";
+import { CN_STATUS_LABEL, REFUSAL_OUTCOME, cnStatusTone, maySplit, type Cn, type CnLeg, type CnRefusal } from "./model";
 import { ConsignmentDrawer } from "./ConsignmentDrawer";
 import { SplitDelivery } from "./SplitDelivery";
 
@@ -42,6 +42,7 @@ export function StopWork({ trip, kind }: { trip: Trip; kind: Kind }) {
   return (
     <div className="stop-work stack">
       {unfiled.length > 0 && <PhotosToFile trip={trip} docs={unfiled} cns={cns} kind={kind} />}
+      {kind === "drop" && cns.flatMap((c) => (c.refusals ?? []).filter((r) => r.status === "to_decide").map((r) => <RefusalDecision key={r.id} c={c} r={r} />))}
       {stops.map((s) => (
         <StopBlock key={s.id} trip={trip} stop={s} kind={kind} cns={cns} openByDefault={s.id === current?.id} />
       ))}
@@ -327,6 +328,46 @@ function MeasureBlock({ product, line, value, onChange, drop, multi }: { product
       )}
       {net !== undefined && <div className="calc-strip"><strong>{num(net, 0, 3)}&nbsp;{unit} net</strong></div>}
     </div>
+  );
+}
+
+/**
+ * Goods the consignee refused at a drop (#102): they arrived, the customer isn't billed for them, and the trip can't
+ * close until the office says what happens to them.
+ */
+function RefusalDecision({ c, r }: { c: Cn; r: CnRefusal }) {
+  const { data, toast } = useApp();
+  const client = useQueryClient();
+  const [outcome, setOutcome] = useState<NonNullable<CnRefusal["outcome"]>>("return");
+  const [note, setNote] = useState("");
+  const [busy, setBusy] = useState(false);
+  const leg = c.legs.find((l) => l.id === r.legId);
+  const decide = async () => {
+    setBusy(true);
+    try {
+      await api(`/consignments/${c.id}/refusals/${r.id}/decide`, { method: "POST", body: { outcome, ...(note.trim() ? { note: note.trim() } : {}) } });
+      toast("Decided.");
+      await client.refetchQueries({ queryKey: ["operations"] });
+    } catch (err) {
+      toast(err instanceof ApiError ? err.message : "That didn't work.", "error");
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <section className="refusal-decision">
+      <h3>{num(r.qty, 0, 3)} {r.unit} of {c.number} refused{leg?.placeId ? ` at ${placeName(data, leg.placeId)}` : ""}</h3>
+      <p className="muted">{r.reason ? `${r.reason}. ` : ""}The customer isn't billed for it. Say what happens to it before the {wl(data, "trip")} closes.</p>
+      <div className="grid-3">
+        <Field label="What happens to it">
+          <select value={outcome} onChange={(e) => setOutcome(e.target.value as NonNullable<CnRefusal["outcome"]>)}>
+            {(Object.keys(REFUSAL_OUTCOME) as Array<keyof typeof REFUSAL_OUTCOME>).map((k) => <option key={k} value={k}>{REFUSAL_OUTCOME[k]}</option>)}
+          </select>
+        </Field>
+        <Field label="Note"><input value={note} placeholder="Water in it; poured off at the depot" onChange={(e) => setNote(e.target.value)} /></Field>
+        <div className="refusal-actions"><Button tone="primary" busy={busy} onClick={() => void decide()}>Decide</Button></div>
+      </div>
+    </section>
   );
 }
 

@@ -90,6 +90,7 @@ router.get('/consignments/:id', authorize('consignments', 'read'), validate(id),
 router.patch('/consignments/:id', authorize('consignments', 'update'), validate({ ...id, body: S.updateConsignmentSchema }), C.updateConsignment);
 router.put('/consignments/:id/legs', authorize('consignments', 'update'), validate({ ...id, body: S.putLegsSchema }), C.putLegs);
 router.post('/consignments/:id/legs/:legId/record', authorize('consignments', 'update'), validate({ params: S.legParams, body: S.legRecordSchema }), C.recordLeg);
+router.post('/consignments/:id/refusals/:refusalId/decide', authorize('consignments', 'update'), validate({ params: S.refusalParams, body: S.refusalDecisionSchema }), C.decideRefusal);
 router.post('/consignments/:id/cancel', authorize('consignments', 'update'), validate({ ...id, body: S.cancelConsignmentSchema }), C.cancelConsignment);
 router.post('/consignments/:id/documents', authorize('consignments', 'update'), validate({ ...id, body: S.attachDocumentSchema }), C.attachDocument);
 router.delete('/consignments/:id/documents/:docId', authorize('consignments', 'update'), validate({ params: S.documentParams }), C.detachDocument);

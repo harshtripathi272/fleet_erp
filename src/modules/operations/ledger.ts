@@ -69,6 +69,12 @@ export async function driverLedger(driverId: unknown): Promise<LedgerEntry[]> {
       kind: 'shortage', label: `${s.unit && s.unit !== 'L' ? 'Shortage' : 'Fuel shortage'} ${c.number} · ${Fmt.number(Number(s.netShortL), { max: 2 })} ${s.unit ?? 'L'}`, amountMinor: Number(s.baseAmountMinor ?? 0),
     });
   }
+  // Refused goods charged to the driver (#102), at the goods' shortage price.
+  for (const c of await Consignment.find({ tripId: { $in: tripIds }, 'refusals.outcome': 'charge_driver' }).lean()) {
+    for (const r of ((c.refusals ?? []) as Plain[]).filter((x) => x.outcome === 'charge_driver' && x.amount)) {
+      entries.push({ id: `refused-${r._id}`, at: (r.decidedAt as Date).toISOString(), tripId: String(c.tripId), settlementId: settlementOf(c.tripId), kind: 'shortage', label: `Refused at the drop, charged ${c.number} · ${Fmt.number(Number(r.qty), { max: 3 })} ${String(r.unit)}`, amountMinor: Number((r.amount as Plain).baseAmountMinor ?? 0) });
+    }
+  }
   for (const c of writeOffs) {
     const w = (c.outcome as Plain).writeOff as Plain;
     entries.push({ id: `writeoff-${c._id}`, at: (w.decidedAt as Date).toISOString(), tripId: String(c.tripId), settlementId: settlementOf(c.tripId), kind: 'write_off', label: `Load written off ${c.number}`, amountMinor: Number(w.baseAmountMinor) });

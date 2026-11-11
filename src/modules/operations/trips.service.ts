@@ -785,6 +785,9 @@ export async function endTrip(id: string, input: S.EndTripInput, ctx: OpsContext
   if (!consignments.some((c) => isLoaded(c)) && !tripsWithoutCargo) throw refuse('Nothing was loaded on this trip.');
   const open = consignments.filter((c) => !isFinished(c));
   if (open.length) throw refuse(open.length === 1 && consignments.length === 1 ? 'Record the delivery first.' : `Record the delivery of ${open.map((c) => c.number).join(', ')} first, or say what happens to ${open.length === 1 ? 'it' : 'them'} with "Can't deliver".`);
+  // Goods the consignee refused wait for a decision before the trip closes (#102).
+  const undecided = consignments.filter((c) => ((c as unknown as Plain).refusals as Plain[] | undefined)?.some((r) => r.status === 'to_decide'));
+  if (undecided.length) throw refuse(`Say what happens to what was refused on ${undecided.map((c) => c.number).join(', ')} first: brought back, written off, charged to the driver or claimed from the supplier.`);
   const truck = await truckFacts(trip.get('vehicleId'), false);
   if (truck.tankL && input.closingFuelL > truck.tankL) throw refuse(`The tank holds ${litres(truck.tankL)}.`);
   const stops = trip.get('stops') as Array<{ placeId: unknown; legKm: number; leftAt?: Date }>;
