@@ -150,8 +150,10 @@ export function capacityLine(data: AppData, drafts: DraftConsignment[], stops: R
       for (let i = from; i < x.i; i++) { legs[i]!.kg += x.qty * kgEach; legs[i]!.l += x.qty * lEach; }
     }
   }
-  const limitKg = Math.min(...[truck?.capacityT ? truck.capacityT * 1000 : Infinity, trailer?.unit === "t" && trailer.capacity ? trailer.capacity * 1000 : Infinity]);
-  const limitL = trailer?.unit === "L" && trailer.capacity ? trailer.capacity : Infinity;
+  // The smaller of the truck's payload and the trailer's weight limit, and the trailer's litres: what the server checks (#102).
+  const trailerKg = trailer?.capacityKg ?? (trailer?.unit === "t" && trailer.capacity ? trailer.capacity * 1000 : undefined);
+  const limitKg = Math.min(truck?.capacityT ? truck.capacityT * 1000 : Infinity, trailerKg ?? Infinity);
+  const limitL = trailer?.capacityL ?? (trailer?.unit === "L" && trailer.capacity ? trailer.capacity : Infinity);
   const tolerance = 1 + data.settings.freight.capacityTolerancePercent / 100;
   const most = legs.reduce((m, x) => ({ kg: Math.max(m.kg, x.kg), l: Math.max(m.l, x.l) }), { kg: 0, l: 0 });
   const parts: string[] = [];
@@ -159,7 +161,7 @@ export function capacityLine(data: AppData, drafts: DraftConsignment[], stops: R
   if (most.l || Number.isFinite(limitL)) parts.push(`${num(most.l)} L${Number.isFinite(limitL) ? ` of ${num(limitL)} L` : ""}`);
   const name = (i: number) => data.places.find((p) => p.id === stops[i]?.placeId)?.name ?? `stop ${i + 1}`;
   const over = legs.flatMap((x, i) => [
-    ...(x.kg > limitKg * tolerance ? [`From ${name(i)} to ${name(i + 1)}: ${num(x.kg / 1000, 0, 2)} t on board, more than ${truck?.plate ?? "the truck"} carries.`] : []),
+    ...(x.kg > limitKg * tolerance ? [`From ${name(i)} to ${name(i + 1)}: ${num(x.kg / 1000, 0, 2)} t on board, more than ${trailerKg !== undefined && limitKg === trailerKg ? trailer?.plate ?? "the trailer" : truck?.plate ?? "the truck"} carries.`] : []),
     ...(x.l > limitL * tolerance ? [`From ${name(i)} to ${name(i + 1)}: ${num(x.l)} L on board, more than the trailer holds.`] : []),
   ]);
   return {

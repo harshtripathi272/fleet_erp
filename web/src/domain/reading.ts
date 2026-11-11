@@ -37,7 +37,10 @@ export function readDocument(
     const index = Math.max(0, EXPENSE_SAMPLES.findIndex((s) => s.variant === variant));
     const sample = EXPENSE_SAMPLES[index];
     // The sample's type becomes one of the company's own expense categories.
-    const category = data.categories.find((c) => c.name.toLowerCase().includes(sample.variant)) ?? data.categories[index % Math.max(1, data.categories.length)];
+    // By what the words say, so a toll lands under "Road and border", not the next category in the list (#102).
+    const words: Record<string, string[]> = { toll: ["toll", "road", "border"], border: ["border", "road", "toll"], meals: ["meal", "subsist", "food", "allowance"], parking: ["park", "road"], repair: ["repair", "maint", "tyre"] };
+    const category = (words[sample.variant] ?? [sample.variant]).map((w) => data.categories.find((c) => c.name.toLowerCase().includes(w))).find(Boolean)
+      ?? data.categories[index % Math.max(1, data.categories.length)];
     return {
       docNo: `R${n(10000, 99999)}`,
       amount: sample.amount,

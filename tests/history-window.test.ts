@@ -70,7 +70,9 @@ describe('what the first load leaves out', () => {
     // After the first load, only changes come, and the window stays put.
     const later = await sync(`?since=${encodeURIComponent(res.serverTime)}&from=${encodeURIComponent(res.history.from)}`);
     assert.equal(later.history, undefined);
-    assert.deepEqual(later.trips, []);
+    // Only what changed in the last few seconds comes again, the look-back that catches writes still saving (#102).
+    const cutoff = Date.parse(res.serverTime) - 10_000;
+    assert.ok((later.trips as Array<{ updatedAt: string }>).every((t) => Date.parse(t.updatedAt) > cutoff), 'nothing older than the look-back');
   });
 });
 

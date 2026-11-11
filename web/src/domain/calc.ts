@@ -145,9 +145,10 @@ export function stopsFromTruck(route: RouteStop[], truck: Truck): RouteStop[] {
 }
 
 /** Whether the leg arriving at stop `index` is driven loaded. */
+/** Loaded from the first loading to the last drop, as the server budgets it (#102: legs after the first drop aren't empty). */
 export function legLoaded(stops: { kind: string }[], index: number) {
   const load = stops.findIndex((stop) => stop.kind === "load");
-  const offload = stops.findIndex((stop) => stop.kind === "offload");
+  const offload = stops.map((stop) => stop.kind).lastIndexOf("offload");
   return load >= 0 && index > load && (offload < 0 || index <= offload);
 }
 

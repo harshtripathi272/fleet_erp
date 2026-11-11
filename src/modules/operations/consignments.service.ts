@@ -678,7 +678,24 @@ export async function recordLeg(cid: string, legId: string, input: S.LegRecordIn
   if (pickup) await afterPickup(freshTrip, fresh, leg, measures, docs, events, at, ctx);
   else await afterDrop(freshTrip, fresh, leg, measures, input, shortage, events, at, ctx);
   const out = presentConsignment(fresh, ctx.can);
-  return { ...out, checks: { capacity: { notes: capacity.notes, warnings: capacity.warnings ?? [] } } };
+  const papers = await repeatedPapers(cid, [...(input.documents ?? []).map((d) => d.number), input.pod?.number]);
+  for (const warning of papers) await log(ctx, at, warning, { tripId: trip._id });
+  return { ...out, checks: { capacity: { notes: capacity.notes, warnings: capacity.warnings ?? [] }, papers: { warnings: papers } } };
+}
+
+/**
+ * A paper number already filed on another consignment (#102): one invoice on three consignments is usually a photo
+ * sent three times. It is recorded, and said, so someone checks it.
+ */
+async function repeatedPapers(cid: string, numbers: Array<string | undefined>) {
+  const wanted = [...new Set(numbers.map((n) => n?.trim()).filter((n): n is string => Boolean(n)))];
+  if (!wanted.length) return [];
+  const others = await Consignment.find({ _id: { $ne: new Types.ObjectId(cid) }, $or: [{ 'documents.number': { $in: wanted } }, { 'legs.pod.number': { $in: wanted } }] })
+    .select('number documents.number legs.pod.number').limit(20).lean<Plain[]>();
+  return wanted.flatMap((n) => {
+    const on = others.filter((c) => ((c.documents ?? []) as Plain[]).some((d) => d.number === n) || ((c.legs ?? []) as Plain[]).some((l) => (l.pod as Plain | undefined)?.number === n)).map((c) => String(c.number));
+    return on.length ? [`Paper ${n} is also filed on ${on.join(', ')}. Check it isn't the same paper sent twice.`] : [];
+  });
 }
 
 /** "38,000 L diesel · 37,650 L at 20 °C", or "28 t copper cathodes", for the messages. */

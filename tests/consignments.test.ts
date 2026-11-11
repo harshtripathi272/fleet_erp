@@ -554,6 +554,9 @@ describe('the driver says which consignment each paper is for (#135 Part 2)', ()
       assert.ok(filed.consignmentId, `photo ${n} filed on a consignment`);
       assert.equal(filed.kind, 'loading');
     }
+    // The desks' feed shows them filed too, so "Photos to file" empties (#102).
+    const synced = ok<{ documents: Array<{ id: string; tripId?: string; kind: string; status: string; consignmentId?: string }> }>(await as(ops).get('/operations/sync'));
+    assert.deepEqual(synced.documents.filter((d) => d.tripId === t.id && d.status === 'new' && !d.consignmentId && d.kind !== 'other'), [], 'nothing left to file');
     const filedOn = new Set((await docs()).map((d) => d.consignmentId).filter(Boolean));
     assert.equal(filedOn.size, 4, 'each consignment got its own invoice');
     assert.deepEqual([...filedOn].sort(), list.map((c) => c.id).sort());
@@ -627,5 +630,17 @@ describe('bad input to POST /consignments (#135 Part 5)', () => {
       assert.ok(res.status < 500, `${JSON.stringify(body).slice(0, 80)} -> ${res.status} ${JSON.stringify(res.body).slice(0, 160)}`);
       if (res.status >= 400) assert.ok(res.body.error?.message, 'refused with a message');
     }
+  });
+});
+
+describe('the same paper number on two consignments (#102)', () => {
+  test('is recorded, and said, so someone checks it', async () => {
+    const cn = (n: number) => ({ lines: [{ productId: ids.diesel, plannedQty: 4000 }], consignee: { name: `Depot ${n}` } });
+    const t = await trip({ consignments: [cn(1), cn(2)] }, true, owner);
+    const [a, b] = await onTrip(t.id);
+    const record = async (c: Consignment) => ok<{ checks: { papers: { warnings: string[] } } }>(await as(ops).post(`/consignments/${c.id}/legs/${c.legs.find((l) => l.kind === 'pickup')!.id}/record`, { measures: [{ lineId: c.lines[0]!.id, ...fuel(4000) }], documents: [{ number: 'INV-44239' }] }));
+    assert.deepEqual((await record(a!)).checks.papers.warnings, []);
+    const second = await record(b!);
+    assert.match(second.checks.papers.warnings[0] ?? '', new RegExp(`INV-44239 is also filed on ${a!.number.replace(/\//g, '\\/')}`));
   });
 });

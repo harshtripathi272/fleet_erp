@@ -171,7 +171,8 @@ export function galleryFor(data: AppData, trip: Trip | undefined): Sample[] {
       for (const variant of ["0", "1"]) {
         const id = `delivery:${trip.id}:${variant}`;
         const read = readDocument(data, trip, "delivery", id);
-        out.push({ sampleId: id, kind: "delivery", title: "Delivery note", detail: read.docNo ?? "", read, image: svgUrl(deliveryNote(data, trip, read, id)) });
+        // Two samples to try both outcomes; their titles say which is which (#102: "Delivery note" twice).
+        out.push({ sampleId: id, kind: "delivery", title: variant === "1" ? "Delivery note, small loss" : "Delivery note, bigger loss", detail: read.docNo ?? "", read, image: svgUrl(deliveryNote(data, trip, read, id)) });
       }
     }
   }

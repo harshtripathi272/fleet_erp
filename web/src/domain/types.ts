@@ -63,6 +63,9 @@ export interface Trailer {
   type: string;
   capacity: number;
   unit: "L" | "t";
+  /** Both figures when the trailer has both (a tanker with a weight limit): the same limits the server checks (#102). */
+  capacityKg?: number;
+  capacityL?: number;
 }
 export interface Pairing {
   id: string;
