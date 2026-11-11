@@ -494,34 +494,6 @@ async function onBoard(tripId: unknown, extra: Array<{ productId: unknown; m: Pl
 }
 
 /**
- * GET /trips/:id/capacity (contract 2.4): what is on board now against the truck's and the trailer's limits, with a
- * note for a limit that isn't set. Added by lakshya-t3 for the trip's Consignments tab.
- */
-export async function tripCapacity(tripId: string) {
-  const trip = await Trip.findById(tripId).select('vehicleId trailerId').lean<Plain>();
-  if (!trip) throw new NotFoundError('Trip not found');
-  const truck = await truckFacts(trip.vehicleId, false);
-  const trailer = trip.trailerId ? await Trailer.findById(trip.trailerId).select('registrationNumber capacityL capacityKg').lean<Plain>() : null;
-  const now = await onBoard(trip._id, []);
-  const truckKg = truck.capacityT ? truck.capacityT * 1000 : undefined;
-  const trailerKg = trailer?.capacityKg ? Number(trailer.capacityKg) : undefined;
-  const kg = [truckKg, trailerKg].filter((v): v is number => Boolean(v));
-  const limitKg = kg.length ? Math.min(...kg) : undefined;
-  const limitL = trailer?.capacityL ? Number(trailer.capacityL) : undefined;
-  const notes: string[] = [];
-  if (limitKg === undefined && now.kg) notes.push(`No payload set for ${truck.plate}, so the weight on board isn't checked.`);
-  if (limitL === undefined && now.l) notes.push(`No tank capacity set for ${trailer ? String(trailer.registrationNumber) : truck.plate}, so the litres on board aren't checked.`);
-  return {
-    limits: {
-      ...(limitKg !== undefined ? { kg: limitKg, kgFrom: limitKg === trailerKg && trailer ? String(trailer.registrationNumber) : truck.plate } : {}),
-      ...(limitL !== undefined ? { l: limitL, lFrom: String(trailer!.registrationNumber) } : {}),
-    },
-    onBoard: now,
-    notes,
-  };
-}
-
-/**
  * The truck's capacity against what will be on board after this pickup (design 3.7.3, correction 8): weighed goods
  * against the smaller of the truck's payload and the trailer's, liquids against the trailer's litres. The company's
  * policy decides whether going over refuses, warns or is not checked; a truck with no figure is not blocked.

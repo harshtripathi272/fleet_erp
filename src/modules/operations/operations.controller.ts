@@ -5,10 +5,7 @@ import { ApiResponse, buildPaginationMeta } from '../../core/response/index.js';
 import { asyncHandler } from '../../utils/asyncHandler.js';
 import * as Cargo from './cargo.service.js';
 import * as Consignments from './consignments.service.js';
-import * as GateService from './gate.js';
-import { Trip as TripModel } from './models/trip.model.js';
-import { NotFoundError } from '../../core/errors/index.js';
-import * as S from './operations.schema.js';
+import * as Stops from './stops.service.js';
 import * as Dashboards from './dashboards.service.js';
 import * as DriverApp from './driverApp.service.js';
 import * as Expenses from './expenses.service.js';
@@ -76,31 +73,22 @@ export const returnDocument = asyncHandler(async (req, res) => ApiResponse.succe
 export const listConsignments = asyncHandler(async (req, res) => paged(res, await Consignments.listConsignments(query(req), opsContext(req))));
 export const getConsignment = asyncHandler(async (req, res) => ApiResponse.success(res, await Consignments.getConsignment(param(req), opsContext(req))));
 export const recordLoading = asyncHandler(async (req, res) => ApiResponse.created(res, await Consignments.recordLoading(req.body, opsContext(req)), 'Loading recorded'));
-export const recordDelivery = asyncHandler(async (req, res) => ApiResponse.success(res, await Consignments.recordDelivery(param(req), req.body, opsContext(req)), 'Delivery recorded'));
-
-/* ---------- Consignments on legs (#135, the API contract's sections 1–2). Mounted by lakshya-t3 while the builder was paused. ---------- */
-
-/** POST /consignments: the new body (it has `lines`), or for one release today's loading body (contract 2.5). */
-export const createOrLoad = asyncHandler(async (req, res) => {
-  if (Array.isArray((req.body as { lines?: unknown }).lines)) {
-    return ApiResponse.created(res, await Consignments.createConsignment(S.createConsignmentSchema.parse(req.body), opsContext(req)), 'Consignment added');
-  }
-  return ApiResponse.created(res, await Consignments.recordLoading(S.loadingSchema.parse(req.body), opsContext(req)), 'Loading recorded');
-});
+export const createConsignment = asyncHandler(async (req, res) => ('invoiceNo' in req.body
+  ? ApiResponse.created(res, await Consignments.recordLoading(req.body, opsContext(req)), 'Loading recorded')
+  : ApiResponse.created(res, await Consignments.createConsignment(req.body, opsContext(req)), 'Consignment added')));
 export const updateConsignment = asyncHandler(async (req, res) => ApiResponse.success(res, await Consignments.updateConsignment(param(req), req.body, opsContext(req)), 'Consignment saved'));
-export const putLegs = asyncHandler(async (req, res) => ApiResponse.success(res, await Consignments.putLegs(param(req), req.body, opsContext(req)), 'Drops saved'));
-export const cancelConsignment = asyncHandler(async (req, res) => ApiResponse.success(res, await Consignments.cancelConsignment(param(req), req.body, opsContext(req)), 'Consignment cancelled'));
+export const putLegs = asyncHandler(async (req, res) => ApiResponse.success(res, await Consignments.putLegs(param(req), req.body, opsContext(req)), 'Pickups and drops saved'));
 export const recordLeg = asyncHandler(async (req, res) => ApiResponse.success(res, await Consignments.recordLeg(param(req), param(req, 'legId'), req.body, opsContext(req)), 'Recorded'));
-export const recordAtStop = asyncHandler(async (req, res) => ApiResponse.success(res, await Consignments.recordAtStop(param(req), param(req, 'stopId'), req.body, opsContext(req)), 'Recorded'));
-export const attachDocument = asyncHandler(async (req, res) => ApiResponse.success(res, await Consignments.attachDocument(param(req), req.body, opsContext(req)), 'Paper attached'));
-export const detachDocument = asyncHandler(async (req, res) => ApiResponse.success(res, await Consignments.detachDocument(param(req), param(req, 'docId'), opsContext(req)), 'Paper removed'));
+export const cancelConsignment = asyncHandler(async (req, res) => ApiResponse.success(res, await Consignments.cancelConsignment(param(req), req.body, opsContext(req)), 'Consignment cancelled'));
+export const attachDocument = asyncHandler(async (req, res) => ApiResponse.created(res, await Consignments.attachDocument(param(req), req.body, opsContext(req)), 'Document added'));
+export const detachDocument = asyncHandler(async (req, res) => ApiResponse.success(res, await Consignments.detachDocument(param(req), param(req, 'docId'), opsContext(req)), 'Document taken off'));
+export const recordAtStop = asyncHandler(async (req, res) => ApiResponse.success(res, await Consignments.recordAtStop(param(req), param(req, 'stopId'), req.body, opsContext(req))));
 export const fileDriverDocument = asyncHandler(async (req, res) => ApiResponse.success(res, await Consignments.fileDriverDocument(param(req), req.body, opsContext(req)), 'Filed'));
-export const tripCapacity = asyncHandler(async (req, res) => ApiResponse.success(res, await Consignments.tripCapacity(param(req))));
-export const tripGate = asyncHandler(async (req, res) => {
-  const trip = await TripModel.findById(param(req)).lean();
-  if (!trip) throw new NotFoundError('Trip not found');
-  ApiResponse.success(res, { gate: await GateService.tripGate(trip as never) });
-});
+export const passStop = asyncHandler(async (req, res) => ApiResponse.success(res, await Stops.passStop(param(req), param(req, 'stopId'), req.body.reason, opsContext(req)), 'The truck may pass'));
+export const putStops = asyncHandler(async (req, res) => ApiResponse.success(res, await Stops.putStops(param(req), req.body, opsContext(req)), 'Stops saved'));
+export const tripGate = asyncHandler(async (req, res) => ApiResponse.success(res, await Stops.gateOf(param(req))));
+export const tripCapacity = asyncHandler(async (req, res) => ApiResponse.success(res, await Stops.capacityOf(param(req))));
+export const recordDelivery = asyncHandler(async (req, res) => ApiResponse.success(res, await Consignments.recordDelivery(param(req), req.body, opsContext(req)), 'Delivery recorded'));
 export const decideShortage = asyncHandler(async (req, res) => ApiResponse.success(res, await Cargo.decideShortage(param(req), req.body, opsContext(req))));
 
 /* Expenses */
