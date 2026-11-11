@@ -14,7 +14,7 @@ import {
   activeDriver, activeRecord, conflict, customerParty, customerThread, loadOr404, log, need, nextNumber, post, present, queue, refuse, resolve,
   save, shortDate, type OpsContext,
 } from './support.js';
-import { createTrip, driverName, placeName, stopsFromTruck, truckFacts } from './trips.service.js';
+import { createTrip, driverName, placeName, slotFor, stopsFromTruck, truckFacts } from './trips.service.js';
 import type * as S from './operations.schema.js';
 import { operationsSettings } from './settings.js';
 
@@ -151,9 +151,10 @@ export async function convertNomination(id: string, input: S.ConvertInput, ctx: 
     const truck = await truckFacts(item.vehicleId);
     const driverId = item.driverId ?? (await Driver.findOne({ assignedVehicleId: item.vehicleId, status: 'active' }).select('_id').lean())?._id;
     const trailerId = truck.vehicle.currentTrailerId;
-    if (await Trip.exists({ vehicleId: item.vehicleId, active: true })) throw conflict(`${truck.plate} is already on a trip.`);
-    if (driverId && (await Trip.exists({ driverId, active: true }))) throw conflict(`${await driverName(driverId)} is already on a trip.`);
-    if (trailerId && (await Trip.exists({ trailerId, active: true }))) throw conflict(`The trailer of ${truck.plate} is already on a trip.`);
+    // Free, or able to wait behind the trip it is on (#102: a truck coming back takes its next job).
+    const behind = await slotFor({ vehicleId: item.vehicleId, driverId, trailerId }, truck.plate);
+    // Behind a trip on the road, the next one starts where that trip ends.
+    if (behind) truck.placeId = String(((behind.stops ?? []) as Plain[]).at(-1)?.placeId ?? '') || truck.placeId;
     if (tripStartsFromTruck && !truck.placeId) throw refuse(`Set where ${truck.plate} is before creating its trip.`);
     const start = (tripStartsFromTruck ? truck.placeId : undefined) ?? String(n.loadingPlaceId);
     const base = route

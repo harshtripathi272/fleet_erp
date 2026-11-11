@@ -151,6 +151,15 @@ function workedStep(data: AppData, trip: Trip): NextStep {
           .join(" and "),
         since: trip.createdAt,
       };
+    // Planned behind the truck's trip on the road (#102): ready, but it leaves once that trip ends.
+    if (trip.waiting) {
+      const before = byId(data.trips, trip.startsAfterTripId);
+      return {
+        actor: "road", stage: "funding", move: "none",
+        title: `Waiting for ${before?.no ?? "the trip on the road"} to end`, waiting: `The truck is still on ${before?.no ?? "its trip"}`,
+        detail: `Leaves from ${placeName(data, trip.stops[0]?.placeId)} once ${before?.no ?? "that trip"} ends`, since: trip.createdAt,
+      };
+    }
     return {
       actor: "operations",
       stage: "funding",

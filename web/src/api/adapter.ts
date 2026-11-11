@@ -211,6 +211,7 @@ export function toAppData(ref: Reference, ops: Operations): AppData {
     productId: t.productId, plannedQty: t.plannedQty, plannedStart: t.plannedStart,
     fuelBudgetL: t.fuelBudgetL ?? 0, cashBudgetBase: baseMajor(t.cashBudget?.amountMinor), openingFuelL: t.openingFuelL ?? 0,
     createdAt: t.createdAt, dispatchedAt: t.dispatchedAt, endedAt: t.endedAt, closingFuelL: t.closingFuelL, stopReason: t.stopReason, custom: t.custom, undelivered: t.undelivered, transferredToTripId: t.transferredToTripId, transferredFromTripId: t.transferredFromTripId, cancelledAt: t.cancelledAt, settleAfterCancel: t.settleAfterCancel,
+    startsAfterTripId: t.startsAfterTripId ?? undefined, waiting: Boolean(t.startsAfterTripId) && t.active === false && !t.cancelledAt && !t.endedAt,
     tracking: t.tracking ? { km: t.tracking.km ?? 0, speed: t.tracking.speed ?? 0, heading: t.tracking.heading ?? 0, at: t.tracking.at, source: t.tracking.source } : undefined,
     settlementId: t.settlementId,
     stages: (t.stages ?? []).map((s: Rec) => ({ code: s.code, name: s.name, completesOn: s.completesOn, completedAt: s.completedAt })),

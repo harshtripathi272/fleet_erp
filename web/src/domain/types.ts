@@ -208,6 +208,9 @@ export interface Trip {
   transferredFromTripId?: string;
   /** Cancelled after cash was paid or spent on it: it still goes on the driver's next settlement. */
   settleAfterCancel?: boolean;
+  /** Planned behind the truck's trip on the road (#102); `waiting` until that trip ends. */
+  startsAfterTripId?: string;
+  waiting?: boolean;
   tracking?: Tracking;
   settlementId?: string;
   /** The trip type's configured stages and where the trip is (from the API). */

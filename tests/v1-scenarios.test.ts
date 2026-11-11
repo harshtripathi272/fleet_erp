@@ -74,7 +74,7 @@ beforeEach(async () => {
 /* ---------- 1. Planning the next job ---------- */
 
 describe('1. a truck coming back gets its next job planned before it is home', () => {
-  test('1.1 the next trip is made while the truck is on the road, starts where this trip ends, and leaves only after it ends', { todo: 'being built (#102 scenarios)' }, async () => {
+  test('1.1 the next trip is made while the truck is on the road, starts where this trip ends, and leaves only after it ends', async () => {
     const now = await trip({ consignments: [{ lines: [{ productId: ids.diesel, plannedQty: 38000 }] }] });
     const next = ok<Trip>(await as(ops).post('/trips', { customerId: ids.copper, vehicleId: ids.v1, driverId: ids.d1, trailerId: ids.t1, routeId: ids.routeDar, plannedStart: '2026-11-20T06:00:00.000Z' }), 201);
     assert.equal(next.stops[0]!.placeId, now.stops.at(-1)!.placeId, 'it starts where the trip on the road ends');
@@ -87,13 +87,13 @@ describe('1. a truck coming back gets its next job planned before it is home', (
     ok(await as(ops).post(`/trips/${next.id}/dispatch`));
   });
 
-  test('1.2 only one trip waits behind a truck; a third is refused in words', { todo: 'being built (#102 scenarios)' }, async () => {
+  test('1.2 only one trip waits behind a truck; a third is refused in words', async () => {
     await trip({});
     ok(await as(ops).post('/trips', { customerId: ids.copper, vehicleId: ids.v1, driverId: ids.d1, trailerId: ids.t1, routeId: ids.routeDar, plannedStart: '2026-11-20T06:00:00.000Z' }), 201);
     refused(await as(ops).post('/trips', { customerId: ids.copper, vehicleId: ids.v1, driverId: ids.d1, trailerId: ids.t1, routeId: ids.routeDar, plannedStart: '2026-11-25T06:00:00.000Z' }), /already has a (next|planned) trip/i);
   });
 
-  test('1.3 a nomination naming a truck still on the road becomes its next trip when the customer accepts', { todo: 'being built (#102 scenarios)' }, async () => {
+  test('1.3 a nomination naming a truck still on the road becomes its next trip when the customer accepts', async () => {
     await trip({});
     const n = ok(await as(ops).post('/nominations', { customerId: ids.copper, loadingPlaceId: ids.dar, productId: ids.diesel, qtyPerTruck: 38000, requiredDate: '2026-11-20', trucks: [{ vehicleId: ids.v1, driverId: ids.d1 }] }), 201);
     ok(await as(ops).post(`/nominations/${n.id}/send`));
@@ -102,7 +102,7 @@ describe('1. a truck coming back gets its next job planned before it is home', (
     assert.ok(converted, 'converted into a next trip, not refused because the truck is busy');
   });
 
-  test('1.4 the next trip can be funded before the truck is back', { todo: 'being built (#102 scenarios)' }, async () => {
+  test('1.4 the next trip can be funded before the truck is back', async () => {
     await trip({});
     const next = ok<Trip>(await as(ops).post('/trips', { customerId: ids.copper, vehicleId: ids.v1, driverId: ids.d1, trailerId: ids.t1, routeId: ids.routeDar, plannedStart: '2026-11-20T06:00:00.000Z' }), 201);
     const cash = ok(await as(ops).post('/fund-requests', { tripId: next.id, kind: 'cash', amount: zmw(2000) }), 201);

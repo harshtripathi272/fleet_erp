@@ -286,13 +286,15 @@ describe('nominations', () => {
     await as(ops).post(`/nominations/${nomination.id}/cancel`).expect(409);
   });
 
-  test('a busy truck stops the conversion before any trip is created', async () => {
+  test('a truck with its next trip already planned stops the conversion before any trip is created', async () => {
+    // A truck on a trip can take one next trip (#102); one that already has it can't take another.
     await newTrip();
+    ok(await as(ops).post('/trips', { customerId: ids.zambezi, vehicleId: ids.v1, driverId: ids.d1, trailerId: ids.t1, routeId: ids.routeDar, plannedStart: '2026-11-10T06:00:00.000Z' }), 201);
     ok(await as(ops).put(`/vehicle-states/${ids.v2}`, { placeId: ids.ndola }));
     const n = ok(await as(ops).post('/nominations', { customerId: ids.zambezi, loadingPlaceId: ids.darPort, requiredDate: '2026-11-05', trucks: [{ vehicleId: ids.v2, driverId: ids.d2 }, { vehicleId: ids.v1 }] }), 201);
     ok(await as(ops).post(`/nominations/${n.id}/send`));
     ok(await as(ops).post(`/nominations/${n.id}/accept`, {}));
-    assert.match((await as(ops).post(`/nominations/${n.id}/convert`, { offloadPlaceId: ids.depot })).body.error.message, /ALC 4821 is already on a trip/);
+    assert.match((await as(ops).post(`/nominations/${n.id}/convert`, { offloadPlaceId: ids.depot })).body.error.message, /ALC 4821 already has a next trip planned/);
     assert.equal(ok(await as(ops).get('/trips', { nominationId: n.id })).length, 0);
   });
 });

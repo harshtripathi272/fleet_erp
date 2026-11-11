@@ -222,7 +222,8 @@ export const presentTrip = (doc: Plain): Plain => {
 export async function listTrips(query: S.TripListQuery) {
   const filter: Plain = {};
   if (query.state === 'open') filter.active = true;
-  if (query.state === 'planned') Object.assign(filter, { active: true, dispatchedAt: { $exists: false } });
+  // Planned includes a trip waiting behind the truck's trip on the road (#102).
+  if (query.state === 'planned') Object.assign(filter, { dispatchedAt: { $exists: false }, cancelledAt: { $exists: false }, endedAt: { $exists: false } });
   if (query.state === 'on_road') Object.assign(filter, { active: true, dispatchedAt: { $exists: true } });
   if (query.state === 'ended') Object.assign(filter, TO_SETTLE);
   if (query.state === 'settled') filter.settlementId = { $exists: true };
@@ -262,6 +263,34 @@ async function addToOdometer(vehicleId: unknown, km: number) {
   if (km > 0) await Vehicle.updateOne({ _id: vehicleId, odometerKm: { $exists: true } }, { $inc: { odometerKm: Math.round(km) } });
 }
 
+/**
+ * Where a new trip for this truck fits (#102): free, or behind the trip it is on, as its one next trip. The driver
+ * and trailer must be free or on that same trip, and not already waiting on another.
+ */
+export async function slotFor(input: { vehicleId: unknown; driverId?: unknown; trailerId?: unknown }, plate: string): Promise<Plain | null> {
+  const busy = await Trip.findOne({ vehicleId: input.vehicleId, active: true }).lean<Plain>();
+  if (!busy) {
+    for (const [field, id] of [['driverId', input.driverId], ['trailerId', input.trailerId]] as const) {
+      if (id && (await Trip.exists({ [field]: id, active: true }))) throw conflict(`${field === 'driverId' ? await driverName(id) : `The trailer of ${plate}`} is already on a trip.`);
+    }
+    return null;
+  }
+  const waiting = await Trip.findOne({ startsAfterTripId: busy._id, active: false, cancelledAt: { $exists: false } }).select('number').lean<Plain>();
+  if (waiting) throw conflict(`${plate} already has a next trip planned: ${String(waiting.number)}.`);
+  for (const [field, id, label] of [['driverId', input.driverId, 'driver'], ['trailerId', input.trailerId, 'trailer']] as const) {
+    if (!id) continue;
+    const on = await Trip.findOne({ [field]: id, active: true }).select('_id number').lean<Plain>();
+    if (on && String(on._id) !== String(busy._id)) throw conflict(`That ${label} is on ${String(on.number)}, another truck's trip.`);
+    if (await Trip.exists({ [field]: id, active: false, startsAfterTripId: { $exists: true }, cancelledAt: { $exists: false } })) throw conflict(`That ${label} already has a next trip planned.`);
+  }
+  return busy;
+}
+
+/** A trip waiting behind one that just ended or was cancelled now becomes the truck's trip (#102). */
+async function startNextTrip(tripId: unknown) {
+  await Trip.updateOne({ startsAfterTripId: tripId, active: false, cancelledAt: { $exists: false } }, { $set: { active: true }, $inc: { version: 1 } }).catch(() => undefined);
+}
+
 export async function assertFree(field: 'vehicleId' | 'driverId' | 'trailerId', id: unknown, label: string, except?: unknown) {
   if (!id) return;
   const filter: Plain = { [field]: id, active: true };
@@ -276,12 +305,13 @@ export async function createTrip(input: S.CreateTripInput, ctx: OpsContext, extr
   const at = new Date();
   const customer = await customerParty(input.customerId);
   const truck = await truckFacts(input.vehicleId);
-  await assertFree('vehicleId', input.vehicleId, truck.plate);
+  // Free, or planned behind the trip the truck is on (#102).
+  const behind = await slotFor(input, truck.plate);
   await assertNotHeld(input.vehicleId, truck.plate);
   const driver = input.driverId ? await activeDriver(input.driverId) : null;
-  if (driver) await assertFree('driverId', input.driverId, String(driver.name));
   const trailer = input.trailerId ? await activeRecord(Trailer, input.trailerId, 'trailer') : null;
-  if (trailer) await assertFree('trailerId', input.trailerId, String(trailer.registrationNumber));
+  // Behind another trip, it starts where that trip ends, not where the truck is now.
+  if (behind) truck.placeId = String(((behind.stops ?? []) as Plain[]).at(-1)?.placeId ?? truck.placeId ?? '') || truck.placeId;
   const route = input.routeId ? await activeRecord(Route, input.routeId, 'route') : null;
   if (input.productId) await activeRecord(Product, input.productId, 'product');
   const tripType = await tripTypeFor(input.tripTypeId);
@@ -293,6 +323,7 @@ export async function createTrip(input: S.CreateTripInput, ctx: OpsContext, extr
   const draft: Plain = {
     customerId: customer._id, vehicleId: truck.vehicle._id, driverId: driver?._id, trailerId: trailer?._id, routeId: route?._id,
     productId: input.productId, plannedQty: input.plannedQty, plannedStart: input.plannedStart, stops, nominationId: extra.nominationId,
+    ...(behind ? { startsAfterTripId: behind._id, active: false } : {}),
   };
   const trip = new Trip({
     ...draft, ...(await budgets(draft, truck)), number: await nextNumber('trips', 'TRIP', at),
@@ -306,7 +337,7 @@ export async function createTrip(input: S.CreateTripInput, ctx: OpsContext, extr
   recordEvent(trip, 'created', at, ctx.actorId);
   await save(trip, `${truck.plate}, its driver or its trailer is already on a trip.`);
   for (const { input: c, ready } of prepared) await createOnTrip(trip, c, ctx, ready);
-  if (tripStartsFromTruck && !truck.placeId && plan[0]) await setVehicleState(truck.vehicle._id, { placeId: plan[0].placeId }, ctx.actorId);
+  if (tripStartsFromTruck && !truck.placeId && plan[0] && !behind) await setVehicleState(truck.vehicle._id, { placeId: plan[0].placeId }, ctx.actorId);
   if (driver) {
     await post(driverThread(driver._id), at, {
       title: `New trip ${trip.get('number')}`,
@@ -393,6 +424,7 @@ export async function cancelTrip(id: string, input: S.ReasonInput, ctx: OpsConte
   );
   trip.set({ cancelledAt: at, cancelReason: input.reason, active: false, settleAfterCancel: cashOnTrip || undefined, updatedBy: ctx.actorId });
   await save(trip);
+  await startNextTrip(trip._id);
   await cancelPlanned(trip._id, `Trip cancelled: ${input.reason}`, ctx);
   for (const request of await FundRequest.find({ tripId: trip._id, status: { $in: OPEN_REQUEST } })) {
     request.set('status', 'cancelled');
@@ -420,6 +452,7 @@ export async function closeEarly(trip: HydratedDocument<any>, close: { reason: s
   if (tracking) trip.set('tracking.speed', 0);
   await save(trip);
   await setVehicleState(trip.get('vehicleId'), { placeId: close.placeId, fuelL: close.closingFuelL }, ctx.actorId);
+  await startNextTrip(trip._id);
   for (const request of await FundRequest.find({ tripId: trip._id, status: { $in: OPEN_REQUEST } })) {
     request.set('status', 'cancelled');
     request.get('trail').push({ desk: ctx.desk, userId: ctx.actorId, name: ctx.name, what: 'cancelled', at, note: close.requestNote, via: 'app' });
@@ -505,6 +538,11 @@ export async function dispatchTrip(id: string, ctx: OpsContext, input?: S.Dispat
   const trip = await tripDoc(id);
   if (trip.get('dispatchedAt')) throw conflict('Already on the road.');
   if (!activeTrip(trip.toObject())) throw conflict('This trip is closed.');
+  // Planned behind the truck's trip on the road (#102): it leaves once that one ends.
+  if (trip.get('startsAfterTripId') && !trip.get('active')) {
+    const before = await Trip.findById(trip.get('startsAfterTripId')).select('number').lean<Plain>();
+    throw conflict(`The truck is still on ${String(before?.number ?? 'its trip')}. This trip can leave once that one ends.`);
+  }
   if (!trip.get('driverId')) throw refuse('Assign the driver first.');
   if (!trip.get('stops').length) throw refuse('Set the route first.');
   assertStageAllows(trip.toObject(), 'dispatched');
@@ -760,6 +798,8 @@ export async function endTrip(id: string, input: S.EndTripInput, ctx: OpsContext
   await save(trip);
   await setVehicleState(trip.get('vehicleId'), { placeId: endPlace, fuelL: input.closingFuelL }, ctx.actorId);
   await addToOdometer(trip.get('vehicleId'), tripKm(stops));
+  // The trip planned behind this one is now the truck's (#102).
+  await startNextTrip(trip._id);
   await resolve(`${trip._id}-end`, 'Trip ended');
   const plain = trip.toObject() as Plain;
   const place = await placeName(endPlace);
