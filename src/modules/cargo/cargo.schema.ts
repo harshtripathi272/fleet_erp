@@ -13,7 +13,7 @@ export const productShape = {
   unitId: objectId,
   hazard: z.strictObject({
     unClass: z.string().trim().regex(/^[1-9](\.[1-6])?$/, 'UN class, e.g. 3 or 2.1'),
-    unNumber: z.string().trim().toUpperCase().regex(/^UN\d{4}$/, 'e.g. UN1202').optional(),
+    unNumber: z.string().trim().toUpperCase().transform((v) => (/^\d{4}$/.test(v) ? `UN${v}` : v.replace(/^UN\s+/, 'UN'))).pipe(z.string().regex(/^UN\d{4}$/, 'Four digits, e.g. 1202 or UN1202')).optional(),
     packingGroup: z.enum(['I', 'II', 'III']).optional(),
   }).optional(),
   densityKgPerL: z.number().min(0.3).max(3).optional(),

@@ -121,6 +121,10 @@ export const trailerTypeDefinition = defineMaster({
   description: 'Tanker, flatbed, tautliner, skeletal, side-tipper, lowbed, reefer: which cargo each carries and whether it has compartments.',
   model: TrailerType, createSchema: S.createTrailerTypeSchema, updateSchema: S.updateTrailerTypeSchema,
   refs: [{ path: 'requiredDocumentTypeIds', target: 'document-types' }],
+  hints: {
+    cargoKinds: 'What this trailer can carry, so a load is only offered trailers that suit it. Liquid bulk: fuel or oil in a tank. Dry bulk: loose cement, grain or ore. General: bags, pallets, boxes. Container: shipping containers. Abnormal: oversized loads. Refrigerated: chilled or frozen. Livestock: animals. Pick every one that applies.',
+    hasCompartments: 'A tanker split into compartments, each filled and checked on its own.',
+  },
   filters: { cargoKind: { schema: z.enum(CARGO_KINDS), apply: (v: string) => ({ cargoKinds: v }), description: 'Carries this kind of cargo' } },
   async prepare(data: Plain, ctx) {
     if (ctx.mode === 'update' && ctx.existing?.hasCompartments !== data.hasCompartments && ctx.id) {

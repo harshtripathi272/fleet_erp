@@ -19,7 +19,8 @@ const spell = (text: string) => text.split(" ").map((w, i) => {
   if (!known) return w;
   return i === 0 || known !== "E-mail" ? known : "e-mail";
 }).join(" ");
-export const label = (key: string) => spell(key.replace(/Id(s)?$/, "$1").replace(/Minor$/, "").replace(/_/g, " ").replace(/([a-z0-9])([A-Z])/g, (_, a: string, b: string) => `${a} ${b.toLowerCase()}`).trim().replace(/^./, (c) => c.toUpperCase()));
+const NAMED: Record<string, string> = { line1: "Street address", line2: "Address line 2" };
+export const label = (key: string) => NAMED[key] ?? spell(key.replace(/Id(s)?$/, "$1").replace(/Minor$/, "").replace(/_/g, " ").replace(/([a-z0-9])([A-Z])/g, (_, a: string, b: string) => `${a} ${b.toLowerCase()}`).trim().replace(/^./, (c) => c.toUpperCase()));
 /** "Levels" → "Level", "Entries" → "Entry": one of a list of repeating items. */
 export const singular = (w: string) => (/ies$/.test(w) ? `${w.slice(0, -3)}y` : /(ss|x|ch|sh)es$/.test(w) ? w.slice(0, -2) : /s$/.test(w) && !/ss$/.test(w) ? w.slice(0, -1) : w);
 /** A stored choice as the master names it ("trip.loaded" → "A truck is loaded"), or as words made from the value. */

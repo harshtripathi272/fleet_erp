@@ -65,7 +65,13 @@ export interface MessageSender {
 export interface RateSource { fetch(input: { base: string; codes: string[]; signal?: AbortSignal }): Promise<{ perBase: Record<string, number>; asOf: Date }> }
 export interface LatLng { lat: number; lng: number }
 export interface RouteAnswer { km: number; hours?: number; shape: Array<[number, number]> }
-export interface RouteFinder { route(points: LatLng[], signal?: AbortSignal): Promise<RouteAnswer> }
+/** A place found by its name or address (#102): where it is, and the town and region it's in, as the map service names them. */
+export interface PlaceHit { name: string; address: string; lat: number; lng: number; city?: string; region?: string; countryCode?: string }
+export interface RouteFinder {
+  route(points: LatLng[], signal?: AbortSignal): Promise<RouteAnswer>;
+  /** Finds places by name or address, nearest the company's country first. */
+  search?(query: string, options: { countryCode?: string; signal?: AbortSignal }): Promise<PlaceHit[]>;
+}
 export interface FileStore {
   put(key: string, body: Buffer, mime: string): Promise<void>;
   open(key: string): Promise<Readable>;

@@ -3,7 +3,9 @@ import { getMaster } from '../../core/masters/registry.js';
 import * as MasterService from '../../core/masters/service.js';
 import type { Plain } from '../../core/masters/types.js';
 import { Company } from '../company/company.model.js';
+import { Country } from '../geography/models/country.model.js';
 import { Role } from '../roles/role.model.js';
+import { STARTER_CITIES, codeOf } from './starterCities.js';
 import { ensureFreightLists } from '../freight/defaults.js';
 
 /**
@@ -15,7 +17,7 @@ import { ensureFreightLists } from '../freight/defaults.js';
  */
 export async function loadStarterLists(actorId?: string) {
   const ctx = { actorId, canSeeSensitive: true };
-  const company = await Company.findOne().select('baseCurrencyId').lean<{ baseCurrencyId?: unknown }>();
+  const company = await Company.findOne().select('baseCurrencyId countryId operations.cargoKinds').lean<{ baseCurrencyId?: unknown; countryId?: unknown; operations?: { cargoKinds?: string[] } }>();
   const currency = company?.baseCurrencyId ? String(company.baseCurrencyId) : undefined;
   const ids: Record<string, string> = {};
   const result = { created: 0, existing: 0, failed: [] as string[] };
@@ -37,6 +39,7 @@ export async function loadStarterLists(actorId?: string) {
     }
   };
   const withCurrency = currency ? { currencyIds: [currency] } : {};
+  const idOf = async (key: string, code: string) => { const f = await getMaster(key)?.model.findOne({ code }).select('_id').lean<{ _id: unknown }>(); return f ? String(f._id) : undefined; };
 
   // How fuel and cash reach a driver.
   await put('payment-methods', { code: 'CASH', name: 'Cash', kind: 'cash', referenceRequired: false, ...withCurrency });
@@ -60,6 +63,23 @@ export async function loadStarterLists(actorId?: string) {
   await put('document-types', { code: 'TRAILER-INS', name: 'Trailer insurance', appliesTo: 'trailer', hasExpiryDate: true, reminderDaysBefore: 30, blocking: 'none' });
   await put('document-types', { code: 'DL', name: 'Driving licence', appliesTo: 'driver', hasExpiryDate: true, reminderDaysBefore: 60, blocking: 'none' });
   await put('document-types', { code: 'PASSPORT', name: 'Passport', appliesTo: 'driver', hasExpiryDate: true, reminderDaysBefore: 90, blocking: 'none' });
+
+  // Trailers: each needs a type, and a type says what it can carry (#102).
+  await put('trailer-types', { code: 'TANKER', name: 'Fuel tanker', cargoKinds: ['liquid_bulk'], hasCompartments: true });
+  await put('trailer-types', { code: 'FLATBED', name: 'Flatbed', cargoKinds: ['general', 'container', 'abnormal'] });
+  await put('trailer-types', { code: 'TAUTLINER', name: 'Tautliner (curtain-sider)', cargoKinds: ['general'] });
+  await put('trailer-types', { code: 'SIDE-TIPPER', name: 'Side tipper', cargoKinds: ['dry_bulk'] });
+  await put('trailer-types', { code: 'BULKER', name: 'Dry bulk tanker (cement, flour)', cargoKinds: ['dry_bulk'] });
+  await put('trailer-types', { code: 'SKELETAL', name: 'Skeletal (containers)', cargoKinds: ['container'] });
+  await put('trailer-types', { code: 'LOWBED', name: 'Lowbed', cargoKinds: ['abnormal'] });
+  await put('trailer-types', { code: 'REEFER', name: 'Refrigerated', cargoKinds: ['refrigerated'] });
+
+  // The main towns of the company's country, each in its region (#102).
+  const country = company?.countryId ? await Country.findById(company.countryId).select('code').lean<{ code: string }>() : null;
+  for (const [name, region, lat, lng] of country ? STARTER_CITIES[country.code] ?? [] : []) {
+    const provinceId = await put('provinces', { code: `${country!.code}-${codeOf(region)}`.slice(0, 32), name: region, countryId: String(company!.countryId) });
+    if (provinceId) await put('cities', { code: `${country!.code}-${codeOf(name)}`.slice(0, 32), name, provinceId, location: { lat, lng } });
+  }
 
   // Trucks: each needs a type and a make.
   await put('vehicle-types', { code: 'PRIME', name: 'Prime mover (horse)', category: 'prime_mover', towsTrailer: true });
@@ -93,9 +113,23 @@ export async function loadStarterLists(actorId?: string) {
   await put('numbering-series', { code: 'TRIPS', name: 'Trip numbers', entity: 'trips', prefix: 'TRIP', pattern: '{PREFIX}/{YY}/{SEQ}', padding: 4, resetPolicy: 'yearly' }, { entity: 'trips', branchId: { $exists: false } });
 
   // Who approves money and fuel: Finance, in the app or on WhatsApp. One level; add more as the company grows.
-  // What's carried: one general product, so a load can be recorded from day one. Rename it, or add the company's own.
-  const goods = await put('product-groups', { code: 'GENERAL', name: 'General goods' });
-  if (goods && tonne) await put('products', { code: 'GENERAL', name: 'General cargo', groupId: goods, unitId: tonne });
+  // What's carried, so a load can be recorded from day one. A company that carries weighed loads gets general cargo
+  // in tonnes, as before; one that doesn't gets what it does carry (#102): fuel in litres at 20 °C for liquids,
+  // packages for counted goods. Rename them, or add the company's own.
+  const kinds = company?.operations?.cargoKinds?.length ? company.operations.cargoKinds : ['volume', 'weighed', 'counted'];
+  if (kinds.includes('weighed') || kinds.includes('counted')) {
+    const goods = await put('product-groups', { code: 'GENERAL', name: 'General goods' });
+    if (goods && tonne && kinds.includes('weighed')) await put('products', { code: 'GENERAL', name: 'General cargo', groupId: goods, unitId: tonne });
+    const each = await idOf('units', 'EA');
+    if (goods && each && kinds.includes('counted') && !kinds.includes('weighed')) await put('products', { code: 'PACKAGES', name: 'Packages', groupId: goods, unitId: each });
+  }
+  if (kinds.includes('volume') && !kinds.includes('weighed') && litre) {
+    const fuel = await put('product-groups', { code: 'FUEL', name: 'Fuel', defaultUnitId: litre, pricingBasis: 'per_litre' });
+    if (fuel) {
+      await put('products', { code: 'DIESEL', name: 'Diesel', groupId: fuel, unitId: litre, hazard: { unClass: '3', unNumber: 'UN1202', packingGroup: 'III' }, densityKgPerL: 0.835, volumeCorrected: true, referenceTemperatureC: 20, packaging: 'bulk' });
+      await put('products', { code: 'PETROL', name: 'Petrol', groupId: fuel, unitId: litre, hazard: { unClass: '3', unNumber: 'UN1203', packingGroup: 'II' }, densityKgPerL: 0.745, volumeCorrected: true, referenceTemperatureC: 20, packaging: 'bulk' });
+    }
+  }
 
   // Freight (#135): kinds of consignment, the papers that go with them, and the kinds of money line on a bill.
   result.created += await ensureFreightLists(actorId);

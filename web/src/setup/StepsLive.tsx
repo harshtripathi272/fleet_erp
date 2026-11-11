@@ -486,6 +486,11 @@ export function useSummaries(): Record<string, string> {
     const connected = ((file.connections ?? []) as Rec[]).filter((x) => x.enabled).map((x) => String(x.name));
     const spreadsheets = ((file.data?.files ?? []) as Rec[]).length;
     const words = Object.keys(file.workspace?.vocabulary ?? {}).length;
+    // How it works (#102): every setting the person changed counts, the kinds of cargo by name.
+    const cargo = (file.operations?.cargoKinds as string[] | undefined) ?? [];
+    const CARGO_WORD: Record<string, string> = { volume: "liquids", weighed: "weighed loads", counted: "counted goods" };
+    const settingsChanged = [file.operations, file.maintenance].flatMap((part) => Object.entries((part ?? {}) as Rec).filter(([k, v]) => v !== undefined && k !== "cargoKinds")).length
+      + (Array.isArray(file.workspace?.desks) ? 1 : 0);
     const locks = Object.values((file.connectionRules ?? {}) as Record<string, { locked?: boolean }>).filter((r) => r.locked).length;
     const target = info.targets.find((t) => t.key === file.deploy?.target)?.label;
     const masterChanges = new Set([...((file.masters?.layouts ?? []) as Rec[]).map((l) => String(l.entity)), ...((file.masters?.fields ?? []) as Rec[]).map((f) => String(f.entity))]).size + ((file.masters?.customMasters ?? []) as Rec[]).length;
@@ -496,7 +501,11 @@ export function useSummaries(): Record<string, string> {
       region: [r.country, r.baseCurrency].filter(Boolean).join(" · "),
       brand: [b.files?.logo ? "Logo" : "", b.accent ? String(b.accent) : ""].filter(Boolean).join(" · "),
       areas: areas ? `${areas.length} switched on` : "The usual",
-      work: words ? `${words} ${words === 1 ? "word" : "words"} changed` : "The usual",
+      work: [
+        cargo.length && cargo.length < 3 ? `Carries ${cargo.map((k) => CARGO_WORD[k] ?? k).join(" and ")}` : "",
+        settingsChanged ? `${settingsChanged} ${settingsChanged === 1 ? "setting" : "settings"} changed` : "",
+        words ? `${words} ${words === 1 ? "word" : "words"} changed` : "",
+      ].filter(Boolean).join(" · ") || "The usual",
       people: `Owner${staff ? ` and ${staff} ${staff === 1 ? "person" : "people"}` : ""}`,
       connections: `${connected.length ? connected.join(", ") : "All simulated"}${locks ? ` · ${locks} locked` : ""}`,
       data: [file.data?.sample === "starter" ? "The usual lists" : file.data?.sample === "small" || file.data?.sample === "full" ? `${String(file.data.sample) === "full" ? "Full" : "Small"} sample` : "", spreadsheets ? `${spreadsheets} spreadsheet${spreadsheets === 1 ? "" : "s"}` : ""].filter(Boolean).join(" · ") || "Empty",

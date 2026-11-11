@@ -1,7 +1,8 @@
 import { codeNameFields, uniqueIndex } from '../../../core/masters/define.js';
 import { ObjectId, addressSchema, locationSchema, masterSchema, subdoc, masterModel } from '../../../core/masters/schema.js';
 
-export const PLACE_TYPES = ['depot', 'terminal', 'refinery', 'mine', 'port', 'customer_site', 'yard', 'fuel_station', 'border', 'weighbridge', 'workshop', 'parking', 'office', 'other'] as const;
+/** A company can rename or retire any of these under Customise (#102); 'border' and the depots are acted on. */
+export const PLACE_TYPES = ['depot', 'terminal', 'refinery', 'mine', 'quarry', 'plant', 'factory', 'warehouse', 'farm', 'market', 'port', 'customer_site', 'yard', 'fuel_station', 'border', 'weighbridge', 'workshop', 'parking', 'office', 'other'] as const;
 
 const placeSchema = masterSchema({
   ...codeNameFields,

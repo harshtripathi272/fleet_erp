@@ -150,7 +150,7 @@ export function WorkStep() {
       <DesksEditor
         desks={(file.workspace?.desks as DeskSetup[] | undefined) ?? ws.data.defaultDesks}
         onChange={(desks) => replace(withValue(file, "workspace.desks", desks))}
-        views={ws.data.views}
+        views={ws.data.views.map((v) => (v.area && Array.isArray(file.areas) ? { ...v, on: (file.areas as string[]).includes(v.area) } : v))}
         icons={ws.data.icons}
         defaultDesks={ws.data.defaultDesks}
         savedKeys={ws.data.defaultDesks.map((d) => d.key)}
