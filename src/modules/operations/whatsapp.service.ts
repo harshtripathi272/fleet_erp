@@ -24,6 +24,7 @@ import * as Schemas from './operations.schema.js';
 import { deskOf, refuse, type OpsContext } from './support.js';
 import { dispatchTrip, driverTripNow } from './trips.service.js';
 import type * as S from './operations.schema.js';
+import { answerAboutPhoto, sortOutPhoto } from './whatsappPapers.js';
 
 /** The driver's open trip, which a WhatsApp message without a trip is filed against. */
 async function openTripOf(driverId: unknown) {
@@ -35,14 +36,24 @@ async function openTripOf(driverId: unknown) {
 export async function simulate(input: S.SimulateInput, ctx: OpsContext) {
   if (!env.DRIVER_PHONE_SIMULATOR) throw new ForbiddenError('The simulated driver phone is switched off');
   const tripId = input.tripId ?? (await openTripOf(input.driverId));
-  return sendDocument({ driverId: input.driverId, tripId, kind: input.kind ?? 'other', note: input.text, file: input.file, reading: input.reading, channel: 'whatsapp' }, { ...ctx, asDriver: true, simulated: true });
+  const as = { ...ctx, asDriver: true, simulated: true };
+  // The simulated phone behaves as WhatsApp does: a reply to the bot's question answers it (#135 Part 2).
+  if (!input.file && (await answerAboutPhoto(input.driverId, input.text, as))) return { answered: true };
+  const doc = await sendDocument({ driverId: input.driverId, tripId, kind: input.kind ?? 'other', note: input.text, file: input.file, reading: input.reading, channel: 'whatsapp' }, as);
+  await sortOutPhoto(doc as Plain, as);
+  return doc;
 }
 
 /** A driver's WhatsApp message, filed on the trip they are on (or the one waiting to be settled). */
 async function fileDriverMessage(driver: { _id: unknown; name?: unknown }, message: { kind: S.InboundInput['kind'] | 'other'; text?: string; file?: S.InboundInput['media'] }) {
   const tripId = await openTripOf(driver._id);
   // As the driver, so a photo stored for them can be attached.
-  return sendDocument({ driverId: String(driver._id), tripId, kind: message.kind ?? 'other', note: message.text, file: message.file, channel: 'whatsapp' }, { ...driverContext(String(driver.name)), driverId: String(driver._id) });
+  const ctx = { ...driverContext(String(driver.name)), driverId: String(driver._id) };
+  // A reply to the bot's question about a photo answers it, rather than being filed as a message (#135 Part 2).
+  if (!message.file && (await answerAboutPhoto(driver._id, message.text, ctx))) return { id: undefined };
+  const doc = await sendDocument({ driverId: String(driver._id), tripId, kind: message.kind ?? 'other', note: message.text, file: message.file, channel: 'whatsapp' }, ctx);
+  await sortOutPhoto(doc as Plain, ctx);
+  return doc;
 }
 
 /**

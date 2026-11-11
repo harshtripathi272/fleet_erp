@@ -71,7 +71,7 @@ type PaperType = GateDocType & { code?: string; requiredBy?: string };
 /** The papers a driver is always asked for: the loading invoice at a pickup, the delivery note and POD at a drop. */
 const USUAL = new Set(['LOADING_INVOICE', 'DELIVERY_NOTE', 'POD']);
 /** The papers a driver sends at a pickup or a drop: the ones a stop waits for, and the usual invoice, delivery note and POD. */
-async function paperTypes(): Promise<PaperType[]> {
+export async function paperTypes(): Promise<PaperType[]> {
   return (await ConsignmentDocumentType.find({ status: 'active', step: { $in: ['pickup', 'drop'] } }).select('name step driverKind code requiredBy').lean()) as unknown as PaperType[];
 }
 const asked = (t: PaperType) => (t.requiredBy !== undefined && t.requiredBy !== 'none') || USUAL.has(String(t.code));
@@ -87,10 +87,10 @@ function papersDue(c: Plain, leg: Plain, types: PaperType[], waiting: Plain[]) {
 }
 
 /** The stop the truck is at (arrived, not left), else the next one it is going to. */
-const currentStop = (stops: Plain[]) => stops.find((s) => s.arrivedAt && !s.leftAt && s.kind !== 'start') ?? stops.find((s) => !s.arrivedAt && s.kind !== 'start');
+export const currentStop = (stops: Plain[]) => stops.find((s) => s.arrivedAt && !s.leftAt && s.kind !== 'start') ?? stops.find((s) => !s.arrivedAt && s.kind !== 'start');
 
 /** The consignments at each stop, as the driver sees them: who, what, how much, and the papers due. Never a rate. */
-async function legsByStopFor(trip: Plain, consignments: Plain[], docs: Plain[]) {
+export async function legsByStopFor(trip: Plain, consignments: Plain[], docs: Plain[]) {
   const types = await paperTypes();
   const waiting = docs.filter((d) => d.status === 'new' && d.consignmentId);
   const products = new Map((await Product.find({ _id: { $in: consignments.flatMap((c) => ((c.lines ?? []) as Plain[]).map((l) => l.productId)) } }).select('name unit').lean()).map((p) => [String(p._id), p as Plain]));
@@ -118,7 +118,7 @@ async function legsByStopFor(trip: Plain, consignments: Plain[], docs: Plain[]) 
 }
 
 /** The papers due at the stop the truck is at, one per consignment and paper: what "Send …" offers first. */
-function dueNow(stops: Plain[], legs: Map<string, Plain[]>) {
+export function dueNow(stops: Plain[], legs: Map<string, Plain[]>) {
   const stop = currentStop(stops);
   if (!stop?.arrivedAt) return [];
   return (legs.get(String(stop._id)) ?? []).flatMap((l) => ((l.send ?? []) as Plain[]).map((p) => ({

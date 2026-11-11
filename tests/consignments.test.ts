@@ -516,6 +516,38 @@ describe('the driver says which consignment each paper is for (#135 Part 2)', ()
     void now;
   });
 
+  test('on WhatsApp: a photo with no kind is asked about, the driver answers with a number, and each invoice lands on its own consignment', async () => {
+    const cn = (n: number) => ({ lines: [{ productId: ids.diesel, plannedQty: 4000 }], consignee: { name: `Depot ${n}` } });
+    const t = await trip({ consignments: [cn(1), cn(2), cn(3), cn(4)] }, true, owner);
+    const load = t.stops.find((s) => s.kind === 'load')!;
+    ok(await as(ops).post(`/trips/${t.id}/stops/${load.id}/arrive`));
+    const photo = (n: number) => ({ driverId: ids.d1, file: { name: `invoice-${n}.jpg`, mime: 'image/jpeg', sampleId: `loading:${n}:0` } });
+    const reply = (text: string) => as(ops).post('/whatsapp/simulate', { driverId: ids.d1, text });
+    const docs = async () => ok<Array<{ id: string; consignmentId?: string; kind: string }>>(await as(ops).get('/driver-documents', { tripId: t.id, limit: 50 }));
+    const list = await onTrip(t.id);
+    for (let n = 1; n <= 4; n++) {
+      const sent = ok(await as(ops).post('/whatsapp/simulate', photo(n)), 201);
+      const asked = (await driverMessages()).at(-1)!;
+      if (n < 4) {
+        assert.match(asked.text, /Which consignment is this loading invoice for\? Reply with the number/);
+        assert.equal(asked.text.split('\n').length - 1, 5 - n, 'only the consignments still needing an invoice');
+        // Answer with the first one listed: the next consignment still waiting.
+        ok(await reply('1'), 201);
+      } else {
+        assert.match(asked.text, /We got your loading invoice for/, 'the last one needs no question');
+      }
+      const filed = (await docs()).find((d) => d.id === sent.id)!;
+      assert.ok(filed.consignmentId, `photo ${n} filed on a consignment`);
+      assert.equal(filed.kind, 'loading');
+    }
+    const filedOn = new Set((await docs()).map((d) => d.consignmentId).filter(Boolean));
+    assert.equal(filedOn.size, 4, 'each consignment got its own invoice');
+    assert.deepEqual([...filedOn].sort(), list.map((c) => c.id).sort());
+    // A message that isn't an answer is filed as a message, as before.
+    ok(await reply('Tyre is flat'), 201);
+    assert.ok((await docs()).some((d) => d.kind === 'other'));
+  });
+
   test('with only one consignment at the stop, a paper sent without saying which is filed on it', async () => {
     const t = await trip({ consignments: [{ lines: [{ productId: ids.diesel, plannedQty: 4000 }] }] }, true, owner);
     const load = t.stops.find((s) => s.kind === 'load')!;
