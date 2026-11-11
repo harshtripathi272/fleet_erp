@@ -436,3 +436,42 @@ describe('a rate agreed on the consignment (#135 Part 1)', () => {
     assert.equal(after.revenue.totalMinor, 250000);
   });
 });
+
+describe('the A-to-E trip of #135 Part 1, made entirely from New trip', () => {
+  test('A loads four, B loads two more, C offloads two and loads one, D offloads some, E the rest; priced at agreed rates; run to the end', async () => {
+    // A Dar es Salaam, B Nakonde, C Ndola, D Kasumbalesa, E Lusaka depot (the truck starts and ends at the depot).
+    const [A, B, C, D, E] = [ids.dar, ids.nakonde, ids.ndola, ids.kasumbalesa, ids.depot];
+    const rate = (minor: number) => ({ basis: 'per_consignment', price: { amountMinor: minor, currencyId: ids.usd } });
+    const cn = (from: string, to: string, n: number) => ({
+      consignmentTypeId: ids.bulk, lines: [{ productId: ids.diesel, plannedQty: 4000 }], consignee: { name: `Depot ${n}`, phone: `+26097700010${n}` },
+      legs: [{ kind: 'pickup', placeId: from }, { kind: 'drop', placeId: to }], rate: rate(100000 * n),
+    });
+    const t = await trip({
+      routeId: undefined,
+      stops: [{ placeId: E, kind: 'start' }, { placeId: A, kind: 'load' }, { placeId: B, kind: 'load' }, { placeId: C, kind: 'offload' }, { placeId: D, kind: 'offload' }, { placeId: E, kind: 'offload' }, { placeId: E, kind: 'end' }],
+      consignments: [cn(A, C, 1), cn(A, C, 2), cn(A, D, 3), cn(A, E, 4), cn(B, D, 5), cn(B, E, 6), cn(C, E, 7)],
+    }, true, owner);
+    const all = await onTrip(t.id);
+    assert.equal(all.length, 7);
+    const now = await tripNow(t.id);
+    const placeAt = (stopId?: string) => now.stops.find((s) => s.id === stopId)?.placeId;
+    for (const c of all) {
+      const at = (kind: 'pickup' | 'drop') => now.stops.findIndex((s) => s.id === c.legs.find((l) => l.kind === kind)?.stopId);
+      assert.ok(at('pickup') >= 0 && at('drop') > at('pickup'), `${c.number}: on the trip's stops, picked up before it is dropped`);
+    }
+    // C is both a drop (two consignments) and a pickup (one): every leg sits at its own place.
+    const legsAt = (place: string, kind: 'pickup' | 'drop') => all.filter((c) => c.legs.some((l) => l.kind === kind && placeAt(l.stopId) === place)).length;
+    assert.deepEqual([legsAt(A, 'pickup'), legsAt(B, 'pickup'), legsAt(C, 'drop'), legsAt(C, 'pickup'), legsAt(D, 'drop'), legsAt(E, 'drop')], [4, 2, 2, 1, 2, 3]);
+    // Run it: every stop in order, each pickup and drop recorded where it is planned.
+    for (const stop of now.stops) {
+      if (stop.kind !== 'load' && stop.kind !== 'offload') continue;
+      await recordStop(now, stop, () => fuel(4000));
+    }
+    const done = await Promise.all(all.map(async (c) => ok<Consignment>(await as(owner).get(`/consignments/${c.id}`))));
+    for (const c of done) assert.equal(c.status, 'delivered', c.number);
+    assert.deepEqual(done.map((c) => c.revenue.totalMinor).sort((a, b) => a - b), [100000, 200000, 300000, 400000, 500000, 600000, 700000]);
+    ok(await as(ops).post(`/trips/${t.id}/end`, { closingFuelL: 80 }));
+    const profit = ok(await as(owner).get(`/trips/${t.id}/profit`));
+    assert.equal(profit.revenueMinor > 0, true, 'the trip shows its revenue');
+  });
+});
