@@ -435,6 +435,19 @@ describe('a rate agreed on the consignment (#135 Part 1)', () => {
     assert.deepEqual(after.rate, rate);
     assert.equal(after.revenue.totalMinor, 250000);
   });
+
+  test('is pricing: Finance changes only the rate from the drawer, and nothing else on the consignment (#102)', async () => {
+    const t = await trip({ consignments: [{ lines: [{ productId: ids.diesel, plannedQty: 38000 }] }] }, true, owner);
+    const [c] = await onTrip(t.id);
+    const mine = ok<Consignment>(await as(owner).get(`/consignments/${c!.id}`));
+    const rate = { basis: 'per_consignment', price: { amountMinor: 410000, currencyId: ids.usd } };
+    const priced = ok<Consignment>(await as(fin).patch(`/consignments/${c!.id}`, { version: mine.version, rate }));
+    assert.deepEqual(priced.rate, rate);
+    assert.equal(priced.revenue.totalMinor, 410000);
+    // Anything besides the rate is the office's, not Finance's.
+    const refused = await api().patch(`/api/v1/consignments/${c!.id}`).set(bearer(fin)).send({ version: priced.version, references: { customerRef: 'PO-9' } });
+    assert.equal(refused.status, 403);
+  });
 });
 
 describe('the A-to-E trip of #135 Part 1, made entirely from New trip', () => {

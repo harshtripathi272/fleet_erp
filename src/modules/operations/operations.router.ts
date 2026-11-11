@@ -1,5 +1,5 @@
 import { Router, type RequestHandler } from 'express';
-import { ForbiddenError } from '../../core/errors/index.js';
+import { ForbiddenError, UnauthorizedError } from '../../core/errors/index.js';
 import { idParams } from '../../core/masters/zod.js';
 import { authenticate } from '../../middleware/authenticate.js';
 import { authorize } from '../../middleware/authorize.js';
@@ -88,7 +88,17 @@ router.get('/consignments/report', authorize('consignments', 'read'), validate({
 router.get('/consignments/report.xlsx', authorize('consignments', 'read'), validate({ query: S.reportQuery }), C.consignmentReportFile('xlsx'));
 router.get('/consignments/report.csv', authorize('consignments', 'read'), validate({ query: S.reportQuery }), C.consignmentReportFile('csv'));
 router.get('/consignments/:id', authorize('consignments', 'read'), validate(id), C.getConsignment);
-router.patch('/consignments/:id', authorize('consignments', 'update'), validate({ ...id, body: S.updateConsignmentSchema }), C.updateConsignment);
+/**
+ * Changing a consignment needs "update" on consignments, except changing only its agreed rate: that is pricing,
+ * so whoever may update prices (Finance, by default) may do it from the consignment's drawer (#102).
+ */
+const rateOnly = (body: unknown) => Boolean(body) && Object.keys(body as object).every((k) => k === 'version' || k === 'rate');
+const mayUpdateConsignment: RequestHandler = (req, _res, next) => {
+  if (!req.auth) throw new UnauthorizedError();
+  if (req.auth.can('consignments', 'update') || (rateOnly(req.body) && req.auth.can('consignment-revenue', 'update'))) return next();
+  throw new ForbiddenError(rateOnly(req.body) ? 'Your role does not allow changing prices' : 'Your role does not allow "update" on consignments');
+};
+router.patch('/consignments/:id', mayUpdateConsignment, validate({ ...id, body: S.updateConsignmentSchema }), C.updateConsignment);
 router.put('/consignments/:id/legs', authorize('consignments', 'update'), validate({ ...id, body: S.putLegsSchema }), C.putLegs);
 router.post('/consignments/:id/legs/:legId/record', authorize('consignments', 'update'), validate({ params: S.legParams, body: S.legRecordSchema }), C.recordLeg);
 router.post('/consignments/:id/refusals/:refusalId/decide', authorize('consignments', 'update'), validate({ params: S.refusalParams, body: S.refusalDecisionSchema }), C.decideRefusal);

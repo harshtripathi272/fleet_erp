@@ -332,7 +332,9 @@ async function editable(cid: string, version?: number) {
 
 /** Edit the details: parties, goods, references. Goods already loaded keep their line. */
 export async function updateConsignment(cid: string, input: S.UpdateConsignmentInput, ctx: OpsContext) {
-  need(ctx, 'consignments', 'update');
+  // Only the rate is pricing, which whoever may update prices may change (#102); anything else needs consignments.
+  const rateOnly = Object.keys(input).every((k) => k === 'version' || k === 'rate');
+  if (!(rateOnly && ctx.can('consignment-revenue', 'update'))) need(ctx, 'consignments', 'update');
   const consignment = await editable(cid, input.version);
   const trip = await tripOf(consignment.get('tripId'));
   const { version: _v, lines, ...rest } = input;
@@ -343,7 +345,7 @@ export async function updateConsignment(cid: string, input: S.UpdateConsignmentI
     const used = new Set((current.legs as Plain[]).filter((l) => l.status === 'done').flatMap((l) => ((l.actual ?? []) as Plain[]).map((m) => id(m.lineId))));
     for (const lineId of used) if (!lines.some((l) => l.id === lineId)) throw refuse('A goods line that was loaded cannot be removed.');
   }
-  const ready = await prepareConsignment({ ...(current as Plain), ...rest, lines: lines ?? (current.lines as Plain[]).map((l) => ({ ...l, id: id(l._id), _id: undefined, unit: undefined })) } as never, trip.toObject() as Plain, { ...ctx, can: (r, a) => ctx.can(r, a === 'create' ? 'update' : a) });
+  const ready = await prepareConsignment({ ...(current as Plain), ...rest, lines: lines ?? (current.lines as Plain[]).map((l) => ({ ...l, id: id(l._id), _id: undefined, unit: undefined })) } as never, trip.toObject() as Plain, { ...ctx, can: (r, a) => (rateOnly && r === 'consignments') || ctx.can(r, a === 'create' ? 'update' : a) });
   const keep: Plain = {};
   for (const key of Object.keys(rest)) keep[key] = ready.data[key];
   if (lines) keep.lines = ready.data.lines;
