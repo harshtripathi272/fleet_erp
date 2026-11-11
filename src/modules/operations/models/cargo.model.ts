@@ -60,7 +60,7 @@ const driverDocumentSchema = new Schema<any>({
   question: {
     type: new Schema({
       ask: { type: String, enum: ['kind', 'consignment'], required: true },
-      options: { type: [new Schema({ label: { type: String, required: true }, value: { type: String, required: true } }, { _id: false })], default: [] },
+      options: { type: [new Schema({ label: { type: String, required: true }, value: { type: String, required: true }, n: Number }, { _id: false })], default: [] },
       at: { type: Date, required: true },
     }, { _id: false, strict: 'throw' }),
     default: undefined,

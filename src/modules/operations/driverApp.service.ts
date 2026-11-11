@@ -108,8 +108,10 @@ export async function legsByStopFor(trip: Plain, consignments: Plain[], docs: Pl
       const partyId = leg.kind === 'pickup' ? c.consignorPartyId ?? c.customerId : c.consigneePartyId;
       const planned = ((leg.planned ?? []) as Plain[]).reduce((s, p) => s + Number(p.qty ?? 0), 0) || (leg.kind === 'pickup' ? Number(first?.plannedQty ?? 0) : 0);
       const list = out.get(String(leg.stopId)) ?? [];
+      // Where a pickup goes: one supplier often fills every consignment, and the drop tells them apart (#102).
+      const drop = leg.kind === 'pickup' ? ((c.legs ?? []) as Plain[]).find((x) => x.kind === 'drop' && x.placeId) : undefined;
       list.push({
-        consignmentId: String(c._id), legId: String(leg._id), number: c.number, kind: leg.kind,
+        consignmentId: String(c._id), legId: String(leg._id), number: c.number, kind: leg.kind, to: drop ? await placeName(drop.placeId) : undefined,
         party: contact?.name ?? (partyId ? await partyName(partyId) : undefined), phone: contact?.phone, whatsapp: contact?.whatsapp,
         product: product?.name, plannedQty: planned || undefined, unit: first?.unit ?? product?.unit, status: leg.status,
         send: papersDue(c, leg, types, waiting).map(({ documentTypeId, label }) => ({ documentTypeId, label })),

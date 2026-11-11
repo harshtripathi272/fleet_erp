@@ -139,11 +139,17 @@ async function carriedBalances(keptTripIds: unknown[], from: Date) {
   return Object.fromEntries(totals);
 }
 
+/** How far each sync looks back past the last one, for writes that were still saving when it read. */
+const SYNC_OVERLAP_MS = 10_000;
+
 export async function sync(since: Date | undefined, viewer: Viewer, fromInput?: Date) {
   const { userId, can } = viewer;
   const serverTime = new Date();
   const from = fromInput ?? new Date(serverTime.getTime() - HISTORY_DAYS * 86400000);
-  const changed: Plain = since ? { updatedAt: { $gt: since } } : {};
+  // A write stamped just before the last answer's time can land after that answer read the database: looking back a
+  // few seconds catches it (#102: a filed photo and an arrival stayed stale until a reload). Rows already sent are
+  // sent again and replace themselves on the desks, by id.
+  const changed: Plain = since ? { updatedAt: { $gt: new Date(since.getTime() - SYNC_OVERLAP_MS) } } : {};
   const read = async (resource: string, run: () => Promise<unknown[]>) => (can(resource, 'read') ? run() : []);
   const { old, kept } = await historyScope(from);
   // On the first load, which trips are in. After that the desks hold them, so only what changed comes, within the window.

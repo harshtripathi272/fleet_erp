@@ -193,7 +193,8 @@ function RecordLeg({ trip, c, leg, kind, onDone }: { trip: Trip; c: Cn; leg: CnL
     setProblem("");
     try {
       const res = await api<Rec>(`/consignments/${c.id}/legs/${leg.id}/record`, { method: "POST", body });
-      const warnings = ((res.checks as Rec | undefined)?.capacity as Rec | undefined)?.warnings as string[] | undefined;
+      const checks = res.checks as Rec | undefined;
+      const warnings = [...(((checks?.capacity as Rec | undefined)?.warnings as string[] | undefined) ?? []), ...(((checks?.papers as Rec | undefined)?.warnings as string[] | undefined) ?? [])];
       toast(warnings?.length ? warnings.join(" ") : kind === "pickup" ? `Loading of ${c.number} recorded. The driver is told.` : `Delivery of ${c.number} recorded.`);
       await client.refetchQueries({ queryKey: ["operations"] });
       onDone();

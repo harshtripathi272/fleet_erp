@@ -172,6 +172,7 @@ export function toAppData(ref: Reference, ops: Operations): AppData {
   const trailers: Trailer[] = ref.trailers.filter((t) => t.status === "active").map((t) => ({
     id: t.id, plate: t.registrationNumber, type: trailerTypes.get(String(t.trailerTypeId))?.name ?? "Trailer",
     capacity: positive(t.capacityL) ?? (positive(t.capacityKg) ?? 0) / 1000, unit: positive(t.capacityL) ? "L" : "t",
+    capacityKg: positive(t.capacityKg), capacityL: positive(t.capacityL),
   }));
   const pairings: Pairing[] = ref.pairings.map((p) => ({ id: p.id, truckId: p.vehicleId, trailerId: p.trailerId, from: p.from, to: p.to }));
 
