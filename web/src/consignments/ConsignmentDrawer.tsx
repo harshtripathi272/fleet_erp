@@ -103,6 +103,8 @@ export function ConsignmentDrawer({ id, tripId, onClose }: { id?: string; tripId
   const [cancelling, setCancelling] = useState(false);
   const [reason, setReason] = useState("");
   const [splitting, setSplitting] = useState<null | "split" | "change">(null);
+  // The extra fields sit under "More" (#135 Part 5); open from the start when any of them is filled, so nothing is hidden.
+  const [more, setMore] = useState(() => hasExtras(saved));
   useEffect(() => setForm(saved), [saved]);
   const dirty = JSON.stringify(bodyFrom(form, base, data.currencies)) !== JSON.stringify(bodyFrom(saved, base, data.currencies));
   const set = <K extends keyof Form>(key: K, value: Form[K]) => setForm((f) => ({ ...f, [key]: value }));
@@ -189,13 +191,6 @@ export function ConsignmentDrawer({ id, tripId, onClose }: { id?: string; tripId
 
           {tab === "details" && (
             <fieldset className="cn-form" disabled={!editable}>
-              <Field label={`${one} type`} hint="The type sets the cargo kind, whether it may have several pickups or drops, and the papers it needs. Empty: the company's default.">
-                <select value={form.consignmentTypeId} onChange={(e) => set("consignmentTypeId", e.target.value)}>
-                  <option value="">The company's default</option>
-                  {(types.data ?? []).map((t) => <option key={String(t.id)} value={String(t.id)}>{String(t.name)}</option>)}
-                </select>
-              </Field>
-
               <h4>Parties</h4>
               <div className="grid-2">
                 <Field label="Bill to">
@@ -203,7 +198,6 @@ export function ConsignmentDrawer({ id, tripId, onClose }: { id?: string; tripId
                     {data.customers.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
                   </select>
                 </Field>
-                <FieldPayment value={form.paymentTerms} onChange={(v) => set("paymentTerms", v)} />
                 <PartyField data={data} label="Consignor" value={form.consignor} onChange={(v) => set("consignor", v)} emptyText="The customer" />
                 <PartyField data={data} label="Consignee" value={form.consignee} onChange={(v) => set("consignee", v)} emptyText="The customer" phone />
               </div>
@@ -250,11 +244,13 @@ export function ConsignmentDrawer({ id, tripId, onClose }: { id?: string; tripId
                         </Field>
                         <Field label="As on the papers"><input value={l.description} placeholder={product?.name ?? ""} onChange={(e) => setLine(l.key, { description: e.target.value })} /></Field>
                         <Field label="Planned quantity"><UnitInput label={`Planned quantity, line ${i + 1}`} unit={product?.unit ?? ""} value={l.plannedQty} onChange={(v) => setLine(l.key, { plannedQty: v })} /></Field>
+                        {more && <>
                         <Field label="Pieces"><UnitInput label={`Pieces, line ${i + 1}`} unit="pieces" step={1} value={l.pieces} onChange={(v) => setLine(l.key, { pieces: v })} /></Field>
                         <Field label="Gross weight"><UnitInput label={`Gross weight, line ${i + 1}`} unit="kg" value={l.grossKg} onChange={(v) => setLine(l.key, { grossKg: v })} /></Field>
                         <Field label="Volume"><UnitInput label={`Volume, line ${i + 1}`} unit="m³" value={l.volumeM3} onChange={(v) => setLine(l.key, { volumeM3: v })} /></Field>
                         <Field label="Declared value"><UnitInput label={`Declared value, line ${i + 1}`} unit={base?.code ?? ""} value={l.declaredValue} onChange={(v) => setLine(l.key, { declaredValue: v })} /></Field>
                         <SwitchField label="Hazardous" checked={l.hazard} onChange={(on) => setLine(l.key, { hazard: on })} />
+                        </>}
                       </div>
                     </div>
                   );
@@ -262,7 +258,22 @@ export function ConsignmentDrawer({ id, tripId, onClose }: { id?: string; tripId
                 {editable && <div><Button size="sm" onClick={() => set("lines", [...form.lines, newLine()])}><Plus size={14} /> Add a line</Button></div>}
               </div>
 
-              <h4>References</h4>
+              {editable && <div>
+                <Button size="sm" tone="quiet" aria-expanded={more} onClick={() => setMore(!more)}>{more ? "Fewer details" : "More details"}</Button>
+                {!more && <span className="muted"> Type, payment terms, pieces, weight, declared value, hazardous, references, e-way bill, permit and notes.</span>}
+              </div>}
+              {more && <>
+              <h4>More details</h4>
+              <div className="grid-2">
+                <Field label={`${one} type`} hint="The type sets the cargo kind, whether it may have several pickups or drops, and the papers it needs. Empty: the company's default.">
+                  <select value={form.consignmentTypeId} onChange={(e) => set("consignmentTypeId", e.target.value)}>
+                    <option value="">The company's default</option>
+                    {(types.data ?? []).map((t) => <option key={String(t.id)} value={String(t.id)}>{String(t.name)}</option>)}
+                  </select>
+                </Field>
+                <FieldPayment value={form.paymentTerms} onChange={(v) => set("paymentTerms", v)} />
+              </div>
+              <h5>References</h5>
               <div className="grid-2">
                 <Field label="Customer reference"><input value={form.customerRef} onChange={(e) => set("customerRef", e.target.value)} /></Field>
                 <Field label="Order number"><input value={form.orderNo} onChange={(e) => set("orderNo", e.target.value)} /></Field>
@@ -273,6 +284,7 @@ export function ConsignmentDrawer({ id, tripId, onClose }: { id?: string; tripId
                 <Field label="Permit"><input value={form.permitNo} onChange={(e) => set("permitNo", e.target.value)} /></Field>
               </div>
               <Field label="Notes"><textarea rows={2} value={form.notes} onChange={(e) => set("notes", e.target.value)} /></Field>
+              </>}
               {!id && <p className="muted">It is loaded at the {wl(data, "trip")}'s next loading stop and dropped at the offloading stop after it. Change that under Loads and drops once it is added.</p>}
             </fieldset>
           )}
@@ -286,6 +298,12 @@ export function ConsignmentDrawer({ id, tripId, onClose }: { id?: string; tripId
       {splitting && c && <SplitDelivery c={c} mode={splitting} onClose={() => setSplitting(null)} onSaved={() => { setSplitting(null); void after("Saved. The trip's stops follow, and the driver has the new list."); }} />}
     </Drawer>
   );
+}
+
+/** Whether any field under "More" holds something (the type shows in the header, so it doesn't count). */
+function hasExtras(f: Form) {
+  return f.paymentTerms !== "to_be_billed" || [f.customerRef, f.orderNo, f.lrNo, f.sealNos, f.ewayBillNo, f.ewayBillValidUntil, f.permitNo, f.notes].some((v) => v.trim())
+    || f.lines.some((l) => l.hazard || [l.pieces, l.grossKg, l.volumeM3, l.declaredValue].some((v) => String(v ?? "").trim()));
 }
 
 function FieldPayment({ value, onChange }: { value: Form["paymentTerms"]; onChange: (v: Form["paymentTerms"]) => void }) {
