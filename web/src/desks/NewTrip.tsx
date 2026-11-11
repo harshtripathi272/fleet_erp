@@ -19,12 +19,19 @@ import { capacityLine, ConsignmentRows, consignmentBody, draftConsignment, draft
 /** Truck first: pick the truck, its driver and trailer follow, the route starts where it stands. */
 export function NewTrip({ open, onClose, onCreated }: { open: boolean; onClose: () => void; onCreated: (id: string) => void }) {
   const { data, run, me } = useApp();
-  const busy = useMemo(() => new Set(data.trips.filter(activeTrip).flatMap((t) => [t.truckId, t.driverId, t.trailerId])), [data.trips]);
-  const free = data.trucks.filter((t) => !busy.has(t.id));
+  // On a trip now, and already lined up behind one (#102: a truck coming back can take one next trip).
+  const current = useMemo(() => data.trips.filter((t) => activeTrip(t) && !t.waiting), [data.trips]);
+  const queued = useMemo(() => data.trips.filter((t) => t.waiting), [data.trips]);
+  const busy = useMemo(() => new Set([...current, ...queued].flatMap((t) => [t.truckId, t.driverId, t.trailerId])), [current, queued]);
+  const onRoad = (truckId: string) => current.find((t) => t.truckId === truckId && !queued.some((q) => q.startsAfterTripId === t.id));
+  const free = data.trucks.filter((t) => !busy.has(t.id) || onRoad(t.id));
   const company = usePlacement("trips", "create");
   const held = useHeldTrucks();
   const [truckId, setTruckId] = useState("");
-  const truck = byId(data.trucks, truckId) as Truck | undefined;
+  const behind = truckId ? onRoad(truckId) : undefined;
+  // Behind a trip on the road, the next trip starts where that trip ends.
+  const truck = ((t) => (t && behind ? { ...t, placeId: behind.stops.at(-1)?.placeId ?? t.placeId } : t))(byId(data.trucks, truckId) as Truck | undefined);
+  const mayUse = (id: string) => !busy.has(id) || (behind ? [behind.driverId, behind.trailerId].includes(id) : false);
   const [driverId, setDriverId] = useState("");
   const [trailerId, setTrailerId] = useState("");
   const [customerId, setCustomerId] = useState(data.customers[0]?.id ?? "");
@@ -44,11 +51,14 @@ export function NewTrip({ open, onClose, onCreated }: { open: boolean; onClose: 
     setStart(localInput(new Date(Date.now() + data.settings.clockOffsetMs + 36e5 * 2).toISOString()));
   }, [open, data.settings.clockOffsetMs]);
   const pickTruck = (id: string) => {
-    const t = byId(data.trucks, id);
+    const found = byId(data.trucks, id);
+    const on = onRoad(id);
+    const t = found && on ? { ...found, placeId: on.stops.at(-1)?.placeId ?? found.placeId } : found;
     setTruckId(id);
     if (!t) return;
-    setDriverId(t.driverId && !busy.has(t.driverId) ? t.driverId : "");
-    setTrailerId(t.trailerId && !busy.has(t.trailerId) ? t.trailerId : "");
+    const usable = (x?: string) => Boolean(x) && (!busy.has(x!) || (on ? [on.driverId, on.trailerId].includes(x) : false));
+    setDriverId(usable(t.driverId) ? t.driverId! : "");
+    setTrailerId(usable(t.trailerId) ? t.trailerId! : "");
     const r = byId(data.routes, routeId);
     setStops(r ? stopsFromTruck(r.stops, t) : [{ placeId: t.placeId, kind: "start" }, { placeId: "", kind: "load" }, { placeId: "", kind: "offload" }, { placeId: "", kind: "end" }]);
   };
@@ -122,14 +132,14 @@ export function NewTrip({ open, onClose, onCreated }: { open: boolean; onClose: 
       }
     >
       <div className="stack">
-        {free.length === 0 && <p className="form-problem">{data.trucks.length ? "Every truck is on a trip right now." : "No trucks yet."}</p>}
+        {free.length === 0 && <p className="form-problem">{data.trucks.length ? "Every truck is on a trip and has its next trip planned." : "No trucks yet."}</p>}
         {!data.trucks.length && <FirstTripSteps />}
         <AddNew master="vehicles" what={wl(data, "truck")} onCreated={pickTruck} />
         <div className="truck-pick" role="radiogroup" aria-label="Truck">
           {free.map((t) => (
             <button key={t.id} role="radio" aria-checked={t.id === truckId} disabled={held.has(t.id)} className={`truck-tile ${t.id === truckId ? "on" : ""}`} onClick={() => pickTruck(t.id)}>
               <strong>{t.plate}</strong>
-              <span>{placeName(data, t.placeId)}</span>
+              {onRoad(t.id) ? <span>On {onRoad(t.id)!.no} · next trip from {placeName(data, onRoad(t.id)!.stops.at(-1)?.placeId)}</span> : <span>{placeName(data, t.placeId)}</span>}
               {held.has(t.id) ? (
                 <Status tone="wait">Held by {held.get(t.id)}</Status>
               ) : (
@@ -148,7 +158,7 @@ export function NewTrip({ open, onClose, onCreated }: { open: boolean; onClose: 
                 <select value={driverId} onChange={(e) => setDriverId(e.target.value)}>
                   <option value="">Choose driver</option>
                   {data.drivers
-                    .filter((d) => !busy.has(d.id))
+                    .filter((d) => mayUse(d.id))
                     .map((d) => (
                       <option key={d.id} value={d.id}>
                         {d.name}
@@ -162,7 +172,7 @@ export function NewTrip({ open, onClose, onCreated }: { open: boolean; onClose: 
                 <select value={trailerId} onChange={(e) => setTrailerId(e.target.value)}>
                   <option value="">No trailer</option>
                   {data.trailers
-                    .filter((t) => !busy.has(t.id))
+                    .filter((t) => mayUse(t.id))
                     .map((t) => (
                       <option key={t.id} value={t.id}>
                         {t.plate} · {t.type}

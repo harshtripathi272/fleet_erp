@@ -249,12 +249,23 @@ export type SettlementListQuery = z.infer<typeof settlementListQuery>;
 
 export const settlementSchema = z.strictObject({
   driverId: objectId,
-  tripIds: z.array(objectId).min(1, 'Pick the trips to settle').max(100).refine((v) => new Set(v).size === v.length, 'Trips must be unique'),
+  /** None: settling what the driver carries with no trip, such as an opening balance or a driver who is leaving (#102). */
+  tripIds: z.array(objectId).max(100).refine((v) => new Set(v).size === v.length, 'Trips must be unique'),
   /** Positive: the driver hands cash back. Negative: the company pays the driver. Base-currency minor units. */
   cashMinor: z.number().int().min(-1e13).max(1e13),
+  /** Lines typed by hand, each in the driver's favour or against them. */
+  lines: z.array(z.strictObject({
+    kind: z.enum(['allowance', 'bonus', 'fine', 'loan', 'repayment', 'correction', 'other']),
+    label: text(120),
+    amountMinor: z.number().int().positive('Enter the amount').max(1e13),
+    toDriver: z.boolean(),
+    reason: text(300).optional(),
+  })).max(30).optional(),
+  paidVia: z.strictObject({ paymentMethodId: objectId.optional(), reference: text(60).optional() }).optional(),
   note: text(500).optional(),
   custom,
 });
+export const reverseSettlementSchema = z.strictObject({ reason: text(300).refine((v) => v.trim().length > 0, 'Say why it is reversed') });
 export type SettlementInput = z.infer<typeof settlementSchema>;
 
 /* ---------- Nominations ---------- */
@@ -469,6 +480,8 @@ export const legRecordSchema = z.strictObject({
 });
 export type LegRecordInput = z.infer<typeof legRecordSchema>;
 export const legParams = z.strictObject({ id: objectId, legId: objectId });
+export const refusalParams = z.strictObject({ id: objectId, refusalId: objectId });
+export const refusalDecisionSchema = z.strictObject({ outcome: z.enum(['return', 'write_off', 'charge_driver', 'claim_supplier']), note: text(300).optional() });
 export const stopRecordSchema = z.strictObject({
   records: z.array(legRecordSchema.extend({ consignmentId: objectId, legId: objectId })).min(1).max(200),
 });

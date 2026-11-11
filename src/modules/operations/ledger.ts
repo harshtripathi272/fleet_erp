@@ -14,7 +14,7 @@ export interface LedgerEntry {
   at: string;
   tripId?: string;
   settlementId?: string;
-  kind: 'opening' | 'advance' | 'expense' | 'shortage' | 'write_off' | 'cash';
+  kind: 'opening' | 'advance' | 'expense' | 'shortage' | 'write_off' | 'adjustment' | 'cash';
   label: string;
   /** Base-currency minor units. Positive: the driver holds company money. */
   amountMinor: number;
@@ -45,7 +45,8 @@ export async function driverLedger(driverId: unknown): Promise<LedgerEntry[]> {
     Consignment.find({ tripId: { $in: tripIds }, 'shortage.status': 'charged' }).lean(),
     // A load written off and carried by the driver is recovered through their account (#64).
     Consignment.find({ tripId: { $in: tripIds }, 'outcome.writeOff.status': 'approved', 'outcome.writeOff.carrier': 'driver' }).lean(),
-    Settlement.find({ driverId: id, cashMinor: { $ne: 0 } }).lean(),
+    // A reversed settlement no longer counts (#102).
+    Settlement.find({ driverId: id, reversedAt: { $exists: false } }).lean(),
   ]);
   const categories = new Map((await ExpenseCategory.find({ _id: { $in: expenses.map((e) => e.categoryId) } }).select('name').lean()).map((c) => [String(c._id), String(c.name)]));
   const settlementOf = (tripId: unknown) => {
@@ -68,13 +69,23 @@ export async function driverLedger(driverId: unknown): Promise<LedgerEntry[]> {
       kind: 'shortage', label: `${s.unit && s.unit !== 'L' ? 'Shortage' : 'Fuel shortage'} ${c.number} · ${Fmt.number(Number(s.netShortL), { max: 2 })} ${s.unit ?? 'L'}`, amountMinor: Number(s.baseAmountMinor ?? 0),
     });
   }
+  // Refused goods charged to the driver (#102), at the goods' shortage price.
+  for (const c of await Consignment.find({ tripId: { $in: tripIds }, 'refusals.outcome': 'charge_driver' }).lean()) {
+    for (const r of ((c.refusals ?? []) as Plain[]).filter((x) => x.outcome === 'charge_driver' && x.amount)) {
+      entries.push({ id: `refused-${r._id}`, at: (r.decidedAt as Date).toISOString(), tripId: String(c.tripId), settlementId: settlementOf(c.tripId), kind: 'shortage', label: `Refused at the drop, charged ${c.number} · ${Fmt.number(Number(r.qty), { max: 3 })} ${String(r.unit)}`, amountMinor: Number((r.amount as Plain).baseAmountMinor ?? 0) });
+    }
+  }
   for (const c of writeOffs) {
     const w = (c.outcome as Plain).writeOff as Plain;
     entries.push({ id: `writeoff-${c._id}`, at: (w.decidedAt as Date).toISOString(), tripId: String(c.tripId), settlementId: settlementOf(c.tripId), kind: 'write_off', label: `Load written off ${c.number}`, amountMinor: Number(w.baseAmountMinor) });
   }
   for (const s of settlements) {
     const cash = Number(s.cashMinor);
-    entries.push({ id: `cash-${s._id}`, at: (s.postedAt as Date).toISOString(), settlementId: String(s._id), kind: 'cash', label: cash > 0 ? `Cash returned · ${s.number}` : `Paid to driver · ${s.number}`, amountMinor: -cash });
+    // Lines typed on the settlement: in the driver's favour lower what they hold; against them raise it.
+    for (const l of (s.lines ?? []) as Plain[]) {
+      entries.push({ id: `line-${l._id}`, at: (s.postedAt as Date).toISOString(), settlementId: String(s._id), kind: 'adjustment', label: `${String(l.label)} · ${s.number}`, amountMinor: l.toDriver ? -Number(l.amountMinor) : Number(l.amountMinor) });
+    }
+    if (cash) entries.push({ id: `cash-${s._id}`, at: (s.postedAt as Date).toISOString(), settlementId: String(s._id), kind: 'cash', label: cash > 0 ? `Cash returned · ${s.number}` : `Paid to driver · ${s.number}`, amountMinor: -cash });
   }
   return entries.sort((a, b) => a.at.localeCompare(b.at));
 }

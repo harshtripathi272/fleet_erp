@@ -329,7 +329,7 @@ export interface LedgerEntry {
   at: string;
   tripId?: string;
   settlementId?: string;
-  kind: "opening" | "advance" | "expense" | "shortage" | "write_off" | "cash";
+  kind: "opening" | "advance" | "expense" | "shortage" | "write_off" | "adjustment" | "cash";
   label: string;
   amountBase: number;
 }
@@ -400,6 +400,15 @@ export function driverLedger(data: AppData, driverId: string): LedgerEntry[] {
       amountBase: item.shortage.amountBase,
     });
   }
+  // Refused goods charged to the driver (#102), at the goods' shortage price.
+  for (const c of data.cns) {
+    const trip = c.tripId ? trips.get(c.tripId) : undefined;
+    if (!trip) continue;
+    for (const r of c.refusals ?? []) {
+      if (r.outcome !== "charge_driver" || !r.amount) continue;
+      entries.push({ id: `refused-${r.id}`, at: r.decidedAt ?? r.at, tripId: trip.id, settlementId: trip.settlementId, kind: "shortage", label: `Refused at the drop, charged ${c.number} · ${num(r.qty, 0, 3)} ${r.unit}`, amountBase: r.amount.baseAmountMinor / 10 ** (data.baseCurrency?.minorUnits ?? 2) });
+    }
+  }
   // A load written off and carried by the driver is recovered through their account (#64).
   for (const item of onTrips(data.consignments)) {
     const trip = trips.get(item.tripId);
@@ -407,7 +416,12 @@ export function driverLedger(data: AppData, driverId: string): LedgerEntry[] {
     entries.push({ id: `writeoff-${item.id}`, at: item.writeOff.decidedAt!, tripId: trip.id, settlementId: trip.settlementId, kind: "write_off", label: `Load written off ${item.no}`, amountBase: item.writeOff.amountBase });
   }
   for (const s of whereIs(data.settlements, "driverId", driverId)) {
-    if (s.driverId !== driverId || !s.cashBase) continue;
+    // A reversed settlement no longer counts (#102); its typed lines count like any other entry.
+    if (s.driverId !== driverId || s.reversedAt) continue;
+    for (const [i, l] of (s.lines ?? []).entries()) {
+      entries.push({ id: `line-${l.id ?? `${s.id}-${i}`}`, at: s.postedAt, settlementId: s.id, kind: "adjustment", label: `${l.label} · ${s.no}`, amountBase: l.toDriver ? -l.amountBase : l.amountBase });
+    }
+    if (!s.cashBase) continue;
     entries.push({
       id: `cash-${s.id}`,
       at: s.postedAt,

@@ -195,3 +195,15 @@
 .cn-add-paper-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
 .cn-add-paper-grid > * { min-width: 0; }
 @media (max-width: 560px) { .cn-add-paper-grid { grid-template-columns: minmax(0, 1fr); } }
+
+/* Goods refused at a drop, waiting for a decision (#102). */
+.refusal-decision {
+  display: grid;
+  gap: 8px;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+}
+.refusal-decision h3 { margin: 0; font-size: 1rem; }
+.refusal-actions { display: flex; align-items: end; }

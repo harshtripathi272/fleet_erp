@@ -211,6 +211,7 @@ export function toAppData(ref: Reference, ops: Operations): AppData {
     productId: t.productId, plannedQty: t.plannedQty, plannedStart: t.plannedStart,
     fuelBudgetL: t.fuelBudgetL ?? 0, cashBudgetBase: baseMajor(t.cashBudget?.amountMinor), openingFuelL: t.openingFuelL ?? 0,
     createdAt: t.createdAt, dispatchedAt: t.dispatchedAt, endedAt: t.endedAt, closingFuelL: t.closingFuelL, stopReason: t.stopReason, custom: t.custom, undelivered: t.undelivered, transferredToTripId: t.transferredToTripId, transferredFromTripId: t.transferredFromTripId, cancelledAt: t.cancelledAt, settleAfterCancel: t.settleAfterCancel,
+    startsAfterTripId: t.startsAfterTripId ?? undefined, waiting: Boolean(t.startsAfterTripId) && t.active === false && !t.cancelledAt && !t.endedAt,
     tracking: t.tracking ? { km: t.tracking.km ?? 0, speed: t.tracking.speed ?? 0, heading: t.tracking.heading ?? 0, at: t.tracking.at, source: t.tracking.source } : undefined,
     settlementId: t.settlementId,
     stages: (t.stages ?? []).map((s: Rec) => ({ code: s.code, name: s.name, completesOn: s.completesOn, completedAt: s.completedAt })),
@@ -286,6 +287,8 @@ export function toAppData(ref: Reference, ops: Operations): AppData {
     id: s.id, no: s.number, driverId: s.driverId, tripIds: s.tripIds, from: s.from, to: s.to,
     openingBase: baseMajor(s.openingMinor), advancesBase: baseMajor(s.advancesMinor), expensesBase: baseMajor(s.expensesMinor),
     custom: s.custom, shortagesBase: baseMajor(s.shortagesMinor), writeOffsBase: baseMajor(s.writeOffsMinor ?? 0), cashBase: baseMajor(s.cashMinor), closingBase: baseMajor(s.closingMinor), note: s.note, postedAt: s.postedAt,
+    lines: (s.lines ?? []).map((l: Rec) => ({ id: l.id ?? l._id, kind: l.kind, label: l.label, amountBase: baseMajor(l.amountMinor), toDriver: Boolean(l.toDriver), reason: l.reason })),
+    paidVia: s.paidVia ?? undefined, reversedAt: s.reversedAt ?? undefined, reverseReason: s.reverseReason ?? undefined,
   })).sort((a, b) => a.postedAt.localeCompare(b.postedAt));
 
   const sources = index(ref.orderSources);

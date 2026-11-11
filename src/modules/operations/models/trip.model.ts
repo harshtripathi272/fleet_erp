@@ -111,6 +111,11 @@ const tripSchema = new Schema<any>({
   costLines: { type: [costLineSchema], default: undefined },
   profit: { type: profitSnapshotSchema, default: undefined },
   active: { type: Boolean, default: true },
+  /**
+   * Planned behind the truck's trip on the road (#102: the next job lined up while it comes back). Not active until
+   * that trip ends or is cancelled, so the one-trip-at-a-time rule holds; it starts where that trip ends.
+   */
+  startsAfterTripId: { type: ObjectId, ref: 'Trip' },
   createdBy: { type: ObjectId, ref: 'User' },
   updatedBy: { type: ObjectId, ref: 'User' },
 }, schemaOptions);
@@ -123,6 +128,7 @@ tripSchema.index({ driverId: 1, endedAt: 1, settlementId: 1 });
 tripSchema.index({ updatedAt: 1 });
 // Open trips on the dashboards, and the paged list, newest first.
 tripSchema.index({ active: 1 });
+tripSchema.index({ startsAfterTripId: 1 }, { sparse: true });
 tripSchema.index({ createdAt: -1 });
 
 export const Trip = opsModel('Trip', tripSchema);

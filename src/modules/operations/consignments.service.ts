@@ -20,7 +20,7 @@ import {
   comparable, deriveStatus, deriveTripEvents, drops, isFinished, isLoaded, lastReached, leadKm, lineTotals, pickups, placeLegs, summedMeasure, unusedStops, working,
   type ConsignmentP, type LegP, type StopP,
 } from './legs.js';
-import { Consignment, DriverDocument } from './models/cargo.model.js';
+import { Consignment, DriverDocument, REFUSAL_OUTCOMES } from './models/cargo.model.js';
 import { Trip } from './models/trip.model.js';
 import { announce } from './notices.js';
 import type * as S from './operations.schema.js';
@@ -68,6 +68,7 @@ export function presentConsignment(doc: Plain, can?: OpsContext['can']): Plain {
   out.legs = ((out.legs ?? []) as Plain[]).map(({ _id, ...leg }) => ({ id: _id, ...leg }));
   out.lines = ((out.lines ?? []) as Plain[]).map(({ _id, ...line }) => ({ id: _id, ...line }));
   out.documents = ((out.documents ?? []) as Plain[]).map(({ _id, ...d }) => ({ id: _id, ...d }));
+  if (out.refusals) out.refusals = (out.refusals as Plain[]).map(({ _id, ...r }) => ({ id: _id, ...r }));
   Object.assign(out, {
     productId: first ? String(first.productId) : undefined,
     invoiceNo: invoice?.number,
@@ -642,6 +643,14 @@ export async function recordLeg(cid: string, legId: string, input: S.LegRecordIn
     ...(pickup ? {} : { outcome: input.outcome ?? (measures.some((m) => m.accepted != null && Number(m.accepted) < Number(m.qty)) ? 'partial' : 'delivered'), pod: { ...((leg.pod ?? {}) as Plain), ...(input.pod ?? {}), docIds: input.docId ? [new Types.ObjectId(input.docId)] : (leg.pod as Plain | undefined)?.docIds } }),
   });
   consignment.markModified('legs');
+  // What the consignee didn't accept waits for a decision (#102), instead of vanishing.
+  if (!pickup) {
+    const refused = measures.filter((m) => m.accepted != null && Number(m.accepted) < Number(m.qty)).map((m) => ({
+      _id: new Types.ObjectId(), legId: leg._id, lineId: m.lineId, qty: round(Number(m.qty) - Number(m.accepted), 3), unit: String(m.unit ?? ''),
+      reason: input.pod?.remarks ?? input.note, at, status: 'to_decide',
+    }));
+    if (refused.length) consignment.set('refusals', [...((consignment.get('refusals') ?? []) as Plain[]), ...refused]);
+  }
   consignment.set('documents', [...(consignment.get('documents') as Plain[]), ...docs]);
   if (input.sealNos?.length) consignment.set('references', { ...((consignment.toObject() as Plain).references as Plain ?? {}), sealNos: input.sealNos });
   const plain = consignment.toObject() as Plain;
@@ -678,9 +687,56 @@ export async function recordLeg(cid: string, legId: string, input: S.LegRecordIn
   if (pickup) await afterPickup(freshTrip, fresh, leg, measures, docs, events, at, ctx);
   else await afterDrop(freshTrip, fresh, leg, measures, input, shortage, events, at, ctx);
   const out = presentConsignment(fresh, ctx.can);
-  const papers = await repeatedPapers(cid, [...(input.documents ?? []).map((d) => d.number), input.pod?.number]);
+  const papers = [...(pickup ? beyondBooked(fresh, leg, measures) : []), ...await repeatedPapers(cid, [...(input.documents ?? []).map((d) => d.number), input.pod?.number])];
   for (const warning of papers) await log(ctx, at, warning, { tripId: trip._id });
   return { ...out, checks: { capacity: { notes: capacity.notes, warnings: capacity.warnings ?? [] }, papers: { warnings: papers } } };
+}
+
+/**
+ * Say what happens to goods the consignee refused (#102). Operations decides at the drop; charging the driver goes
+ * on their account at the goods' shortage price, like a shortage. The trip can end once nothing is left to decide.
+ */
+export async function decideRefusal(cid: string, rid: string, input: { outcome: typeof REFUSAL_OUTCOMES[number]; note?: string }, ctx: OpsContext) {
+  need(ctx, 'consignments', 'update');
+  const consignment = await Consignment.findById(cid);
+  if (!consignment) throw new NotFoundError('Consignment not found');
+  const refusals = (consignment.get('refusals') ?? []) as Plain[];
+  const r = refusals.find((x) => id(x._id) === rid);
+  if (!r) throw new NotFoundError('That refusal is not on this consignment.');
+  if (r.status === 'decided') throw conflict('This refusal is already decided.');
+  const at = new Date();
+  let amount: Plain | undefined;
+  if (input.outcome === 'charge_driver') {
+    const line = ((consignment.get('lines') ?? []) as Plain[]).find((l) => id(l._id) === id(r.lineId));
+    const product = line ? await Product.findById(line.productId).select('shortagePricePerUnit').lean<Plain>() : null;
+    const price = product?.shortagePricePerUnit as { amountMinor: number; currencyId: unknown } | undefined;
+    if (!price) throw refuse('These goods have no shortage price, so the driver can\'t be charged. Set one on the goods, or choose another outcome.');
+    const minor = Math.round(Number(r.qty) * price.amountMinor);
+    amount = { amountMinor: minor, currencyId: price.currencyId, baseAmountMinor: (await toBase(minor, price.currencyId)).baseMinor };
+  }
+  Object.assign(r, { status: 'decided', outcome: input.outcome, note: input.note, decidedAt: at, decidedBy: ctx.actorId, ...(amount ? { amount } : {}) });
+  consignment.set('refusals', refusals);
+  consignment.markModified('refusals');
+  consignment.set('updatedBy', ctx.actorId);
+  await save(consignment);
+  const what = { return: 'brought back', write_off: 'written off', charge_driver: 'charged to the driver', claim_supplier: 'claimed from the supplier' }[input.outcome];
+  await log(ctx, at, `${Fmt.number(Number(r.qty), { max: 3 })} ${String(r.unit)} refused on ${consignment.get('number')}: ${what}${input.note ? ` (${input.note})` : ''}`, { tripId: consignment.get('tripId') });
+  return presentConsignment(consignment.toObject() as Plain, ctx.can);
+}
+
+/**
+ * A loading far above what the consignment was booked for (#102): 36,000 L recorded for an 8,000 L consignment is
+ * usually the whole tanker read off one photo. Recorded, and said.
+ */
+function beyondBooked(c: Plain, leg: Plain, measures: Plain[]) {
+  const lines = (c.lines ?? []) as Plain[];
+  return measures.flatMap((m) => {
+    const line = lines.find((l) => id(l._id) === id(m.lineId));
+    const planned = ((leg.planned ?? []) as Plain[]).find((p) => id(p.lineId) === id(m.lineId))?.qty ?? line?.plannedQty;
+    const qty = Number(m.qty ?? 0);
+    if (!planned || !(qty > Number(planned) * 1.1)) return [];
+    return [`${c.number} was booked for ${amountOf(Number(planned), String(line?.unit ?? m.unit))} and ${amountOf(qty, String(m.unit ?? line?.unit))} was recorded. Check the figure is for this consignment alone.`];
+  });
 }
 
 /**

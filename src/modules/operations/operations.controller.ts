@@ -106,6 +106,8 @@ export const listSettlements = asyncHandler(async (req, res) => paged(res, await
 export const getSettlement = asyncHandler(async (req, res) => ApiResponse.success(res, await Settlements.getSettlement(param(req))));
 export const statement = asyncHandler(async (req, res) => ApiResponse.success(res, await Settlements.statement(param(req))));
 export const statementPdf = asyncHandler(async (req, res) => sendPdf(res, await Printouts.statementPdf(param(req))));
+export const decideRefusal = asyncHandler(async (req, res) => ApiResponse.success(res, await Consignments.decideRefusal(String(req.params.id), String(req.params.refusalId), req.body, opsContext(req)), 'Decided'));
+export const reverseSettlement = asyncHandler(async (req, res) => ApiResponse.success(res, await Settlements.reverseSettlement(String(req.params.id), req.body, opsContext(req)), 'Settlement reversed'));
 export const postSettlement = asyncHandler(async (req, res) => ApiResponse.created(res, await Settlements.postSettlement(req.body, opsContext(req)), 'Settlement posted'));
 
 /* Nominations */

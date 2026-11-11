@@ -644,3 +644,12 @@ describe('the same paper number on two consignments (#102)', () => {
     assert.match(second.checks.papers.warnings[0] ?? '', new RegExp(`INV-44239 is also filed on ${a!.number.replace(/\//g, '\\/')}`));
   });
 });
+
+describe('a loading far above the booking (#102)', () => {
+  test('is recorded, and said: the whole tanker read off one photo', async () => {
+    const t = await trip({ consignments: [{ lines: [{ productId: ids.diesel, plannedQty: 8000 }] }, { lines: [{ productId: ids.diesel, plannedQty: 4000 }] }] }, true, owner);
+    const [a] = await onTrip(t.id);
+    const res = ok<{ checks: { papers: { warnings: string[] } } }>(await as(ops).post(`/consignments/${a!.id}/legs/${a!.legs.find((l) => l.kind === 'pickup')!.id}/record`, { measures: [{ lineId: a!.lines[0]!.id, ...fuel(12000) }], documents: [{ number: 'INV-1' }] }));
+    assert.match(res.checks.papers.warnings.join(' '), /booked for 8,000 L and 12,000 L was recorded/);
+  });
+});

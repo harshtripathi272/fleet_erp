@@ -6,6 +6,7 @@ import { useApp } from "../store";
 import { useMay } from "../api/session";
 import { byId, driverBalance, funding } from "../domain/calc";
 import { routeLabel, toSettle } from "../domain/helpers";
+import { wl } from "../domain/words";
 import type { FundRequest } from "../domain/types";
 import { Avatar, Button, Status } from "../ui/kit";
 import { ago, cash, L, inBase } from "../ui/format";
@@ -172,7 +173,10 @@ export function Approval({ request, picked, onPick }: { request: FundRequest; pi
   const [rejecting, setRejecting] = useState(false);
   const [note, setNote] = useState("");
   const amount = request.kind === "fuel" ? L(request.amount) : cash(request.amount, request.currency);
-  const over = request.amount > request.suggested + 0.001;
+  // With no budget for the trip there's nothing to be above (#102: "Suggested 0 · Above the suggestion").
+  const budget = request.kind === "fuel" ? trip.fuelBudgetL : trip.cashBudgetBase;
+  const noBudget = !(budget > 0);
+  const over = !noBudget && request.amount > request.suggested + 0.001;
   // What the driver holds now, this trip's advances included: a top-up on the road is decided against that.
   const holds = trip.driverId ? driverBalance(data, trip.driverId) : 0;
   const context = useMemo(
@@ -181,14 +185,14 @@ export function Approval({ request, picked, onPick }: { request: FundRequest; pi
         ? [
             ["Budget", L(trip.fuelBudgetL)],
             ["In the tank", L(f.fuel.onTruck)],
-            ["Suggested", L(request.suggested)],
+            ...(noBudget ? [] : [["Suggested", L(request.suggested)]]),
           ]
         : [
             ["Budget", inBase(trip.cashBudgetBase)],
             [holds >= 0 ? "Driver holds" : "Company owes", inBase(Math.abs(holds))],
-            ["Suggested", inBase(request.suggested)],
+            ...(noBudget ? [] : [["Suggested", inBase(request.suggested)]]),
           ],
-    [request, trip, f, holds],
+    [request, trip, f, holds, noBudget],
   );
   return (
     <div className={`approval ${picked ? "picked" : ""} ${over ? "over" : ""}`}>
@@ -221,6 +225,7 @@ export function Approval({ request, picked, onPick }: { request: FundRequest; pi
             </span>
           ))}
         </div>
+        {noBudget && <p className="muted">No {request.kind === "fuel" ? "fuel" : "cash"} budget for this {wl(data, "trip")}, so there is nothing to compare the request with. Check it against the route and the driver's days on the road.</p>}
         {over && <p className="over-note">Above the suggestion{request.reason ? `: ${request.reason}` : ""}. {request.level && request.level.current < request.level.of ? "Another level approves after you." : ""}</p>}
         {rejecting && (
           <div className="inline-form">

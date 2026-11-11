@@ -161,17 +161,18 @@ export async function tripProfit(tripId: string) {
   const recovered: Item[] = [];
   for (const c of consignments.filter((x) => id(x.tripId) === id(trip._id))) {
     const shortage = c.shortage as Plain | undefined;
-    if (shortage?.status === 'charged' && Number(shortage.baseAmountMinor)) recovered.push({ ref: `consignments:${id(c._id)}`, label: `${c.number} · shortage charged to the driver`, amountMinor: -Number(shortage.baseAmountMinor) });
+    if (shortage?.status === 'charged' && Number(shortage.baseAmountMinor)) recovered.push({ ref: `consignments:${id(c._id)}`, label: `${c.number} · shortage charged to the driver`, amountMinor: Number(shortage.baseAmountMinor) });
     if (shortage?.status === 'pending') complete = false;
     const w = ((c.outcome as Plain | undefined)?.writeOff ?? c.writeOff) as Plain | undefined;
     if (w?.status === 'approved') {
       losses.push({ ref: `consignments:${id(c._id)}`, label: `${c.number} · written off`, amountMinor: Number(w.baseAmountMinor ?? 0) });
-      if (w.carrier === 'driver') recovered.push({ ref: `consignments:${id(c._id)}`, label: `${c.number} · write-off carried by the driver`, amountMinor: -Number(w.baseAmountMinor ?? 0) });
+      if (w.carrier === 'driver') recovered.push({ ref: `consignments:${id(c._id)}`, label: `${c.number} · write-off carried by the driver`, amountMinor: Number(w.baseAmountMinor ?? 0) });
     }
     if (w?.status === 'pending') complete = false;
   }
   if (counts.has('losses')) costs.push({ group: 'losses', label: 'Losses carried by the company', amountMinor: losses.reduce((s, i) => s + i.amountMinor, 0), items: losses });
-  if (counts.has('recovered')) costs.push({ group: 'recovered', label: 'Recovered from the driver', amountMinor: recovered.reduce((s, i) => s + i.amountMinor, 0), items: recovered });
+  // What the driver pays back is money in, shown on its own line, not a negative cost (#102: costs read −12,800).
+  const recoveredMinor = counts.has('recovered') ? recovered.reduce((s, i) => s + i.amountMinor, 0) : 0;
 
   if (counts.has('other')) {
     const lines = ((trip.costLines ?? []) as Plain[]).map((l) => ({ ref: `costs:${id(l._id)}`, label: `${String(l.label)}${l.note ? ` · ${String(l.note)}` : ''}`, amountMinor: Number(l.baseAmountMinor) }));
@@ -180,7 +181,9 @@ export async function tripProfit(tripId: string) {
 
   /* ---------- The result (3.6.3) ---------- */
   const costMinor = costs.reduce((s, c) => s + c.amountMinor, 0);
-  const profitMinor = revenueMinor - costMinor;
+  const profitMinor = revenueMinor + recoveredMinor - costMinor;
+  // The margin is on all the money in, so it can't pass 100 %.
+  const incomeMinor = revenueMinor + recoveredMinor;
   const stops = (trip.stops ?? []) as Plain[];
   const km = Math.round(stops.reduce((s, x) => s + Number(x.legKm ?? 0), 0));
   const firstLoad = stops.findIndex((s) => s.kind === 'load');
@@ -194,7 +197,8 @@ export async function tripProfit(tripId: string) {
   const result = {
     status, complete, currency: base,
     revenueMinor, costMinor, profitMinor,
-    marginPercent: revenueMinor ? Math.round((profitMinor / revenueMinor) * 1000) / 10 : null,
+    recovered: { amountMinor: recoveredMinor, items: counts.has('recovered') ? recovered : [] },
+    marginPercent: incomeMinor ? Math.round((profitMinor / incomeMinor) * 1000) / 10 : null,
     perKm: km ? Math.round(profitMinor / km) : null, perLoadedKm: loadedKm ? Math.round(profitMinor / loadedKm) : null, perDay: days ? Math.round(profitMinor / days) : null,
     km, loadedKm, days,
     revenue: await withCustomers(revenue),

@@ -5,8 +5,8 @@ import { useApp } from "../store";
 import { useMay } from "../api/session";
 import { byId, driverBalance, driverLedger, round } from "../domain/calc";
 import { routeLabel, toSettle } from "../domain/helpers";
-import type { Driver } from "../domain/types";
-import { Avatar, Button, Empty, Field, Segmented, Status } from "../ui/kit";
+import type { Driver, SettlementLine, SettlementLineKind } from "../domain/types";
+import { Avatar, Button, Empty, Field, Modal, Segmented, Status, UnitInput } from "../ui/kit";
 import { ago, day, dayYear, inBase, baseLabel } from "../ui/format";
 import { Card } from "./stages";
 import { AddNew, OlderRecords } from "./firstTrip";
@@ -120,7 +120,11 @@ function StatementBuilder({ driver }: { driver: Driver }) {
   const lines = ledger.filter((e) => e.tripId && set.has(e.tripId) && !e.settlementId);
   const balance = ledger.reduce((s, e) => s + e.amountBase, 0);
   const opening = round(balance - lines.reduce((s, e) => s + e.amountBase, 0));
-  const due = round(opening + lines.reduce((s, e) => s + e.amountBase, 0));
+  // Lines Finance types by hand (#102): an allowance or bonus for the driver, a fine or repayment against them.
+  const [extra, setExtra] = useState<Array<SettlementLine & { key: number }>>([]);
+  const [paidVia, setPaidVia] = useState({ paymentMethodId: "", reference: "" });
+  const extraSum = extra.reduce((s, l) => s + (l.amountBase > 0 ? (l.toDriver ? -l.amountBase : l.amountBase) : 0), 0);
+  const due = round(opening + lines.reduce((s, e) => s + e.amountBase, 0) + extraSum);
   const [cashText, setCashText] = useState("");
   const cashValue = cashText === "" ? due : Number(cashText);
   const closing = round(due - cashValue);
@@ -138,6 +142,9 @@ function StatementBuilder({ driver }: { driver: Driver }) {
   );
   const finance = may("settlement.post");
   const company = usePlacement("settlements", "post");
+  const last = data.settlements.filter((x) => x.driverId === driver.id).at(-1);
+  const [reversing, setReversing] = useState(false);
+  const [reverseReason, setReverseReason] = useState("");
   // After posting, open the new statement once it arrives from the API.
   const [awaiting, setAwaiting] = useState<number | null>(null);
   useEffect(() => {
@@ -150,19 +157,28 @@ function StatementBuilder({ driver }: { driver: Driver }) {
   }, [awaiting, data.settlements, driver.id, setOverlay]);
   const post = async () => {
     const before = data.settlements.filter((s) => s.driverId === driver.id).length;
-    if (await run({ type: "settlement.post", custom: company.custom, driverId: driver.id, tripIds: picked, cashBase: cashValue }, "Statement posted. The driver has it on WhatsApp.")) setAwaiting(before);
+    const typed = extra.filter((l) => l.label.trim() && l.amountBase > 0).map(({ key: _key, ...l }) => l);
+    if (await run({ type: "settlement.post", custom: company.custom, driverId: driver.id, tripIds: picked, cashBase: cashValue, lines: typed, paidVia }, "Statement posted. The driver has it on WhatsApp.")) {
+      setAwaiting(before);
+      setExtra([]);
+      setPaidVia({ paymentMethodId: "", reference: "" });
+    }
   };
-  if (!closed.length)
+  const incomplete = extra.some((l) => !l.label.trim() || !(l.amountBase > 0));
+  // A driver with money on the account and no ended trip can still be settled by Finance (#102).
+  if (!closed.length && !(finance && (Math.abs(balance) > 0.005 || extra.length)))
     return (
       <Card>
         <Empty title="No closed trips to settle">
           <span>{balance ? `${inBase(Math.abs(balance))} carries into the next statement.` : "The account is clear."}</span>
+          {finance && <Button size="sm" onClick={() => setExtra([{ key: Date.now(), kind: "allowance", label: "", amountBase: 0, toDriver: true }])}>Add a line by hand</Button>}
         </Empty>
       </Card>
     );
   return (
     <div className="statement-builder">
       <Card title="Trips in this statement">
+        {!closed.length && <p className="muted">No ended trips. This statement settles what {driver.name.split(" ")[0]} carries on the account and the lines added by hand.</p>}
         <div className="trip-picks">
           {closed.map((t) => {
             const tripLines = ledger.filter((e) => e.tripId === t.id && !e.settlementId);
@@ -217,12 +233,45 @@ function StatementBuilder({ driver }: { driver: Driver }) {
                 </td>
               </tr>
             ))}
+            {extra.filter((l) => l.amountBase > 0).map((l) => (
+              <tr key={`x${l.key}`} className="line">
+                <td>{l.label || LINE_KINDS.find((k) => k.value === l.kind)?.label}<span className="muted"> · by hand</span></td>
+                <td className="num">{l.toDriver ? "−" : "+"} {inBase(l.amountBase)}</td>
+              </tr>
+            ))}
             <tr className="sub">
               <td>{due >= 0 ? `${driver.name.split(" ")[0]} holds` : "Company owes"}</td>
               <td className="num">{inBase(Math.abs(due))}</td>
             </tr>
           </tbody>
         </table>
+        {finance && (
+          <div className="statement-lines">
+            {extra.map((l) => {
+              const set1 = (patch: Partial<SettlementLine>) => setExtra((all) => all.map((x) => (x.key === l.key ? { ...x, ...patch } : x)));
+              return (
+                <div key={l.key} className="statement-line-form">
+                  <Field label="What it is">
+                    <select value={l.kind} onChange={(e) => { const k = e.target.value as SettlementLineKind; set1({ kind: k, toDriver: LINE_KINDS.find((x) => x.value === k)!.toDriver }); }}>
+                      {LINE_KINDS.map((k) => <option key={k.value} value={k.value}>{k.label}</option>)}
+                    </select>
+                  </Field>
+                  <Field label="Line on the statement"><input value={l.label} placeholder={LINE_KINDS.find((k) => k.value === l.kind)?.example} onChange={(e) => set1({ label: e.target.value })} /></Field>
+                  <Field label="Amount"><UnitInput label="Amount" unit={baseLabel()} value={l.amountBase ? String(l.amountBase) : ""} onChange={(v) => set1({ amountBase: Number(v) || 0 })} /></Field>
+                  <Field label="Which way">
+                    <select value={l.toDriver ? "to" : "from"} onChange={(e) => set1({ toDriver: e.target.value === "to" })}>
+                      <option value="to">For the driver (the company owes more)</option>
+                      <option value="from">Against the driver (the driver owes more)</option>
+                    </select>
+                  </Field>
+                  <Field label="Reason"><input value={l.reason ?? ""} onChange={(e) => set1({ reason: e.target.value })} /></Field>
+                  <Button size="sm" tone="quiet" onClick={() => setExtra((all) => all.filter((x) => x.key !== l.key))}>Remove</Button>
+                </div>
+              );
+            })}
+            <Button size="sm" onClick={() => setExtra((all) => [...all, { key: Date.now(), kind: "allowance", label: "", amountBase: 0, toDriver: true }])}>Add a line by hand</Button>
+          </div>
+        )}
         {finance ? (
           <div className="statement-cash">
             <Field label={due >= 0 ? "Cash handed back now" : "Paid to the driver now"}>
@@ -235,6 +284,17 @@ function StatementBuilder({ driver }: { driver: Driver }) {
                 <span>{baseLabel()}</span>
               </span>
             </Field>
+            {Math.abs(cashValue) > 0 && (
+              <>
+                <Field label="Paid by">
+                  <select value={paidVia.paymentMethodId} onChange={(e) => setPaidVia({ ...paidVia, paymentMethodId: e.target.value })}>
+                    <option value="">Not said</option>
+                    {(data.paymentMethods ?? []).filter((m) => m.forCash).map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
+                  </select>
+                </Field>
+                <Field label="Reference"><input value={paidVia.reference} placeholder="Receipt or transaction number" onChange={(e) => setPaidVia({ ...paidVia, reference: e.target.value })} /></Field>
+              </>
+            )}
             <div className="carry">
               <span>Carries forward</span>
               <strong className="num">{closing ? `${inBase(Math.abs(closing))}${closing < 0 ? " owed to driver" : ""}` : "Nothing"}</strong>
@@ -255,7 +315,7 @@ function StatementBuilder({ driver }: { driver: Driver }) {
         )}
         <footer>
           {finance ? (
-            <Button tone="primary" size="lg" disabled={!picked.length || blockers.length > 0 || !company.ready} onClick={post}>
+            <Button tone="primary" size="lg" disabled={(!picked.length && !extra.length && !(Math.abs(balance) > 0.005)) || incomplete || blockers.length > 0 || !company.ready} onClick={post}>
               <Check /> Post statement
             </Button>
           ) : may("settlement.request") ? (
@@ -268,11 +328,30 @@ function StatementBuilder({ driver }: { driver: Driver }) {
               <FileText /> Last statement
             </Button>
           )}
+          {finance && last && !last.reversedAt && <Button tone="quiet" onClick={() => setReversing(true)}>Reverse {last.no}</Button>}
         </footer>
       </section>
+      {reversing && last && (
+        <Modal open title={`Reverse ${last.no}`} onClose={() => setReversing(false)}
+          footer={<><Button tone="quiet" onClick={() => setReversing(false)}>Cancel</Button><Button tone="primary" disabled={!reverseReason.trim()} onClick={async () => { if (await run({ type: "settlement.reverse", id: last.id, reason: reverseReason }, `${last.no} reversed. The driver is told.`)) { setReversing(false); setReverseReason(""); } }}>Reverse it</Button></>}>
+          <p>{last.no} stays on record, marked reversed. Its cash and its lines stop counting, and its trips can be settled again. Only the latest statement can be reversed.</p>
+          <Field label="Why"><input value={reverseReason} placeholder="Posted to the wrong driver" onChange={(e) => setReverseReason(e.target.value)} /></Field>
+        </Modal>
+      )}
     </div>
   );
 }
+
+/** The lines Finance can type on a statement, and which way each usually goes. */
+const LINE_KINDS: Array<{ value: SettlementLineKind; label: string; toDriver: boolean; example: string }> = [
+  { value: "allowance", label: "Allowance", toDriver: true, example: "Trip allowance, Dar run" },
+  { value: "bonus", label: "Bonus", toDriver: true, example: "Safe-driving bonus" },
+  { value: "fine", label: "Fine", toDriver: false, example: "Speeding fine, Mpika" },
+  { value: "loan", label: "Loan to the driver", toDriver: false, example: "School fees loan" },
+  { value: "repayment", label: "Repayment", toDriver: true, example: "Loan repaid from salary" },
+  { value: "correction", label: "Correction", toDriver: true, example: "Receipt counted twice" },
+  { value: "other", label: "Other", toDriver: true, example: "" },
+];
 
 function Ledger({ driver }: { driver: Driver }) {
   const { data } = useApp();

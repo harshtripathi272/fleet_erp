@@ -122,10 +122,21 @@ export interface Revenue {
   tariff?: { id: string; code: string; name?: string; version?: number; matchedOn?: string } | null;
 }
 
+/** Goods the consignee refused at a drop (#102), waiting for the office to say what happens to them. */
+export interface CnRefusal {
+  id: string; legId: string; lineId: string; qty: number; unit: string; reason?: string; at: string;
+  status: "to_decide" | "decided"; outcome?: "return" | "write_off" | "charge_driver" | "claim_supplier"; note?: string; decidedAt?: string;
+  amount?: { amountMinor: number; currencyId: string; baseAmountMinor: number };
+}
+export const REFUSAL_OUTCOME: Record<NonNullable<CnRefusal["outcome"]>, string> = {
+  return: "Bring it back", write_off: "Write it off (the company's loss)", charge_driver: "Charge the driver, like a shortage", claim_supplier: "Claim it from the supplier",
+};
+
 export interface Cn {
   id: string;
   number: string;
   version: number;
+  refusals?: CnRefusal[];
   consignmentTypeId?: string;
   status: CnStatus;
   customerId: string;

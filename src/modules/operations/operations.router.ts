@@ -90,6 +90,7 @@ router.get('/consignments/:id', authorize('consignments', 'read'), validate(id),
 router.patch('/consignments/:id', authorize('consignments', 'update'), validate({ ...id, body: S.updateConsignmentSchema }), C.updateConsignment);
 router.put('/consignments/:id/legs', authorize('consignments', 'update'), validate({ ...id, body: S.putLegsSchema }), C.putLegs);
 router.post('/consignments/:id/legs/:legId/record', authorize('consignments', 'update'), validate({ params: S.legParams, body: S.legRecordSchema }), C.recordLeg);
+router.post('/consignments/:id/refusals/:refusalId/decide', authorize('consignments', 'update'), validate({ params: S.refusalParams, body: S.refusalDecisionSchema }), C.decideRefusal);
 router.post('/consignments/:id/cancel', authorize('consignments', 'update'), validate({ ...id, body: S.cancelConsignmentSchema }), C.cancelConsignment);
 router.post('/consignments/:id/documents', authorize('consignments', 'update'), validate({ ...id, body: S.attachDocumentSchema }), C.attachDocument);
 router.delete('/consignments/:id/documents/:docId', authorize('consignments', 'update'), validate({ params: S.documentParams }), C.detachDocument);
@@ -113,6 +114,7 @@ router.post('/driver-accounts/:driverId/settlement-request', authorize('settleme
 router.get('/settlements', authorize('settlements', 'read'), validate({ query: S.settlementListQuery }), C.listSettlements);
 router.post('/settlements', authorize('settlements', 'create'), validate({ body: S.settlementSchema }), C.postSettlement);
 router.get('/settlements/:id', authorize('settlements', 'read'), validate(id), C.getSettlement);
+router.post('/settlements/:id/reverse', authorize('settlements', 'create'), validate({ ...id, body: S.reverseSettlementSchema }), C.reverseSettlement);
 router.get('/settlements/:id/statement', authorize('settlements', 'read'), validate(id), C.statement);
 router.get('/settlements/:id/statement.pdf', authorize('settlements', 'read'), validate(id), C.statementPdf);
 
