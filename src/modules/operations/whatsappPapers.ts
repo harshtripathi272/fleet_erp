@@ -67,21 +67,23 @@ async function askWhich(docId: unknown, driverId: unknown, options: Due[], ctx: 
  * A photo just filed on the trip from WhatsApp (or the simulated phone): file it, or ask about it. `kind` is what
  * the sender said it is, when it said (the simulated phone does; a real WhatsApp photo is "other").
  */
-export async function sortOutPhoto(doc: Plain, ctx: OpsContext) {
-  if (!doc.tripId || doc.consignmentId || !doc.file) return;
+/** Files or asks about a WhatsApp photo; true when the driver has been answered, so no other reply is sent (#102). */
+export async function sortOutPhoto(doc: Plain, ctx: OpsContext): Promise<boolean> {
+  if (!doc.tripId || doc.consignmentId || !doc.file) return false;
   const step = doc.kind === 'loading' || doc.kind === 'weighbridge' ? 'pickup' : doc.kind === 'delivery' || doc.kind === 'pod' ? 'drop' : undefined;
-  if (!step && doc.kind !== 'other') return; // a receipt or a fuel slip is Finance's, not a consignment's
+  if (!step && doc.kind !== 'other') return false; // a receipt or a fuel slip is Finance's, not a consignment's
   const due = (await dueHere(doc.tripId)).filter((d) => !step || d.kind === step);
-  if (!due.length) return;
-  if (due.length === 1) return file(doc.id ?? doc._id, due[0]!, ctx);
+  if (!due.length) return false;
+  if (due.length === 1) { await file(doc.id ?? doc._id, due[0]!, ctx); return true; }
   const types = [...new Map(due.map((d) => [d.documentTypeId, d.label] as const)).entries()];
   if (types.length > 1) {
     await DriverDocument.updateOne({ _id: doc.id ?? doc._id }, { $set: { question: { ask: 'kind', at: new Date(), options: types.map(([value, label]) => ({ label, value })) } } });
     const labels = types.map(([, label]) => label);
     await post(driverThread(doc.driverId), new Date(), { text: `What is this photo? Reply with the number.\n${numbered(labels)}`, wa: { template: 'what_photo', values: [inline(labels)] } }, ctx);
-    return;
+    return true;
   }
-  return askWhich(doc.id ?? doc._id, doc.driverId, due, ctx);
+  await askWhich(doc.id ?? doc._id, doc.driverId, due, ctx);
+  return true;
 }
 
 /**

@@ -593,9 +593,10 @@ export async function dispatchTrip(id: string, ctx: OpsContext, input?: S.Dispat
   const base = await baseCurrency();
   const holds = Math.max(0, await carriedIn(plain.driverId, trip._id)) + (await FundRequest.find({ tripId: trip._id, kind: 'cash', status: 'issued' }).lean()).reduce((s, r) => s + Number(r.baseAmountMinor ?? 0), 0);
   const plainStops = plain.stops as Array<{ kind: string; placeId: unknown }>;
-  const loadAt = await placeName(plainStops.find((s) => s.kind === 'load')?.placeId);
-  // The last drop, where the trip's work ends, not the first (#102).
-  const offloadAt = await placeName([...plainStops].reverse().find((s) => s.kind === 'offload')?.placeId);
+  // Every loading place and every drop, in route order, so a trip with several says so (#102).
+  const placesOf = async (kind: string) => [...new Set(await Promise.all(plainStops.filter((s) => s.kind === kind).map((s) => placeName(s.placeId))))].join(', ');
+  const loadAt = await placesOf('load');
+  const offloadAt = await placesOf('offload');
   const truckLabel = `${truck.plate}${plain.trailerId ? ` · ${await trailerPlate(plain.trailerId)}` : ''}`;
   await post(driverThread(plain.driverId), at, {
     title: `On your way · ${plain.number}`,

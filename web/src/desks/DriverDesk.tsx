@@ -80,8 +80,15 @@ function TripSlip({ trip }: { trip?: Trip }) {
     );
   const truck = byId(data.trucks, trip.truckId);
   const trailer = byId(data.trailers, trip.trailerId);
-  const load = trip.stops.find((s) => s.kind === "load");
-  const offload = trip.stops.find((s) => s.kind === "offload");
+  // Every loading place and drop, in route order (#102): a trip with several says so. The arrival shown is
+  // the first loading's and the last drop's.
+  const loads = trip.stops.filter((s) => s.kind === "load");
+  const offloads = trip.stops.filter((s) => s.kind === "offload");
+  const load = loads[0];
+  const offload = offloads[offloads.length - 1];
+  const names = (stops: typeof loads) => [...new Set(stops.map((s) => placeName(data, s.placeId)))].join(", ");
+  const cns = (data.cns ?? []).filter((c) => c.tripId === trip.id);
+  const billTo = new Set(cns.map((c) => c.customerId).filter(Boolean));
   const cargo = data.consignments.find((c) => c.tripId === trip.id);
   const product = byId(data.products, cargo?.productId ?? trip.productId);
   return (
@@ -94,13 +101,13 @@ function TripSlip({ trip }: { trip?: Trip }) {
       <div className="slip-route">
         <div>
           <span>Load at</span>
-          <strong>{placeName(data, load?.placeId)}</strong>
+          <strong>{names(loads)}</strong>
           <small>{load?.arrivedAt ? `Arrived ${day(load.arrivedAt)}, ${hm(load.arrivedAt)}` : ""}</small>
         </div>
         <span className="slip-arrow" aria-hidden />
         <div>
           <span>Offload at</span>
-          <strong>{placeName(data, offload?.placeId)}</strong>
+          <strong>{names(offloads)}</strong>
           <small>{offload?.arrivedAt ? `Arrived ${day(offload.arrivedAt)}, ${hm(offload.arrivedAt)}` : ""}</small>
         </div>
       </div>
@@ -115,11 +122,11 @@ function TripSlip({ trip }: { trip?: Trip }) {
         </div>
         <div>
           <dt>Cargo</dt>
-          <dd>{cargo ? (cargo.load.unit === "L" ? `${L(volume20(cargo.load))} at 20 °C` : `${cargo.load.qty} ${cargo.load.unit}`) : product?.name ?? "On the invoice"}</dd>
+          <dd>{cns.length > 1 ? `${cns.length} consignments` : cargo ? (cargo.load.unit === "L" ? `${L(volume20(cargo.load))} at 20 °C` : `${cargo.load.qty} ${cargo.load.unit}`) : product?.name ?? "On the invoice"}</dd>
         </div>
         <div>
           <dt>Customer</dt>
-          <dd>{byId(data.customers, trip.customerId)?.name}</dd>
+          <dd>{billTo.size > 1 ? `${billTo.size} customers` : byId(data.customers, trip.customerId)?.name}</dd>
         </div>
         <div>
           <dt>Fuel in tank</dt>

@@ -5,7 +5,7 @@ import type { Rec } from "../api/adapter";
 import { can } from "../api/session";
 import { useApp } from "../store";
 import { w } from "../domain/words";
-import type { Trip } from "../domain/types";
+import type { AppData, Trip } from "../domain/types";
 import { Button, Empty, Field, Modal, Status, UnitInput } from "../ui/kit";
 import { num } from "../ui/format";
 import { RevenuePanel } from "./RevenuePanel";
@@ -34,9 +34,23 @@ const STATUS: Record<Profit["status"], { label: string; tone: "wait" | "info" | 
   estimate: { label: "Estimate", tone: "wait" }, provisional: { label: "Provisional", tone: "info" }, final: { label: "Final", tone: "ok" },
 };
 
+/**
+ * What the trip's profit depends on, as the desks already hold it: the trip, its consignments, expenses and
+ * money requests. Part of the query key, so the Money tab and the line at the top refetch together whenever
+ * any of them changes, and never show two figures for one trip (#102).
+ */
+function profitStamp(data: AppData, trip: Trip) {
+  const cns = data.cns.filter((c) => c.tripId === trip.id).map((c) => `${c.id}:${c.version}`).join(",");
+  const expenses = data.expenses.filter((e) => e.tripId === trip.id).map((e) => `${e.id}:${e.status}`).join(",");
+  const requests = data.requests.filter((r) => r.tripId === trip.id).map((r) => `${r.id}:${r.status}`).join(",");
+  return [trip.version ?? 0, trip.endedAt ?? "", trip.settlementId ?? "", cns, expenses, requests].join("|");
+}
+const useTripProfit = (data: AppData, trip: Trip) =>
+  useQuery({ queryKey: ["trip-profit", trip.id, profitStamp(data, trip)], queryFn: () => api<Profit>(`/trips/${trip.id}/profit`), placeholderData: (previous) => previous });
+
 export function ProfitPanel({ trip }: { trip: Trip }) {
   const { data, me, toast } = useApp();
-  const profit = useQuery({ queryKey: ["trip-profit", trip.id], queryFn: () => api<Profit>(`/trips/${trip.id}/profit`) });
+  const profit = useTripProfit(data, trip);
   const [adding, setAdding] = useState(false);
   const [openCn, setOpenCn] = useState<string | null>(null);
   const [openGroup, setOpenGroup] = useState<string | null>(null);
@@ -200,10 +214,11 @@ function AddCost({ trip, currency, onClose, onSaved }: { trip: Trip; currency: P
 /** Revenue, costs and profit in one line at the top of the trip (#135 Part 4), opening the Money tab. */
 export function ProfitLine({ trip, onOpen }: { trip: Trip; onOpen: () => void }) {
   const { data } = useApp();
-  const profit = useQuery({ queryKey: ["trip-profit", trip.id], queryFn: () => api<Profit>(`/trips/${trip.id}/profit`), staleTime: 30_000 });
+  const profit = useTripProfit(data, trip);
   if (!profit.data) return null;
   const p = profit.data;
-  const m = (minor: number) => `${num(minor / 10 ** p.currency.minorUnits, 0, p.currency.minorUnits)}\u00a0${p.currency.code}`;
+  // Whole units of the currency, as the Money tab writes them (102,408.50, never 102,408.5).
+  const m = (minor: number) => `${num(minor / 10 ** p.currency.minorUnits, p.currency.minorUnits, p.currency.minorUnits)}\u00a0${p.currency.code}`;
   const st = STATUS[p.status] ?? STATUS.estimate;
   return (
     <button type="button" className="profit-line" onClick={onOpen} aria-label={`${w(data, "trip")} money: open the Money tab`}>

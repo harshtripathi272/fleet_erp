@@ -13,7 +13,10 @@ export function Statement({ id }: { id: string }) {
   const driver = byId(data.drivers, s.driverId)!;
   const trips = s.tripIds.map((t) => byId(data.trips, t)!).filter(Boolean);
   const lines = driverLedger(data, driver.id).filter((e) => e.tripId && s.tripIds.includes(e.tripId));
-  const before = s.openingBase + s.advancesBase - s.expensesBase + s.shortagesBase + s.writeOffsBase;
+  // Lines Finance typed count as the server counts them when posting (#102): for the driver lowers what he holds.
+  const typed = s.lines ?? [];
+  const typedSum = typed.reduce((sum, l) => sum + (l.toDriver ? -l.amountBase : l.amountBase), 0);
+  const before = s.openingBase + s.advancesBase - s.expensesBase + s.shortagesBase + s.writeOffsBase + typedSum;
   return (
     <article className="paper statement">
       <Watermark forDocument />
@@ -92,6 +95,15 @@ export function Statement({ id }: { id: string }) {
                 <td className="mono">{byId(data.trips, e.tripId)?.no}</td>
                 <td className="r">
                   {e.amountBase >= 0 ? "+" : "−"} {num(Math.abs(e.amountBase), 2)}
+                </td>
+              </tr>
+            ))}
+            {typed.map((l, i) => (
+              <tr key={l.id ?? `typed-${i}`}>
+                <td>{l.label}{l.reason ? ` · ${l.reason}` : ""}</td>
+                <td className="mono">{s.no}</td>
+                <td className="r">
+                  {l.toDriver ? "−" : "+"} {num(Math.abs(l.amountBase), 2)}
                 </td>
               </tr>
             ))}

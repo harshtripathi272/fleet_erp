@@ -77,9 +77,25 @@ export type DocumentInput = Omit<S.SendDocumentInput, 'file'> & {
   file?: { fileId: string } | { name: string; mime: string; sampleId?: string; url?: string };
   /** The consignment, pickup or drop, and paper the driver said it is for (#135 Part 2). */
   consignmentId?: string;
+  /**
+   * WhatsApp: hold the usual "Got your …" reply, because filing the photo on its consignment answers more
+   * exactly ("We got your proof of delivery for CN/…"). The caller sends this reply only if nothing else did (#102).
+   */
+  holdReply?: boolean;
   legId?: string;
   documentTypeId?: string;
 };
+
+/** The driver's "Got your …" for a paper or receipt: who checks it next. */
+export async function acknowledgeDocument(driverId: unknown, kind: string, reading: Plain | undefined, at: Date, ctx: OpsContext) {
+  const label = LABEL[kind as keyof typeof LABEL] ?? 'paper';
+  const amount = reading?.amount ? ` for ${Fmt.number(Number(reading.amount), { max: 2 })} ${String(reading.currencyCode ?? '')}`.trimEnd() : '';
+  const money = kind === 'expense' || kind === 'fuel';
+  await post(driverThread(driverId), at, {
+    text: money ? `Got your ${label}${amount}. Finance will check it.` : `Got your ${label}${reading?.docNo ? ` ${String(reading.docNo)}` : ''}. Operations will confirm it.`,
+    wa: { template: 'document_received', values: money ? [`${label}${amount}`, 'Finance'] : [`${label}${reading?.docNo ? ` ${String(reading.docNo)}` : ''}`, 'Operations'] },
+  }, ctx);
+}
 
 export async function sendDocument(input: DocumentInput, ctx: OpsContext) {
   need(ctx, 'driver-documents', 'create');
@@ -111,13 +127,7 @@ export async function sendDocument(input: DocumentInput, ctx: OpsContext) {
   const label = LABEL[input.kind]!;
   if (input.channel !== 'operations') await post(driverThread(driver._id), at, { from: 'me', text: input.note ?? '', attachment: file }, ctx);
   if (trip) await resolve(`${trip._id}-${input.kind}`, 'Sent');
-  if (input.channel !== 'operations') {
-    const amount = reading?.amount ? ` for ${Fmt.number(reading.amount, { max: 2 })} ${reading.currencyCode ?? ''}`.trimEnd() : '';
-    await post(driverThread(driver._id), at, {
-      text: input.kind === 'expense' || input.kind === 'fuel' ? `Got your ${label}${amount}. Finance will check it.` : `Got your ${label}${reading?.docNo ? ` ${reading.docNo}` : ''}. Operations will confirm it.`,
-      wa: { template: 'document_received', values: input.kind === 'expense' || input.kind === 'fuel' ? [`${label}${amount}`, 'Finance'] : [`${label}${reading?.docNo ? ` ${reading.docNo}` : ''}`, 'Operations'] },
-    }, ctx);
-  }
+  if (input.channel !== 'operations' && !input.holdReply) await acknowledgeDocument(driver._id, input.kind, reading, at, ctx);
   // Say where the figures came from: a simulator invents them; otherwise the sender typed them, or nobody has yet.
   const source = simulated
     ? 'Simulated: a sample picture with generated figures, not a real document.'

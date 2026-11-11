@@ -167,6 +167,8 @@ export async function statementPdf(settlementId: string): Promise<{ name: string
         ['Approved expenses', amount(s.settlement.expensesMinor)],
         ...(Number(s.settlement.shortagesMinor) ? [['Shortage', amount(s.settlement.shortagesMinor)] as [string, string]] : []),
         ...(Number(s.settlement.writeOffsMinor) ? [['Load written off', amount(s.settlement.writeOffsMinor)] as [string, string]] : []),
+        // Lines Finance typed, so the summary adds up to what was carried forward (#102).
+        ...(((s.settlement as unknown as Plain).lines ?? []) as Plain[]).map((l) => [`${String(l.label)}${l.toDriver ? ' (for the driver)' : ''}`, `${l.toDriver ? '− ' : ''}${amount(l.amountMinor)}`] as [string, string]),
         [Number(s.settlement.cashMinor) < 0 ? 'Paid to the driver' : 'Returned by the driver', amount(Math.abs(Number(s.settlement.cashMinor)))],
         ['Carried forward', amount(s.settlement.closingMinor)],
       ],
