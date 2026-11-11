@@ -192,6 +192,7 @@ export function placeLegs(stops: StopP[], legs: Array<{ key: string; kind: 'pick
   const assigned = new Map<string, unknown>();
   const reached = lastReached(out);
   let floor = 0;
+  let placedAny = false;
   const km = (a: unknown, b: unknown) => {
     if (id(a) === id(b)) return 0;
     const pa = places.get(id(a))?.location, pb = places.get(id(b))?.location;
@@ -201,24 +202,27 @@ export function placeLegs(stops: StopP[], legs: Array<{ key: string; kind: 'pick
     const wanted = leg.kind === 'pickup' ? 'load' : 'offload';
     if (leg.stopId) {
       const i = out.findIndex((s) => id(s._id) === id(leg.stopId));
-      if (i >= 0) { assigned.set(leg.key, out[i]!._id); floor = Math.max(floor, i); continue; }
+      if (i >= 0) { assigned.set(leg.key, out[i]!._id); floor = Math.max(floor, i); placedAny = true; continue; }
     }
     if (!leg.placeId) continue;
-    const start = Math.max(floor, leg.status === 'done' ? 0 : reached + 1);
+    // After the stop the consignment's previous leg uses (not at it), and after where the truck has been.
+    const start = Math.max(placedAny ? floor + 1 : floor, leg.status === 'done' ? 0 : reached + 1);
     const existing = out.findIndex((s, i) => i >= start && !s.skipped && s.kind === wanted && id(s.placeId) === id(leg.placeId));
-    if (existing >= 0) { assigned.set(leg.key, out[existing]!._id); floor = existing; continue; }
+    if (existing >= 0) { assigned.set(leg.key, out[existing]!._id); floor = existing; placedAny = true; continue; }
     const end = out.findIndex((s) => s.kind === 'end');
     const last = end < 0 ? out.length : end;
     let best = Math.max(start, 1), cost = Number.POSITIVE_INFINITY;
     for (let i = Math.max(start, 1); i <= last; i += 1) {
       const prev = out[i - 1], next = out[i];
       const added = (prev ? km(prev.placeId, leg.placeId) : 0) + (next ? km(leg.placeId, next.placeId) : 0) - (prev && next ? km(prev.placeId, next.placeId) : 0);
-      if (added < cost - 0.01) { cost = added; best = i; }
+      // On a tie (the same place as a stop beside it), a pickup goes after what is dropped there and a drop before what is loaded.
+      if (added < cost - 0.01 || (leg.kind === 'pickup' && added <= cost + 0.01)) { cost = added; best = i; }
     }
     const stop: StopP = { _id: newId(), placeId: leg.placeId, kind: wanted, legKm: 0, origin: 'consignment', ...(at ? { addedAt: at, addedBy: by } : {}) };
     out.splice(best, 0, stop);
     assigned.set(leg.key, stop._id);
     floor = best;
+    placedAny = true;
   }
   return { stops: out, assigned };
 }

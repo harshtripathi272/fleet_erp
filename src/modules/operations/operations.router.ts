@@ -1,4 +1,4 @@
-import { Router } from 'express';
+import { Router, type RequestHandler } from 'express';
 import { ForbiddenError } from '../../core/errors/index.js';
 import { idParams } from '../../core/masters/zod.js';
 import { authenticate } from '../../middleware/authenticate.js';
@@ -76,10 +76,26 @@ router.get('/driver-documents/:id', authorize('driver-documents', 'read'), valid
 router.post('/driver-documents/:id/done', authorize('driver-documents', 'update'), validate(id), C.markDocumentDone);
 router.post('/driver-documents/:id/return', authorize('driver-documents', 'update'), validate({ ...id, body: S.reasonSchema }), C.returnDocument);
 
-router.get('/consignments', authorize('consignments', 'read'), validate({ query: S.consignmentListQuery }), C.listConsignments);
-router.post('/consignments', authorize('consignments', 'create'), validate({ body: S.loadingSchema }), C.recordLoading);
+router.get('/consignments', authorize('consignments', 'read'), validate({ query: S.consignmentsQuery }), C.listConsignments);
+// A new consignment (#135), or today's loading body, kept for one release (design 3.10): the invoice number tells them apart.
+const newConsignment = validate({ body: S.createConsignmentSchema });
+const oldLoading = validate({ body: S.loadingSchema });
+const consignmentBody = Object.assign<RequestHandler, { meta: object }>((req, res, next) => (req.body && typeof req.body === 'object' && 'invoiceNo' in req.body ? oldLoading : newConsignment)(req, res, next), { meta: (newConsignment as unknown as { meta: object }).meta });
+router.post('/consignments', authorize('consignments', 'create'), consignmentBody, C.createConsignment);
 router.get('/consignments/:id', authorize('consignments', 'read'), validate(id), C.getConsignment);
+router.patch('/consignments/:id', authorize('consignments', 'update'), validate({ ...id, body: S.updateConsignmentSchema }), C.updateConsignment);
+router.put('/consignments/:id/legs', authorize('consignments', 'update'), validate({ ...id, body: S.putLegsSchema }), C.putLegs);
+router.post('/consignments/:id/legs/:legId/record', authorize('consignments', 'update'), validate({ params: S.legParams, body: S.legRecordSchema }), C.recordLeg);
+router.post('/consignments/:id/cancel', authorize('consignments', 'update'), validate({ ...id, body: S.cancelConsignmentSchema }), C.cancelConsignment);
+router.post('/consignments/:id/documents', authorize('consignments', 'update'), validate({ ...id, body: S.attachDocumentSchema }), C.attachDocument);
+router.delete('/consignments/:id/documents/:docId', authorize('consignments', 'update'), validate({ params: S.documentParams }), C.detachDocument);
 router.post('/consignments/:id/delivery', authorize('consignments', 'update'), validate({ ...id, body: S.deliverySchema }), C.recordDelivery);
+router.post('/trips/:id/stops/:stopId/record', authorize('consignments', 'update'), validate({ params: S.tripStopParams, body: S.stopRecordSchema }), C.recordAtStop);
+router.post('/trips/:id/stops/:stopId/pass', authorize('stop-gate-override', 'create'), validate({ params: S.tripStopParams, body: S.passStopSchema }), C.passStop);
+router.put('/trips/:id/stops', authorize('trips', 'update'), validate({ ...id, body: S.putStopsSchema }), C.putStops);
+router.get('/trips/:id/gate', authorize('trips', 'read'), validate(id), C.tripGate);
+router.get('/trips/:id/capacity', authorize('trips', 'read'), validate(id), C.tripCapacity);
+router.post('/driver-documents/:id/file', authorize('driver-documents', 'update'), validate({ ...id, body: S.fileDocumentSchema }), C.fileDriverDocument);
 router.post('/consignments/:id/shortage-decision', finance, authorize('consignments', 'read'), validate({ ...id, body: S.shortageDecisionSchema }), C.decideShortage);
 
 router.get('/expenses', authorize('expenses', 'read'), validate({ query: S.expenseListQuery }), C.listExpenses);
