@@ -10,6 +10,9 @@ import { opsContext } from '../operations/support.js';
 import * as A from './freight.api.js';
 import * as F from './freight.masters.js';
 import * as P from './pricing.js';
+import * as Profit from './profit/profit.service.js';
+import { z } from 'zod';
+import { money, objectId, text } from '../../core/masters/zod.js';
 
 /** The freight masters and routes (#135). Mounted at /api/v1 behind sign-in, in the Trips area like the masters. */
 const router = Router();
@@ -40,4 +43,11 @@ router.patch('/consignments/:id/revenue/lines/:lineId', requireModule('trips'), 
 router.post('/consignments/:id/revenue/manual', requireModule('trips'), sees, validate({ ...id, body: A.manualPriceSchema }), asyncHandler(async (req, res) => ApiResponse.success(res, await P.setManualPrice(param(req), req.body, opsContext(req)), 'Price set')));
 router.post('/consignments/:id/revenue/freeze', requireModule('trips'), sees, validate(id), asyncHandler(async (req, res) => ApiResponse.success(res, await P.freeze(param(req), opsContext(req)), 'Frozen')));
 router.post('/consignments/:id/revenue/reopen', requireModule('trips'), sees, validate({ ...id, body: A.reasonBody }), asyncHandler(async (req, res) => ApiResponse.success(res, await P.reopen(param(req), req.body.reason, opsContext(req)), 'Reopened')));
+
+// Trip profit (design 3.6, contract section 6): seen with trip-profit's sensitive switch, changed with its update level.
+const tripCostParams = z.strictObject({ id: objectId, lineId: objectId });
+const costBody = z.strictObject({ chargeTypeId: objectId.optional(), label: text(200), amount: money.refine((m) => m.amountMinor > 0, 'Enter the amount'), note: text(300).optional() });
+router.get('/trips/:id/profit', requireModule('trips'), authorize('trip-profit', 'sensitive'), validate(id), asyncHandler(async (req, res) => ApiResponse.success(res, await Profit.tripProfit(param(req)))));
+router.post('/trips/:id/costs', requireModule('trips'), authorize('trip-profit', 'sensitive'), authorize('trip-profit', 'update'), validate({ ...id, body: costBody }), asyncHandler(async (req, res) => ApiResponse.created(res, await Profit.addCost(param(req), req.body, opsContext(req)), 'Cost added')));
+router.delete('/trips/:id/costs/:lineId', requireModule('trips'), authorize('trip-profit', 'sensitive'), authorize('trip-profit', 'update'), validate({ params: tripCostParams }), asyncHandler(async (req, res) => ApiResponse.success(res, await Profit.removeCost(param(req), param(req, 'lineId')), 'Cost removed')));
 export default router;
