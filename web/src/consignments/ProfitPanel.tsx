@@ -20,6 +20,8 @@ interface Profit {
   status: "estimate" | "provisional" | "final";
   currency: { id: string; code: string; minorUnits: number };
   revenueMinor: number; costMinor: number; profitMinor: number; marginPercent?: number | null; perKm?: number | null;
+  /** Paid back by the driver (a shortage or a write-off charged to them): money in, not a negative cost. */
+  recovered?: { amountMinor: number; items: { ref: string; label: string; amountMinor: number }[] };
   km?: number; loadedKm?: number; days?: number;
   revenue: { consignmentId: string; number: string; customer?: string; status: string; amountMinor: number; share?: number; counted?: boolean; note?: string | null }[];
   costs: { group: string; label: string; amountMinor: number; litres?: { opening?: number; issued?: number; closing?: number; used?: number }; items: { ref: string; label: string; amountMinor: number }[] }[];
@@ -60,6 +62,7 @@ export function ProfitPanel({ trip }: { trip: Trip }) {
     <div className="profit-panel">
       <div className="figure-line profit-figures">
         <div><span>Revenue</span><b>{m(p.revenueMinor)}</b></div>
+        {p.recovered?.amountMinor ? <div><span>Recovered</span><b>{m(p.recovered.amountMinor)}</b></div> : null}
         <div><span>Costs</span><b>{m(p.costMinor)}</b></div>
         <div><span>Profit</span><b className={p.profitMinor < 0 ? "profit-loss" : ""}>{m(p.profitMinor)}</b></div>
         <div><span>Margin</span><b>{p.marginPercent === null || p.marginPercent === undefined ? "—" : `${num(p.marginPercent, 1, 1)} %`}</b></div>
@@ -85,6 +88,13 @@ export function ProfitPanel({ trip }: { trip: Trip }) {
                   </tr>
                 ))}
                 {!p.revenue.length && <tr><td colSpan={5} className="muted">No {w(data, "consignment", true).toLowerCase()} yet.</td></tr>}
+                {p.recovered?.items.map((x) => (
+                  <tr key={x.ref} className="profit-item">
+                    <td colSpan={3}>Recovered from the driver · {x.label}</td>
+                    <td className="num">{m(x.amountMinor)}</td>
+                    <td />
+                  </tr>
+                ))}
               </tbody>
             </table>
           </div>

@@ -1390,10 +1390,17 @@ function OneDrop({ trip }: { trip: Trip }) {
 }
 
 export function ShortageCard({ consignment }: { consignment: Consignment }) {
-  const { run } = useApp();
+  const { data, run } = useApp();
   const may = useMay();
   const s = consignment.shortage!;
   const fuel = s.unit === "L";
+  // Which consignment, goods and drop it is for: a trip with three shows three of these (#102).
+  const cn = data.cns.find((c) => c.id === consignment.id);
+  const lastDrop = cn?.legs.filter((l) => l.kind === "drop" && l.placeId).at(-1);
+  const named = [consignment.no, byId(data.products, consignment.productId)?.name, lastDrop?.placeId ? `to ${placeName(data, lastDrop.placeId)}` : consignment.consignee].filter(Boolean).join(" · ");
+  // What the customer refused at a drop (#102): it arrived, so it isn't a transit loss, but it isn't delivered either.
+  const refused = (cn?.legs ?? []).filter((l) => l.kind === "drop" && l.status === "done").flatMap((l) => l.actual ?? [])
+    .reduce((sum, m) => sum + (m.accepted !== undefined && m.accepted < m.qty ? m.qty - m.accepted : 0), 0);
   const amount = (value: number) => inUnit(value, s.unit);
   const [note, setNote] = useState("");
   const [waiving, setWaiving] = useState(false);
@@ -1404,7 +1411,7 @@ export function ShortageCard({ consignment }: { consignment: Consignment }) {
   const unpriced = s.netShortL > 0 && !s.pricePerL;
   return (
     <Card
-      title={fuel ? "Fuel reconciliation" : "Reconciliation"}
+      title={`${fuel ? "Fuel reconciliation" : "Reconciliation"}${named ? ` · ${named}` : ""}`}
       tone={s.status === "pending" && (finance || mayWaive) ? "mine" : undefined}
       aside={
         s.status === "none" && unpriced ? (
@@ -1456,6 +1463,11 @@ export function ShortageCard({ consignment }: { consignment: Consignment }) {
           )}
         </tbody>
       </table>
+      {refused > 0 && (
+        <p className="over-note">
+          The customer refused {amount(refused)} at the drop. It arrived, so it isn't counted as a transit loss, and the customer isn't charged for it. Bringing it back, writing it off or claiming it is decided outside the app for now.
+        </p>
+      )}
       {s.status === "pending" && (finance || mayWaive) && (
         <div className="req-actions">
           {!waiving ? (

@@ -678,9 +678,24 @@ export async function recordLeg(cid: string, legId: string, input: S.LegRecordIn
   if (pickup) await afterPickup(freshTrip, fresh, leg, measures, docs, events, at, ctx);
   else await afterDrop(freshTrip, fresh, leg, measures, input, shortage, events, at, ctx);
   const out = presentConsignment(fresh, ctx.can);
-  const papers = await repeatedPapers(cid, [...(input.documents ?? []).map((d) => d.number), input.pod?.number]);
+  const papers = [...(pickup ? beyondBooked(fresh, leg, measures) : []), ...await repeatedPapers(cid, [...(input.documents ?? []).map((d) => d.number), input.pod?.number])];
   for (const warning of papers) await log(ctx, at, warning, { tripId: trip._id });
   return { ...out, checks: { capacity: { notes: capacity.notes, warnings: capacity.warnings ?? [] }, papers: { warnings: papers } } };
+}
+
+/**
+ * A loading far above what the consignment was booked for (#102): 36,000 L recorded for an 8,000 L consignment is
+ * usually the whole tanker read off one photo. Recorded, and said.
+ */
+function beyondBooked(c: Plain, leg: Plain, measures: Plain[]) {
+  const lines = (c.lines ?? []) as Plain[];
+  return measures.flatMap((m) => {
+    const line = lines.find((l) => id(l._id) === id(m.lineId));
+    const planned = ((leg.planned ?? []) as Plain[]).find((p) => id(p.lineId) === id(m.lineId))?.qty ?? line?.plannedQty;
+    const qty = Number(m.qty ?? 0);
+    if (!planned || !(qty > Number(planned) * 1.1)) return [];
+    return [`${c.number} was booked for ${amountOf(Number(planned), String(line?.unit ?? m.unit))} and ${amountOf(qty, String(m.unit ?? line?.unit))} was recorded. Check the figure is for this consignment alone.`];
+  });
 }
 
 /**
