@@ -486,6 +486,47 @@ describe('the A-to-E trip of #135 Part 1, made entirely from New trip', () => {
     const profit = ok(await as(owner).get(`/trips/${t.id}/profit`));
     assert.equal(profit.revenueMinor > 0, true, 'the trip shows its revenue');
   });
+
+  test('with Billing on, each customer on the trip gets an invoice priced from its own consignments, and approving it fixes their price', async () => {
+    const company = ok(await as(owner).get('/company'));
+    ok(await as(owner).put('/company', { modules: [...company.modules, 'billing'], version: company.version }));
+    const { version } = ok(await as(fin).get('/finance-settings'));
+    ok(await as(fin).put('/finance-settings', { billing: { invoiceFrom: 'on_demand', taxMode: 'none' }, version }));
+    const zmw = ok<any[]>(await as(owner).get('/currencies', { limit: 100 })).find((c) => c.code === 'ZMW')!;
+    ok(await as(fin).post('/exchange-rates', { baseCurrencyId: ids.usd, quoteCurrencyId: zmw.id, rate: 25, effectiveDate: '2026-01-01', source: 'bank' }), 201);
+    const rate = (minor: number) => ({ basis: 'per_consignment', price: { amountMinor: minor, currencyId: ids.usd } });
+    const t = await trip({
+      consignments: [
+        { lines: [{ productId: ids.diesel, plannedQty: 20000 }], consignee: { name: 'Zambezi depot' }, rate: rate(300000) },
+        { customerId: ids.copper, lines: [{ productId: ids.diesel, plannedQty: 18000 }], consignee: { name: 'Copperbelt yard' }, rate: rate(200000) },
+      ],
+    }, true, owner);
+    for (const stop of t.stops.filter((s) => s.kind === 'load' || s.kind === 'offload')) await recordStop(t, stop, (c) => fuel(Number((c.lines[0] as { plannedQty?: number }).plannedQty ?? 20000)));
+    ok(await as(ops).post(`/trips/${t.id}/end`, { closingFuelL: 80 }));
+
+    const waiting = ok(await as(fin).get('/invoices/unbilled-trips')).data.filter((r: any) => r.id === t.id);
+    assert.deepEqual(waiting.map((r: any) => r.customerId).sort(), [ids.zambezi, ids.copper].sort(), 'one row per customer on the trip');
+    assert.ok(waiting.every((r: any) => !r.problem), JSON.stringify(waiting));
+
+    const drafted = ok(await as(fin).post('/invoices/draft', { tripIds: [t.id] }));
+    assert.deepEqual(drafted.skipped, []);
+    assert.equal(drafted.drafted.length, 2, 'one invoice per customer');
+    const forCustomer = (id: string) => drafted.drafted.find((i: any) => i.customerId === id);
+    const usdTotal = (i: any) => i.currencyId === ids.usd ? i.totalMinor : Math.round(i.totalMinor / 25);
+    assert.equal(usdTotal(forCustomer(ids.zambezi!)), 300000, 'Zambezi is charged its own consignment\'s price');
+    assert.equal(usdTotal(forCustomer(ids.copper!)), 200000, 'Copperbelt is charged its own');
+    assert.ok(forCustomer(ids.zambezi!).lines.every((l: any) => l.consignmentId), 'each line names its consignment');
+
+    const z = forCustomer(ids.zambezi!);
+    ok(await as(fin).post(`/invoices/${z.id}/approve`, { version: z.version }));
+    const cns = await Promise.all((await onTrip(t.id)).map(async (c) => ok<Consignment>(await as(owner).get(`/consignments/${c.id}`))));
+    const zc = cns.find((c) => c.customerId === ids.zambezi)!, cc = cns.find((c) => c.customerId === ids.copper)!;
+    assert.equal(zc.revenue.status, 'invoiced', 'the invoiced consignment\'s price is fixed');
+    assert.notEqual(cc.revenue.status, 'invoiced', 'the other customer\'s is not yet');
+    const again = ok(await as(fin).post('/invoices/draft', { tripIds: [t.id] }));
+    assert.equal(again.drafted.length, 0);
+    assert.deepEqual(again.skipped.map((s: any) => s.reason), [`${(await tripNow(t.id) as any).number} is already invoiced.`]);
+  });
 });
 
 describe('the driver says which consignment each paper is for (#135 Part 2)', () => {

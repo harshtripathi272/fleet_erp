@@ -11,6 +11,7 @@ import { Currency } from '../models/currency.model.js';
 import type { BillingSettings } from '../settings.service.js';
 import { Party } from '../../parties/models/party.model.js';
 import { CustomerRate } from './billing.model.js';
+import { ChargeType } from '../../freight/models/freight.model.js';
 
 /**
  * Prices a closed trip for its customer (#61): the customer's rate for the trip's route and product on the
@@ -127,6 +128,76 @@ export function totals(lines: Line[], pricesIncludeTax: boolean) {
 
 /** The invoice currency: the customer's own currency, else the rate's. */
 export const invoiceCurrencyOf = (terms: Plain | null, rate: Plain) => String(terms?.currencyId ?? (rate.price as Plain).currencyId);
+
+/* ---------- From consignments (#135, design 3.5.9) ---------- */
+
+const LIVE = { status: { $nin: ['cancelled', 'draft'] } };
+const LINE_KIND: Record<string, PricedLine['kind']> = { freight: 'freight', minimum: 'minimum', deduction: 'other', charge: 'other' };
+
+/** The trip's consignments for one customer, or for all of them. */
+export const tripConsignments = (tripId: unknown, customerId?: unknown) =>
+  Consignment.find({ tripId, ...LIVE, ...(customerId ? { customerId } : {}) }).sort({ bookedAt: 1, _id: 1 }).lean() as Promise<Plain[]>;
+
+/**
+ * True when the trip is priced by its consignments (some has a price of its own) rather than by the customer rate
+ * table. A trip whose consignments carry no price at all keeps the customer rates (#61).
+ */
+export async function pricedByConsignments(tripId: unknown) {
+  return Boolean(await Consignment.exists({ tripId, ...LIVE, 'revenue.status': { $in: ['estimated', 'priced', 'frozen', 'invoiced'] } }));
+}
+
+/** The customers a trip bills: each consignment's customer, else the trip's own. */
+export async function tripCustomers(trip: Plain): Promise<string[]> {
+  if (!(await pricedByConsignments(trip._id))) return [String(trip.customerId)];
+  return [...new Set((await tripConsignments(trip._id)).map((c) => String(c.customerId)))];
+}
+
+/** Why the customer's consignments on the trip can't be invoiced yet, or nothing. */
+export function consignmentProblem(cns: Plain[]): string | undefined {
+  for (const c of cns) {
+    const r = c.revenue as Plain | undefined;
+    if (!r || r.status === 'unpriced') return `${c.number} has no price${r?.problem ? `: ${r.problem}` : ''}. Add its rate on the consignment.`;
+  }
+  return undefined;
+}
+
+/** The currency of the customer's consignments' revenue. */
+export const consignmentCurrency = (cns: Plain[]) => (cns.find((c) => (c.revenue as Plain | undefined)?.currencyId)?.revenue as Plain | undefined)?.currencyId as string | undefined;
+
+/**
+ * The invoice lines for one customer's consignments on a trip: each consignment's accepted revenue lines, without
+ * costs, converted to `currencyId` on `date`. A consignment already invoiced is left out.
+ */
+export async function consignmentLines(trip: Plain, customerId: string, currencyId: string, date: Date, settings: BillingSettings): Promise<PricedLine[]> {
+  const cns = (await tripConsignments(trip._id, customerId)).filter((c) => !((c.revenue as Plain | undefined)?.invoiceIds as unknown[] | undefined)?.length);
+  const problem = consignmentProblem(cns);
+  if (problem) throw refuse(problem);
+  const to = await currencyUnits(currencyId);
+  const costs = new Set((await ChargeType.find({ direction: 'cost' }).select('_id').lean()).map((t) => String(t._id)));
+  const notTaxed = new Set((await ChargeType.find({ taxable: false }).select('_id').lean()).map((t) => String(t._id)));
+  const lines: PricedLine[] = [];
+  for (const c of cns) {
+    const r = c.revenue as Plain;
+    const from = await currencyUnits(r.currencyId);
+    const factor = (from.id === to.id ? 1 : await rateOrRefuse(from.id, to.id, date)) * 10 ** (to.minorUnits - from.minorUnits);
+    for (const l of (r.lines ?? []) as Plain[]) {
+      if (l.accepted === false || costs.has(String(l.chargeTypeId))) continue;
+      const amount = Number(l.amountMinor);
+      const qty = Number(l.qty);
+      const byUnit = Number.isFinite(qty) && qty !== 0 && Number.isFinite(Number(l.unitPriceMinor));
+      const taxPercent = settings.taxMode === 'none' || notTaxed.has(String(l.chargeTypeId)) ? 0
+        : settings.taxMode === 'single' ? settings.taxRatePercent : Number(l.taxPercent ?? settings.taxRatePercent);
+      lines.push({
+        kind: LINE_KIND[String(l.kind)] ?? 'other', tripId: trip._id, consignmentId: c._id,
+        description: `${trip.number} · ${c.number} · ${l.description}`,
+        qty: byUnit ? round3(qty) : 1, unit: byUnit ? (l.unit as string | undefined) : undefined,
+        unitPriceMinor: (byUnit ? amount / round3(qty) : amount) * factor, taxPercent,
+      });
+    }
+  }
+  if (!lines.length) throw refuse(`Nothing to charge on ${trip.number} for this customer.`);
+  return lines;
+}
 
 /** The lines for one closed trip, in `currencyId` on `date`. */
 export async function priceTrip(trip: Plain, currencyId: string, date: Date, settings: BillingSettings): Promise<PricedLine[]> {

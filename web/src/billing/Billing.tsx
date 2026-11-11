@@ -103,13 +103,13 @@ function ToInvoice({ onOpen }: { onOpen: (id: string) => void }) {
       {trips.isLoading && <p className="muted">Loading…</p>}
       {trips.error && <Empty title="Could not load the trips">{(trips.error as Error).message}</Empty>}
       {trips.data && !rows.length && <Empty title="Every closed trip is invoiced" />}
-      {skipped.length > 0 && <ul className="muted">{skipped.map((s) => <li key={String(s.tripId)}>{String(s.reason)}</li>)}</ul>}
+      {skipped.length > 0 && <ul className="muted">{skipped.map((s, i) => <li key={`${String(s.tripId)}:${i}`}>{String(s.reason)}</li>)}</ul>}
       {rows.length > 0 && (
         <table className="table">
           <thead><tr><th>Trip</th><th>Customer</th><th>Closed</th><th>Rate</th><th /></tr></thead>
           <tbody>
             {rows.map((t) => (
-              <tr key={String(t.id)}>
+              <tr key={`${String(t.id)}:${String(t.customerId)}`}>
                 <td className="mono">{String(t.number)}</td>
                 <td>{String(t.customer)}</td>
                 <td>{day(t.endedAt)}</td>
