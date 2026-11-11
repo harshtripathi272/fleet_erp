@@ -265,6 +265,17 @@ const consignmentDocumentSchema = new Schema({
   by: { type: ObjectId, ref: 'User' },
 }, { _id: true, strict: 'throw' });
 
+/** The bases a rate agreed on the consignment may use (#135 Part 1): the common ones; a tariff offers the rest. */
+export const AGREED_RATE_BASES = ['per_consignment', 'per_kg', 'per_tonne', 'per_litre', 'per_litre_20', 'per_piece', 'per_km'] as const;
+
+/** A rate agreed for this consignment, typed while making the trip: it prices the consignment without a tariff. */
+const agreedRateSchema = new Schema({
+  basis: { type: String, enum: AGREED_RATE_BASES, required: true },
+  price: { type: moneySchema, required: true },
+  /** Empty: the company's default (Company → Freight). */
+  chargeOn: { type: String, enum: ['loaded', 'delivered'] },
+}, { _id: false, strict: 'throw' });
+
 const referencesSchema = new Schema({
   customerRef: String,
   orderNo: String,
@@ -383,6 +394,7 @@ const consignmentSchema = new Schema<any>({
   legs: { type: [legSchema], required: true },
   documents: { type: [consignmentDocumentSchema], default: [] },
   references: { type: referencesSchema, default: undefined },
+  rate: { type: agreedRateSchema, default: undefined },
   revenue: { type: revenueSchema, default: undefined },
   /** The driver-side shortage (what the driver may pay for), worked out when the last drop is recorded. */
   shortage: { type: shortageSchema, default: undefined },

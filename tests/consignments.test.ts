@@ -398,3 +398,29 @@ describe('tariff matching', () => {
     assert.equal(ref.bases.find((b: { value: string }) => b.value === 'percent_of_freight').price, 'percent');
   });
 });
+
+describe('a rate agreed on the consignment (#135 Part 1)', () => {
+  test('prices it with no tariff, on the quantity it says, and can be changed or taken off', async () => {
+    const rate = { basis: 'per_litre_20', price: { amountMinor: 9, currencyId: ids.usd }, chargeOn: 'loaded' };
+    const t = await trip({ consignments: [{ lines: [{ productId: ids.diesel, plannedQty: 38000 }], consignee: { name: 'Zambezi depot' }, rate }] });
+    const asOwner = async (id: string) => ok<Consignment>(await as(owner).get(`/consignments/${id}`));
+    let [c] = await onTrip(t.id);
+    c = await asOwner(c!.id);
+    assert.deepEqual(c!.rate, rate);
+    assert.equal(c!.revenue.status, 'estimated');
+    assert.match(c!.revenue.explanation[0], /rate agreed on the consignment/);
+    assert.equal(c!.revenue.lines[0].unitPriceMinor, 9);
+    const load = t.stops.find((s) => s.kind === 'load')!;
+    await recordStop(t, load, () => fuel(38000));
+    c = await asOwner(c!.id);
+    const loaded20 = c.legs.find((l) => l.kind === 'pickup')!.actual![0].std20L as number;
+    assert.equal(c.revenue.lines[0].qty, loaded20, 'charged on the loaded litres at 20 °C');
+    assert.equal(c.revenue.totalMinor, Math.round(loaded20 * 9));
+    // Changed to a fixed price, then taken off: a tariff (or nothing) prices it again.
+    c = ok(await as(owner).patch(`/consignments/${c.id}`, { version: c.version, rate: { basis: 'per_consignment', price: { amountMinor: 300000, currencyId: ids.usd } } }));
+    assert.equal(c.revenue.totalMinor, 300000);
+    c = ok(await as(owner).patch(`/consignments/${c.id}`, { version: c.version, rate: null }));
+    assert.equal(c.rate, undefined);
+    assert.doesNotMatch(c.revenue.explanation.join(' '), /rate agreed/);
+  });
+});

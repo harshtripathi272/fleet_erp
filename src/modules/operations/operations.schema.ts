@@ -386,6 +386,12 @@ const references = z.strictObject({
   customerRef: text(60).optional(), orderNo: text(60).optional(), lrNo: text(60).optional(), ewayBillNo: text(60).optional(), ewayBillValidUntil: isoDate.optional(),
   sealNos: z.array(text(40)).max(30).optional(), permitNo: text(60).optional(), leadKm: z.number().min(0).max(20000).optional(),
 });
+/** A rate agreed on the consignment (#135 Part 1). null on an edit takes it off, so a tariff prices it again. */
+const agreedRate = z.strictObject({
+  basis: z.enum(['per_consignment', 'per_kg', 'per_tonne', 'per_litre', 'per_litre_20', 'per_piece', 'per_km']),
+  price: money,
+  chargeOn: z.enum(['loaded', 'delivered']).optional(),
+});
 const consignmentShape = {
   consignmentTypeId: objectId.optional(),
   /** Who is billed; the trip's customer when left out. */
@@ -399,6 +405,7 @@ const consignmentShape = {
   requiredBy: isoDate.optional(),
   lines: z.array(consignmentLine).min(1, 'Add the goods').max(50),
   references: references.optional(),
+  rate: agreedRate.nullable().optional(),
   notes: text(1000).optional(),
   custom,
 };

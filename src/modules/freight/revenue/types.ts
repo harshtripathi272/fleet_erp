@@ -87,6 +87,8 @@ export interface TariffInput {
   minimumCharge?: Money;
   /** What it matched on, in words, for the explanation: "customer and route". */
   matchedOn?: string;
+  /** The rate agreed on the consignment itself, not a tariff record (#135 Part 1). */
+  agreed?: boolean;
 }
 
 export interface ChargeTypeInput {

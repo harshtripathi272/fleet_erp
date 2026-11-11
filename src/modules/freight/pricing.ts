@@ -233,22 +233,43 @@ export async function priceOf(c: Plain, options: { tariff?: Plain } = {}): Promi
   }
   const manual = (c.revenue as Plain | undefined)?.manual as Plain | undefined;
   const manualLine = (((c.revenue as Plain | undefined)?.lines ?? []) as Plain[]).find((l) => l.source === 'manual' && (l.kind === 'freight' || l.kind === 'minimum'));
-  const currencyId = match?.tariff.currencyId ?? (manual ? (c.revenue as Plain).currencyId : undefined) ?? manualLine?.currencyId
+  const agreedCurrency = !options.tariff ? (((c.rate as Plain | undefined)?.price as Plain | undefined)?.currencyId) : undefined;
+  const currencyId = agreedCurrency ?? match?.tariff.currencyId ?? (manual ? (c.revenue as Plain).currencyId : undefined) ?? manualLine?.currencyId
     ?? (await Party.findById(c.customerId).select('currencyId').lean<Plain>())?.currencyId
     ?? (await (await import('../company/company.model.js')).Company.findOne().select('baseCurrencyId').lean<Plain>())?.baseCurrencyId;
   const currency = currencyId ? await units(currencyId) : null;
   if (!currency) throw refuse('Set the company base currency first (Company details).');
   const facts = await factsFor(c, trip, currency, on);
-  const tariff = match ? tariffInput(match.tariff, match.matchedOn) : null;
-  const result = priceConsignment(facts, tariff, await engineSettings());
+  const engine = await engineSettings();
+  // A rate agreed on the consignment wins over any tariff (#135 Part 1); the editor's "Try it" still tries its tariff.
+  const agreed = !options.tariff ? agreedTariff(c, engine) : null;
+  const tariff = agreed ?? (match ? tariffInput(match.tariff, match.matchedOn) : null);
+  const result = priceConsignment(facts, tariff, engine);
   return { result, match, facts, tariff };
 }
+
+/** The rate agreed on a consignment, as a one-line tariff for the engine: the price per its basis, on its quantity. */
+function agreedTariff(c: Plain, engine: EngineSettings): TariffInput | null {
+  const rate = c.rate as { basis: string; price: { amountMinor: number; currencyId: unknown }; chargeOn?: string } | undefined;
+  if (!rate) return null;
+  const freight = engine.chargeTypes.find((t) => t.code === 'FREIGHT') ?? engine.chargeTypes.find((t) => t.kind === 'freight');
+  if (!freight) return null;
+  const currencyId = String(rate.price.currencyId);
+  return {
+    id: `agreed:${String(c._id)}`, code: 'Agreed rate', currencyId, agreed: true,
+    ...(rate.chargeOn ? { chargeOn: rate.chargeOn as never } : {}),
+    lines: [{ id: 'agreed', chargeTypeId: freight.id, basis: rate.basis as never, price: { amountMinor: Number(rate.price.amountMinor), currencyId } }],
+  };
+}
+
+const isRecord = (v: unknown) => typeof v === 'string' && /^[a-f0-9]{24}$/.test(v);
 
 /** The revenue as saved on the consignment. */
 function toRevenue(result: RevenueResult, previous: Plain | undefined) {
   return {
-    status: result.status, tariffId: result.tariffId, tariffVersion: result.tariffVersion, currencyId: result.currencyId, pricedOn: result.pricedOn, pricedAt: new Date(),
-    basis: result.basis, lines: result.lines, subtotalMinor: result.subtotalMinor, taxMinor: result.taxMinor, totalMinor: result.totalMinor,
+    // An agreed rate is not a tariff record: it leaves no tariff or tariff line to point at.
+    status: result.status, tariffId: isRecord(result.tariffId) ? result.tariffId : undefined, tariffVersion: result.tariffVersion, currencyId: result.currencyId, pricedOn: result.pricedOn, pricedAt: new Date(),
+    basis: result.basis, lines: result.lines.map((l) => (l.tariffLineId && !isRecord(l.tariffLineId) ? { ...l, tariffLineId: undefined } : l)), subtotalMinor: result.subtotalMinor, taxMinor: result.taxMinor, totalMinor: result.totalMinor,
     baseSubtotalMinor: result.baseSubtotalMinor, baseTotalMinor: result.baseTotalMinor, rateToBase: result.rateToBase, explanation: result.explanation, problem: result.problem,
     manual: previous?.manual, frozenAt: previous?.frozenAt, frozenFor: previous?.frozenFor, invoiceIds: previous?.invoiceIds,
   };

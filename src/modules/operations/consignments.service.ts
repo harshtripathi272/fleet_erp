@@ -179,7 +179,7 @@ export async function prepareConsignment(input: S.InlineConsignmentInput, trip: 
   const data: Plain = {
     consignmentTypeId: type?._id, customerId, consignorPartyId, consignor: input.consignor, consigneePartyId: input.consigneePartyId ?? (!input.consignee ? customerId : undefined),
     consignee: input.consignee, brokerPartyId: input.brokerPartyId, paymentTerms: input.paymentTerms ?? 'to_be_billed', requiredBy: input.requiredBy, lines,
-    references: input.references, notes: input.notes, custom: await stepCustom('consignments', 'booking', input.custom),
+    references: input.references, rate: input.rate ?? undefined, notes: input.notes, custom: await stepCustom('consignments', 'booking', input.custom),
   };
   if (!ctx.can('consignments', 'create')) throw new ForbiddenError('Your role does not allow "create" on consignments');
   return { data, type, facts };
