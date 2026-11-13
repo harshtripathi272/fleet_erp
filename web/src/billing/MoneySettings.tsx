@@ -72,7 +72,7 @@ export function MoneySettings({ billing }: { billing: boolean }) {
           </SettingRow>
         </SettingsSection>
         {billing && (
-          <SettingsSection title="Invoicing customers" description="Customer rates set the prices; these say when invoices are drafted, what they charge and when they are due.">
+          <SettingsSection title="Invoicing customers" description="Rate contracts and the rates typed on consignments set the prices; these say when invoices are drafted, what they charge and when they are due.">
             <SettingRow title="Invoice from" description="Each closed trip: closing a trip drafts its invoice. A nomination: one invoice once all its trips are closed. On demand: Finance picks the trips.">
               <Segmented choice label="Invoice from" value={form.billing.invoiceFrom} options={[...FROM]} onChange={(v) => setBilling({ invoiceFrom: v })} disabled={!writable} />
             </SettingRow>

@@ -19,6 +19,15 @@ export const COMING_SOON: { key: string; place: ComingSoonPlace; name: string; d
   { key: "field-history", place: "masters", name: "Field history and copying a setup", description: "Safely change a field's type, see who changed the setup, and copy one company's setup to another.", issue: 69 },
 ];
 
+/**
+ * Masters built before anyone asked how they should work (Lakshya, 14 Nov): off the screens until they are designed
+ * with a transporter. Their records and the engine under rate contracts stay; the list shows them as "Coming soon".
+ */
+export const COMING_SOON_MASTERS: Record<string, string> = {
+  tariffs: "Price rules beyond a rate contract: slabs, formulas, extra drops and shortage deductions. Until then a customer's price comes from its rate contract, or the rate typed on the consignment.",
+  "customer-rates": "Prices for invoicing trips without consignments. Until then a customer's price comes from its rate contract, or the rate typed on the consignment.",
+};
+
 export function ComingSoonTag() {
   return <span className="status status-mute coming-soon">Coming soon</span>;
 }
