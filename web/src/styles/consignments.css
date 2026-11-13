@@ -79,13 +79,23 @@
 
 /* Loading and offloading by stop (design 3.11.4, 3.11.5). */
 .stop-work { min-width: 0; }
-.stop-block { display: grid; gap: 10px; padding: 14px 16px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); min-width: 0; }
+.stop-block { display: grid; gap: 10px; padding: 14px 16px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); min-width: 0; container-type: inline-size; }
+/* Each consignment at a stop is a row: what it is on the left, its actions on the right; nothing scrolls sideways. */
+.stop-items { display: grid; margin: 0 -16px; list-style: none; padding: 0; }
+.stop-item { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px 16px; align-items: center; padding: 10px 16px; border-top: 1px solid var(--line); }
+.stop-item.on { background: var(--surface-2); }
+.stop-item-main { display: grid; gap: 2px; min-width: 0; }
+.stop-item-top { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; }
+.stop-item-top .mono { font-weight: 600; }
+.stop-item-figures { color: var(--ink-2); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.stop-item-sub { color: var(--ink-3); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .stop-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
 .stop-head h3 { margin: 0; font-size: 16px; font-weight: 600; }
 .stop-head p { margin: 2px 0 0; }
 .stop-actions { display: flex; gap: 6px; justify-content: flex-end; white-space: nowrap; }
 .stop-gate { color: var(--ink); }
-.record-leg { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: 18px; padding-top: 12px; border-top: 1px solid var(--line); min-width: 0; }
+/* The paper beside the form when there's room for both; above it when the card is narrow. */
+.record-leg { display: grid; grid-template-columns: minmax(220px, 340px) minmax(0, 1fr); gap: 20px; padding-top: 14px; border-top: 1px solid var(--line); min-width: 0; }
 .record-photo { display: grid; gap: 10px; align-content: start; min-width: 0; }
 .record-nophoto { display: grid; gap: 10px; padding: 14px; border: 1px dashed var(--line-2); border-radius: 10px; }
 .record-nophoto p { margin: 0; }
@@ -104,8 +114,11 @@
 .photos-to-file > p { margin: 0; }
 .photo-strip { display: flex; gap: 12px; overflow-x: auto; padding-bottom: 4px; }
 .photo-file { display: grid; gap: 8px; width: 220px; flex: 0 0 auto; }
-@media (max-width: 1100px) {
+@container (max-width: 720px) {
   .record-leg { grid-template-columns: minmax(0, 1fr); }
+  .record-photo { max-width: 420px; }
+  .stop-item { grid-template-columns: minmax(0, 1fr); }
+  .stop-item .stop-actions { justify-content: flex-start; }
 }
 @media (max-width: 560px) {
   .record-doc { grid-template-columns: minmax(0, 1fr); }

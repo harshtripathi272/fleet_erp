@@ -1553,3 +1553,41 @@
   font-size: 13px;
   line-height: 1.5;
 }
+
+/*
+ * Narrow desktops and tablets (#102 UI pass): a list beside its record needs about 1280 px. Below that, the list is
+ * a page of its own and the record opens full width with a way back, as on a phone.
+ */
+@media (max-width: 1439px) {
+  .accounts,
+  .trips {
+    grid-template-columns: 300px minmax(0, 1fr);
+  }
+}
+@media (max-width: 1279px) {
+  .accounts,
+  .trips {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .acc-list-pane,
+  .trip-list-pane {
+    position: relative;
+    top: 0;
+    height: auto;
+    max-width: 760px;
+    border-right: 0;
+    background: none;
+  }
+  .accounts.has-selection .acc-list-pane,
+  .trips.has-selection .trip-list-pane {
+    display: none;
+  }
+  .accounts:not(.has-selection) .acc-detail-pane,
+  .trips:not(.has-selection) .trip-detail-pane {
+    display: none;
+  }
+  .back-link {
+    display: inline-flex;
+    justify-self: start;
+  }
+}
