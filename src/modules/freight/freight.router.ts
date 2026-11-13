@@ -29,6 +29,10 @@ router.use('/consignment-document-types', createMasterRouter(F.consignmentDocume
 router.use('/charge-types', createMasterRouter(F.chargeTypeDefinition));
 router.use('/tariffs', createMasterRouter(F.tariffDefinition));
 router.use('/fuel-prices', createMasterRouter(F.fuelPriceDefinition));
+router.use('/rate-contracts', createMasterRouter(F.rateContractDefinition, (r) => {
+  // Booking asks which contract line a consignment would be under; the price only for those who see revenue.
+  r.get('/for', requireModule('trips'), authorize('consignments', 'read'), validate({ query: A.contractForQuery }), asyncHandler(async (req, res) => ApiResponse.success(res, await A.contractFor(req.query as never, opsContext(req)))));
+}));
 
 /* A consignment's revenue (design 3.5.8, 3.11.7). Seeing it is the area's sensitive switch. */
 const sees = authorize('consignment-revenue', 'sensitive');

@@ -375,6 +375,7 @@ export function freightRules(f: Rec): FreightRules {
     lateSplit: f.lateSplit === "always" || f.lateSplit === "never" ? f.lateSplit : "by_type",
     stopsEditableOnRoad: f.stopsEditableOnRoad !== false,
     manualPriceNeedsReason: f.manualPriceNeedsReason !== false,
+    ownRateNeedsApproval: Boolean(f.ownRateNeedsApproval),
     showProfitOnTripList: Boolean(f.showProfitOnTripList),
   };
 }

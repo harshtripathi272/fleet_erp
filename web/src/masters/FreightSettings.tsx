@@ -172,6 +172,11 @@ const SECTIONS: { title: string; description: string; settings: Setting[] }[] = 
         control: { kind: "choice", options: [{ value: "weight", label: "Weight" }, { value: "revenue", label: "Revenue" }, { value: "equal", label: "Equally" }, { value: "km", label: "Distance" }] },
       },
       {
+        key: "ownRateNeedsApproval", title: "A rate other than the customer's contract needs Finance's approval",
+        description: "Off: whoever books a consignment may charge it at another rate than the customer's rate contract, with the reason. On: the contract prices it until Finance or the Owner approves the other rate.",
+        control: { kind: "switch" },
+      },
+      {
         key: "manualPriceNeedsReason", title: "A typed price needs a reason",
         description: "Someone who sets a price by hand instead of a tariff must say why. It is kept with the price.",
         control: { kind: "switch" },

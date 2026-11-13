@@ -220,3 +220,13 @@
 }
 .refusal-decision h3 { margin: 0; font-size: 1rem; }
 .refusal-actions { display: flex; align-items: end; }
+
+/* A consignment's price (#151): the customer's rate contract, or another rate with its reason. */
+.rate-choice { display: flex; flex-direction: column; gap: 6px; }
+.rate-option { display: flex; align-items: baseline; gap: 8px; cursor: pointer; }
+.rate-option input { flex: none; }
+.cn-row-rate > .input { max-width: 520px; }
+.price-from { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; }
+.price-from p { margin: 0; }
+.price-from-decide { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.price-from-decide .input { flex: 1 1 220px; max-width: 320px; }

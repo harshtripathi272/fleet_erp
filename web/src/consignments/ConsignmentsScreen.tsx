@@ -4,6 +4,7 @@ import { Search } from "lucide-react";
 import { request } from "../api/client";
 import type { Rec } from "../api/adapter";
 import { useApp } from "../store";
+import { can } from "../api/session";
 import { byId } from "../domain/calc";
 import { w, wl } from "../domain/words";
 import { Button, Empty, Segmented, Status } from "../ui/kit";
@@ -18,10 +19,10 @@ import { Report } from "./Report";
  * one framed table paged on the server, and the Report: the statement transporters send their customers.
  */
 
-type Tab = "all" | "to_load" | "on_road" | "to_deliver" | "waiting_pod" | "unpriced" | "report";
+type Tab = "all" | "to_load" | "on_road" | "to_deliver" | "waiting_pod" | "unpriced" | "rate_approval" | "report";
 
 export default function ConsignmentsScreen() {
-  const { data } = useApp();
+  const { data, me } = useApp();
   const [tab, setTab] = useState<Tab>("all");
   const [q, setQ] = useState("");
   const [customerId, setCustomerId] = useState("");
@@ -43,7 +44,10 @@ export default function ConsignmentsScreen() {
   const seesMoney = rows.some((c) => c.revenue);
   const tabs: { value: Tab; label: string }[] = [
     { value: "all", label: "All" }, { value: "to_load", label: "To load" }, { value: "on_road", label: "On the road" }, { value: "to_deliver", label: "To deliver" },
-    { value: "waiting_pod", label: "Waiting for proof of delivery" }, { value: "unpriced", label: "Unpriced" }, { value: "report", label: "Report" },
+    { value: "waiting_pod", label: "Waiting for proof of delivery" }, { value: "unpriced", label: "Unpriced" },
+    // Rates typed outside a customer's contract, waiting for Finance (#151): only where the company asks for approval.
+    ...(data.settings.freight.ownRateNeedsApproval && can(me, "consignment-revenue", "update") ? [{ value: "rate_approval" as Tab, label: "Rates to approve" }] : []),
+    { value: "report", label: "Report" },
   ];
   const reset = () => setPage(1);
   return (

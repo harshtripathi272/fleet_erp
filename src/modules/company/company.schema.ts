@@ -97,6 +97,7 @@ const companyShape = {
     detentionShare: z.enum(F.DETENTION_SHARES).nullable().optional(),
     costShareBy: z.enum(F.COST_SHARES).nullable().optional(),
     manualPriceNeedsReason: z.boolean().nullable().optional(),
+    ownRateNeedsApproval: z.boolean().nullable().optional(),
     freezeOn: z.enum(F.FREEZE_ON).nullable().optional(),
     invoiceWithoutPod: z.boolean().nullable().optional(),
     profitCosts: z.array(z.enum(F.PROFIT_COSTS)).max(7).refine((v) => new Set(v).size === v.length, 'Each once').nullable().optional(),

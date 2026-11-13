@@ -251,7 +251,7 @@ export function priceConsignment(facts: PricingFacts, tariff: TariffInput | null
     } else if (tariff.currencyId !== currency.id) {
       fail(`The tariff ${tariff.code} is in another currency than the one it is being priced in.`);
     } else {
-      say.push(tariff.agreed ? 'Priced at the rate agreed on the consignment.' : `Tariff ${tariff.code}${tariff.version ? ` v${tariff.version}` : ''}${tariff.matchedOn ? ` (${tariff.matchedOn} matched)` : ''}.`);
+      say.push(tariff.agreed ? (tariff.code.startsWith('Rate contract') ? `Priced by ${tariff.code}.` : 'Priced at the rate agreed on the consignment.') : `Tariff ${tariff.code}${tariff.version ? ` v${tariff.version}` : ''}${tariff.matchedOn ? ` (${tariff.matchedOn} matched)` : ''}.`);
       const ordered = tariff.lines.map((tl, i) => ({ tl, i })).sort((a, b) => (a.tl.order ?? 100) - (b.tl.order ?? 100) || a.i - b.i).map((x) => x.tl);
       for (const tl of ordered) {
         tariffLineOf.set(tl.id, tl);

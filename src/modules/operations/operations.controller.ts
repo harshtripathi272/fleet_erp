@@ -81,6 +81,7 @@ export const createConsignment = asyncHandler(async (req, res) => ('invoiceNo' i
 export const updateConsignment = asyncHandler(async (req, res) => ApiResponse.success(res, await Consignments.updateConsignment(param(req), req.body, opsContext(req)), 'Consignment saved'));
 export const putLegs = asyncHandler(async (req, res) => ApiResponse.success(res, await Consignments.putLegs(param(req), req.body, opsContext(req)), 'Pickups and drops saved'));
 export const recordLeg = asyncHandler(async (req, res) => ApiResponse.success(res, await Consignments.recordLeg(param(req), param(req, 'legId'), req.body, opsContext(req)), 'Recorded'));
+export const decideOwnRate = asyncHandler(async (req, res) => ApiResponse.success(res, await Consignments.decideOwnRate(param(req), req.body, opsContext(req)), 'Rate decided'));
 export const cancelConsignment = asyncHandler(async (req, res) => ApiResponse.success(res, await Consignments.cancelConsignment(param(req), req.body, opsContext(req)), 'Consignment cancelled'));
 export const attachDocument = asyncHandler(async (req, res) => ApiResponse.created(res, await Consignments.attachDocument(param(req), req.body, opsContext(req)), 'Document added'));
 export const detachDocument = asyncHandler(async (req, res) => ApiResponse.success(res, await Consignments.detachDocument(param(req), param(req, 'docId'), opsContext(req)), 'Document taken off'));

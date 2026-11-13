@@ -32,6 +32,8 @@ const SYSTEM_KEYS = new Set(['_id', 'id', 'version', 'createdAt', 'updatedAt', '
 const HIDDEN_KEYS = new Set(['geo']);
 
 function maskValue(value: unknown): unknown {
+  // An amount (a contract's price) is left out altogether; text keeps its last four characters.
+  if (typeof value === 'number') return null;
   if (typeof value !== 'string' || !value) return value;
   return value.length <= 4 ? '••••' : `••••${value.slice(-4)}`;
 }

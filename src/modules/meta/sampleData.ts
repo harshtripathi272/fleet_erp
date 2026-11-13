@@ -188,6 +188,11 @@ export async function loadSampleData(actorId?: string, size: SampleSize = 'full'
   await make('advance-policies', 'apRoute', { code: 'ROUTE-BUDGET', name: 'Advance from route budget', basis: 'route_budget', maxAmount: money(10_000_00), capOnCashHeld: money(2_000_00), approvalPolicyId: ids.advanceApproval, paymentMethodIds: [ids.pmCash, ids.pmAirtel] });
   // What a customer pays (#61): Copperbelt Minerals pays per tonne of cathodes, with a minimum per trip.
   await make('customer-rates', 'rateCopper', { code: 'CBM-CATH', name: 'Copperbelt cathodes per tonne', customerId: ids.copper, productId: ids.cuCathodes, basis: 'per_tonne', price: money(42_00, 'USD'), minimumCharge: money(1_200_00, 'USD'), validFrom: days(-365).toISOString().slice(0, 10) });
+  // Copperbelt's signed rate contract (#151): cathodes from Dar to Lusaka per tonne delivered, as its customer rate says.
+  await make('rate-contracts', 'contractCopper', {
+    code: 'CBM-2026-01', name: 'Copperbelt cathodes contract 2026', customerId: ids.copper, currencyId: ids.USD, validFrom: days(-365).toISOString().slice(0, 10),
+    lines: [{ routeId: ids.routeDar, productId: ids.cuCathodes, basis: 'per_tonne', price: money(42_00, 'USD'), chargeOn: 'delivered' }],
+  });
   // Freight (#135): the usual consignment types, papers and charge types, and the same rate as a tariff.
   created += await ensureFreightLists(actorId);
   const chargeId = async (code: string) => String((await ChargeType.findOne({ code }).select('_id').lean())!._id);
@@ -281,6 +286,16 @@ async function moreOfTheOperation(make: Make, ids: Record<string, string>, ctx: 
   });
   await make('trip-budgets', 'budgetLub', { code: 'DAR-LUB-PRIME', name: 'Lubumbashi run, prime mover', routeId: ids.routeLub, vehicleTypeId: ids.vtPrime, currencyId: ids.ZMW, cashItems: [{ expenseItemId: ids.eiToll, amountMinor: 1800_00 }, { expenseItemId: ids.eiBorder, amountMinor: 4200_00 }, { expenseItemId: ids.eiMeals, amountMinor: 2160_00 }] });
   await make('trip-budgets', 'budgetCopper', { code: 'KIT-DAR-PRIME', name: 'Copper to Dar, prime mover', routeId: ids.routeCopper, vehicleTypeId: ids.vtPrime, currencyId: ids.ZMW, cashItems: [{ expenseItemId: ids.eiToll, amountMinor: 600_00 }, { expenseItemId: ids.eiBorder, amountMinor: 1200_00 }, { expenseItemId: ids.eiMeals, amountMinor: 1080_00 }] });
+
+  // Lake Petroleum's signed rate contract (#151): diesel and petrol to Lusaka per litre delivered, and a fixed amount a truck to Lubumbashi.
+  await make('rate-contracts', 'contractLake', {
+    code: 'LPS-2026-01', name: 'Lake Petroleum fuel contract 2026', customerId: ids.lake, currencyId: ids.USD, validFrom: date(-120), signedOn: date(-125),
+    lines: [
+      { routeId: ids.routeDar, productId: ids.diesel50, basis: 'per_litre', price: money(9, 'USD'), chargeOn: 'delivered' },
+      { routeId: ids.routeDar, productId: ids.ulp95, basis: 'per_litre', price: money(10, 'USD'), chargeOn: 'delivered' },
+      { routeId: ids.routeLub, productId: ids.diesel50, basis: 'per_consignment', price: money(5_400_00, 'USD'), chargeOn: 'delivered' },
+    ],
+  });
 
   // Trucks 3–10: Scanias at Lusaka, Volvos at Ndola; flatbeds for the copper trucks (5 and 10), tankers for the rest.
   const people = [

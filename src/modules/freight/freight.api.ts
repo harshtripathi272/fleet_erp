@@ -8,6 +8,7 @@ import { Trip } from '../operations/models/trip.model.js';
 import { refuse, type OpsContext } from '../operations/support.js';
 import { BASIS_LABELS, BASIS_SENTENCES } from './freight.masters.js';
 import { createTariffSchema } from './freight.schema.js';
+import { contractLineFor, hasContract } from './contracts.js';
 import { matchTariff } from './match.js';
 import { RATE_BASES, Tariff } from './models/freight.model.js';
 import { engineSettings, priceOf, subjectOf, tariffInput, pricingDay } from './pricing.js';
@@ -143,4 +144,32 @@ export async function factsOf(consignmentId: string) {
   if (!c) throw new NotFoundError('Consignment not found');
   const priced = await priceOf(c);
   return priced.facts;
+}
+
+/* ---------- Rate contracts at booking (#151) ---------- */
+
+export const contractForQuery = z.strictObject({
+  customerId: objectId,
+  productId: objectId,
+  tripId: objectId.optional(),
+  routeId: objectId.optional(),
+  fromPlaceId: objectId.optional(),
+  toPlaceId: objectId.optional(),
+});
+
+/**
+ * The contract line a consignment being booked would be under, for the booking form: which contract and that it
+ * covers this route and product. The price and basis only for someone who sees revenue; Operations never does.
+ * `contract` alone, with no line, says the customer has a contract that doesn't cover this route and product.
+ */
+export async function contractFor(q: z.infer<typeof contractForQuery>, ctx: OpsContext) {
+  const trip = q.tripId ? await Trip.findById(q.tripId).select('routeId').lean<Plain>() : null;
+  const routeId = q.routeId ?? (trip?.routeId ? String(trip.routeId) : undefined);
+  const pick = await contractLineFor({ customerId: q.customerId, productIds: [q.productId], routeId, fromPlaceId: q.fromPlaceId, toPlaceId: q.toPlaceId });
+  const money = ctx.can('consignment-revenue', 'sensitive');
+  if (pick) {
+    const { price, basis, ...rest } = pick;
+    return { line: money ? { ...rest, basis, price } : rest, contract: { contractId: pick.contractId, code: pick.code, name: pick.name } };
+  }
+  return { line: null, contract: await hasContract(q.customerId) };
 }

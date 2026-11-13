@@ -1,7 +1,7 @@
 import { z } from 'zod';
-import { baseShape, code, money, name, objectId, percent, text, toUpdateSchema } from '../../core/masters/zod.js';
+import { baseShape, code, isoDate, money, name, objectId, percent, text, toUpdateSchema } from '../../core/masters/zod.js';
 import {
-  CARGO_KINDS, CHARGE_DIRECTIONS, CHARGE_KINDS, CHARGE_ON, DISTANCE_SOURCES, DOCUMENT_REQUIRED_BY, DOCUMENT_STEPS, DRIVER_KINDS,
+  CARGO_KINDS, CHARGE_DIRECTIONS, CONTRACT_BASES, CONTRACT_CHARGE_ON, CHARGE_KINDS, CHARGE_ON, DISTANCE_SOURCES, DOCUMENT_REQUIRED_BY, DOCUMENT_STEPS, DRIVER_KINDS,
   PRICE_ON, RATE_BASES, READ_FIELDS, SHORTAGE_DEDUCTIONS, SLAB_MODES,
 } from './models/freight.model.js';
 
@@ -115,3 +115,25 @@ export const createTariffSchema = z.strictObject(tariffShape);
 export const updateTariffSchema = toUpdateSchema(tariffShape);
 export const createFuelPriceSchema = z.strictObject(fuelPriceShape);
 export const updateFuelPriceSchema = toUpdateSchema(fuelPriceShape);
+
+const contractLine = z.strictObject({
+  /** Kept on an edit so consignments that name the line still find it. */
+  _id: objectId.optional(),
+  routeId: objectId,
+  productId: objectId,
+  basis: z.enum(CONTRACT_BASES),
+  price: money.refine((m) => m.amountMinor > 0, 'Enter the price'),
+  chargeOn: z.enum(CONTRACT_CHARGE_ON),
+});
+
+export const rateContractShape = {
+  code, name, description: text(500).optional(),
+  customerId: objectId,
+  currencyId: objectId,
+  signedOn: isoDate.optional(),
+  lines: z.array(contractLine).min(1, 'Add at least one route and product').max(200),
+  ...baseShape,
+};
+
+export const createRateContractSchema = z.strictObject(rateContractShape);
+export const updateRateContractSchema = toUpdateSchema(rateContractShape);
