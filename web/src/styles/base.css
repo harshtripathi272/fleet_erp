@@ -345,15 +345,23 @@ select.input {
   font-size: 13px;
   pointer-events: none;
 }
+/*
+ * Form grids fit their space, not the screen (#102 UI pass): at most two (or three) columns, each never narrower
+ * than a readable field. A form in a narrow panel drops to fewer columns instead of squeezing its labels.
+ */
 .grid-2 {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, max(240px, calc((100% - 16px) / 2))), 1fr));
   gap: 14px 16px;
 }
 .grid-3 {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, max(190px, calc((100% - 32px) / 3))), 1fr));
   gap: 14px 16px;
+}
+.grid-2 > *,
+.grid-3 > * {
+  min-width: 0;
 }
 
 /* ---------- Segmented ---------- */

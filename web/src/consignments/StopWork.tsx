@@ -84,45 +84,46 @@ function StopBlock({ trip, stop, kind, cns, openByDefault }: { trip: Trip; stop:
       </header>
       {open && (
         here.length === 0 ? <p className="muted">No {wl(data, "consignment", true)} {kind === "pickup" ? "load" : "drop"} here.</p> : (
-          <div className="table-frame">
-            <table className="table">
-              <thead>
-                <tr><th>Number</th><th /><th>Status</th><th>{kind === "pickup" ? "Consignor → consignee" : "Consignee"}</th><th>Goods</th><th className="num">Planned</th><th className="num">{kind === "pickup" ? "Loaded" : "Delivered"}</th><th>Papers</th></tr>
-              </thead>
-              <tbody>
-                {here.map(({ c, l }) => {
-                  const unit = c.lines[0]?.unit ?? "";
-                  // A single drop is planned to take all that was loaded, or the booked quantity before loading (#102).
-                  const booked = c.lines.reduce((s, x) => s + (x.plannedQty ?? 0), 0);
-                  const loaded = c.legs.filter((x) => x.kind === "pickup").flatMap((x) => x.actual ?? []).reduce((s, m) => s + (m.qty ?? 0), 0);
-                  const onlyDrop = c.legs.filter((x) => x.kind === "drop").length === 1;
-                  const planned = l.planned?.reduce((s, p) => s + (p.qty ?? 0), 0) ?? (kind === "pickup" ? booked : onlyDrop ? loaded || booked : 0);
-                  const done = l.actual?.reduce((s, m) => s + (m.accepted ?? m.qty), 0);
-                  const photo = data.docs.find((d) => d.status === "new" && d.consignmentId === c.id && (!d.legId || d.legId === l.id));
-                  const papers = c.documents.filter((d) => d.legId === l.id).length;
-                  return (
-                    <tr key={l.id} className={working === l.id ? "on" : ""}>
-                      <td className="mono">{c.number}</td>
-                      <td className="stop-actions">
-                        {l.status === "planned" && working !== l.id && (
-                          <Button size="sm" tone={photo || stop.arrivedAt ? "primary" : "secondary"} onClick={() => setWorking(l.id)}>
-                            {photo || stop.arrivedAt ? `Record ${verb}` : "Type it without a photo"}
-                          </Button>
-                        )}
-                        {kind === "drop" && l.status === "planned" && maySplit(c, types.data) && <Button size="sm" tone="quiet" onClick={() => setSplitting(c)}>Split delivery</Button>}
-                      </td>
-                      <td><Status tone={l.status === "done" ? "ok" : cnStatusTone(c.status)}>{l.status === "done" ? (l.outcome === "partial" ? "Part delivered" : "Done") : CN_STATUS_LABEL[c.status]}</Status></td>
-                      <td className="cn-party">{kind === "pickup" ? `${c.consignorName} → ${c.consigneeName}` : l.contact?.name ?? c.consigneeName}</td>
-                      <td>{byId(data.products, c.lines[0]?.productId)?.name ?? "—"}{c.lines.length > 1 ? ` +${c.lines.length - 1}` : ""}</td>
-                      <td className="num">{planned ? `${num(planned, 0, 3)} ${unit}` : "—"}</td>
-                      <td className="num">{done !== undefined && l.status === "done" ? `${num(done, 0, 3)} ${unit}` : "—"}</td>
-                      <td>{papers ? `${papers} in` : photo ? "A photo is waiting" : l.status === "done" && kind === "pickup" ? <span className="cn-warn">Invoice missing</span> : <span className="muted">None yet</span>}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+          <ul className="stop-items">
+            {here.map(({ c, l }) => {
+              const unit = c.lines[0]?.unit ?? "";
+              // A single drop is planned to take all that was loaded, or the booked quantity before loading (#102).
+              const booked = c.lines.reduce((s, x) => s + (x.plannedQty ?? 0), 0);
+              const loaded = c.legs.filter((x) => x.kind === "pickup").flatMap((x) => x.actual ?? []).reduce((s, m) => s + (m.qty ?? 0), 0);
+              const onlyDrop = c.legs.filter((x) => x.kind === "drop").length === 1;
+              const planned = l.planned?.reduce((s, p) => s + (p.qty ?? 0), 0) ?? (kind === "pickup" ? booked : onlyDrop ? loaded || booked : 0);
+              const done = l.actual?.reduce((s, m) => s + (m.accepted ?? m.qty), 0);
+              const photo = data.docs.find((d) => d.status === "new" && d.consignmentId === c.id && (!d.legId || d.legId === l.id));
+              const papers = c.documents.filter((d) => d.legId === l.id).length;
+              const goods = `${byId(data.products, c.lines[0]?.productId)?.name ?? "Goods"}${c.lines.length > 1 ? ` +${c.lines.length - 1}` : ""}`;
+              const figures = l.status === "done" && done !== undefined ? `${num(done, 0, 3)}\u00a0${unit}${planned ? ` of ${num(planned, 0, 3)}\u00a0${unit}` : ""}` : planned ? `${num(planned, 0, 3)}\u00a0${unit} planned` : "";
+              return (
+                <li key={l.id} className={`stop-item ${working === l.id ? "on" : ""}`}>
+                  <div className="stop-item-main">
+                    <div className="stop-item-top">
+                      <span className="mono">{c.number}</span>
+                      <Status tone={l.status === "done" ? "ok" : cnStatusTone(c.status)}>{l.status === "done" ? (l.outcome === "partial" ? "Part delivered" : "Done") : CN_STATUS_LABEL[c.status]}</Status>
+                      <span>{goods}</span>
+                      {figures && <span className="stop-item-figures">{figures}</span>}
+                    </div>
+                    <span className="stop-item-sub">
+                      {kind === "pickup" ? `${c.consignorName} → ${c.consigneeName}` : l.contact?.name ?? c.consigneeName}
+                      {" · "}
+                      {papers ? `${papers} ${papers === 1 ? "paper" : "papers"} in` : photo ? "A photo is waiting" : l.status === "done" && kind === "pickup" ? <span className="cn-warn">Invoice missing</span> : "No papers yet"}
+                    </span>
+                  </div>
+                  <div className="stop-actions">
+                    {l.status === "planned" && working !== l.id && (
+                      <Button size="sm" tone={photo || stop.arrivedAt ? "primary" : "secondary"} onClick={() => setWorking(l.id)}>
+                        {photo || stop.arrivedAt ? `Record ${verb}` : "Type it without a photo"}
+                      </Button>
+                    )}
+                    {kind === "drop" && l.status === "planned" && maySplit(c, types.data) && <Button size="sm" tone="quiet" onClick={() => setSplitting(c)}>Split delivery</Button>}
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
         )
       )}
       {working && (() => {

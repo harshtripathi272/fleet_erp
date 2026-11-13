@@ -88,7 +88,7 @@ export function TripsPage({
   });
   const selected = byId(data.trips, tripId);
   useEffect(() => {
-    if (!selected && shown[0] && window.innerWidth > 900) onSelect(shown[0].trip.id);
+    if (!selected && shown[0] && window.innerWidth >= 1280) onSelect(shown[0].trip.id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selected, shown[0]?.trip.id]);
 

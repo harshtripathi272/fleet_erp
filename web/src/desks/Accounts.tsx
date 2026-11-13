@@ -26,7 +26,7 @@ export function Accounts({ driverId, onDriver }: { driverId?: string; onDriver: 
     .sort((a, b) => b.open - a.open || Math.abs(b.balance) - Math.abs(a.balance));
   const selected = byId(data.drivers, driverId);
   useEffect(() => {
-    if (!selected && rows[0] && window.innerWidth > 900) onDriver(rows[0].driver.id);
+    if (!selected && rows[0] && window.innerWidth >= 1280) onDriver(rows[0].driver.id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selected]);
   return (

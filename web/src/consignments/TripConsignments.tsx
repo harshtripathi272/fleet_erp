@@ -76,9 +76,8 @@ export function TripConsignments({ trip }: { trip: Trip }) {
           <table className="table cn-table">
             <thead>
               <tr>
-                <th>Number</th><th>Status</th><th>Consignor</th><th>Consignee</th><th>Goods</th>
-                <th className="num">Planned</th><th className="num">Loaded</th><th className="num">Delivered</th>
-                <th>From → To</th><th className="num">Lead</th><th>Papers</th>{seesMoney && <th className="num">Revenue</th>}<th>Proof of delivery</th>
+                <th>Number</th><th>Status</th><th>Consignee</th><th>Goods</th><th className="num">Quantity</th>
+                <th>From → To</th>{seesMoney && <th className="num">Revenue</th>}<th>Proof of delivery</th>
               </tr>
             </thead>
             <tbody>
@@ -90,15 +89,15 @@ export function TripConsignments({ trip }: { trip: Trip }) {
                   <tr key={c.id} className="clickable" onClick={() => setOpen(c.id)}>
                     <td className="mono">{c.number}</td>
                     <td><Status tone={cnStatusTone(c.status)}>{CN_STATUS_LABEL[c.status] ?? c.status}</Status></td>
-                    <td className="cn-party">{c.consignorName}</td>
                     <td className="cn-party">{c.consigneeName}</td>
                     <td>{productText(data, c)}</td>
-                    <td className="num">{qtyText(t.planned || undefined, t.unit)}</td>
-                    <td className="num">{qtyText(t.loaded, t.unit)}</td>
-                    <td className="num">{qtyText(t.delivered, t.unit)}</td>
+                    {/* One figure, the furthest it has got: delivered, else loaded, else planned (#102 UI pass). */}
+                    <td className="num">
+                      {t.delivered !== undefined ? <>{qtyText(t.delivered, t.unit)} <span className="muted">delivered</span></>
+                        : t.loaded !== undefined ? <>{qtyText(t.loaded, t.unit)} <span className="muted">loaded</span></>
+                        : t.planned ? <>{qtyText(t.planned, t.unit)} <span className="muted">planned</span></> : "—"}
+                    </td>
                     <td>{r.from} → {r.to}{r.more ? <span className="muted"> +{r.more} {r.more === 1 ? "drop" : "drops"}</span> : null}</td>
-                    <td className="num">{c.leadKm ? km(c.leadKm) : "—"}</td>
-                    <td>{c.documents.length ? `${c.documents.length} ${c.documents.length === 1 ? "paper" : "papers"}` : <span className="muted">None yet</span>}</td>
                     {seesMoney && (
                       <td className="num">
                         {!c.revenue ? "—" : c.revenue.status === "unpriced" ? <span className="cn-unpriced">No price</span>
