@@ -286,6 +286,29 @@ const agreedRateSchema = new Schema({
   chargeOn: { type: String, enum: ['loaded', 'delivered'] },
 }, { _id: false, strict: 'throw' });
 
+/**
+ * Where a consignment's price comes from (#151): its customer's rate contract, or a rate typed while booking. A rate
+ * typed for a customer whose contract covers the route and product says why; when the company wants it (Company →
+ * Freight), it waits for Finance, and the contract prices it until Finance approves.
+ */
+export const PRICE_FROM = ['contract', 'own'] as const;
+export const OWN_RATE_APPROVAL = ['pending', 'approved', 'rejected'] as const;
+const priceFromSchema = new Schema({
+  kind: { type: String, enum: PRICE_FROM, required: true },
+  /** The contract and line: the one used, or the one a typed rate stepped outside of. */
+  contractId: { type: ObjectId, ref: 'RateContract' },
+  lineId: ObjectId,
+  contractCode: String,
+  /** Why a rate other than the contract's was typed. */
+  reason: String,
+  /** Who typed the rate: the person booking (who may see it) or the office that sees money (who alone may). */
+  typedBy: { type: String, enum: ['booking', 'finance'] },
+  approval: { type: String, enum: OWN_RATE_APPROVAL },
+  decidedBy: { type: ObjectId, ref: 'User' },
+  decidedAt: Date,
+  decisionNote: String,
+}, { _id: false, strict: 'throw' });
+
 const referencesSchema = new Schema({
   customerRef: String,
   orderNo: String,
@@ -405,6 +428,7 @@ const consignmentSchema = new Schema<any>({
   documents: { type: [consignmentDocumentSchema], default: [] },
   references: { type: referencesSchema, default: undefined },
   rate: { type: agreedRateSchema, default: undefined },
+  priceFrom: { type: priceFromSchema, default: undefined },
   revenue: { type: revenueSchema, default: undefined },
   /** The driver-side shortage (what the driver may pay for), worked out when the last drop is recorded. */
   shortage: { type: shortageSchema, default: undefined },

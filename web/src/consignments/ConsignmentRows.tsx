@@ -1,19 +1,23 @@
+import { useEffect } from "react";
 import { Plus } from "lucide-react";
 import { Button, Field, UnitInput } from "../ui/kit";
 import { num, phonePlaceholder } from "../ui/format";
 import { w, wl } from "../domain/words";
 import type { AppData, Product, RouteStop, Trailer, Truck } from "../domain/types";
+import { RateChoice, rateBody, useContractLine, type RateDraft } from "./RateChoice";
+
+export { RATE_BASES } from "./RateChoice";
 
 /**
  * The consignments of a new trip (#135 Part 1): each decided while the trip is made. Its goods, quantity, consignor,
  * consignee and phone; where it is picked up and dropped (the route's stops, or another place, which becomes a stop);
- * and its rate. A company with one load and one drop gets one row already pointing at the route's loading and
+ * and its price: the customer's rate contract when it covers the route and goods, else a rate typed now (#151). A company with one load and one drop gets one row already pointing at the route's loading and
  * offloading points.
  */
 
 /** A pickup or a drop: a place, or "" for the route's own loading (or offloading) point; a drop may be "tbc". */
 export interface DraftLeg { key: string; placeId: string; qty: string }
-export interface DraftConsignment {
+export interface DraftConsignment extends RateDraft {
   key: string;
   /** Who is billed; empty: the trip's customer (#102). */
   customerId?: string;
@@ -27,11 +31,8 @@ export interface DraftConsignment {
   consigneePhone: string;
   pickups: DraftLeg[];
   drops: DraftLeg[];
-  /** The agreed rate; an empty price leaves pricing to a tariff. */
-  rateBasis: string;
-  ratePrice: string;
-  rateCurrencyId: string;
-  rateOn: "" | "loaded" | "delivered";
+  /** The rate contract that covers this row, as the server found it; empty when none does. */
+  contractCode?: string;
 }
 
 let keys = 0;
@@ -39,14 +40,9 @@ const legKey = () => `l${++keys}`;
 export const draftConsignment = (currencyId = ""): DraftConsignment => ({
   key: `c${++keys}`, productId: "", qty: "", consignorName: "", consigneeName: "", consigneePhone: "",
   pickups: [{ key: legKey(), placeId: "", qty: "" }], drops: [{ key: legKey(), placeId: "", qty: "" }],
-  rateBasis: "per_consignment", ratePrice: "", rateCurrencyId: currencyId, rateOn: "",
+  rateBasis: "per_consignment", ratePrice: "", rateCurrencyId: currencyId, rateOn: "", useContract: true, rateReason: "",
 });
 
-export const RATE_BASES: { value: string; label: string; per: string }[] = [
-  { value: "per_consignment", label: "fixed", per: "" }, { value: "per_tonne", label: "per tonne", per: "t" }, { value: "per_kg", label: "per kg", per: "kg" },
-  { value: "per_litre", label: "per litre", per: "L" }, { value: "per_litre_20", label: "per litre at 20 °C", per: "L at 20 °C" },
-  { value: "per_piece", label: "per piece", per: "piece" }, { value: "per_km", label: "per km", per: "km" },
-];
 
 /** A row with nothing in it is left out: the consignment is then added at loading. */
 export const isEmptyDraft = (d: DraftConsignment) => !d.productId && !d.qty.trim() && !d.consigneeName.trim() && !d.consigneePhone.trim() && !d.ratePrice.trim();
@@ -86,13 +82,14 @@ export function draftProblem(data: AppData, d: DraftConsignment, n: number): str
     if (d.qty.trim() && Math.abs(placed - Number(d.qty)) > 0.001) return `The drops on ${which} add up to ${num(placed, 0, 3)}, not ${num(Number(d.qty), 0, 3)}.`;
   }
   if (d.ratePrice.trim() && !(Number(d.ratePrice) >= 0)) return `The rate on ${which} must be a price.`;
+  if (d.contractCode && !d.useContract && !d.ratePrice.trim()) return `Type the other rate on ${which}, or use rate contract ${d.contractCode}.`;
+  if (d.contractCode && !d.useContract && !d.rateReason.trim()) return `Say why ${which} isn't charged under rate contract ${d.contractCode}.`;
   return undefined;
 }
 
 /** The body `POST /trips` takes for each row: the route's loading and offloading points unless the row says otherwise. */
 export function consignmentBody(data: AppData, d: DraftConsignment, stops: RouteStop[]) {
   const usual = d.pickups.length === 1 && d.drops.length === 1 && !d.pickups[0]!.placeId && !d.drops[0]!.placeId;
-  const currency = data.currencies?.find((c) => c.id === d.rateCurrencyId) ?? data.baseCurrency;
   return {
     lines: [{ productId: d.productId, ...(d.qty.trim() ? { plannedQty: Number(d.qty) } : {}) }],
     ...(d.customerId ? { customerId: d.customerId } : {}),
@@ -109,13 +106,7 @@ export function consignmentBody(data: AppData, d: DraftConsignment, stops: Route
         })),
       ],
     }),
-    ...(d.ratePrice.trim() && currency ? {
-      rate: {
-        // A unit price keeps fractions of a minor unit (0.085 USD a litre is 8.5); four decimals are plenty.
-        basis: d.rateBasis, price: { amountMinor: Math.round(Number(d.ratePrice) * 10 ** currency.minorUnits * 1e4) / 1e4, currencyId: currency.id },
-        ...(d.rateOn && d.rateBasis !== "per_consignment" && d.rateBasis !== "per_km" ? { chargeOn: d.rateOn } : {}),
-      },
-    } : {}),
+    ...rateBody(data, d, Boolean(d.contractCode)),
   };
 }
 
@@ -171,7 +162,17 @@ export function capacityLine(data: AppData, drafts: DraftConsignment[], stops: R
   };
 }
 
-export function ConsignmentRows({ data, value, stops, onChange, seesMoney, routeChosen }: { data: AppData; value: DraftConsignment[]; stops: RouteStop[]; onChange: (next: DraftConsignment[]) => void; seesMoney: boolean; routeChosen: boolean }) {
+/** A row's price: asks which contract line covers it and keeps the answer on the row for the form's checks. */
+function RowRate({ data, d, set, label, customerId, routeId, stops }: { data: AppData; d: DraftConsignment; set: (patch: Partial<DraftConsignment>) => void; label: string; customerId?: string; routeId?: string; stops: RouteStop[] }) {
+  const fromPlaceId = placeOf(d.pickups[0]!, stops, "pickup") || undefined;
+  const toPlaceId = [...d.drops].reverse().map((x) => placeOf(x, stops, "drop")).find(Boolean) || undefined;
+  const found = useContractLine({ customerId: d.customerId || customerId, productId: d.productId || undefined, routeId: routeId || undefined, fromPlaceId, toPlaceId });
+  const code = found.data?.line?.code;
+  useEffect(() => { if (code !== d.contractCode) set({ contractCode: code }); }, [code, d.contractCode, set]);
+  return <RateChoice data={data} d={d} set={set} answer={found.data} label={label} />;
+}
+
+export function ConsignmentRows({ data, value, stops, onChange, routeChosen, customerId, routeId }: { data: AppData; value: DraftConsignment[]; stops: RouteStop[]; onChange: (next: DraftConsignment[]) => void; routeChosen: boolean; customerId?: string; routeId?: string }) {
   const rules = data.settings.freight;
   const one = wl(data, "consignment");
   const canAdd = !rules.maxConsignmentsPerTrip || value.length < rules.maxConsignmentsPerTrip;
@@ -228,8 +229,6 @@ export function ConsignmentRows({ data, value, stops, onChange, seesMoney, route
       <datalist id="party-names">{(data.parties ?? data.customers).map((c) => <option key={c.id} value={c.name} />)}</datalist>
       {value.map((d, i) => {
         const product = data.products.find((p) => p.id === d.productId);
-        const basis = RATE_BASES.find((b) => b.value === d.rateBasis);
-        const cur = data.currencies?.find((c) => c.id === d.rateCurrencyId) ?? data.baseCurrency;
         return (
           <div key={d.key} className="consignment-row">
             <header className="consignment-row-head">
@@ -261,28 +260,7 @@ export function ConsignmentRows({ data, value, stops, onChange, seesMoney, route
               <Field label="Consignee phone">
                 <input type="tel" value={d.consigneePhone} placeholder={phonePlaceholder()} disabled={Boolean(d.consigneePartyId)} onChange={(e) => set(d.key, { consigneePhone: e.target.value })} />
               </Field>
-              {seesMoney && <div className="cn-row-rate">
-                <span className="field-label">Rate</span>
-                <div className="cn-row-rate-controls">
-                  <UnitInput label={`Price for ${one} ${i + 1}`} unit={cur?.code ?? ""} value={d.ratePrice} onChange={(v) => set(d.key, { ratePrice: v })} />
-                  {(data.currencies?.length ?? 0) > 1 && (
-                    <select className="input" aria-label="Currency of the price" value={cur?.id ?? ""} onChange={(e) => set(d.key, { rateCurrencyId: e.target.value })}>
-                      {(data.currencies ?? []).map((c) => <option key={c.id} value={c.id}>{c.code}</option>)}
-                    </select>
-                  )}
-                  <select className="input" aria-label="Per what" value={d.rateBasis} onChange={(e) => set(d.key, { rateBasis: e.target.value })}>
-                    {RATE_BASES.map((b) => <option key={b.value} value={b.value}>{b.label}</option>)}
-                  </select>
-                  {basis?.per && basis.value !== "per_km" && (
-                    <select className="input" aria-label="On which quantity" value={d.rateOn} onChange={(e) => set(d.key, { rateOn: e.target.value as DraftConsignment["rateOn"] })}>
-                      <option value="">on the company's usual quantity</option>
-                      <option value="loaded">on the loaded quantity</option>
-                      <option value="delivered">on the delivered quantity</option>
-                    </select>
-                  )}
-                </div>
-                <span className="field-hint">{d.ratePrice.trim() ? "" : "Empty: a matching tariff prices it, or set the price later."}</span>
-              </div>}
+              <RowRate data={data} d={d} set={(patch) => set(d.key, patch)} label={`${one} ${i + 1}`} customerId={customerId} routeId={routeId} stops={stops} />
             </div>
             <div className="consignment-row-legs">
               {legList(d, "pickups", i)}

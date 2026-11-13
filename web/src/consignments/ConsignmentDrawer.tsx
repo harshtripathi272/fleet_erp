@@ -12,7 +12,8 @@ import { Button, Drawer, Empty, Field, Segmented, Status, SwitchField, UnitInput
 import { calendarDate, clockTime, day, hoursText, num, phonePlaceholder } from "../ui/format";
 import { cnFrom, CN_STATUS_LABEL, cnStatusTone, maySplit, type Cn, type CnLeg } from "./model";
 import { moneyText, qtyText } from "./TripConsignments";
-import { RATE_BASES } from "./ConsignmentRows";
+import type { AppData } from "../domain/types";
+import { RateChoice, rateBody, useContractLine, type RateDraft } from "./RateChoice";
 import { RevenuePanel } from "./RevenuePanel";
 import { SplitDelivery } from "./SplitDelivery";
 
@@ -25,9 +26,8 @@ import { SplitDelivery } from "./SplitDelivery";
 type Tab = "details" | "legs" | "documents" | "revenue" | "history";
 type PartyPick = { partyId: string; name: string; phone: string };
 type LineForm = { key: string; id?: string; productId: string; description: string; plannedQty: string; pieces: string; grossKg: string; volumeM3: string; declaredValue: string; hazard: boolean };
-type Form = {
+type Form = RateDraft & {
   consignmentTypeId: string; customerId: string; consignor: PartyPick; consignee: PartyPick; paymentTerms: "to_be_billed" | "paid" | "to_pay";
-  rateBasis: string; ratePrice: string; rateCurrencyId: string; rateOn: "" | "loaded" | "delivered";
   lines: LineForm[]; customerRef: string; orderNo: string; lrNo: string; ewayBillNo: string; ewayBillValidUntil: string; sealNos: string; permitNo: string; notes: string;
 };
 
@@ -51,14 +51,18 @@ function formFrom(c: Cn | undefined, customerId: string, baseUnits: number, curr
     notes: str((c as Rec | undefined)?.notes),
     rateBasis: c?.rate?.basis ?? "per_consignment", ratePrice: c?.rate ? String(c.rate.price.amountMinor / 10 ** rateUnits) : "",
     rateCurrencyId: c?.rate?.price.currencyId ?? baseId, rateOn: c?.rate?.chargeOn ?? "",
+    useContract: c?.priceFrom?.kind !== "own" || c.priceFrom.approval === "rejected", rateReason: c?.priceFrom?.reason ?? "",
   };
 }
 
-function bodyFrom(f: Form, base: { id: string; minorUnits: number } | undefined, currencies: Units[] = []): Rec {
-  const rateUnits = currencies.find((x) => x.id === f.rateCurrencyId)?.minorUnits ?? base?.minorUnits ?? 2;
-  const rate = f.ratePrice.trim() && f.rateCurrencyId
-    ? { basis: f.rateBasis, price: { amountMinor: Math.round(Number(f.ratePrice) * 10 ** rateUnits * 1e4) / 1e4, currencyId: f.rateCurrencyId }, ...(f.rateOn && !["per_consignment", "per_km"].includes(f.rateBasis) ? { chargeOn: f.rateOn } : {}) }
-    : null;
+/** The price part of the body: the contract, a typed rate with its reason, or the typed rate taken off. */
+function priceBody(data: AppData, f: Form, underContract: boolean, hadRate: boolean): Rec {
+  const body: Rec = rateBody(data, f, underContract);
+  if (!("rate" in body) && !underContract && hadRate) body.rate = null;
+  return body;
+}
+
+function bodyFrom(f: Form, base: { id: string; minorUnits: number } | undefined): Rec {
   const n = (v: string) => (v.trim() === "" ? undefined : Number(v));
   const party = (p: PartyPick, key: "consignor" | "consignee") =>
     p.partyId ? { [`${key}PartyId`]: p.partyId } : p.name.trim() ? { [key]: { name: p.name.trim(), ...(p.phone.trim() ? { phone: p.phone.trim() } : {}) } } : {};
@@ -71,7 +75,6 @@ function bodyFrom(f: Form, base: { id: string; minorUnits: number } | undefined,
     ...(f.customerId ? { customerId: f.customerId } : {}),
     ...party(f.consignor, "consignor"), ...party(f.consignee, "consignee"),
     paymentTerms: f.paymentTerms,
-    rate,
     lines: f.lines.filter((l) => l.productId).map((l) => Object.fromEntries(Object.entries({
       id: l.id, productId: l.productId, description: l.description.trim() || undefined, plannedQty: n(l.plannedQty), pieces: n(l.pieces), grossKg: n(l.grossKg), volumeM3: n(l.volumeM3),
       declaredValue: l.declaredValue.trim() && base ? { amountMinor: Math.round(Number(l.declaredValue) * 10 ** base.minorUnits), currencyId: base.id } : undefined,
@@ -84,8 +87,8 @@ function bodyFrom(f: Form, base: { id: string; minorUnits: number } | undefined,
 
 export function ConsignmentDrawer({ id, tripId, onClose }: { id?: string; tripId: string; onClose: () => void }) {
   const { data, toast, me } = useApp();
-  // Rates are money: only for those who may see it (consignment-revenue's sensitive switch).
-  const seesMoney = can(me, "consignment-revenue", "sensitive");
+  // Revenue is money: only for those who may see it. A rate typed while booking is anyone's (#151, Q9).
+  const decidesRates = can(me, "consignment-revenue", "update");
   const client = useQueryClient();
   const trip = byId(data.trips, tripId);
   const one = w(data, "consignment");
@@ -106,7 +109,12 @@ export function ConsignmentDrawer({ id, tripId, onClose }: { id?: string; tripId
   // The extra fields sit under "More" (#135 Part 5); open from the start when any of them is filled, so nothing is hidden.
   const [more, setMore] = useState(() => hasExtras(saved));
   useEffect(() => setForm(saved), [saved]);
-  const dirty = JSON.stringify(bodyFrom(form, base, data.currencies)) !== JSON.stringify(bodyFrom(saved, base, data.currencies));
+  const pickupAt = c?.legs.find((l) => l.kind === "pickup")?.placeId;
+  const dropAt = c?.legs.filter((l) => l.kind === "drop" && l.placeId).at(-1)?.placeId;
+  const contract = useContractLine({ customerId: form.customerId || undefined, productId: form.lines[0]?.productId || undefined, tripId, fromPlaceId: pickupAt ? String(pickupAt) : undefined, toPlaceId: dropAt ? String(dropAt) : undefined });
+  const underContract = Boolean(contract.data?.line);
+  const price = (f: Form) => priceBody(data, f, underContract, Boolean(c?.rate));
+  const dirty = JSON.stringify({ ...bodyFrom(form, base), ...price(form) }) !== JSON.stringify({ ...bodyFrom(saved, base), ...price(saved) });
   const set = <K extends keyof Form>(key: K, value: Form[K]) => setForm((f) => ({ ...f, [key]: value }));
   const setLine = (key: string, patch: Partial<LineForm>) => set("lines", form.lines.map((l) => (l.key === key ? { ...l, ...patch } : l)));
   const closed = Boolean(c && ["delivered", "closed", "cancelled", "returned", "written_off"].includes(c.status));
@@ -121,14 +129,11 @@ export function ConsignmentDrawer({ id, tripId, onClose }: { id?: string; tripId
     setBusy(true);
     setProblem("");
     try {
-      if (id) {
-        const { rate, ...rest } = bodyFrom(form, base, data.currencies);
-        await api(`/consignments/${id}`, { method: "PATCH", body: { version: c!.version, ...rest, ...(seesMoney ? { rate } : {}) } });
-      }
-      else {
-        const { rate, ...rest } = bodyFrom(form, base, data.currencies);
-        await api("/consignments", { method: "POST", body: { tripId, ...rest, ...(rate && seesMoney ? { rate } : {}) } });
-      }
+      if (underContract && !form.useContract && !form.rateReason.trim()) throw new ApiError(`Say why this ${wl(data, "consignment")} isn't charged under rate contract ${contract.data?.line?.code}.`, 400);
+      // The price is sent only when it changed, so saving the goods doesn't choose the price again.
+      const priceChanged = JSON.stringify(price(form)) !== JSON.stringify(price(saved));
+      if (id) await api(`/consignments/${id}`, { method: "PATCH", body: { version: c!.version, ...bodyFrom(form, base), ...(priceChanged ? price(form) : {}) } });
+      else await api("/consignments", { method: "POST", body: { tripId, ...bodyFrom(form, base), ...price(form) } });
       await after(id ? `${one} saved.` : `${one} added to the ${wl(data, "trip")}.`);
       if (!id) onClose();
     } catch (err) {
@@ -202,28 +207,10 @@ export function ConsignmentDrawer({ id, tripId, onClose }: { id?: string; tripId
                 <PartyField data={data} label="Consignee" value={form.consignee} onChange={(v) => set("consignee", v)} emptyText="The customer" phone />
               </div>
 
-              {seesMoney && <>
-              <h4>Rate</h4>
-              <div className="cn-row-rate-controls">
-                <UnitInput label="Price" unit={data.currencies?.find((x) => x.id === form.rateCurrencyId)?.code ?? ""} value={form.ratePrice} onChange={(v) => set("ratePrice", v)} />
-                {(data.currencies?.length ?? 0) > 1 && (
-                  <select className="input" aria-label="Currency of the price" value={form.rateCurrencyId} onChange={(e) => set("rateCurrencyId", e.target.value)}>
-                    {(data.currencies ?? []).map((x) => <option key={x.id} value={x.id}>{x.code}</option>)}
-                  </select>
-                )}
-                <select className="input" aria-label="Per what" value={form.rateBasis} onChange={(e) => set("rateBasis", e.target.value)}>
-                  {RATE_BASES.map((b) => <option key={b.value} value={b.value}>{b.label}</option>)}
-                </select>
-                {!["per_consignment", "per_km"].includes(form.rateBasis) && (
-                  <select className="input" aria-label="On which quantity" value={form.rateOn} onChange={(e) => set("rateOn", e.target.value as Form["rateOn"])}>
-                    <option value="">on the company's usual quantity</option>
-                    <option value="loaded">on the loaded quantity</option>
-                    <option value="delivered">on the delivered quantity</option>
-                  </select>
-                )}
-              </div>
-              <p className="muted">{form.ratePrice.trim() ? "This price is used instead of any tariff." : "Empty: a matching tariff prices it, or it stays unpriced until a price is set."}</p>
-              </>}
+              <h4>Price</h4>
+              {c?.priceFrom && <PriceFromLine data={data} c={c} decides={decidesRates} onDecided={() => after("Rate decided.")} />}
+              <RateChoice data={data} d={form} set={(patch) => setForm((f) => ({ ...f, ...patch }))} answer={contract.data} label={one} />
+
 
               <h4>Goods</h4>
               <div className="cn-lines">
@@ -542,6 +529,47 @@ function Timeline({ data, c }: { data: ReturnType<typeof useApp>["data"]; c: Cn 
           </ol>
         </>
       )}
+    </div>
+  );
+}
+
+/**
+ * Where the price comes from, in one line (#151): the rate contract, or a typed rate with its reason, and whether it
+ * waits for Finance. Someone who decides prices approves or refuses a waiting rate here.
+ */
+function PriceFromLine({ data, c, decides, onDecided }: { data: AppData; c: Cn; decides: boolean; onDecided: () => Promise<void> }) {
+  const [note, setNote] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [problem, setProblem] = useState("");
+  const from = c.priceFrom!;
+  const decide = async (decision: "approve" | "reject") => {
+    setBusy(true);
+    setProblem("");
+    try {
+      await api(`/consignments/${c.id}/rate-decision`, { method: "POST", body: { decision, ...(note.trim() ? { note: note.trim() } : {}) } });
+      await onDecided();
+    } catch (err) {
+      setProblem(err instanceof ApiError ? err.message : "That didn't work.");
+    } finally {
+      setBusy(false);
+    }
+  };
+  const text = from.kind === "contract"
+    ? `Priced by rate contract ${from.contractCode ?? ""}.${from.approval === "rejected" ? ` Another rate was asked for${from.reason ? ` (${from.reason})` : ""} and refused${from.decisionNote ? `: ${from.decisionNote}` : ""}.` : ""}`
+    : from.contractCode
+      ? `Charged at a typed rate instead of rate contract ${from.contractCode}${from.reason ? `, because: ${from.reason}` : ""}.${from.approval === "pending" ? ` Waiting for Finance; until then ${from.contractCode} prices it.` : from.approval === "approved" ? " Approved by Finance." : ""}`
+      : `Charged at the rate typed for this ${wl(data, "consignment")}.`;
+  return (
+    <div className="price-from">
+      <p>{from.approval === "pending" && <Status tone="wait">Waiting for Finance</Status>} {text}</p>
+      {from.approval === "pending" && decides && (
+        <div className="price-from-decide">
+          <input className="input" aria-label="Note" placeholder="Note (optional)" value={note} onChange={(e) => setNote(e.target.value)} />
+          <Button size="sm" tone="primary" busy={busy} onClick={() => void decide("approve")}>Approve the rate</Button>
+          <Button size="sm" busy={busy} onClick={() => void decide("reject")}>Refuse: use the contract</Button>
+        </div>
+      )}
+      {problem && <p className="form-problem" role="alert">{problem}</p>}
     </div>
   );
 }

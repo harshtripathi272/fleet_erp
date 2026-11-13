@@ -5,7 +5,7 @@ import { defineMaster } from '../../core/masters/define.js';
 import { GROUPS } from '../../core/masters/groups.js';
 import { idQuery } from '../../core/masters/query.js';
 import type { Plain } from '../../core/masters/types.js';
-import { ChargeType, ConsignmentDocumentType, ConsignmentType, FuelPrice, RATE_BASES, Tariff } from './models/freight.model.js';
+import { ChargeType, ConsignmentDocumentType, ConsignmentType, CONTRACT_BASES, FuelPrice, RATE_BASES, RateContract, Tariff } from './models/freight.model.js';
 import * as S from './freight.schema.js';
 import { checkTariff } from './revenue/index.js';
 import { tariffInput } from './pricing.js';
@@ -175,4 +175,46 @@ export const fuelPriceDefinition = defineMaster({
   hints: { fuelTypeId: 'Leave empty for any fuel.', placeId: 'Leave empty for anywhere; a price for the place the truck filled up wins.' },
 });
 
-export const freightMasters = [consignmentTypeDefinition, consignmentDocumentTypeDefinition, chargeTypeDefinition, tariffDefinition, fuelPriceDefinition];
+const CONTRACT_BASIS_LABELS: Record<(typeof CONTRACT_BASES)[number], string> = {
+  per_consignment: 'Fixed for the route', per_tonne: 'Per tonne', per_kg: 'Per kg', per_litre: 'Per litre (as measured)', per_litre_20: 'Per litre at 20 °C', per_piece: 'Per piece',
+};
+
+export const rateContractDefinition = defineMaster({
+  key: 'rate-contracts', label: 'Rate contracts', singular: 'Rate contract', group: GROUPS.money, module: 'trips',
+  description: "What a customer pays under its signed contract, for each route and product: per kg, tonne, litre or piece, or one fixed amount for the route, charged on what was loaded or what was delivered. Booking a consignment for the customer on a route and product the contract covers uses it, and says so. Operations sees that a consignment is under a contract, never the amounts.",
+  model: RateContract, createSchema: S.createRateContractSchema, updateSchema: S.updateRateContractSchema,
+  sortFields: ['code', 'name', 'validFrom', 'validTo', 'createdAt', 'updatedAt'],
+  filters: { customerId: byId('customerId', 'Contracts of one customer') },
+  refs: [
+    { path: 'customerId', target: 'parties', partyRoles: ['customer'] }, { path: 'currencyId', target: 'currencies' },
+    { path: 'lines.routeId', target: 'routes' }, { path: 'lines.productId', target: 'products' }, { path: 'lines.price.currencyId', target: 'currencies' },
+  ],
+  columns: ['customerId', 'validFrom', 'validTo'],
+  sensitive: ['lines.price.amountMinor'],
+  labels: {
+    code: 'Contract number', name: 'Name', customerId: 'Customer', currencyId: 'Currency', signedOn: 'Signed on', validFrom: 'From', validTo: 'Until', lines: 'Routes and products',
+    'lines.routeId': 'Route', 'lines.productId': 'Product', 'lines.basis': 'Charged', 'lines.price': 'Price', 'lines.chargeOn': 'On the quantity',
+  },
+  choiceLabels: { 'lines.basis': CONTRACT_BASIS_LABELS, 'lines.chargeOn': { loaded: 'Loaded', delivered: 'Delivered (offloaded)' } },
+  hints: {
+    code: 'As on the signed contract, for example TK-2026-01.',
+    validTo: 'Leave empty while the contract runs. A consignment booked after this day is no longer under it.',
+    'lines.basis': '"Fixed for the route" is one amount per consignment, whatever the quantity.',
+    'lines.chargeOn': 'Delivered: fuel lost on the road is not paid for.',
+  },
+  async prepare(data) {
+    const lines = (data.lines ?? []) as Plain[];
+    const errors: Record<string, string[]> = {};
+    const seen = new Set<string>();
+    for (const [i, line] of lines.entries()) {
+      if (String((line.price as Plain | undefined)?.currencyId) !== String(data.currencyId)) errors[`lines.${i}.price`] = ["Use the contract's currency"];
+      const key = `${String(line.routeId)}:${String(line.productId)}`;
+      if (seen.has(key)) errors[`lines.${i}.productId`] = ['This route and product is already in the contract'];
+      seen.add(key);
+    }
+    if (data.validFrom && data.validTo && new Date(data.validTo as string) < new Date(data.validFrom as string)) errors.validTo = ['Ends before it starts'];
+    if (Object.keys(errors).length) throw new ValidationError('The contract is not valid', errors);
+  },
+});
+
+export const freightMasters = [consignmentTypeDefinition, consignmentDocumentTypeDefinition, chargeTypeDefinition, tariffDefinition, fuelPriceDefinition, rateContractDefinition];

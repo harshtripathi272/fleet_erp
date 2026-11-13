@@ -121,6 +121,8 @@ export interface FreightRules {
   lateSplit: "by_type" | "always" | "never";
   stopsEditableOnRoad: boolean;
   manualPriceNeedsReason: boolean;
+  /** A rate other than the customer's contract waits for Finance (#151). */
+  ownRateNeedsApproval: boolean;
   showProfitOnTripList: boolean;
 }
 export interface Settings {

@@ -18,6 +18,7 @@ import { Trip } from '../operations/models/trip.model.js';
 import { operationsSettings } from '../operations/settings.js';
 import { conflict, log, need, refuse, save, type OpsContext } from '../operations/support.js';
 import { chargeTypeByCode } from './defaults.js';
+import { contractLine, type ContractPick } from './contracts.js';
 import { tariffFor, type Match, type MatchSubject } from './match.js';
 import { ChargeType, ConsignmentType, FuelPrice, Tariff } from './models/freight.model.js';
 import { priceConsignment, type ChargeTypeInput, type CurrencyUnits, type EngineSettings, type FactLeg, type FactLine, type PricingFacts, type RevenueResult, type TariffInput } from './revenue/index.js';
@@ -233,7 +234,8 @@ export async function priceOf(c: Plain, options: { tariff?: Plain } = {}): Promi
   }
   const manual = (c.revenue as Plain | undefined)?.manual as Plain | undefined;
   const manualLine = (((c.revenue as Plain | undefined)?.lines ?? []) as Plain[]).find((l) => l.source === 'manual' && (l.kind === 'freight' || l.kind === 'minimum'));
-  const agreedCurrency = !options.tariff ? (((c.rate as Plain | undefined)?.price as Plain | undefined)?.currencyId) : undefined;
+  const contract = !options.tariff ? await contractPricing(c) : null;
+  const agreedCurrency = !options.tariff ? (contract?.price.currencyId ?? (((c.rate as Plain | undefined)?.price as Plain | undefined)?.currencyId)) : undefined;
   const currencyId = agreedCurrency ?? match?.tariff.currencyId ?? (manual ? (c.revenue as Plain).currencyId : undefined) ?? manualLine?.currencyId
     ?? (await Party.findById(c.customerId).select('currencyId').lean<Plain>())?.currencyId
     ?? (await (await import('../company/company.model.js')).Company.findOne().select('baseCurrencyId').lean<Plain>())?.baseCurrencyId;
@@ -241,11 +243,33 @@ export async function priceOf(c: Plain, options: { tariff?: Plain } = {}): Promi
   if (!currency) throw refuse('Set the company base currency first (Company details).');
   const facts = await factsFor(c, trip, currency, on);
   const engine = await engineSettings();
-  // A rate agreed on the consignment wins over any tariff (#135 Part 1); the editor's "Try it" still tries its tariff.
-  const agreed = !options.tariff ? agreedTariff(c, engine) : null;
+  // The customer's rate contract, else a rate agreed on the consignment, wins over any tariff (#135 Part 1, #151);
+  // the editor's "Try it" still tries its tariff.
+  const agreed = options.tariff ? null : contract ? contractTariff(c, contract, engine) : agreedTariff(c, engine);
   const tariff = agreed ?? (match ? tariffInput(match.tariff, match.matchedOn) : null);
   const result = priceConsignment(facts, tariff, engine);
   return { result, match, facts, tariff };
+}
+
+/**
+ * The contract line that prices a consignment (#151): the one it was booked under, or the one a typed rate stepped
+ * outside of while that rate waits for Finance or after Finance refused it.
+ */
+async function contractPricing(c: Plain): Promise<ContractPick | null> {
+  const from = c.priceFrom as Plain | undefined;
+  if (!from?.contractId) return null;
+  if (from.kind === 'own' && from.approval !== 'pending') return null;
+  return contractLine(from.contractId, from.lineId);
+}
+
+/** A contract line as a one-line tariff for the engine, named after the contract everywhere the price shows. */
+function contractTariff(c: Plain, pick: ContractPick, engine: EngineSettings): TariffInput | null {
+  const freight = engine.chargeTypes.find((t) => t.code === 'FREIGHT') ?? engine.chargeTypes.find((t) => t.kind === 'freight');
+  if (!freight) return null;
+  return {
+    id: `contract:${pick.contractId}:${String(c._id)}`, code: `Rate contract ${pick.code}`, currencyId: pick.price.currencyId, agreed: true, chargeOn: pick.chargeOn,
+    lines: [{ id: `contract-line:${pick.lineId}`, chargeTypeId: freight.id, basis: pick.basis as never, price: pick.price }],
+  };
 }
 
 /** The rate agreed on a consignment, as a one-line tariff for the engine: the price per its basis, on its quantity. */

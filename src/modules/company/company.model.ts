@@ -110,6 +110,8 @@ export const FREIGHT_DEFAULTS = {
   detentionShare: 'each' as (typeof DETENTION_SHARES)[number],
   costShareBy: 'weight' as (typeof COST_SHARES)[number],
   manualPriceNeedsReason: true,
+  /** A rate typed outside the customer's rate contract waits for Finance (#151). Off: the person booking decides. */
+  ownRateNeedsApproval: false,
   freezeOn: 'invoice_or_settlement' as (typeof FREEZE_ON)[number],
   invoiceWithoutPod: false,
   profitCosts: ['fuel', 'expenses', 'charges', 'losses', 'recovered', 'other'] as string[],
@@ -148,6 +150,7 @@ const freightSchema = new Schema({
   shortageScopeDefault: { type: String, enum: SHORTAGE_SCOPES },
   detentionShare: { type: String, enum: DETENTION_SHARES },
   costShareBy: { type: String, enum: COST_SHARES },
+  ownRateNeedsApproval: Boolean,
   manualPriceNeedsReason: Boolean,
   freezeOn: { type: String, enum: FREEZE_ON },
   invoiceWithoutPod: Boolean,

@@ -418,6 +418,10 @@ const consignmentShape = {
   lines: z.array(consignmentLine).min(1, 'Add the goods').max(50),
   references: references.optional(),
   rate: agreedRate.nullable().optional(),
+  /** false: the customer has a rate contract for this route and product, but this consignment is charged at `rate` (#151). */
+  useContract: z.boolean().optional(),
+  /** Why a rate other than the contract's: needed when the contract covers it. */
+  rateReason: text(300).optional(),
   notes: text(1000).optional(),
   custom,
 };
@@ -432,6 +436,9 @@ export const updateConsignmentSchema = z.strictObject({
 }).refine((v) => Object.keys(v).some((k) => k !== 'version'), 'Send at least one field to change');
 export type UpdateConsignmentInput = Partial<z.infer<typeof inlineConsignmentSchema>> & { version: number };
 /** Replace the planned legs: the split-delivery save. Done legs are sent back as they are or left out. */
+/** Finance's answer to a rate typed outside the customer's contract, when the company wants one (#151). */
+export const ownRateDecisionSchema = z.strictObject({ decision: z.enum(['approve', 'reject']), note: text(300).optional() });
+
 export const putLegsSchema = z.strictObject({
   version: z.number().int().min(0),
   legs: z.array(plannedLeg).min(2).max(60),
@@ -524,7 +531,7 @@ export const consignmentsQuery = z.strictObject({
   dateField: z.enum(['booked', 'loaded', 'delivered']).optional(),
   q: z.string().trim().min(1).max(60).optional(),
   shortage: z.enum(['pending', 'charged', 'waived', 'none']).optional(),
-  tab: z.enum(['all', 'to_load', 'on_road', 'to_deliver', 'waiting_pod', 'unpriced']).optional(),
+  tab: z.enum(['all', 'to_load', 'on_road', 'to_deliver', 'waiting_pod', 'unpriced', 'rate_approval']).optional(),
 });
 export type ConsignmentsQuery = z.infer<typeof consignmentsQuery>;
 /** The consignment report (#135 Part 4): the list's filters, the columns to show (comma list of keys), and up to 500 a page. */

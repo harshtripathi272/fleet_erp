@@ -10,6 +10,7 @@ import { Party } from '../parties/models/party.model.js';
 import { TripType } from '../trips/models/tripType.model.js';
 import { consignmentTypeByCode, documentTypeByCode } from '../freight/defaults.js';
 import { ConsignmentDocumentType, ConsignmentType } from '../freight/models/freight.model.js';
+import { contractLine, contractLineFor } from '../freight/contracts.js';
 import { freightSettings } from '../freight/settings.js';
 import { reprice } from '../freight/pricing.js';
 import { refreshProfit } from '../freight/profit/profit.service.js';
@@ -49,6 +50,8 @@ const CARGO_KIND_NAME: Record<CargoKind, string> = { volume: 'volume-corrected l
 
 /** May see what a consignment is worth: the revenue area's sensitive switch (Owner and Finance by default). */
 export const seesRevenue = (can: OpsContext['can']) => can('consignment-revenue', 'sensitive');
+/** A rate the person booking typed (#151, Q9): theirs to see and correct. One the office typed is money, and isn't. */
+const isBookersRate = (c: Plain) => { const from = c.priceFrom as Plain | undefined; return from?.kind === 'own' && from.typedBy === 'booking'; };
 
 /**
  * A consignment for the API. Its loaded and delivered totals of the first goods line are given again as `load` and
@@ -79,8 +82,11 @@ export function presentConsignment(doc: Plain, can?: OpsContext['can']): Plain {
     returned: (doc.outcome as Plain | undefined)?.returned,
     transfers: (doc.outcome as Plain | undefined)?.transfers,
   });
-  // A rate is money as much as revenue is: both only for those who may see it.
-  if (can && !seesRevenue(can)) { delete out.revenue; delete out.rate; }
+  // Revenue is money: only for those who may see it. A rate typed while booking is the booker's own; a contract's never shows.
+  if (can && !seesRevenue(can)) {
+    delete out.revenue;
+    if (!isBookersRate(out)) delete out.rate;
+  }
   return out;
 }
 
@@ -98,6 +104,7 @@ const TABS: Record<string, Plain> = {
   to_deliver: { status: { $in: ['loaded', 'in_transit', 'delivering'] } },
   waiting_pod: { status: { $in: ['delivered', 'closed'] }, legs: { $elemMatch: { kind: 'drop', status: 'done', 'pod.number': { $exists: false }, 'pod.docIds.0': { $exists: false } } } },
   unpriced: { $or: [{ revenue: { $exists: false } }, { 'revenue.status': 'unpriced' }], status: { $nin: ['cancelled', 'draft'] } },
+  rate_approval: { 'priceFrom.approval': 'pending', status: { $nin: ['cancelled', 'draft'] } },
 };
 
 /** The consignments list, paged on the server, for the Consignments screen and the trip's tab (design 3.11.6). */
@@ -161,7 +168,7 @@ interface Prepared { data: Plain; type: Plain | null; facts: Map<string, Awaited
  * Everything that can refuse a consignment before anything is saved: its products, parties, type rules, the
  * company's settings. The New trip form checks every consignment this way before the trip is made.
  */
-export async function prepareConsignment(input: S.InlineConsignmentInput, trip: Plain, ctx: OpsContext): Promise<Prepared> {
+export async function prepareConsignment(input: S.InlineConsignmentInput, trip: Plain, ctx: OpsContext, withPrice = true): Promise<Prepared> {
   const settings = await freightSettings();
   const facts = new Map<string, Awaited<ReturnType<typeof productFacts>>>();
   const lines: Plain[] = [];
@@ -181,11 +188,63 @@ export async function prepareConsignment(input: S.InlineConsignmentInput, trip: 
   const data: Plain = {
     consignmentTypeId: type?._id, customerId, consignorPartyId, consignor: input.consignor, consigneePartyId: input.consigneePartyId ?? (!input.consignee ? customerId : undefined),
     consignee: input.consignee, brokerPartyId: input.brokerPartyId, paymentTerms: input.paymentTerms ?? 'to_be_billed', requiredBy: input.requiredBy, lines,
-    // Only someone who may see money sets a rate; anyone else's is ignored rather than refused.
-    references: input.references, rate: seesRevenue(ctx.can) ? input.rate ?? undefined : undefined, notes: input.notes, custom: await stepCustom('consignments', 'booking', input.custom),
+    // Whoever books may type the day's rate (#151, Q9): it is theirs to see. Contract amounts never reach them.
+    references: input.references, rate: input.rate ?? undefined, notes: input.notes, custom: await stepCustom('consignments', 'booking', input.custom),
   };
   if (!ctx.can('consignments', 'create')) throw new ForbiddenError('Your role does not allow "create" on consignments');
+  // The price is chosen here, before anything is saved: a rate refused for want of a reason leaves no trip behind.
+  if (withPrice) Object.assign(data, await priceChoice(input, { customerId, lines, legs: plannedLegs(input.legs, trip, lines, type, settings.lateSplit) }, trip, ctx));
   return { data, type, facts };
+}
+
+type PriceInput = { rate?: Plain | null; useContract?: boolean; rateReason?: string };
+
+/**
+ * Where a consignment's price comes from (#151): the customer's rate contract when it covers the route and product,
+ * unless the person booking typed another rate, with the reason. With Company → Freight's "a rate other than the
+ * contract needs Finance's approval" on, the contract prices it until Finance approves. With no contract line, a
+ * typed rate is the price; with neither, it waits for one.
+ */
+export async function priceChoice(input: PriceInput, c: { customerId: unknown; lines: Plain[]; legs: Plain[] }, trip: Plain, ctx: OpsContext) {
+  const legs = c.legs.filter((l) => l.status !== 'skipped');
+  const pick = await contractLineFor({
+    customerId: id(c.customerId), productIds: [...new Set(c.lines.map((l) => String(l.productId)))], routeId: id(trip.routeId),
+    fromPlaceId: id(legs.find((l) => l.kind === 'pickup')?.placeId), toPlaceId: id(legs.filter((l) => l.kind === 'drop' && l.placeId).at(-1)?.placeId),
+  });
+  const typed = input.rate ?? undefined;
+  if (pick && (input.useContract === true || !typed)) {
+    return { rate: undefined, priceFrom: { kind: 'contract', contractId: pick.contractId, lineId: pick.lineId, contractCode: pick.code } };
+  }
+  if (!typed) return { rate: undefined, priceFrom: undefined };
+  const typedBy = seesRevenue(ctx.can) ? 'finance' : 'booking';
+  if (!pick) return { rate: typed, priceFrom: { kind: 'own', typedBy } };
+  if (!input.rateReason?.trim()) throw refuse(`This customer's rate contract ${pick.code} covers this route and product. Say why this consignment is charged at another rate, or use the contract.`);
+  const settings = await freightSettings();
+  return {
+    rate: typed,
+    priceFrom: { kind: 'own', contractId: pick.contractId, lineId: pick.lineId, contractCode: pick.code, reason: input.rateReason.trim(), typedBy, approval: settings.ownRateNeedsApproval && !seesRevenue(ctx.can) ? 'pending' : undefined },
+  };
+}
+
+/** Finance's answer to a rate typed outside the customer's contract (#151). Refused: the contract prices it. */
+export async function decideOwnRate(cid: string, input: { decision: 'approve' | 'reject'; note?: string }, ctx: OpsContext) {
+  need(ctx, 'consignment-revenue', 'update');
+  const consignment = await editable(cid);
+  const from = consignment.get('priceFrom') as Plain | undefined;
+  if (from?.approval !== 'pending') throw conflict('No rate on this consignment is waiting for approval.');
+  const at = new Date();
+  const decided = { decidedBy: ctx.actorId, decidedAt: at, decisionNote: input.note };
+  if (input.decision === 'approve') consignment.set('priceFrom', { ...from, approval: 'approved', ...decided });
+  else {
+    const line = await contractLine(from.contractId, from.lineId);
+    if (!line) throw conflict('The contract line this rate stepped outside of is gone. Set the price on the consignment instead.');
+    consignment.set({ rate: undefined, priceFrom: { kind: 'contract', contractId: from.contractId, lineId: from.lineId, contractCode: from.contractCode, reason: from.reason, approval: 'rejected', ...decided } });
+  }
+  consignment.set('updatedBy', ctx.actorId);
+  await save(consignment, 'This consignment was changed by someone else. Reload it and try again.');
+  await reprice(cid, ctx);
+  await log(ctx, at, `${consignment.get('number')}: rate ${input.decision === 'approve' ? 'approved' : `refused, priced by rate contract ${String(from.contractCode)}`}${input.note ? ` (${input.note})` : ''}`, { tripId: consignment.get('tripId'), entity: 'consignments', entityId: consignment._id });
+  return getConsignment(cid, ctx);
 }
 
 /** Legs as the person planned them, or the usual one pickup and one drop: the trip's next loading point and the offloading point after it. */
@@ -333,23 +392,32 @@ async function editable(cid: string, version?: number) {
 /** Edit the details: parties, goods, references. Goods already loaded keep their line. */
 export async function updateConsignment(cid: string, input: S.UpdateConsignmentInput, ctx: OpsContext) {
   // Only the rate is pricing, which whoever may update prices may change (#102); anything else needs consignments.
-  const rateOnly = Object.keys(input).every((k) => k === 'version' || k === 'rate');
+  const rateOnly = Object.keys(input).every((k) => ['version', 'rate', 'useContract', 'rateReason'].includes(k));
   if (!(rateOnly && ctx.can('consignment-revenue', 'update'))) need(ctx, 'consignments', 'update');
   const consignment = await editable(cid, input.version);
   const trip = await tripOf(consignment.get('tripId'));
-  const { version: _v, lines, ...rest } = input;
-  // Someone who may not see money can't see the rate, so can't change or clear it either.
-  if (!seesRevenue(ctx.can)) delete (rest as { rate?: unknown }).rate;
+  const { version: _v, lines, useContract, rateReason, ...rest } = input;
   const current = consignment.toObject() as Plain;
+  // Someone who may not see money may type a rate of their own, but never touch one Finance set or see a contract's.
+  const ownBefore = isBookersRate(current) || !current.rate;
+  if (!seesRevenue(ctx.can) && !ownBefore) delete (rest as { rate?: unknown }).rate;
   if (lines) {
     const used = new Set((current.legs as Plain[]).filter((l) => l.status === 'done').flatMap((l) => ((l.actual ?? []) as Plain[]).map((m) => id(m.lineId))));
     for (const lineId of used) if (!lines.some((l) => l.id === lineId)) throw refuse('A goods line that was loaded cannot be removed.');
   }
-  const ready = await prepareConsignment({ ...(current as Plain), ...rest, lines: lines ?? (current.lines as Plain[]).map((l) => ({ ...l, id: id(l._id), _id: undefined, unit: undefined })) } as never, trip.toObject() as Plain, { ...ctx, can: (r, a) => (rateOnly && r === 'consignments') || ctx.can(r, a === 'create' ? 'update' : a) });
+  const ready = await prepareConsignment({ ...(current as Plain), ...rest, lines: lines ?? (current.lines as Plain[]).map((l) => ({ ...l, id: id(l._id), _id: undefined, unit: undefined })) } as never, trip.toObject() as Plain, { ...ctx, can: (r, a) => (rateOnly && r === 'consignments') || ctx.can(r, a === 'create' ? 'update' : a) }, false);
   const keep: Plain = {};
   for (const key of Object.keys(rest)) keep[key] = ready.data[key];
   if (lines) keep.lines = ready.data.lines;
   if (rest.custom) keep.custom = await stepCustom('consignments', 'booking', rest.custom, current.custom as Plain | undefined);
+  // The price is chosen again when what it depends on changes: the customer, the goods, the rate or the choice.
+  if (['customerId', 'rate'].some((k) => k in rest) || lines || useContract !== undefined || rateReason !== undefined) {
+    const rate = 'rate' in rest ? (rest as { rate?: Plain | null }).rate : (current.priceFrom as Plain | undefined)?.kind !== 'contract' ? current.rate as Plain | undefined : undefined;
+    const reason = rateReason ?? ((current.priceFrom as Plain | undefined)?.reason as string | undefined);
+    const price = await priceChoice({ rate, useContract, rateReason: reason }, { customerId: keep.customerId ?? current.customerId, lines: (keep.lines ?? current.lines) as Plain[], legs: current.legs as Plain[] }, trip.toObject() as Plain, ctx);
+    keep.rate = price.rate;
+    keep.priceFrom = price.priceFrom;
+  }
   consignment.set({ ...keep, updatedBy: ctx.actorId });
   await save(consignment, 'This consignment was changed by someone else. Reload it and try again.');
   await reprice(cid, ctx);

@@ -159,6 +159,8 @@ export interface Cn {
   documents: CnDocument[];
   /** The rate agreed for it (#135 Part 1); unit prices keep fractions of a minor unit. */
   rate?: { basis: string; price: Money; chargeOn?: "loaded" | "delivered" };
+  /** Where its price comes from (#151): the customer's rate contract, or a rate typed for it. */
+  priceFrom?: { kind: "contract" | "own"; contractId?: string; contractCode?: string; reason?: string; approval?: "pending" | "approved" | "rejected"; decisionNote?: string };
   references?: { customerRef?: string; orderNo?: string; lrNo?: string; ewayBillNo?: string; ewayBillValidUntil?: string; sealNos?: string[]; permitNo?: string; leadKm?: number };
   /** Left out for people who may not see money. */
   revenue?: Revenue;

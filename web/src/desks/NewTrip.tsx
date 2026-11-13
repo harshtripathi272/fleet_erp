@@ -206,7 +206,7 @@ export function NewTrip({ open, onClose, onCreated }: { open: boolean; onClose: 
                 </select>
               </Field>
             </div>
-            <ConsignmentRows data={data} value={drafts} stops={stops} onChange={changeDrafts} seesMoney={can(me, "consignment-revenue", "sensitive")} routeChosen={Boolean(routeId)} />
+            <ConsignmentRows data={data} value={drafts} stops={stops} onChange={changeDrafts} routeChosen={Boolean(routeId)} customerId={customerId} routeId={routeId} />
             {onBoard.text && <p className="framed-line">{onBoard.text}</p>}
             {onBoard.note && <p className="muted">{onBoard.note}</p>}
             {onBoard.over.map((o) => <p key={o} className="form-problem">{o}{onBoard.refuse ? " Lower a quantity, or choose a bigger truck." : ""}</p>)}

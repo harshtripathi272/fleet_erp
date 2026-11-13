@@ -175,3 +175,38 @@ const fuelPriceSchema = masterSchema({
 });
 uniqueIndex(fuelPriceSchema, { code: 1 });
 export const FuelPrice = masterModel('FuelPrice', fuelPriceSchema);
+
+/* ---------- Rate contracts ---------- */
+
+/**
+ * How a contract line charges (#151): a price per kg, tonne, litre or piece of the quantity charged, or one fixed
+ * amount for the route whatever the quantity (Total and Puma: a 10,000 L and a 15,000 L truck earn the same).
+ */
+export const CONTRACT_BASES = ['per_consignment', 'per_tonne', 'per_kg', 'per_litre', 'per_litre_20', 'per_piece'] as const;
+export const CONTRACT_CHARGE_ON = ['loaded', 'delivered'] as const;
+
+/** One route and product of a contract and what it pays. */
+const contractLineSchema = new Schema({
+  routeId: { type: ObjectId, ref: 'Route', required: true },
+  productId: { type: ObjectId, ref: 'Product', required: true },
+  basis: { type: String, enum: CONTRACT_BASES, required: true },
+  price: { type: moneySchema, required: true },
+  chargeOn: { type: String, enum: CONTRACT_CHARGE_ON, required: true },
+}, { _id: true, strict: 'throw' });
+
+/**
+ * A customer's rate contract (#151, the 11 Nov call): what the Owner agreed with a big customer, entered by Finance
+ * or the Owner, for each route and product. Booking a consignment for the customer on a route and product it covers
+ * picks the line up; Operations sees that it is under the contract but never the amounts. Its dates are the master's
+ * own validFrom and validTo.
+ */
+const rateContractSchema = masterSchema({
+  ...codeNameFields,
+  customerId: { type: ObjectId, ref: 'Party', required: true },
+  currencyId: { type: ObjectId, ref: 'Currency', required: true },
+  signedOn: Date,
+  lines: { type: [contractLineSchema], required: true },
+});
+uniqueIndex(rateContractSchema, { code: 1 });
+rateContractSchema.index({ customerId: 1, status: 1, validFrom: -1 });
+export const RateContract = masterModel('RateContract', rateContractSchema);
