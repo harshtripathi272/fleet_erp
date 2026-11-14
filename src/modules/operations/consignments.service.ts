@@ -58,7 +58,8 @@ const isBookersRate = (c: Plain) => { const from = c.priceFrom as Plain | undefi
  * `delivered`, with `productId`, `invoiceNo`, `inTransit` and `writeOff`, so screens and integrations written for
  * one load per trip keep working for one release (design 3.10). Revenue only for those who may see it.
  */
-export function presentConsignment(doc: Plain, can?: OpsContext['can']): Plain {
+/** `can` is required: the person's permissions, or null for the server's own use (never sent to a person as is). */
+export function presentConsignment(doc: Plain, can: OpsContext['can'] | null): Plain {
   const out = present(doc);
   const legs = (doc.legs ?? []) as LegP[];
   const first = (doc.lines as Plain[] | undefined)?.[0];
@@ -93,7 +94,7 @@ export function presentConsignment(doc: Plain, can?: OpsContext['can']): Plain {
 export async function getConsignment(cid: string, ctx?: OpsContext) {
   const doc = await Consignment.findById(cid).lean();
   if (!doc) throw new NotFoundError('Consignment not found');
-  return presentConsignment(doc as Plain, ctx?.can);
+  return presentConsignment(doc as Plain, ctx?.can ?? null);
 }
 
 const DATE_FIELD = { booked: 'bookedAt', loaded: 'loadedAt', delivered: 'deliveredAt' } as const;
@@ -138,7 +139,7 @@ export async function listConsignments(query: S.ConsignmentsQuery, ctx?: OpsCont
     Consignment.find(filter).sort(sort as never).skip((query.page - 1) * query.limit).limit(query.limit).lean(),
     Consignment.countDocuments(filter),
   ]);
-  return { data: rows.map((r) => presentConsignment(r as Plain, ctx?.can)), total, page: query.page, limit: query.limit };
+  return { data: rows.map((r) => presentConsignment(r as Plain, ctx?.can ?? null)), total, page: query.page, limit: query.limit };
 }
 
 /* ---------- Making one ---------- */
@@ -415,6 +416,15 @@ export async function updateConsignment(cid: string, input: S.UpdateConsignmentI
     const rate = 'rate' in rest ? (rest as { rate?: Plain | null }).rate : (current.priceFrom as Plain | undefined)?.kind !== 'contract' ? current.rate as Plain | undefined : undefined;
     const reason = rateReason ?? ((current.priceFrom as Plain | undefined)?.reason as string | undefined);
     const price = await priceChoice({ rate, useContract, rateReason: reason }, { customerId: keep.customerId ?? current.customerId, lines: (keep.lines ?? current.lines) as Plain[], legs: current.legs as Plain[] }, trip.toObject() as Plain, ctx);
+    // The rate itself wasn't sent: it is still whoever typed it, with any approval it had. Only a rate sent now is the
+    // sender's own; otherwise an edit to the goods would hand the office's rate to Operations (Fable review, #151).
+    const was = current.priceFrom as Plain | undefined;
+    if (!('rate' in rest) && price.priceFrom?.kind === 'own') {
+      price.priceFrom = {
+        ...price.priceFrom, typedBy: (was?.typedBy as 'booking' | 'finance' | undefined) ?? 'finance',
+        ...(was?.approval ? { approval: was.approval, decidedBy: was.decidedBy, decidedAt: was.decidedAt, decisionNote: was.decisionNote } : {}),
+      } as typeof price.priceFrom;
+    }
     keep.rate = price.rate;
     keep.priceFrom = price.priceFrom;
   }
