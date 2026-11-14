@@ -178,7 +178,7 @@ describe('documents and messages', () => {
     ok(await field('trips', 'create', 'bookingRef', { label: 'Booking reference', printOn: ['trip_sheet'] }), 201);
     ok(await field('trips', 'create', 'internalNote', { label: 'Internal note' }), 201);
     const trip = ok(await as(ops).post('/trips', { ...tripBody(), custom: { bookingRef: 'BK-77', internalNote: 'Secret' } }), 201);
-    const pdf = await tripSheetPdf(trip.id);
+    const pdf = await tripSheetPdf(trip.id, () => true);
     assert.ok(pdf.body.length > 0);
     const { printedFields } = await import('../src/modules/operations/placements.js');
     assert.deepEqual(await printedFields('trip_sheet', [['trips', trip]]), [['Booking reference', 'BK-77']]);

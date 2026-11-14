@@ -372,3 +372,8 @@ details.form-group summary { cursor: pointer; }
 .tariff-trio { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; width: 100%; }
 .tariff-trio > * { min-width: 0; }
 @media (max-width: 560px) { .tariff-trio { grid-template-columns: minmax(0, 1fr); } }
+
+/* Company → Freight (#151): the everyday settings first, the rest folded under "More settings". */
+.settings-more { margin-top: 24px; }
+.settings-more > summary { cursor: pointer; font-weight: 560; color: var(--ink-2); padding: 8px 0; }
+.settings-more[open] > summary { margin-bottom: 8px; }

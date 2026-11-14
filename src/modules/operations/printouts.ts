@@ -74,8 +74,8 @@ async function store(name: string, body: Buffer, actorId: string, use: { entity:
 const fileName = (prefix: string, number: unknown) => `${prefix} ${String(number ?? '').replace(/[\\/:*?"<>|]+/g, '-')}.pdf`;
 
 /** The trip sheet as a PDF. */
-export async function tripSheetPdf(tripId: string): Promise<{ name: string; body: Buffer }> {
-  const sheet = await tripSheet(tripId);
+export async function tripSheetPdf(tripId: string, can: Parameters<typeof tripSheet>[1]): Promise<{ name: string; body: Buffer }> {
+  const sheet = await tripSheet(tripId, can);
   const trip = sheet.trip;
   const tripType = trip.tripTypeId ? await TripType.findById(trip.tripTypeId).select('printLayoutId').lean() as Plain | null : null;
   const layout = await layoutFor('trip_sheet', tripType?.printLayoutId);
@@ -179,9 +179,9 @@ export async function statementPdf(settlementId: string): Promise<{ name: string
   return { name: fileName(await word('statement'), s.settlement.number), body: renderPdf(blocks, { ...pageOf(layout), ...(await documentBrand('statement')) }) };
 }
 
-/** Stores a printout so a message can attach it; `null` when there is nobody to file it under. */
+/** Stores a printout so a message can attach it; `null` when there is nobody to file it under. A sheet sent in a message carries no prices. */
 export async function printoutFile(kind: 'trip_sheet' | 'driver_statement', id: string, actorId: string | undefined) {
   if (!actorId) return null;
-  const { name, body } = kind === 'trip_sheet' ? await tripSheetPdf(id) : await statementPdf(id);
+  const { name, body } = kind === 'trip_sheet' ? await tripSheetPdf(id, () => false) : await statementPdf(id);
   return store(name, body, actorId, { entity: kind === 'trip_sheet' ? 'trips' : 'settlements', recordId: id });
 }

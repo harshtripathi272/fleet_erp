@@ -213,7 +213,7 @@ export async function priceTrip(trip: Plain, currencyId: string, date: Date, set
   const taxPercent = taxPercentFor(settings, rate);
   const lines: PricedLine[] = [];
   // Each consignment's loaded and delivered totals, in the shape this pricing reads (#135).
-  const consignments = (await Consignment.find({ tripId: trip._id, status: { $nin: ['cancelled', 'draft'] } }).sort({ loadedAt: 1 }).lean() as Plain[]).map((c) => presentConsignment(c));
+  const consignments = (await Consignment.find({ tripId: trip._id, status: { $nin: ['cancelled', 'draft'] } }).sort({ loadedAt: 1 }).lean() as Plain[]).map((c) => presentConsignment(c, null));
   const basis = String(rate.basis);
   // The unit price is converted with more precision than a minor unit allows, so 37,850 L × 0.0123 USD stays right.
   const unitPrice = Number(price.amountMinor) * (from.id === to.id ? 1 : await rateOrRefuse(from.id, to.id, date)) * 10 ** (to.minorUnits - from.minorUnits);
