@@ -26,7 +26,9 @@ COPY public ./public
 # The deploy scripts a company kit carries (#76), for kits built from the app.
 COPY deploy ./deploy
 COPY --from=web /app/web/dist ./web/dist
-USER node
+# su-exec drops from root to "node" after the entrypoint makes a mounted disk writable; the app never runs as root.
+RUN apk add --no-cache su-exec && chmod +x deploy/docker-entrypoint.sh && mkdir -p data/files && chown -R node:node data
 EXPOSE 3000
 HEALTHCHECK --interval=15s --timeout=5s --start-period=20s CMD wget -qO- http://127.0.0.1:3000/api/v1/health/ready || exit 1
+ENTRYPOINT ["/app/deploy/docker-entrypoint.sh"]
 CMD ["node", "dist/server.js"]

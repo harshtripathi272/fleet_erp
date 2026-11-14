@@ -235,7 +235,7 @@ async function writeOffLoad(trip: Doc, consignments: Doc[], input: S.Undelivered
       refId: `${id}-writeoff`,
     }, ctx);
     await log(ctx, at, `Asked the owner to write off ${consignment.get('number')} (${money}): ${why}`, { tripId: trip._id });
-    last = presentConsignment(consignment.toObject() as Plain);
+    last = presentConsignment(consignment.toObject() as Plain, ctx.can);
   }
   return last!;
 }
@@ -265,7 +265,7 @@ async function approveWriteOff(trip: Doc, consignment: Doc, at: Date, ctx: OpsCo
     }
     await announce('trip.load_written_off', plain, ctx, { variables: { reason: String(w.reason) } });
   }
-  return presentConsignment(consignment.toObject() as Plain);
+  return presentConsignment(consignment.toObject() as Plain, ctx.can);
 }
 
 /** The owner approves or rejects a write-off someone else asked for. Rejected, the trip stays open and the office chooses again. */
@@ -284,5 +284,5 @@ export async function decideWriteOff(id: string, input: S.WriteOffDecisionInput,
   await save(consignment);
   await post(queue('trips'), at, { title: `${consignment.get('number')} not written off`, text: `${ctx.name}: ${input.note}`, buttons: [{ label: 'Open trip', nav: { tripId: String(trip._id) } }] }, ctx);
   await log(ctx, at, `Did not write off ${consignment.get('number')}: ${input.note}`, { tripId: trip._id });
-  return presentConsignment(consignment.toObject() as Plain);
+  return presentConsignment(consignment.toObject() as Plain, ctx.can);
 }

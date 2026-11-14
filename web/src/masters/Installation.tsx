@@ -152,10 +152,10 @@ export function InstallationPanel() {
                 <Button tone="danger" disabled={!owner || (Boolean(name) && confirm.trim().toLowerCase() !== name.toLowerCase())} busy={busy === "reset"} onClick={() => void reset()}>Reset</Button>
               </span>
             </SettingRow>
-            <SettingRow title="Set up a company or make a package" description="On a demonstration copy, the set-up and the packager stay available for showing them. A company's own copy has neither.">
+            {/* The packager is dropped (11 Nov: one repository copy per company, deployed by DevOps); its page stays until its code goes. */}
+            <SettingRow title="Set up a company" description="On a demonstration copy, the set-up stays available for showing it. A company's own copy doesn't have it.">
               <span className="install-reset">
                 <Button onClick={() => { location.hash = "#set-up"; }}>Set up</Button>
-                <Button onClick={() => { location.hash = "#package"; }}>Make a package</Button>
               </span>
             </SettingRow>
           </SettingsSection>

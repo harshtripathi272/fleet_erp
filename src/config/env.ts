@@ -90,7 +90,11 @@ export const envSchema = z.object({
 
   /** Shared secret Marichi Talks sends in `X-Webhook-Secret`; the inbound WhatsApp webhook is off without it. */
   MARICHI_TALKS_WEBHOOK_SECRET: z.string().trim().min(16, 'Use at least 16 characters').optional(),
-  /** The simulators: staff acting as a driver's WhatsApp (the simulated phone) and the drive simulator. On by default outside production; refused in production. */
+  /**
+   * The simulators: staff acting as a driver's WhatsApp (the simulated phone) and the drive simulator, labelled
+   * "simulated". On by default outside production. In production only on a demonstration or trial copy (#139: the
+   * test copy on Render), never on a company's production copy.
+   */
   DRIVER_PHONE_SIMULATOR: z.enum(['true', 'false']).optional(),
 }).superRefine((value, ctx) => {
   if (value.FILE_STORAGE === 'gcs' && !value.GCS_BUCKET) {
@@ -106,8 +110,8 @@ export const envSchema = z.object({
   if (value.COPY_PURPOSE === 'demo' && !value.DEMO_IN_PRODUCTION) {
     ctx.addIssue({ code: 'custom', path: ['COPY_PURPOSE'], message: 'A demonstration copy in production needs DEMO_IN_PRODUCTION=true: it can be reset, which removes every record' });
   }
-  if (value.DRIVER_PHONE_SIMULATOR === 'true') {
-    ctx.addIssue({ code: 'custom', path: ['DRIVER_PHONE_SIMULATOR'], message: 'The simulated driver phone cannot run in production' });
+  if (value.DRIVER_PHONE_SIMULATOR === 'true' && (value.COPY_PURPOSE ?? 'production') === 'production') {
+    ctx.addIssue({ code: 'custom', path: ['DRIVER_PHONE_SIMULATOR'], message: 'The simulated driver phone cannot run on a production copy: set COPY_PURPOSE=trial or demo for a test copy' });
   }
   if (isLoopback(value.APP_URL) || !value.APP_URL.startsWith('https://')) {
     ctx.addIssue({ code: 'custom', path: ['APP_URL'], message: 'Set APP_URL to the public https:// address in production; it is used in password links' });
@@ -131,5 +135,11 @@ export const envSchema = z.object({
   COPY_PURPOSE: value.COPY_PURPOSE ?? (value.NODE_ENV === 'production' ? 'production' : 'demo'),
 }));
 
-export const env = envSchema.parse(process.env);
+/**
+ * On Render the public address is known without being typed: RENDER_EXTERNAL_URL (https://<service>.onrender.com).
+ * APP_URL, when set, wins (a company's own domain).
+ */
+export const envSource = (source: NodeJS.ProcessEnv) => ({ ...source, APP_URL: source.APP_URL || source.RENDER_EXTERNAL_URL || undefined });
+
+export const env = envSchema.parse(envSource(process.env));
 export type Env = typeof env;

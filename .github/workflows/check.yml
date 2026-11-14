@@ -132,6 +132,29 @@ jobs:
           [ "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:3000/console/)" = 404 ] || { echo "The console is on"; exit 1; }
           curl -fsS http://127.0.0.1:3000/api/v1/auth/options | grep -q '"signUp":false' || { echo "Self sign-up is on"; exit 1; }
           docker logs app 2>&1 | grep -q 'First Owner account created' || { echo "No first Owner from OWNER_EMAIL"; exit 1; }
+      - name: The app runs as node, not root
+        run: |
+          docker exec app ps -o user,args | tee /dev/stderr | grep 'dist/server.js' | grep -q '^node' || { echo "The app does not run as node"; exit 1; }
+      - name: The test copy as Render runs it (#139)
+        # A trial copy with the simulated phone, a root-owned disk at /data for uploads, and the address from Render.
+        run: |
+          docker volume create render-disk
+          grep -v '^APP_URL=' prod.env | grep -v '^FILE_STORAGE_DIR=' > render.env
+          {
+            echo "RENDER_EXTERNAL_URL=https://fleet-test.onrender.com"
+            echo "MONGODB_URI=mongodb://127.0.0.1:27017/fleet_render"
+            echo "COPY_PURPOSE=trial"
+            echo "DRIVER_PHONE_SIMULATOR=true"
+            echo "FILE_STORAGE_DIR=/data/files"
+            echo "PORT=3100"
+          } >> render.env
+          docker run -d --name render --network host --env-file render.env -v render-disk:/data fleet-erp:ci
+          for i in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:3100/api/v1/health/ready; then echo; break; fi
+            [ "$i" = 60 ] && { docker logs render; echo "Not ready after 60 s"; exit 1; }
+            sleep 1
+          done
+          docker exec -u node render sh -c 'touch /data/files/.writable' || { echo "The disk is not writable by the app"; exit 1; }
       - name: The hourly exchange-rate job runs in the image
         # The feed is off by default (manual rates), so the job finds nothing due and exits 0.
         run: |

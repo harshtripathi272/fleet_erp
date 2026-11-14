@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertCircle, Check, ChevronLeft, ChevronRight, Copy, Download, ExternalLink, FileJson, Package } from "lucide-react";
+import { AlertCircle, Check, ChevronLeft, ChevronRight, Copy, Download, ExternalLink, FileJson } from "lucide-react";
 import { api, authorizedFetch } from "../api/client";
 import type { Rec } from "../api/adapter";
 import type { Me } from "../api/session";
@@ -362,9 +362,7 @@ function ReviewStep({ hasCompany, saveNow, onLeave }: { hasCompany: boolean; sav
           {logins.length > 0 && <DemoLogins logins={logins} owner={me.email} demo={file.purpose === "demo"} />}
           <span className="su-actions">
             <Button tone="primary" size="lg" onClick={() => { history.replaceState(null, "", location.pathname); onLeave(); location.reload(); }}><ExternalLink size={16} /> Open the app and try it</Button>
-            <Button size="lg" onClick={() => { location.hash = "#package"; }}><Package size={16} /> Package it</Button>
           </span>
-          <p>Try it first, change anything you like in the app, and package it whenever it's right. The package always takes it as it stands.</p>
         </section>
       )}
     </div>
