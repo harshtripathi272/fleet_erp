@@ -24,6 +24,7 @@ import {
 import { waitingOn, type Approval } from './approvals.js';
 import { stepCustom } from './placements.js';
 import { issueButtons, requestAmount, requestButtons } from './funding.service.js';
+import { expiredBlockers } from '../compliance/compliance.service.js';
 import { assertStageAllows, currentStage, recordEvent, stageSnapshot, tripTypeFor } from './stages.js';
 import { carriedIn, driverBalance } from './ledger.js';
 import { announce } from './notices.js';
@@ -576,6 +577,13 @@ export async function dispatchTrip(id: string, ctx: OpsContext, input?: S.Dispat
   if (open) throw conflict(open.status === 'approved' ? `${open.number} still has to be paid.` : `${waitingOn(open.approval as Approval)?.label ?? 'The approver'} still has to approve ${open.number}.`);
   const truck = await truckFacts(trip.get('vehicleId'), false);
   await assertNotHeld(trip.get('vehicleId'), truck.plate);
+  // Expired papers that stop a truck leaving: the truck's, the trailer's and the driver's (decision 24).
+  const expired = await expiredBlockers([
+    { kind: 'vehicle', id: trip.get('vehicleId'), name: truck.plate, instead: 'choose another truck' },
+    { kind: 'trailer', id: trip.get('trailerId'), name: trip.get('trailerId') ? await trailerPlate(trip.get('trailerId')) : '', instead: 'choose another trailer' },
+    { kind: 'driver', id: trip.get('driverId'), name: await driverName(trip.get('driverId')), instead: 'change the driver' },
+  ], 'dispatch');
+  if (expired.length) throw refuse(expired.join(' '));
   const issued = (await FundRequest.find({ tripId: trip._id, kind: 'fuel', status: 'issued' }).lean()).reduce((s, r) => s + Number(r.litres ?? 0), 0);
   const stops = trip.get('stops');
   stops[0].arrivedAt ??= at;

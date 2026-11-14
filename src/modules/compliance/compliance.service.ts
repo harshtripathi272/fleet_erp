@@ -7,6 +7,7 @@ import { idQuery } from '../../core/masters/query.js';
 import { getRefTarget } from '../../core/masters/registry.js';
 import { serialize } from '../../core/masters/service.js';
 import type { MasterDefinition, Plain } from '../../core/masters/types.js';
+import * as Fmt from '../../core/format/regional.js';
 import { Company } from '../company/company.model.js';
 import { expiryState } from '../drivers/drivers.service.js';
 import { Trailer } from '../fleet/models/trailer.model.js';
@@ -141,6 +142,23 @@ export async function check(query: S.CheckQuery) {
   });
   const blockers = items.filter((i) => (i.state === 'missing' || i.state === 'expired') && i.blocking !== 'none');
   return { subjectKind: query.subjectKind, subjectId: query.subjectId, compliant: !items.some((i) => i.state === 'missing' || i.state === 'expired'), blocking: blockers.map((b) => ({ code: b.code, blocks: b.blocking, state: b.state })), items };
+}
+
+/**
+ * Papers that have run out and stop a step (decision 24, #102 walk): each paper type says what it blocks (dispatch,
+ * loading or a border). A truck can't leave with its road tax or a driver's licence expired. One sentence per paper,
+ * naming whose it is, when it ran out and what to do. A paper that was never entered only shows on the check.
+ */
+export async function expiredBlockers(subjects: Array<{ kind: 'vehicle' | 'trailer' | 'driver'; id: unknown; name: string; instead: string }>, step: 'dispatch' | 'loading' | 'border') {
+  const out: string[] = [];
+  for (const subject of subjects) {
+    if (!subject.id) continue;
+    const result = await check({ subjectKind: subject.kind, subjectId: String(subject.id) } as S.CheckQuery);
+    for (const item of result.items.filter((i) => i.state === 'expired' && i.blocking === step)) {
+      out.push(`${subject.name}'s ${item.name} expired on ${Fmt.date(item.expiryDate as Date)}. Record the renewed one under Compliance documents, or ${subject.instead}.`);
+    }
+  }
+  return out;
 }
 
 export const masters: MasterDefinition[] = [documentTypeDefinition, permitTypeDefinition, insuranceTypeDefinition, complianceDocumentDefinition];
