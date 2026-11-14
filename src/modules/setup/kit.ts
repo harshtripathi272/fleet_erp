@@ -406,7 +406,7 @@ ${d.target === 'gcp' ? `
 - **Backups:** MongoDB Atlas keeps the database's (the free tier keeps none). Uploaded files keep every old version in the bucket.
 - **Going back a version:** \`gcloud run services update-traffic fleet-${file.company.key} --to-revisions <revision>=100 --region ${d.region} --project ${d.projectId}\`. If the newer version changed the database, restore the snapshot taken before it.
 
-The deploy guide on the Set up a company screen, and docs/deploy/gcp.md in the repository, have each of these step by step. None of it has been tried against a real Google Cloud project yet.
+The deploy guide on the Set up a company screen, and docs/deploy-gcp.md in the repository, have each of these step by step. None of it has been tried against a real Google Cloud project yet.
 ` : ''}
 ## Do
 

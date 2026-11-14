@@ -1,5 +1,7 @@
 # Consignments, loads and freight revenue: design
 
+> **Background, not a spec (15 Nov 2026).** Phase 1 is built (#144–#150). Prices now come from rate contracts (#151), and tariffs are "Coming soon". The rest of this design is parked. Where it and the app differ, the app wins. See [README](README.md).
+
 Marichi Fleet · domain design · 10 November 2026 · sections 1–3.4 written against worktree `fleet_erp-lakshya-t3` at `de3a793` (develop + #121); sections 3.5–5 written and the whole checked against develop at `1cbcb7b` (the same tree; corrections in 3.4.7)
 
 ## Summary for the owner
