@@ -134,7 +134,7 @@ jobs:
           docker logs app 2>&1 | grep -q 'First Owner account created' || { echo "No first Owner from OWNER_EMAIL"; exit 1; }
       - name: The app runs as node, not root
         run: |
-          docker top app -o user,args | tee /dev/stderr | grep 'dist/server.js' | grep -vq '^root' || { echo "The app runs as root"; exit 1; }
+          docker exec app ps -o user,args | tee /dev/stderr | grep 'dist/server.js' | grep -q '^node' || { echo "The app does not run as node"; exit 1; }
       - name: The test copy as Render runs it (#139)
         # A trial copy with the simulated phone, a root-owned disk at /data for uploads, and the address from Render.
         run: |
