@@ -1,0 +1,48 @@
+# The one test copy of Marichi Fleet on Render (#139). Render → New → Blueprint → this repository.
+# Render asks for the three values marked "sync: false" when the Blueprint is created; they never go in Git.
+# The steps, and what each setting is for: docs/deploy-render.md.
+services:
+  - type: web
+    name: marichi-fleet-test
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    # Starter: about US$7 a month. Free services sleep and can't have a disk.
+    plan: starter
+    region: frankfurt
+    branch: develop
+    autoDeploy: true
+    healthCheckPath: /api/v1/health/ready
+    # Uploaded photos and papers. A service with a disk runs as one instance, which is right for one test copy.
+    disk:
+      name: files
+      mountPath: /data
+      sizeGB: 1
+    envVars:
+      # A demonstration copy: made-up data, a sign-in for every desk, and a Reset button (Masters → This installation).
+      # For onboarding a real company instead, set COPY_PURPOSE=trial and remove DEMO_IN_PRODUCTION.
+      - key: COPY_PURPOSE
+        value: demo
+      - key: DEMO_IN_PRODUCTION
+        value: "true"
+      # The simulated driver phone and drive simulator, labelled "simulated". Refused on a production copy.
+      - key: DRIVER_PHONE_SIMULATOR
+        value: "true"
+      - key: FILE_STORAGE
+        value: local
+      - key: FILE_STORAGE_DIR
+        value: /data/files
+      # Render's proxy is one hop in front of the app.
+      - key: TRUST_PROXY
+        value: "1"
+      - key: CONSOLE_ENABLED
+        value: "false"
+      - key: JWT_SECRET
+        generateValue: true
+      # The MongoDB Atlas connection string (mongodb+srv://…/fleet).
+      - key: MONGODB_URI
+        sync: false
+      # The first Owner's sign-in. The address is free text; the password needs a letter, a digit and 8 characters.
+      - key: OWNER_EMAIL
+        sync: false
+      - key: OWNER_PASSWORD
+        sync: false

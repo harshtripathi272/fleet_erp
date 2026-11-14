@@ -2,7 +2,7 @@
 // time; a configuration file is previewed before it is applied; and production refuses to start as a demo by mistake.
 import assert from 'node:assert/strict';
 import { after, before, beforeEach, describe, test } from 'node:test';
-import { env, envSchema } from '../src/config/env.js';
+import { env, envSchema, envSource } from '../src/config/env.js';
 import { getMaster } from '../src/core/masters/registry.js';
 import { api, bearer, loadSample, resetDatabase, signUp, startDatabase, stopDatabase, userWithRole, type Session } from './helpers.js';
 
@@ -42,7 +42,20 @@ describe('This installation', () => {
       const out = (await api().post('/api/v1/installation/reset').set(bearer(owner)).send({ confirm: name }).expect(200)).body.data;
       assert.equal(out.results[0].step, 'clear');
       assert.equal(await count('vehicles'), vehicles, `round ${round}: the sample is back`);
+      // A tester signs in at every desk (#139): Operations, Finance, Viewer and a driver, with the passwords shown once.
+      const roles = (out.logins as Array<{ role: string; login: string; password: string }>).map((l) => l.role.split(':')[0]).sort();
+      assert.deepEqual(roles, ['Driver', 'Finance', 'Operations', 'Viewer']);
+      const ops = (out.logins as Array<{ role: string; login: string; password: string }>).find((l) => l.role === 'Operations')!;
+      await api().post('/api/v1/auth/login').send({ email: ops.login, password: ops.password }).expect(200);
     }
+  });
+
+  test('a brand-new demonstration copy (the Render test copy) loads the made-up company and every desk\'s sign-in from Reset', async () => {
+    assert.equal(await count('vehicles'), 0);
+    const out = (await api().post('/api/v1/installation/reset').set(bearer(owner)).send({ confirm: '' }).expect(200)).body.data;
+    assert.ok((await count('vehicles')) > 0, 'the made-up company is loaded');
+    assert.ok((await count('rate-contracts')) > 0, 'with its rate contracts');
+    assert.equal(out.logins.length, 4);
   });
 
   test('a trial or production copy has no reset, and only an owner may reset a demonstration', async () => {
@@ -90,5 +103,21 @@ describe('This installation', () => {
     assert.equal(envSchema.safeParse({ ...base, COPY_PURPOSE: 'demo', DEMO_IN_PRODUCTION: 'true' }).success, true);
     const plain = envSchema.parse(base);
     assert.equal(plain.COPY_PURPOSE, 'production', 'production is the default in production');
+  });
+
+  test('the test copy on Render (#139): the simulated phone runs on a trial or demonstration copy, never on a production one; Render gives the address', () => {
+    const base = {
+      NODE_ENV: 'production', MONGODB_URI: 'mongodb+srv://u:p@cluster0.example.mongodb.net/fleet', JWT_SECRET: 'b'.repeat(48),
+      OWNER_EMAIL: 'owner@example.com', OWNER_PASSWORD: 'Str0ng-and-long-password', DRIVER_PHONE_SIMULATOR: 'true',
+    };
+    const render = envSource({ ...base, RENDER_EXTERNAL_URL: 'https://fleet-test.onrender.com' } as NodeJS.ProcessEnv);
+    const production = envSchema.safeParse(render);
+    assert.equal(production.success, false);
+    assert.ok(production.error!.issues.some((i) => i.path[0] === 'DRIVER_PHONE_SIMULATOR'));
+    const trial = envSchema.parse({ ...render, COPY_PURPOSE: 'trial' });
+    assert.equal(trial.DRIVER_PHONE_SIMULATOR, true);
+    assert.equal(trial.APP_URL, 'https://fleet-test.onrender.com');
+    assert.equal(envSchema.parse({ ...render, COPY_PURPOSE: 'demo', DEMO_IN_PRODUCTION: 'true' }).DRIVER_PHONE_SIMULATOR, true);
+    assert.equal(envSchema.parse(envSource({ ...base, COPY_PURPOSE: 'trial', APP_URL: 'https://fleet.example.com', RENDER_EXTERNAL_URL: 'https://x.onrender.com' } as NodeJS.ProcessEnv)).APP_URL, 'https://fleet.example.com', 'a typed address wins');
   });
 });
