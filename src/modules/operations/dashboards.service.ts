@@ -10,7 +10,7 @@ import { FundRequest, VehicleState } from './models/funding.model.js';
 import { Message, Activity, ThreadRead } from './models/message.model.js';
 import { DriverAccount, Expense, Nomination, Settlement } from './models/money.model.js';
 import { TO_SETTLE, Trip } from './models/trip.model.js';
-import { baseCurrency, present } from './support.js';
+import { baseCurrency, present, type OpsContext } from './support.js';
 import { presentTrip } from './trips.service.js';
 import { threadFilter, type Viewer } from './messages.service.js';
 
@@ -82,7 +82,7 @@ export function withoutProfit(trip: Plain, can: (resource: string, action: 'sens
 }
 
 /** Everything the printed trip sheet shows. */
-export async function tripSheet(id: string) {
+export async function tripSheet(id: string, can: OpsContext['can']) {
   const trip = await Trip.findById(id).lean();
   if (!trip) throw new NotFoundError('Trip not found');
   const [requests, consignments, expenses, documents, company] = await Promise.all([
@@ -93,7 +93,8 @@ export async function tripSheet(id: string) {
     Company.findOne().select('legalName tradingName address phone email').lean(),
   ]);
   return {
-    trip: presentTrip(trip as Plain), requests: requests.map(present), consignments: consignments.map((c) => presentConsignment(c as Plain)), expenses: expenses.map(present),
+    // Prices and profit only for those who may see money (#151): the sheet is open to anyone who reads trips.
+    trip: withoutProfit(presentTrip(trip as Plain), can), requests: requests.map(present), consignments: consignments.map((c) => presentConsignment(c as Plain, can)), expenses: expenses.map(present),
     documents: documents.map(present), activity: (await Activity.find({ tripId: trip._id }).sort({ at: 1 }).lean()).map(present),
     company: company ? present(company) : null, currency: await baseCurrency(),
   };
