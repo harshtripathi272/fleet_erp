@@ -275,7 +275,7 @@ export async function applyHere(input: { file: unknown; clear?: { confirm?: stri
   const result = await applyFile(parsed.data, JSON.stringify(parsed.data), read, { onResult, inviteOwner: true });
   const state = await SystemState.findOne({ key: DRAFT }).lean<{ value?: Draft }>();
   if (state?.value) await saveDraft({ ...state.value, finishedAt: new Date().toISOString() });
-  const logins = parsed.data.purpose === 'demo' ? await demoLogins(parsed.data, actor.userId, onResult) : await staffLogins(parsed.data, result.results, actor.userId, onResult);
+  const logins = parsed.data.purpose === 'demo' ? await demoLogins(parsed.data.company.key, actor.userId, onResult) : await staffLogins(parsed.data, result.results, actor.userId, onResult);
   return { ...result, logins };
 }
 
@@ -308,7 +308,9 @@ export async function resetDemo(confirm: string | undefined, actor: { userId: st
     results.push({ step: 'sample', outcome: 'created', detail: `${created} sample records` });
   }
   const applied = await lastAppliedFile();
-  const logins = applied ? await demoLogins(applied, actor.userId, () => undefined) : [];
+  // Every desk gets a sign-in, whether the demonstration came from a company file or the sample operation (#139).
+  const key = applied?.company.key ?? ((await companyName()).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'demo');
+  const logins = await demoLogins(key, actor.userId, () => undefined);
   return { results, logins };
 }
 
@@ -374,12 +376,12 @@ async function staffLogins(file: CompanyFile, results: Result[], actorId: string
   return out;
 }
 
-async function demoLogins(file: CompanyFile, actorId: string, onResult: (r: Result) => void): Promise<DemoLogin[]> {
+async function demoLogins(companyKey: string, actorId: string, onResult: (r: Result) => void): Promise<DemoLogin[]> {
   const password = demoPassword();
   const system = { actorId, canSeeSensitive: true };
   const out: DemoLogin[] = [];
   for (const key of ['operations', 'finance', 'viewer']) {
-    const email = `${key}@${file.company.key}.test`;
+    const email = `${key}@${companyKey}.test`;
     if (await User.exists({ email })) continue;
     const role = await Role.findOne({ key }).select('_id name').lean<{ _id: unknown; name: string }>();
     if (!role) continue;
