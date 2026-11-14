@@ -8,6 +8,7 @@ import type { Rec } from "../api/adapter";
 import { can } from "../api/session";
 import { useApp } from "../store";
 import { Button, ChoiceChips, Drawer, Empty, Field, FieldGroup, Status, Switch, SwitchField, UnitInput } from "../ui/kit";
+import { COMING_SOON_MASTERS, ComingSoonTag } from "../ui/comingSoon";
 import { WorkspacePanel } from "./WorkspacePanel";
 import { InstallationPanel } from "./Installation";
 import { CompanyPanel } from "./CompanyPanel";
@@ -152,7 +153,7 @@ export function MastersScreen({ initialEntity, initialId }: { initialEntity?: st
           <section key={group}>
             <h3>{group}</h3>
             {list.map((d) => (
-              <button key={d.key} className={d.key === selected ? "on" : ""} onClick={() => setSelected(d.key)}>{d.label}{d.hidden && <span className="muted"> · hidden</span>}</button>
+              <button key={d.key} className={d.key === selected ? "on" : ""} onClick={() => setSelected(d.key)}>{d.label}{d.hidden && <span className="muted"> · hidden</span>}{COMING_SOON_MASTERS[d.key] && <> <ComingSoonTag /></>}</button>
             ))}
           </section>
         ))}
@@ -177,6 +178,7 @@ export function MastersScreen({ initialEntity, initialId }: { initialEntity?: st
           : selected === "whatsapp-templates" && can(me, "connections", "read") ? <WhatsAppTemplates onBack={() => setSelected("connections")} />
           : selected === AUDIT_VIEW && can(me, "audit-logs", "read") ? <AuditLog onOpen={(entity, id) => setSelected(entity, id)} />
           : custom ? <CustomRecords master={custom} defs={defs} />
+          : def && COMING_SOON_MASTERS[def.key] ? <Empty title={`${def.label}: coming soon`}>{COMING_SOON_MASTERS[def.key]}</Empty>
           : def ? <Records key={`${def.key}-${openId ?? ""}`} def={def} defs={defs} openId={openId} />
           : can(me, "audit-logs", "read") ? <AuditLog onOpen={(entity, id) => setSelected(entity, id)} /> : null}
       </section>

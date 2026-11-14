@@ -53,8 +53,8 @@ export const decideWriteOff = asyncHandler(async (req, res) => ApiResponse.succe
 export const endTrip = asyncHandler(async (req, res) => ApiResponse.success(res, await Trips.endTrip(param(req), req.body, opsContext(req)), 'Trip ended'));
 export const completeStage = asyncHandler(async (req, res) => ApiResponse.success(res, Trips.presentTrip((await Stages.completeStage(param(req), opsContext(req))).toObject()), 'Stage complete'));
 export const funding = asyncHandler(async (req, res) => ApiResponse.success(res, await Trips.getFunding(param(req))));
-export const tripSheet = asyncHandler(async (req, res) => ApiResponse.success(res, await Dashboards.tripSheet(param(req))));
-export const tripSheetPdf = asyncHandler(async (req, res) => sendPdf(res, await Printouts.tripSheetPdf(param(req))));
+export const tripSheet = asyncHandler(async (req, res) => ApiResponse.success(res, await Dashboards.tripSheet(param(req), req.auth!.can)));
+export const tripSheetPdf = asyncHandler(async (req, res) => sendPdf(res, await Printouts.tripSheetPdf(param(req), req.auth!.can)));
 export const listVehicleStates = asyncHandler(async (_req, res) => ApiResponse.success(res, await Trips.listVehicleStates()));
 export const correctVehicleState = asyncHandler(async (req, res) => ApiResponse.success(res, await Trips.correctVehicleState(param(req, 'vehicleId'), req.body, opsContext(req)), 'Truck updated'));
 

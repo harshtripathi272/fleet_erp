@@ -513,8 +513,11 @@ export function queueFor(data: AppData, desk: Desk): QueueItem[] {
  */
 export function holdingStop(data: AppData, trip: Trip): number {
   const cns = data.cns.filter((c) => c.tripId === trip.id && c.status !== "cancelled");
-  if (cns.some((c) => c.legs.some((l) => l.stopId))) {
-    const indexes = cns.flatMap((c) => c.legs.filter((l) => l.status === "planned" && l.stopId).map((l) => trip.stops.findIndex((s) => s.id === l.stopId))).filter((i) => i >= 0);
+  // A trip with consignments is held by their planned pickups and drops, found by stop or else by place; once every
+  // one is done nothing holds it, so the last stop (the yard, the end) can be marked (#102 walk).
+  if (cns.length) {
+    const stopOf = (l: { stopId?: string; placeId?: string }) => (l.stopId ? trip.stops.findIndex((s) => s.id === l.stopId) : trip.stops.findIndex((s, i) => i > 0 && !s.arrivedAt && s.placeId === l.placeId));
+    const indexes = cns.flatMap((c) => c.legs.filter((l) => l.status === "planned").map((l) => stopOf(l as { stopId?: string; placeId?: string }))).filter((i) => i >= 0);
     return indexes.length ? Math.min(...indexes) : -1;
   }
   const consignments = whereIs(data.consignments, "tripId", trip.id);

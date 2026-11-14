@@ -151,16 +151,32 @@ export async function capacityOf(tripId: string) {
   if (!l && consignments.some((c) => c.lines.some((line) => String(line.unit).toLowerCase() === 'l'))) notes.push(`No tank capacity set for ${trailer ? String(trailer.registrationNumber) : truck.plate}, so the litres can't be checked.`);
   const over = planned.filter((p) => p.over);
   if (over.length) notes.push(`Over capacity after ${over.map((p) => p.place).join(', ')}.`);
-  // On board now: what is recorded and not yet dropped.
+  // On board now: what is recorded and not yet dropped. A consignment whose every drop is done has nothing left on
+  // board but goods the consignee refused that are being brought back (#102 walk: a settled trip showed "On board
+  // 0.3 t", which was fuel lost on the road). A trip that has ended has nothing on board.
   let nowKg = 0, nowL = 0;
-  for (const c of consignments) for (const leg of c.legs) {
-    if (leg.status !== 'done') continue;
-    for (const m of leg.actual ?? []) {
-      const line = c.lines.find((x) => id(x._id) === id(m.lineId));
-      if (!line) continue;
-      const d = await dims(line.productId, m as never);
-      const sign = leg.kind === 'pickup' ? 1 : -1;
-      nowKg += sign * d.kg; nowL += sign * d.l;
+  const ended = Boolean(trip.endedAt) || trip.active === false && Boolean(trip.dispatchedAt);
+  for (const c of ended ? [] : consignments) {
+    const drops = c.legs.filter((l) => l.kind === 'drop' && l.status !== 'skipped');
+    if (drops.length && drops.every((l) => l.status === 'done')) {
+      for (const r of ((c as unknown as Plain).refusals ?? []) as Plain[]) {
+        if (r.status === 'decided' && r.outcome !== 'return') continue;
+        const line = c.lines.find((x) => id(x._id) === id(r.lineId));
+        if (!line) continue;
+        const d = await dims(line.productId, { qty: Number(r.qty), unit: String(r.unit) } as never);
+        nowKg += d.kg; nowL += d.l;
+      }
+      continue;
+    }
+    for (const leg of c.legs) {
+      if (leg.status !== 'done') continue;
+      for (const m of leg.actual ?? []) {
+        const line = c.lines.find((x) => id(x._id) === id(m.lineId));
+        if (!line) continue;
+        const d = await dims(line.productId, m as never);
+        const sign = leg.kind === 'pickup' ? 1 : -1;
+        nowKg += sign * d.kg; nowL += sign * d.l;
+      }
     }
   }
   return {

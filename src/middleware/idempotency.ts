@@ -39,18 +39,20 @@ export const idempotent: RequestHandler = async (req, res, next) => {
   // Settle when the handler answers, not when the connection ends: a phone that drops mid-request must not
   // free the key while the request is still running, or its retry would run it twice.
   let settled = false;
-  const settle = (status: number, body: unknown) => {
-    if (settled) return;
+  const settle = (status: number, body: unknown): Promise<unknown> => {
+    if (settled) return Promise.resolve();
     settled = true;
     const done = status >= 200 && status < 300 && body !== undefined
       ? IdempotencyKey.updateOne({ userId, key }, { $set: { state: 'done', status, body } })
       : IdempotencyKey.deleteOne({ userId, key, state: 'running' });
-    done.catch(() => undefined);
+    return done.catch(() => undefined);
   };
   const json = res.json.bind(res);
+  // The answer goes out once the key is settled: a phone that retries the moment it hears back finds a refusal's key
+  // free and a success's answer kept, never the key still "running".
   res.json = (value: unknown) => {
-    settle(res.statusCode, value);
-    return json(value);
+    void settle(res.statusCode, value).then(() => json(value));
+    return res;
   };
   // An answer without a JSON body (none of these routes send one) is not kept.
   res.on('finish', () => settle(res.statusCode, undefined));

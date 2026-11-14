@@ -379,3 +379,38 @@ describe('8. a company that never uses several consignments', () => {
     assert.equal((await as(fin).get(`/settlements/${s.id}/statement.pdf`)).status, 200);
   });
 });
+
+/* ---------- 9. After the trip (the #102 walk) ---------- */
+
+describe('9. a finished trip reads finished', () => {
+  /** A priced Dar run, loaded 38,000 L and delivered 37,900 L: 100 L lost on the road. */
+  async function pricedRun() {
+    const t = await trip({ consignments: [{ lines: [{ productId: ids.diesel, plannedQty: 38000 }], rate: { basis: 'per_consignment', price: zmw(30000) } }] });
+    const [c] = await onTrip(t.id);
+    await load(c!, 38000);
+    await deliver((await onTrip(t.id))[0]!, 37900);
+    return t;
+  }
+
+  test('9.1 once every drop is done, fuel lost on the road is not "on board"; once the trip ends, nothing is', async () => {
+    const t = await pricedRun();
+    const delivered = ok(await as(ops).get(`/trips/${t.id}/capacity`));
+    assert.deepEqual(delivered.onBoard, { kg: 0, l: 0 });
+    ok(await as(ops).post(`/trips/${t.id}/end`, { closingFuelL: 120 }));
+    assert.deepEqual(ok(await as(ops).get(`/trips/${t.id}/capacity`)).onBoard, { kg: 0, l: 0 });
+  });
+
+  test('9.2 settling the trip fixes its prices, so its profit is final; reversing the settlement makes it provisional again', async () => {
+    const t = await pricedRun();
+    ok(await as(ops).post(`/trips/${t.id}/end`, { closingFuelL: 120 }));
+    assert.equal(ok(await as(owner).get(`/trips/${t.id}/profit`)).status, 'provisional');
+    const s = ok(await as(fin).post('/settlements', { driverId: ids.d1, tripIds: [t.id], cashMinor: 0 }), 201);
+    const settled = ok(await as(owner).get(`/trips/${t.id}/profit`));
+    assert.equal(settled.status, 'final', JSON.stringify(settled.warnings));
+    const [c] = await onTrip(t.id);
+    assert.equal(ok(await as(fin).get(`/consignments/${c!.id}`)).revenue.status, 'frozen');
+    ok(await as(fin).post(`/settlements/${s.id}/reverse`, { reason: 'Posted too early' }));
+    assert.equal(ok(await as(fin).get(`/consignments/${c!.id}`)).revenue.status, 'priced');
+    assert.equal(ok(await as(owner).get(`/trips/${t.id}/profit`)).status, 'provisional');
+  });
+});

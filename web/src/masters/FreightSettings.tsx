@@ -4,7 +4,7 @@ import { api } from "../api/client";
 import type { Rec } from "../api/adapter";
 import { can } from "../api/session";
 import { useApp } from "../store";
-import { ChoiceChips, Empty, SaveBar, Segmented, SettingRow, SettingsSection, Status, Switch, UnitInput } from "../ui/kit";
+import { ChoiceChips, Empty, SaveBar, Segmented, SettingRow, SettingsSection, Switch, UnitInput } from "../ui/kit";
 
 /**
  * Company → Freight (#135, consignments design 3.9 and 3.11.11): how this company carries consignments, holds a
@@ -23,6 +23,12 @@ type Control =
   | { kind: "money"; per: string }
   | { kind: "consignment-type" };
 type Setting = { key: string; title: string; description: ReactNode; control: Control };
+
+/**
+ * The settings a transporter changes (#151, Q12): shown first. The rest sit under "More settings". Settings stored
+ * but not acted on yet aren't shown at all; their saved values are kept (Lakshya, 14 Nov: no placebo switches).
+ */
+const EVERYDAY = ["consignmentBy", "maxConsignmentsPerTrip", "consigneePhoneRequired", "capacityCheck", "chargeOnDefault", "ownRateNeedsApproval", "freezeOn", "showProfitOnTripList"];
 
 const SECTIONS: { title: string; description: string; settings: Setting[] }[] = [
   {
@@ -297,8 +303,9 @@ export function FreightSettings() {
     }
   };
 
-  const notBuiltTag = <Status tone="mute">Not built yet</Status>;
-  const optionLabel = (key: string, o: Option) => (notBuiltValues[key]?.includes(o.value) ? `${o.label} (not built yet)` : o.label);
+  // A choice the app doesn't act on yet isn't offered, unless it is what the company has now.
+  const offered = (key: string, options: Option[]) => options.filter((o) => !notBuiltValues[key]?.includes(o.value) || o.value === form[key] || (Array.isArray(form[key]) && (form[key] as string[]).includes(o.value)));
+  const optionLabel = (_key: string, o: Option) => o.label;
 
   const control = (s: Setting) => {
     const c = s.control;
@@ -307,16 +314,16 @@ export function FreightSettings() {
       case "switch":
         return <Switch label={s.title} checked={Boolean(form[s.key])} onChange={(on) => set(s.key, on)} disabled={!writable} />;
       case "choice":
-        return <Segmented choice label={s.title} value={String(form[s.key] ?? "")} disabled={!writable} options={c.options.map((o) => ({ value: o.value, label: optionLabel(s.key, o) }))} onChange={(v) => set(s.key, v)} />;
+        return <Segmented choice label={s.title} value={String(form[s.key] ?? "")} disabled={!writable} options={offered(s.key, c.options).map((o) => ({ value: o.value, label: optionLabel(s.key, o) }))} onChange={(v) => set(s.key, v)} />;
       case "select":
         return (
           <select id={id} className="input" value={String(form[s.key] ?? "")} onChange={(e) => set(s.key, e.target.value)}>
-            {c.options.map((o) => <option key={o.value} value={o.value}>{optionLabel(s.key, o)}</option>)}
+            {offered(s.key, c.options).map((o) => <option key={o.value} value={o.value}>{optionLabel(s.key, o)}</option>)}
           </select>
         );
       case "chips": {
         const value = (form[s.key] ?? []) as string[];
-        return <ChoiceChips label={s.title} disabled={!writable} options={c.options.map((o) => ({ value: o.value, label: optionLabel(s.key, o) }))} value={value} onChange={(v) => set(s.key, v)} />;
+        return <ChoiceChips label={s.title} disabled={!writable} options={offered(s.key, c.options).map((o) => ({ value: o.value, label: optionLabel(s.key, o) }))} value={value} onChange={(v) => set(s.key, v)} />;
       }
       case "number":
         return <span className="unit-wide"><UnitInput label={s.title} unit={c.unit} step={c.step} value={String(form[s.key] ?? "")} disabled={!writable} onChange={(v) => set(s.key, v)} /></span>;
@@ -332,6 +339,13 @@ export function FreightSettings() {
     }
   };
 
+  const row = (s: Setting) => (
+    <SettingRow key={s.key} title={s.title} description={s.description}
+      htmlFor={s.control.kind === "select" || s.control.kind === "consignment-type" ? `fr-${s.key}` : undefined}>
+      {control(s)}
+    </SettingRow>
+  );
+
   return (
     <div className="desk">
       <header className="masters-head">
@@ -341,16 +355,18 @@ export function FreightSettings() {
         </div>
       </header>
       <fieldset className="company-form settings-page" disabled={!writable}>
-        {SECTIONS.map((section) => (
-          <SettingsSection key={section.title} title={section.title} description={section.description}>
-            {section.settings.map((s) => (
-              <SettingRow key={s.key} title={<>{s.title}{notBuilt.has(s.key) && <> {notBuiltTag}</>}</>} description={s.description}
-                htmlFor={s.control.kind === "select" || s.control.kind === "consignment-type" ? `fr-${s.key}` : undefined}>
-                {control(s)}
-              </SettingRow>
-            ))}
-          </SettingsSection>
-        ))}
+        <SettingsSection title="Everyday" description="The settings most transporters change. Everything else works as it should when left alone.">
+          {EVERYDAY.map((key) => SETTINGS.get(key)).filter((s): s is Setting => Boolean(s) && !notBuilt.has(s!.key)).map(row)}
+        </SettingsSection>
+        <details className="settings-more">
+          <summary>More settings</summary>
+          {SECTIONS.map((section) => {
+            const rest = section.settings.filter((s) => !EVERYDAY.includes(s.key) && !notBuilt.has(s.key));
+            return rest.length ? (
+              <SettingsSection key={section.title} title={section.title} description={section.description}>{rest.map(row)}</SettingsSection>
+            ) : null;
+          })}
+        </details>
       </fieldset>
       {writable && <SaveBar dirty={dirty} busy={busy} onSave={() => void save()} onDiscard={() => setForm(saved)} />}
     </div>

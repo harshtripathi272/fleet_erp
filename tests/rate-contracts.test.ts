@@ -194,6 +194,29 @@ describe('a small customer with no contract (Q9: Operations types the day\'s rat
     assert.equal((await asFinance(c)).revenue.subtotalMinor, 20000_00);
   });
 
+  test('a rate Finance typed stays hidden from Operations when Operations edits the goods or the choice', async () => {
+    const t = ok(await book('copper'), 201);
+    let c = await asFinance(await consignmentOf(ops, t.id));
+    c = ok<Cn>(await as(fin).patch(`/consignments/${c.id}`, { version: c.version, rate: { basis: 'per_consignment', price: zmw(33333) } }));
+    assert.equal(c.priceFrom.typedBy, 'finance');
+    const seen = await consignmentOf(ops, t.id);
+    assert.equal(seen.rate, undefined);
+    const edited = ok<Cn>(await as(ops).patch(`/consignments/${c.id}`, { version: seen.version, lines: [{ id: seen.lines[0]!.id, productId: ids.diesel, plannedQty: 36000 }] }));
+    assert.equal(edited.rate, undefined, 'editing the goods does not reveal the rate');
+    const chosen = ok<Cn>(await as(ops).patch(`/consignments/${c.id}`, { version: edited.version, useContract: false }));
+    assert.equal(chosen.rate, undefined, 'nor does sending the choice');
+    assert.equal((await asFinance(c)).rate.price.amountMinor, 33333_00, 'and the rate is unchanged');
+  });
+
+  test('the trip sheet shows Operations no prices', async () => {
+    await zambeziContract();
+    const t = ok(await book('zambezi'), 201);
+    const sheet = ok(await as(ops).get(`/trips/${t.id}/sheet`));
+    assert.equal(JSON.stringify(sheet).includes('unitPriceMinor'), false);
+    assert.equal(sheet.consignments[0].revenue, undefined);
+    assert.ok(ok(await as(fin).get(`/trips/${t.id}/sheet`)).consignments[0].revenue, 'Finance still sees them');
+  });
+
   test('Operations may correct its own rate later, but not see or change one Finance set under a contract', async () => {
     const t = ok(await book('copper', { rate: { basis: 'per_consignment', price: zmw(20000) } }), 201);
     let c = await consignmentOf(ops, t.id);

@@ -8,6 +8,9 @@ import { PaymentMethod } from '../finance/models/paymentMethod.model.js';
 import { Driver } from '../drivers/models/driver.model.js';
 import { driverLedger, sumOf } from './ledger.js';
 import { Consignment, DriverDocument } from './models/cargo.model.js';
+import { freightSettings } from '../freight/settings.js';
+import { reprice } from '../freight/pricing.js';
+import { refreshProfit } from '../freight/profit/profit.service.js';
 import { FundRequest } from './models/funding.model.js';
 import { DriverAccount, Expense, Settlement } from './models/money.model.js';
 import { TO_SETTLE, Trip } from './models/trip.model.js';
@@ -141,6 +144,7 @@ export async function postSettlement(input: S.SettlementInput, ctx: OpsContext) 
     await Settlement.deleteOne({ _id: settlement._id });
     throw conflict('Some of these trips were settled by someone else. Reload and try again.');
   }
+  await fixPrices(input.tripIds, true);
   await DriverAccount.updateOne({ driverId: driver._id }, { $unset: { settleRequestedAt: 1, settleRequestedByDesk: 1, settleRequestedBy: 1 }, $inc: { version: 1 } });
   await resolve(`${driver._id}-settle`, `Settled · ${settlement.get('number')}`);
   const s = settlement.toObject() as Plain;
@@ -190,7 +194,9 @@ export async function reverseSettlement(id: string, input: { reason: string }, c
   const at = new Date();
   settlement.set({ reversedAt: at, reversedBy: ctx.actorId, reverseReason: input.reason.trim(), updatedBy: ctx.actorId });
   await settlement.save();
+  const unsettled = (await Trip.find({ settlementId: settlement._id }).select('_id').lean()).map((t) => String(t._id));
   await Trip.updateMany({ settlementId: settlement._id }, { $unset: { settlementId: 1 }, $set: { updatedBy: ctx.actorId }, $inc: { version: 1 } });
+  await fixPrices(unsettled, false);
   const number = String(settlement.get('number'));
   await post(driverThread(settlement.get('driverId')), at, {
     title: `Settlement ${number} reversed`, text: `Finance reversed ${number}: ${input.reason.trim()}. Your account is as it was before it.`,
@@ -212,4 +218,27 @@ export async function statement(id: string) {
   const ids = new Set((settlement.tripIds as unknown[]).map(String));
   const lines = (await driverLedger(settlement.driverId)).filter((e) => (e.tripId && ids.has(e.tripId)) || e.settlementId === String(settlement._id));
   return { settlement: present(settlement), driver: driver ? present(driver) : null, trips: trips.map(present), lines, company: company ? present(company) : null, currency: await baseCurrency() };
+}
+
+/**
+ * Settling a trip fixes its consignments' prices when Company → Freight says prices stop changing once a trip is
+ * invoiced or settled (the default), so a settled trip's profit is final, not provisional (#102 walk). Reversing the
+ * settlement lets the prices it fixed change again. Prices fixed by an invoice, on delivery or by hand stay fixed.
+ */
+async function fixPrices(tripIds: unknown[], settled: boolean) {
+  if (!tripIds.length) return;
+  const settings = await freightSettings();
+  if (settled && settings.freezeOn !== 'invoice_or_settlement') return;
+  const at = new Date();
+  if (settled) {
+    await Consignment.updateMany(
+      { tripId: { $in: tripIds }, 'revenue.status': { $in: ['priced', 'estimated'] } },
+      { $set: { 'revenue.status': 'frozen', 'revenue.frozenAt': at, 'revenue.frozenFor': 'settlement' }, $inc: { version: 1 } },
+    );
+  } else {
+    const frozen = await Consignment.find({ tripId: { $in: tripIds }, 'revenue.status': 'frozen', 'revenue.frozenFor': 'settlement' }).select('_id').lean();
+    await Consignment.updateMany({ _id: { $in: frozen.map((c) => c._id) } }, { $set: { 'revenue.status': 'priced' }, $unset: { 'revenue.frozenAt': 1, 'revenue.frozenFor': 1 }, $inc: { version: 1 } });
+    for (const c of frozen) await reprice(String(c._id));
+  }
+  for (const id of tripIds) await refreshProfit(String(id));
 }
