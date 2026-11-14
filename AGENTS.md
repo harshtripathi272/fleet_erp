@@ -2,7 +2,7 @@
 
 Several coding agents, and people, work on this repository at once, sometimes two on the same computer and under the same GitHub account. This page is the contract that keeps them out of each other's way. Read it at the start of every session; it is short on purpose.
 
-The **orchestrator** (today: `lakshya-desktop`) creates and assigns issues, reviews every pull request, merges, and keeps `develop` green. **Lakshya** decides product questions and approves releases to `main`.
+The **orchestrator** (since 11 Nov 2026: `lakshya-t3`) creates and assigns issues, reviews every pull request, merges, and keeps `develop` green. **Lakshya** decides product questions and approves releases to `main`.
 
 ## 1. Who you are
 
@@ -22,7 +22,7 @@ Your name appears on:
 - **issues and pull requests:** the label `agent:<name>`;
 - **branches:** `<name>/<issue>-<short-slug>`, e.g. `harsh-t3/19-message-channels`;
 - **commits:** a last line `Agent: <name>`;
-- **comments:** they start with `[<name>]`. To address someone, write `@<name>` (e.g. `@harsh-t3`); the inbox picks it up.
+- **comments:** they start with `[<name>]`. To address another agent, write its name plainly (Harsh T3, Harsh desktop), without `@`: an `@` notifies a real GitHub account. Agents read the agent chat (#15) and their inbox.
 
 ## 2. Your own folder, ports and database
 
@@ -87,7 +87,7 @@ It reads GitHub and prints what is yours: issues assigned to you, your pull requ
 
 5. **Ready for review** when CI is green and the acceptance criteria are met: mark the PR ready, switch the issue to `status: in review`. Don't review anyone else's PR unless the orchestrator asks.
 
-6. **Review and merge (orchestrator only).** The orchestrator reviews with GitHub's review (Approve, or Request changes with comments on the lines). GitHub won't let an account approve a PR it opened, so when the author shares the orchestrator's account (`lakshya-t3` and `lakshya-desktop` both use `laksh-ya`), the approval is a PR comment starting `[lakshya-desktop] Approved`. On changes requested, fix and push to the same branch. Approved and green → squash-merged into `develop`, the branch deleted, and the issue closed by the orchestrator with the PR's number. (GitHub closes issues from `Closes #…` only on merges into `main`, the default branch, so the orchestrator does it for `develop`.)
+6. **Review and merge (orchestrator only).** The orchestrator reviews with GitHub's review (Approve, or Request changes with comments on the lines). GitHub won't let an account approve a PR it opened, so when the author shares the orchestrator's account (`lakshya-t3` and `lakshya-desktop` both use `laksh-ya`), the approval is a PR comment starting `[lakshya-t3] Approved`. On changes requested, fix and push to the same branch. Approved and green → squash-merged into `develop`, the branch deleted, and the issue closed by the orchestrator with the PR's number. (GitHub closes issues from `Closes #…` only on merges into `main`, the default branch, so the orchestrator does it for `develop`.)
 
 7. **Keeping up.** If `develop` moved, merge it into your branch (`git fetch && git merge origin/develop`) and resolve conflicts yourself before asking for review.
 
@@ -97,11 +97,11 @@ It reads GitHub and prints what is yours: issues assigned to you, your pull requ
 - CI (`.github/workflows/check.yml`) runs the same check on every pull request and on every merge into `develop` and `main`. A run's summary page shows the test counts and the failing tests; the full log is attached as `test-log`.
 - The run on `develop` after each merge is the **integration test**: everything merged so far, together. If it goes red, nothing else is merged until it is green again, and fixing it is the next job of whoever merged last.
 - New behaviour comes with a test (`tests/*.test.ts`). A bug fix comes with the test that would have caught it.
-- Screen changes follow [docs/ui-rules.md](docs/ui-rules.md). Check them at 375, 768 and 1280 px with the layout audit (`web/scripts/ui-audit.js`). In the PR, say what you checked and as which role, and add a screenshot.
+- Screen changes follow [docs/ui-rules.md](docs/ui-rules.md). **Desktop first:** check them at 1440 and 1280 px, then 1024; phones matter only for the driver's app. Use the layout audit (`web/scripts/ui-audit.js`). In the PR, say what you checked and as which role, and add a screenshot.
 
 ## 6. Talking to each other
 
-- About a piece of work: on its issue or pull request, `[<name>] @<other> …`. Never in side channels; the next agent can't see those.
+- About a piece of work: on its issue or pull request, `[<name>] <other agent's name> …`. Never in side channels; the next agent can't see those.
 - The pinned **Agent room** issue is the status board the orchestrator keeps. Post there only when blocked.
 - Questions for Lakshya go on the issue with `status: needs decision`; the orchestrator lists them in **Decisions for Lakshya**. Meanwhile build the current behaviour as a setting with a sensible default and carry on with the rest. Never hard-code a client's rule (see the founding principle in the README).
 

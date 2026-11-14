@@ -1,5 +1,7 @@
 # A new company's copy on Google Cloud
 
+> **Postponed (11 Nov 2026).** Never run on a real Google Cloud project. Our test copy runs on Render instead ([deploy-render.md](deploy-render.md)). Kept for a company whose DevOps chooses Google Cloud.
+
 Each company gets its own copy of the system: its own Cloud Run service, database, file bucket and secrets. One image serves every company. This runbook sets up a copy from nothing. The scripts in [`deploy/`](../deploy) do the Google Cloud part with one command per company.
 
 | Piece | Where it runs | Made by |

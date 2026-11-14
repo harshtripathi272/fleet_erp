@@ -1,77 +1,60 @@
 # Marichi Fleet
 
-Marichi Fleet is a configurable transport ERP for haulage companies. Its first client is Marichi Connect Logistics, which runs fuel and cargo trucks across Zambia, Tanzania and the DRC. This repository is its **backend API**: Node.js, Express, MongoDB (Mongoose) and Redis.
+Marichi Fleet is a transport ERP for haulage companies: trucks, drivers, trips, consignments, rate contracts, driver
+settlements and each trip's profit. There's no real client yet: it is tested with made-up companies (a Zambian fuel
+and copper haulier in the sample data), and built from what transporters told us (Hanumant Shukla's calls, 8 and
+11 Nov 2026). This repository holds the API (Node.js, Express, MongoDB) and the web app (`web/`).
 
-This README is the one place for setup, context and the API. **The next piece of work is described in [issue #2](https://github.com/harshtripathi272/fleet_erp/issues/2).**
+**The work list is [issue #140](https://github.com/harshtripathi272/fleet_erp/issues/140).** Questions for Lakshya
+are on [#23](https://github.com/harshtripathi272/fleet_erp/issues/23); agent coordination on
+[#15](https://github.com/harshtripathi272/fleet_erp/issues/15).
 
-## The founding principle: configurable without limits
+## One company, one copy of this repository
 
-Marichi Fleet is built for **one company at a time**: each installation runs one company, with its own database. It is not a system for managing several companies at once. It is multi-tenant only in that sense: many customer companies, each with its own separate copy and database, never sharing one. But it is meant to be sold to many transport companies, each working differently, and we do not know in advance how any of them works. So this codebase is a **base** that becomes whatever a company needs, mostly through configuration and, where needed, easy additions on top:
+- **Each company runs its own copy:** its own deploy and its own database. It's not a multi-company system.
+- **`main` holds the fundamentals** every transporter needs: trips, consignments, rate contracts, driver settlements
+  and profit, with sensible defaults for everything a company might do differently.
+- **A company's own features go in its fork** of this repository, not in `main`. There are no global updates pushed
+  to every company. A fork takes a fix from `main` when it chooses.
+- **Whoever does DevOps for a company deploys its fork.** We run one test copy, on Render ([docs/deploy-render.md](docs/deploy-render.md)).
+- **Simulated or real is the company's switch**, never fixed in code: e-mail, WhatsApp, SMS, maps and GPS each run as
+  a labelled "simulated" stand-in until the company adds its service in **Connections**.
 
-- **Everything a company might do differently is configuration, not code.** Approvals, policies, workflows, trip steps, fields, lists, record types, roles, numbering, messages, documents, notifications, and whatever comes up next. Each has sensible defaults and no limit on what a company can add or change.
-- **A client's rules are that client's settings.** The first client's decisions (below) ship as defaults; another company can change every one of them.
-- **Setting up a new company is easy:** a new installation, its own settings and data, and small additions where its way of working needs them, without changing the core.
-- **It deploys anywhere with little effort:** GCP, any other cloud or a single server. The API is one container image configured only by environment variables, and MongoDB can be hosted anywhere. See [Deploying a company's copy](#deploying-a-companys-copy).
-- **It scales without a ceiling** within a company: any number of branches, records, fields and options.
-
-What we do not know about any customer, and where each answer is configured:
-
-| We do not know | Configured through | State today |
-| --- | --- | --- |
-| Which features they want | `modules` on the company record (masters, trips, finance, maintenance, tracking, billing) | Stored, but not yet enforced. New areas should check it, and screens should hide switched-off areas |
-| Which fields they want | Custom fields on any master, company-editable lists, custom masters | Built |
-| How their approvals work | `approval-policies`: levels by amount, approver role or person, escalation, channels | Built. New money flows route through it |
-| How big the team is and who does what | Users, roles with per-master rights, branches | Built, with no limit on users, roles or branches |
-| How much of the process they use | Trip types, each with its own stages; modules; policies | Trip types and stages built. The trip flow should follow a company's configured stages, not a fixed sequence |
-
-When building anything, ask: *could another company want this differently?* If yes, make it a setting with a sensible default rather than a value in the code.
+When building anything, ask: *could another company want this differently?* If yes, make it a setting with a
+sensible default rather than a value in the code. A setting that does nothing yet isn't shown.
 
 ## Contents
 
-1. [The founding principle](#the-founding-principle-configurable-without-limits)
-2. [Where things stand](#where-things-stand), and every feature in **[docs/FEATURES.md](docs/FEATURES.md)**
-3. [Project context](#project-context)
-4. [Set up and run](#set-up-and-run)
-5. [The console](#the-console)
-6. [Using the API from a frontend](#using-the-api-from-a-frontend)
-7. [Masters and their endpoints](#masters-and-their-endpoints)
-8. [Code layout](#code-layout)
-9. [Tests and checks](#tests-and-checks)
-10. [Deploying a company's copy](#deploying-a-companys-copy)
+1. [What the app does](#what-the-app-does)
+2. [Project context](#project-context)
+3. [Set up and run](#set-up-and-run)
+4. [The console](#the-console)
+5. [Using the API from a frontend](#using-the-api-from-a-frontend)
+6. [Masters and their endpoints](#masters-and-their-endpoints)
+7. [Code layout](#code-layout)
+8. [Tests and checks](#tests-and-checks)
+9. [Deploying](#deploying)
 
-## Where things stand
+## What the app does
 
-All current work is on **`develop`**, the integration branch; `main` gets it through a release that Lakshya approves. Progress towards the first deployable version is the **[Deployable v1](https://github.com/harshtripathi272/fleet_erp/milestone/1)** milestone; who is on what is the **[Status board](https://github.com/harshtripathi272/fleet_erp/issues/15)**; open questions for Lakshya are **[Decisions for Lakshya](https://github.com/harshtripathi272/fleet_erp/issues/23)**.
+All work goes into **`develop`**. `main` gets it through a release that Lakshya approves.
 
-**Every feature, built or not, is in [docs/FEATURES.md](docs/FEATURES.md)**, one table per area, each row with its state (built, building, planned, proposed, needs work) and its issue. In short:
-
-| Area | State on `develop` |
+| Area | What a transporter gets |
 | --- | --- |
-| Masters, the master of masters (each company shapes every master), import, set-up page, audit log | Built (#12, #41, #45, #36, #65) |
-| Trips and money: nominations, trips, requests with approval levels, loading and delivery at 20 °C, shortages, expenses, settlement | Built; edge cases #16, #64 |
-| Driver app, documents, PDFs, messages by e-mail, SMS or WhatsApp | Built; real WhatsApp and SMS through connections (#59, #10) |
-| Areas on and off, white-label, connections for every outside service, billing and forex, maintenance | Being built (#56, #71, #59, #61, #63) |
-| Accounts with branch access and sign-in codes, regional settings, vocabulary and stages, languages, cargo in any unit, setup kit | Planned (#57, #58, #72, #73, #74, #75, #76) |
-| Deploying on Google Cloud | Runbook and scripts done (#14); other platforms and the setup kit in #76 |
+| **Trips** | Plan from the truck (its trailer and driver follow), a route or stops by hand, a next trip for a truck still on the road, dispatch, tracking (simulated GPS), end, close |
+| **Consignments** | Several per trip, each with its customer (who pays), consignor, consignee, goods, pickups and drops; loading with gate times, bay, order number and supervisor; fuel at 20 °C; papers per stop; refusals decided at the drop (brought back, written off, charged to the driver, claimed from the supplier); splits decided on the road |
+| **Rate contracts** | Finance enters each big customer's contract: per route and product, per kg, tonne, litre or piece or fixed for the route, on the loaded or delivered quantity. Booking picks it up; Operations never sees the amounts. Another rate needs a reason, and Finance's approval if the company wants. Small customers get the day's rate typed while booking |
+| **Money** | Fund requests with approval levels, fuel and expenses, driver accounts, settlements across several trips (lines by hand, how it was paid, reversal), each trip's profit (final once settled) |
+| **Billing** (an area a company switches on) | Invoices per trip and customer from each consignment's price |
+| **Drivers** | A driver's app (and WhatsApp): trips, papers by photo, requests, statements |
+| **Set-up** | Masters every company shapes (fields, lists, its own record types), roles, words, stages and desks, areas on and off, brand, regional settings, import from CSV, audit log |
 
-The rules every change follows: `docs/ui-rules.md` for screens, `docs/entities.md` for how record types are defined by data, and #55 for areas, connections and policies.
+Coming soon (shown as such in the app): tariffs beyond rate contracts, customer rates for trips without
+consignments, languages, API keys, two-step sign-in, branch access, live GPS, road routing.
 
-Repositories:
-
-| Repository | What it holds |
-| --- | --- |
-| [harshtripathi272/fleet_erp](https://github.com/harshtripathi272/fleet_erp) (this one) | The backend API, its tests, the console and the frontend (`web/`) |
-| [laksh-ya/fleet-erp](https://github.com/laksh-ya/fleet-erp) | The original frontend mock (`trip-flow/`) and the client's material (`reference/`) |
-
-Both are private; ask Lakshya for access. The folder names differ only by `_` and `-`: `fleet_erp` is this backend, `fleet-erp` the mock.
-
-What the backend does today:
-
-- **Sign-in**: e-mail and password sign-up, sign-in, refresh-token rotation, sign-out (one device or all), change password, forgot and reset password by e-mail, account lockout and rate limits.
-- **Permissions**: roles with per-master rights (`read`, `create`, `update`, `archive`, `delete`, `sensitive`). Built-in Owner, Admin, Operations, Finance and Viewer roles, plus custom roles. Nobody can grant rights they do not hold.
-- **Masters**: every master in the MVP column of the masters specification (MF-SPEC-01), with the same behaviour for all: versioned updates, archive and restore, delete only when unused, audit history, custom fields, branch scope and validity dates.
-- **Configuration without code**: lists, custom fields on any master, and custom masters with their own records.
-- **A console** at `/console/`: a models reference anyone can read, and a signed-in tool for every endpoint, the records and the audit log.
+The rules every change follows: [docs/ui-rules.md](docs/ui-rules.md) for screens (desktop first) and
+[docs/entities.md](docs/entities.md) for how record types are defined by data. [docs/design/](docs/design/) holds
+background designs: context, not a spec.
 
 ## Project context
 
@@ -81,14 +64,13 @@ What the backend does today:
 
 | Layer | Choice |
 | --- | --- |
-| Frontend | React, TanStack (Query, Router, Table, Form), shadcn/ui |
+| Frontend | React 19, Vite, TanStack Query (`web/`) |
 | Backend | Node.js, Express, TypeScript |
 | Database | MongoDB with Mongoose |
 | Cache and rate limits | Redis (optional locally) |
 | Code structure | Models → Route → Controller → Service, per the Marichi backend coding guide; Zod for validation, Pino for logs |
-| WhatsApp and SMS | Marichi Talks, the parent company's messaging service |
-| E-mail | SMTP credentials (Mandrill) |
-| Deployment | Docker Compose |
+| WhatsApp, SMS, e-mail | Connections a company adds in the app (Meta, Twilio, Resend, SendGrid, Mailgun, any mail server), simulated until then |
+| Deployment | One Docker image per company's copy; our test copy on Render with MongoDB Atlas |
 
 How the stack has been used so far, and why:
 
@@ -109,7 +91,7 @@ These are how the first client works. They ship as **defaults**, and every one o
 1. **Trips start from the truck.** Choose the truck first; its trailer and driver follow.
 2. **Driver settlement is periodic**, across several trips, not per trip.
 3. **Fuel cargo is corrected for temperature and density to 20 °C**, with an allowance of about 3%. Loss beyond the allowance is charged to the driver.
-4. **Drivers work over WhatsApp.** They do not sign in to the system.
+4. **Drivers work from their phone:** the driver's app, or WhatsApp once the company connects it.
 5. **Approvals can go up to the owner over WhatsApp.**
 
 ### How the models are organised
@@ -287,7 +269,7 @@ Settings you may change:
 | `REDIS_URL` | empty | A Redis address, to keep rate limits in Redis instead of memory |
 | `SMTP_HOST`, `SMTP_USER`, `SMTP_PASS` | empty | Real SMTP credentials, to send e-mail |
 
-In production the API refuses to start without the settings in [Deploying a company's copy](#deploying-a-companys-copy).
+In production the API refuses to start without the settings in [Deploying](#deploying).
 
 ### Sample data
 
@@ -520,47 +502,32 @@ The tests run on their own temporary MongoDB and cover:
 - load, size limits and hostile input;
 - a fuzzer that sends random input to every endpoint and fails on any server error.
 
-## Deploying a company's copy
+## Deploying
 
-Each company gets its own copy: its own API and its own MongoDB database. Nothing in the code is tied to a cloud provider.
+**Our test copy** runs on Render with MongoDB Atlas: [docs/deploy-render.md](docs/deploy-render.md) and `render.yaml`.
 
-**What the API needs anywhere:**
+**A company's copy** is its fork, deployed by whoever does its DevOps, anywhere that runs a container:
 
-- The container image built from the `Dockerfile` (or Node.js 22 running `npm ci && npm run build && npm start`).
-- A MongoDB database for that company: [MongoDB Atlas](https://www.mongodb.com/atlas) on any cloud, or MongoDB on a server.
-- Environment variables, at least: `MONGODB_URI`, a random `JWT_SECRET` of 32+ characters (e.g. `openssl rand -base64 48`), `APP_URL` (the public address, used in reset links), `SMTP_HOST`, `SMTP_USER`, `SMTP_PASS` and `SMTP_FROM`. The image already sets `NODE_ENV=production` and listens on `0.0.0.0` and the `PORT` the platform provides. Keep secrets in the platform's secret store rather than in plain settings.
-- Behind the platform's load balancer or reverse proxy, set `TRUST_PROXY=1`. Set `CORS_ORIGINS` to the frontend's address if it is served from a different one.
-- With more than one API instance, set `REDIS_URL` so rate limits are shared.
-- The platform's health check can use `GET /api/v1/health/ready`, which fails while the database is unreachable.
-- Logs are JSON on standard output, so the platform's log viewer picks them up.
+- The image from the `Dockerfile` (or Node.js 22 running `npm ci && npm run build && npm run build:web && npm start`).
+- A MongoDB database with backups (Atlas M10 or above, or MongoDB on a server).
+- Environment variables (all in `.env.example`), at least `MONGODB_URI`, a random `JWT_SECRET` of 32+ characters,
+  `APP_URL` (the public `https://` address; on Render it comes from `RENDER_EXTERNAL_URL`), `OWNER_EMAIL`, and either
+  `OWNER_PASSWORD` or a mail server (`SMTP_*`) so the first Owner can get in. `COPY_PURPOSE` says what the copy is:
+  `production` (the default), `trial`, or `demo` (made-up data that can be reset; needs `DEMO_IN_PRODUCTION=true`).
+- Uploaded files on a persistent disk (`FILE_STORAGE_DIR`) or a bucket (`FILE_STORAGE=gcs`), never the container's own disk.
+- `TRUST_PROXY=1` behind the platform's proxy; `REDIS_URL` with more than one instance; the health check on
+  `GET /api/v1/health/ready`. Logs are JSON on standard output.
 
-**Example: Google Cloud.** Two common ways, as examples rather than the only options:
+**Upgrading a company:** back up the database, deploy the new version (the server moves the data forward on start),
+check `https://<address>/api/v1/health/ready` and sign in. To roll back, deploy the previous version, and restore the
+backup if the new one changed the data. Name the version you deploy; never `latest`.
 
-- **Cloud Run with MongoDB Atlas.** From the repository folder, deploy one service per company. Cloud Build builds the image from the `Dockerfile`:
-
-  ```sh
-  gcloud run deploy fleet-<company> --source . --region <region> \
-    --set-env-vars "TRUST_PROXY=1,APP_URL=https://<address>,SMTP_HOST=smtp.mandrillapp.com,SMTP_FROM=<from address>" \
-    --set-secrets "MONGODB_URI=<company>-mongodb-uri:latest,JWT_SECRET=<company>-jwt-secret:latest,SMTP_USER=<company>-smtp-user:latest,SMTP_PASS=<company>-smtp-pass:latest"
-  ```
-
-  The secrets live in Secret Manager. Add `REDIS_URL` (Memorystore) if the service scales past one instance.
-- **One VM (Compute Engine) with Docker Compose.** Install Docker, copy the repository and a filled-in `.env`, and run `docker compose up -d --build`. That runs the API, MongoDB and Redis together on one machine, the same way as locally. Back up the `mongo-data` volume.
-
-The same pieces work on AWS, Azure, DigitalOcean or any server that runs containers.
-
-**Settings for production:**
-
-- Set `NODE_ENV=production`, a random `JWT_SECRET` of 32+ characters (e.g. `openssl rand -base64 48`) and the SMTP settings. The API refuses to start without them, and refuses `EXPOSE_RESET_TOKEN=true`.
-- Set `REDIS_URL` when running more than one API instance, so rate limits are shared.
-- Set `CORS_ORIGINS` to the frontend's address, and `TRUST_PROXY` when behind a reverse proxy.
-- Set `OWNER_EMAIL` to the company's first Owner. On first start that account is created and e-mailed a link to choose a password; nobody can claim the installation by signing up. If the e-mail does not arrive, "Forgot password" on the same address sends another.
-- `CONSOLE_ENABLED=false` turns off the test console and the public `/meta/models` route. Password-reset and invitation links open the web app, so they keep working.
-- MongoDB runs as an ordinary standalone server; no replica set is needed.
+**Don't:** commit `.env` or paste secrets in a chat; load the sample data in a company's real copy; run the
+simulators on a production copy (the server refuses); use a free database tier for real data.
 
 **What production refuses or adds** (checked in [#18](https://github.com/harshtripathi272/fleet_erp/issues/18), tests in `tests/hardening.test.ts`):
 
-- It will not start with: the development `JWT_SECRET`; no SMTP; `EXPOSE_RESET_TOKEN=true`; the simulators on; an `APP_URL` that is local or not `https://`; `TRUST_PROXY=true` (it trusts any `X-Forwarded-For`, so give the number of proxies); `CORS_ORIGINS` with a path, a `*` or `http://`; no `OWNER_EMAIL`.
+- It will not start with: the development `JWT_SECRET`; neither a mail server nor `OWNER_PASSWORD`; `EXPOSE_RESET_TOKEN=true`; the simulators on a production copy; an `APP_URL` that is local or not `https://`; `TRUST_PROXY=true` (it trusts any `X-Forwarded-For`, so give the number of proxies); `CORS_ORIGINS` with a path, a `*` or `http://`; no `OWNER_EMAIL`.
 - Self sign-up is off unless the company turns it on; people are added from Users and get an invitation.
 - Sign-in: per-address and per-account rate limits, and the account locks after `LOGIN_MAX_FAILURES` wrong passwords, even when they are sent in parallel. A refresh token used twice signs out that device's whole chain.
 - Uploads: images and PDFs only, recognised by their content; at most `UPLOAD_MAX_MB` each and 60 per person per 10 minutes; a file is only served to the person who uploaded it, the driver it was filed for, or staff who can read driver documents.

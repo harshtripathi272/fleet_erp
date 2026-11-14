@@ -18,8 +18,8 @@ To have something to show, load the sample data into the API's database (`npm ru
 Notes:
 - Each person sees the desks their permissions allow. Approvals follow the company's approval policies, so a request waits for the role or person the policy names.
 - The session is kept per browser. To act as two people at once, use a second browser or a private window.
-- The driver's phone (WhatsApp simulation) is on the desk picker. It is switched off when the API runs in production.
-- On an existing database, money requests, expenses and settlement appear once `finance` is switched on in the company's modules.
+- The driver's phone (WhatsApp simulation) is on the desk picker, labelled "simulated". It's on in development and on a demonstration or trial copy; a production copy refuses it.
+- On an existing database, money requests, expenses and settlement appear once `finance` is switched on in the company's modules. Billing (invoices) is its own area, off by default.
 
 ## Build
 
@@ -31,13 +31,13 @@ npm run build      # type-check and build to dist/
 
 Every trip shows one next step and names whose turn it is. The trip's type decides its stages (`trip-stages` in Masters).
 
-1. **Plan.** Operations starts from a truck, or converts an accepted nomination. The truck's trailer, driver and place fill in, and a route or the stop editor sets the road distances.
+1. **Plan.** Operations starts from a truck (one still on the road gets its next trip, starting where this one ends), or converts an accepted nomination. The truck's trailer, driver and place fill in, and a route or the stop editor sets the road distances. Each consignment row says who it is for, the goods, where it is picked up and dropped, and its price: the customer's rate contract when one covers the route and goods (Operations sees which, never the amount), or another rate with a reason, or the day's rate for a customer without a contract.
 2. **Funding.** The route's budget sets the fuel and cash. The suggestion is the budget minus fuel in the tank and cash the driver already holds. Requests go through the company's approval policies, level by level; each level can approve in the app or from WhatsApp.
-3. **Loading.** The driver sends a photo of the loading invoice, or Operations enters it. Fuel cargo is corrected to 20 °C from temperature and density.
+3. **Loading.** At each loading stop, every consignment loading there: the quantity, the paper, the gate times, loading order, bay and supervisor. The driver can send the photo instead. Fuel cargo is corrected to 20 °C from temperature and density.
 4. **Transit.** Dispatch and follow the truck on the map. Stops are stamped as the truck passes them, or marked by hand.
-5. **Offloading.** The delivery note gives the delivered volume; the shortage beyond the shortage policy's allowance is priced, and Finance charges or waives it.
+5. **Offloading.** At each drop, the delivered quantity and proof of delivery per consignment. Goods the consignee refuses wait for a decision: brought back, written off, charged to the driver or claimed from the supplier. The shortage beyond the allowance is priced, and Finance charges or waives it.
 6. **Close.** Operations records the fuel left and frees the truck. Receipts sent on the way go to Finance.
-7. **Settle.** Finance settles a driver across closed trips from **Driver accounts** and prints a statement. Every trip also prints a one-page trip sheet.
+7. **Settle.** Finance settles a driver across closed trips from **Driver accounts** (lines by hand, how the money moved, a reversal of the latest), and prints a statement. Settling fixes the trip's prices, so its profit reads Final. Every trip also prints a one-page trip sheet.
 
 Document reading, GPS positions, the road camera and the phones are still simulations; the records they produce are real API records.
 

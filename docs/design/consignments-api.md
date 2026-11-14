@@ -1,5 +1,7 @@
 # Consignments phase 1: the API contract
 
+> **Background, not a spec (15 Nov 2026).** Phase 1 is built (#144–#150). Prices now come from rate contracts (#151), and tariffs are "Coming soon". The rest of this design is parked. Where it and the app differ, the app wins. See [README](README.md).
+
 Marichi Fleet · #135 · server side by `lakshya-desktop`, screens by `lakshya-t3`. This file is the contract between the two branches. It follows design 3.12 (`docs/design/consignments.md`); where it differs, the row says so and why. A change to the contract changes this file in the same commit.
 
 Every route is under `/api/v1`, needs a signed-in user, and answers in the house envelope:
