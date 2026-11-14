@@ -18,7 +18,7 @@ phone, and a Reset button. It runs from the `develop` branch and updates itself 
 ## 2. The app (Render)
 
 1. Sign in at <https://render.com> with the GitHub account that can read this repository.
-2. **New → Blueprint** → choose this repository. Render reads `render.yaml` and shows one web service,
+2. **New → Blueprint** → choose this repository and the `develop` branch, which holds `render.yaml`. Render reads `render.yaml` and shows one web service,
    `marichi-fleet-test`, with a 1 GB disk.
 3. Render asks for three values:
 
@@ -35,8 +35,8 @@ Keys and passwords go only into Render and Atlas, never into chat or GitHub. `JW
 
 ## 3. The made-up company and its sign-ins
 
-1. Sign in with `OWNER_EMAIL` and `OWNER_PASSWORD`.
-2. Go to **Masters → This installation → Reset this demonstration**, type the company's name, and press **Reset**.
+1. Sign in with `OWNER_EMAIL` and `OWNER_PASSWORD`. The app asks you to choose a new password straight away. That's the one you keep, and `OWNER_PASSWORD` is never read again.
+2. Go to **Masters → This installation → Reset this demonstration** and press **Reset**. The first time there's no company yet, so the box stays empty. From then on, type the company's name to confirm.
    It loads the made-up haulier (trucks, drivers, customers, routes, rate contracts) and shows **a sign-in for each
    desk**: Operations, Finance, Viewer and a driver. Each password is shown **once**, so copy them.
 3. Give the tester those sign-ins. Reset again whenever you want a clean start; it hands out new passwords.
