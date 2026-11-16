@@ -148,3 +148,69 @@ registerProvider({
   test: async (ctx) => roundTrip(s3Store(ctx.settings as unknown as S3Settings, { accessKeyId: ctx.secret('accessKeyId')!, secretAccessKey: ctx.secret('secretAccessKey')! })),
   open: (ctx) => ({ store: async () => s3Store(ctx.settings as unknown as S3Settings, { accessKeyId: ctx.secret('accessKeyId')!, secretAccessKey: ctx.secret('secretAccessKey')! }) }),
 });
+
+/*
+ * Cloudinary. Files are kept as private "raw" uploads: every kind of file comes back byte for byte, and only a
+ * request signed with the account's API secret can read one. No Cloudinary library: three signed HTTPS calls.
+ */
+
+export interface CloudinarySettings { cloudName: string; folder?: string }
+
+/** Cloudinary's request signature: the parameters sorted by name, joined as a=1&b=2, then the API secret, SHA-1. */
+export function signCloudinary(params: Record<string, string | number>, apiSecret: string): string {
+  const text = Object.keys(params).filter((k) => params[k] !== '').sort().map((k) => `${k}=${params[k]}`).join('&');
+  return createHash('sha1').update(text + apiSecret).digest('hex');
+}
+
+export function cloudinaryStore(s: CloudinarySettings, keys: { apiKey: string; apiSecret: string }, now = () => Math.floor(Date.now() / 1000)): FileStore {
+  const api = (action: string) => `https://api.cloudinary.com/v1_1/${encodeURIComponent(s.cloudName)}/raw/${action}`;
+  const folder = s.folder?.replace(/^\/+|\/+$/g, '');
+  const idOf = (key: string) => (folder ? `${folder}/${key}` : key);
+  const signed = (params: Record<string, string>) => {
+    const all = { ...params, timestamp: String(now()) };
+    return { ...all, api_key: keys.apiKey, signature: signCloudinary(all, keys.apiSecret) };
+  };
+  const failure = async (res: Response) => {
+    const body = (await res.json().catch(() => null)) as { error?: { message?: string } } | null;
+    return new Error(`Cloudinary answered ${res.status}: ${body?.error?.message ?? res.statusText}`);
+  };
+  return {
+    async put(key, body, mime) {
+      const form = new FormData();
+      for (const [k, v] of Object.entries(signed({ public_id: idOf(key), type: 'private', overwrite: 'false' }))) form.append(k, v);
+      form.append('file', new Blob([new Uint8Array(body)], { type: mime }), key.split('/').pop());
+      const res = await fetch(api('upload'), { method: 'POST', body: form, signal: AbortSignal.timeout(120_000) });
+      if (!res.ok) throw await failure(res);
+    },
+    async open(key) {
+      const url = new URL(api('download'));
+      for (const [k, v] of Object.entries(signed({ public_id: idOf(key), type: 'private' }))) url.searchParams.set(k, v);
+      const res = await fetch(url, { signal: AbortSignal.timeout(60_000) });
+      if (res.status === 404) throw new NotFoundError('File not found');
+      if (!res.ok || !res.body) throw await failure(res);
+      return Readable.fromWeb(res.body as import('node:stream/web').ReadableStream);
+    },
+    async remove(key) {
+      const form = new URLSearchParams(signed({ public_id: idOf(key), type: 'private', invalidate: 'true' }));
+      const res = await fetch(api('destroy'), { method: 'POST', body: form, signal: AbortSignal.timeout(60_000) });
+      if (!res.ok) throw await failure(res);
+    },
+  };
+}
+
+const cloudinaryOf = (ctx: { settings: Record<string, unknown>; secret(key: string): string | undefined }) =>
+  cloudinaryStore(ctx.settings as unknown as CloudinarySettings, { apiKey: ctx.secret('apiKey')!, apiSecret: ctx.secret('apiSecret')! });
+
+registerProvider({
+  kind: 'storage', key: 'cloudinary', label: 'Cloudinary',
+  description: "A Cloudinary account. Files are kept as private uploads that only this server can read, with the account's API key and secret.",
+  fields: z.strictObject({
+    cloudName: z.string().trim().regex(/^[A-Za-z0-9_-]{1,100}$/, "The cloud name from Cloudinary's dashboard"),
+    folder: z.string().trim().regex(/^[A-Za-z0-9_-]+(\/[A-Za-z0-9_-]+)*$/, 'Letters, digits, - and _, with / between folders').optional(),
+  }),
+  labels: { cloudName: 'Cloud name' },
+  hints: { cloudName: "On Cloudinary's dashboard, next to the API key", folder: 'Optional, e.g. fleet: every file goes under it' },
+  secrets: [{ key: 'apiKey', label: 'API key', required: true }, { key: 'apiSecret', label: 'API secret', required: true }],
+  test: async (ctx) => roundTrip(cloudinaryOf(ctx)),
+  open: (ctx) => ({ store: async () => cloudinaryOf(ctx) }),
+});

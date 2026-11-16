@@ -149,9 +149,12 @@ function serverDefault<K extends Kind>(kind: K): { provider: Provider<K>; connec
     return { provider: providerFor('email', 'smtp') as Provider<K>, connection: { settings: { host: env.SMTP_HOST, port: env.SMTP_PORT, secure: env.SMTP_SECURE, user: env.SMTP_USER, from: env.SMTP_FROM }, secrets: env.SMTP_USER ? { password: 'SMTP_PASS' } : undefined } };
   }
   if (kind === 'storage') {
-    return env.FILE_STORAGE === 'gcs'
-      ? { provider: providerFor('storage', 'gcs') as Provider<K>, connection: { settings: { bucket: env.GCS_BUCKET } } }
-      : { provider: providerFor('storage', 'local') as Provider<K>, connection: { settings: {} } };
+    if (env.FILE_STORAGE === 'gcs') return { provider: providerFor('storage', 'gcs') as Provider<K>, connection: { settings: { bucket: env.GCS_BUCKET } } };
+    if (env.FILE_STORAGE === 'cloudinary') {
+      const settings = { cloudName: env.CLOUDINARY_CLOUD_NAME, ...(env.CLOUDINARY_FOLDER ? { folder: env.CLOUDINARY_FOLDER } : {}) };
+      return { provider: providerFor('storage', 'cloudinary') as Provider<K>, connection: { settings, secrets: { apiKey: 'CLOUDINARY_API_KEY', apiSecret: 'CLOUDINARY_API_SECRET' } } };
+    }
+    return { provider: providerFor('storage', 'local') as Provider<K>, connection: { settings: {} } };
   }
   return undefined;
 }

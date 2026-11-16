@@ -41,7 +41,29 @@ Keys and passwords go only into Render and Atlas, never into chat or GitHub. `JW
    desk**: Operations, Finance, Viewer and a driver. Each password is shown **once**, so copy them.
 3. Give the tester those sign-ins. Reset again whenever you want a clean start; it hands out new passwords.
 
-## 4. Optional: real e-mail
+## 4. Uploaded files on Cloudinary (needed on the free plan)
+
+Render's free plan has no disk, so files saved on the server are lost whenever it sleeps or deploys. Keep them on
+Cloudinary instead (its free plan is enough for a test copy):
+
+1. Sign up at <https://cloudinary.com>. On the dashboard, note the **Cloud name**, **API key** and **API secret**.
+2. In Render → the service → **Environment**, add:
+
+   | Setting | What to put |
+   |---|---|
+   | `FILE_STORAGE` | `cloudinary` |
+   | `CLOUDINARY_CLOUD_NAME` | The cloud name |
+   | `CLOUDINARY_API_KEY` | The API key |
+   | `CLOUDINARY_API_SECRET` | The API secret |
+   | `CLOUDINARY_FOLDER` | Optional, e.g. `fleet-test`: every file goes under it |
+
+3. Save. The service restarts, and new uploads go to Cloudinary as private files that only the app can read.
+   Files uploaded before stay where they were.
+
+Cloudinary can also be switched on from **Masters → Sending messages → Connections → File storage**. The API key and
+secret still go in Render → Environment: the screen names the two settings to add.
+
+## 5. Optional: real e-mail
 
 The copy starts with e-mail **simulated**: messages appear in the app's message log, marked "simulated". To send real
 e-mail, add a mail service in **Masters → Sending messages → Connections** (Resend, SendGrid, Mailgun or any mail
@@ -53,7 +75,7 @@ server). No change on Render is needed. Sending to any inbox needs a domain you 
 |---|---|
 | `COPY_PURPOSE=demo`, `DEMO_IN_PRODUCTION=true` | A demonstration copy: made-up data that can be reset. To onboard a real company instead, set `COPY_PURPOSE=trial` and remove `DEMO_IN_PRODUCTION`. |
 | `DRIVER_PHONE_SIMULATOR=true` | Staff can act as a driver's WhatsApp, labelled "simulated". It's allowed on a demo or trial copy only. |
-| `FILE_STORAGE_DIR=/data/files` | Uploaded photos and papers live on the disk, so they survive restarts and deploys. |
+| `FILE_STORAGE_DIR=/data/files` | Uploaded photos and papers live on the disk, so they survive restarts and deploys. Without a disk (the free plan), use Cloudinary (section 4). |
 | `TRUST_PROXY=1` | Render's proxy sits in front of the app. Sign-in limits count the real visitor. |
 | `CONSOLE_ENABLED=false` | The developers' API console is off on a copy people use. |
 

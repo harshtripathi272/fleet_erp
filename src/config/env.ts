@@ -79,12 +79,17 @@ export const envSchema = z.object({
   /** Folder of the built web app; defaults to web/dist next to the API. The app is served only when it has been built. */
   WEB_DIR: z.string().trim().min(1).optional(),
 
-  /** Where uploaded files (document photos, PDFs) are kept: a folder on the server, or a Google Cloud Storage bucket. */
-  FILE_STORAGE: z.enum(['local', 'gcs']).default('local'),
+  /** Where uploaded files (document photos, PDFs) are kept: a folder on the server, a Google Cloud Storage bucket, or Cloudinary. */
+  FILE_STORAGE: z.enum(['local', 'gcs', 'cloudinary']).default('local'),
   /** Folder for `FILE_STORAGE=local`, relative to where the API starts. On Cloud Run use `gcs`: its disk is wiped on restart. */
   FILE_STORAGE_DIR: z.string().trim().min(1).default('data/files'),
   /** Bucket for `FILE_STORAGE=gcs`. Credentials come from the environment (the service account on GCP). */
   GCS_BUCKET: optionalText,
+  /** For `FILE_STORAGE=cloudinary`: the account's cloud name, API key and secret (Cloudinary's dashboard), and an optional folder. */
+  CLOUDINARY_CLOUD_NAME: optionalText,
+  CLOUDINARY_API_KEY: optionalText,
+  CLOUDINARY_API_SECRET: optionalText,
+  CLOUDINARY_FOLDER: optionalText,
   /** Largest file one upload may carry. */
   UPLOAD_MAX_MB: z.coerce.number().min(1).max(100).default(15),
 
@@ -99,6 +104,11 @@ export const envSchema = z.object({
 }).superRefine((value, ctx) => {
   if (value.FILE_STORAGE === 'gcs' && !value.GCS_BUCKET) {
     ctx.addIssue({ code: 'custom', path: ['GCS_BUCKET'], message: 'Set GCS_BUCKET when FILE_STORAGE is gcs' });
+  }
+  if (value.FILE_STORAGE === 'cloudinary') {
+    for (const name of ['CLOUDINARY_CLOUD_NAME', 'CLOUDINARY_API_KEY', 'CLOUDINARY_API_SECRET'] as const) {
+      if (!value[name]) ctx.addIssue({ code: 'custom', path: [name], message: `Set ${name} when FILE_STORAGE is cloudinary` });
+    }
   }
   if (value.NODE_ENV !== 'production') return;
   if (value.JWT_SECRET.startsWith('development-only')) {
