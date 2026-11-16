@@ -125,6 +125,8 @@ export function envTemplate(file: CompanyFile): string {
     target === 'gcp' ? set('FILE_STORAGE', 'gcs') : set('FILE_STORAGE', 'local'),
     disk ? set('FILE_STORAGE_DIR', disk) : '# FILE_STORAGE_DIR=data/files',
     target === 'gcp' ? '# GCS_BUCKET is set by the deploy script.' : '# GCS_BUCKET=',
+    // Only with FILE_STORAGE=cloudinary: the account's values from Cloudinary's dashboard.
+    '# CLOUDINARY_CLOUD_NAME=', '# CLOUDINARY_API_KEY= (SECRET)', '# CLOUDINARY_API_SECRET= (SECRET)', '# CLOUDINARY_FOLDER=',
     set('CONSOLE_ENABLED', false),
     // A real company's copy makes no packages for other companies; a demonstration copy can.
     set('SETUP_PACKAGES', file.purpose === 'demo'),

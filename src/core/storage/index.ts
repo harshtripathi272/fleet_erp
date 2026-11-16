@@ -1,5 +1,5 @@
 import { env } from '../../config/env.js';
-import { gcsStore, localStore } from '../connections/providers/storage.js';
+import { cloudinaryStore, gcsStore, localStore } from '../connections/providers/storage.js';
 import type { FileStore } from '../connections/types.js';
 
 export type { FileStore } from '../connections/types.js';
@@ -15,7 +15,9 @@ export interface StoreResolver {
 }
 
 let server: Promise<FileStore> | undefined;
-const serverStore = () => (server ??= env.FILE_STORAGE === 'gcs' ? gcsStore(env.GCS_BUCKET!) : Promise.resolve(localStore(env.FILE_STORAGE_DIR)));
+const serverStore = () => (server ??= env.FILE_STORAGE === 'gcs' ? gcsStore(env.GCS_BUCKET!)
+  : env.FILE_STORAGE === 'cloudinary' ? Promise.resolve(cloudinaryStore({ cloudName: env.CLOUDINARY_CLOUD_NAME!, folder: env.CLOUDINARY_FOLDER }, { apiKey: env.CLOUDINARY_API_KEY!, apiSecret: env.CLOUDINARY_API_SECRET! }))
+  : Promise.resolve(localStore(env.FILE_STORAGE_DIR)));
 
 let resolver: StoreResolver = { forNew: async () => ({ store: await serverStore() }), forFile: () => serverStore() };
 /** The connections module puts its own resolver here when it loads. */

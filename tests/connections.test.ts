@@ -10,7 +10,7 @@ import { z } from 'zod';
 import { env } from '../src/config/env.js';
 import { KINDS, providersOf, registerProvider, signBody, simulatedProvider, type FileStore, type Position } from '../src/core/connections/index.js';
 import { decodePolyline, haversineKm } from '../src/core/connections/providers/routing.js';
-import { signS3 } from '../src/core/connections/providers/storage.js';
+import { cloudinaryStore, signCloudinary, signS3 } from '../src/core/connections/providers/storage.js';
 import { toCsv } from '../src/core/connections/providers/money.js';
 import { setSmtpTransportFactory } from '../src/core/mail/mailer.js';
 import { Company } from '../src/modules/company/company.model.js';
@@ -84,7 +84,7 @@ describe('the registry', () => {
     const keys = (kind: (typeof KINDS)[number]) => providersOf(kind).map((p) => p.key);
     for (const [kind, wanted] of [
       ['email', ['smtp']], ['sms', ['africastalking', 'twilio']], ['whatsapp', ['simulated']], ['rates', ['openexchangerates']],
-      ['gps', ['webhook', 'traccar']], ['routing', ['straight-line', 'osrm', 'mapbox', 'google']], ['storage', ['local', 'gcs', 's3']], ['accounting', ['csv']],
+      ['gps', ['webhook', 'traccar']], ['routing', ['straight-line', 'osrm', 'mapbox', 'google']], ['storage', ['local', 'gcs', 's3', 'cloudinary']], ['accounting', ['csv']],
     ] as const) for (const key of wanted) assert.ok(keys(kind).includes(key), `${kind}: ${key}`);
   });
 
@@ -290,6 +290,38 @@ describe('adapters', () => {
       headers: { Range: 'bytes=0-9' }, now: new Date('2013-05-24T00:00:00Z'),
     });
     assert.equal(headers.authorization, 'AWS4-HMAC-SHA256 Credential=AKIAIOSFODNN7EXAMPLE/20130524/us-east-1/s3/aws4_request, SignedHeaders=host;range;x-amz-content-sha256;x-amz-date, Signature=f0e8bdb87c964420e857bd35b5d6ed310bd44f0170aba48dd91039c6036bdb41');
+  });
+
+  test("Cloudinary: requests are signed as Cloudinary's own example says", () => {
+    // From the Cloudinary documentation, "Generating authentication signatures".
+    assert.equal(signCloudinary({ eager: 'w_400,h_300,c_pad|w_260,h_200,c_crop', public_id: 'sample_image', timestamp: 1315060510 }, 'abcd'), 'bfd09f95f331f558cbd1320e67aa8d488770583e');
+  });
+
+  test('Cloudinary: a file is stored privately, read back with a signed request, and removed', async () => {
+    const calls = fakeFetch((url) => (url.includes('/download') && url.includes('missing') ? { status: 404, body: { error: { message: 'Resource not found' } } } : { body: url.includes('/download') ? 'file bytes' : { result: 'ok' } }));
+    const store = cloudinaryStore({ cloudName: 'demo-cloud', folder: 'fleet' }, { apiKey: '1234', apiSecret: 'shh' }, () => 1700000000);
+    await store.put('2026-11/a.pdf', Buffer.from('%PDF-1.7'), 'application/pdf');
+    const upload = calls[0]!;
+    assert.equal(upload.url, 'https://api.cloudinary.com/v1_1/demo-cloud/raw/upload');
+    const form = upload.init!.body as FormData;
+    assert.equal(form.get('public_id'), 'fleet/2026-11/a.pdf');
+    assert.equal(form.get('type'), 'private', 'nobody reads it without a signature');
+    assert.equal(form.get('api_key'), '1234');
+    assert.equal(form.get('signature'), signCloudinary({ overwrite: 'false', public_id: 'fleet/2026-11/a.pdf', timestamp: 1700000000, type: 'private' }, 'shh'));
+    assert.equal(Buffer.from(await (form.get('file') as Blob).arrayBuffer()).toString(), '%PDF-1.7');
+
+    const read = await store.open('2026-11/a.pdf');
+    const parts: Buffer[] = [];
+    for await (const part of read) parts.push(Buffer.from(part));
+    assert.equal(Buffer.concat(parts).toString(), '"file bytes"');
+    const download = new URL(calls[1]!.url);
+    assert.equal(download.pathname, '/v1_1/demo-cloud/raw/download');
+    assert.equal(download.searchParams.get('signature'), signCloudinary({ public_id: 'fleet/2026-11/a.pdf', timestamp: 1700000000, type: 'private' }, 'shh'));
+    await assert.rejects(store.open('missing.pdf'), /File not found/);
+
+    await store.remove('2026-11/a.pdf');
+    assert.equal(calls.at(-1)!.url, 'https://api.cloudinary.com/v1_1/demo-cloud/raw/destroy');
+    assert.equal(new URLSearchParams(String(calls.at(-1)!.init!.body)).get('public_id'), 'fleet/2026-11/a.pdf');
   });
 
   test('SMS: Twilio and Africa’s Talking are called with the key from the environment', async () => {
